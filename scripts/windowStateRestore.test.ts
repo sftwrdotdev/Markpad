@@ -3,6 +3,24 @@ import test from 'node:test';
 
 import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
 
+const g = globalThis as any;
+const runeEffect = (fn: () => void) => {
+	void fn;
+};
+runeEffect.root = (fn: () => unknown) => fn();
+g.$state = (value: unknown) => value;
+g.$state.raw = (value: unknown) => value;
+g.$state.snapshot = (value: unknown) => value;
+g.$derived = (value: unknown) => value;
+g.$derived.by = (fn: () => unknown) => fn();
+g.$effect = runeEffect;
+g.window = g.window ?? {};
+g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? {
+	invoke: () => Promise.resolve(null),
+};
+
+const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
+
 const tabs = readSource('src/lib/stores/tabs.svelte.ts');
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 const session = readSource('src/lib/sessions/windowSession.svelte.ts');
@@ -18,31 +36,95 @@ function closeHandler(): string {
 	return sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
 }
 
-test('serializeState writes window state only', () => {
-	const fn = sliceBetween(tabs, 'serializeState()', 'restoreState(');
-	assert.match(fn, /version: 2/);
-	// untitled tabs have no disk backing; they are resolved at close, never
-	// persisted — and neither is the home tab, whose path is the sentinel
-	// string 'HOME' rather than a file (homeSentinelSnapshot.test.ts)
-	assert.match(fn, /filter\(\(t\) => hasRealFilePath\(t\.path\)\)/);
-	// no full-object spread and no content fields in the snapshot
-	assert.doesNotMatch(fn, /\.\.\.t/);
-	assert.doesNotMatch(fn, /rawContent/);
-	assert.doesNotMatch(fn, /originalContent/);
-	assert.doesNotMatch(fn, /isDirty/);
-	assert.doesNotMatch(fn, /history/);
+test('the snapshot carries window state and no document content', () => {
+	// The snapshot is written to disk on every close. A `...t` spread, or one
+	// field added by hand, silently turns a window-layout file into a copy of
+	// every open document — including one the user never saved anywhere.
+	tabManager.closeAll();
+	tabManager.addTab('/notes/a.md', 'on disk');
+	const tab = tabManager.activeTab!;
+	tabManager.updateTabRawContent(tab.id, 'a paragraph that was never saved');
+	tab.isEditing = true;
+	tab.isSplit = true;
+	tab.scrollPercentage = 0.42;
+
+	const snapshot = tabManager.serializeState();
+
+	assert.doesNotMatch(snapshot, /never saved/, 'the buffer is not in the file');
+	assert.doesNotMatch(snapshot, /on disk/, 'and neither is the last saved copy');
+
+	const parsed = JSON.parse(snapshot);
+	assert.equal(parsed.version, 2);
+	assert.deepEqual(
+		Object.keys(parsed.tabs[0]).sort(),
+		['anchorLine', 'id', 'isEditing', 'isScrollSynced', 'isSplit', 'path', 'scrollPercentage', 'scrollTop', 'splitRatio', 'title'],
+		'exactly the window-state fields, so a new one has to be added deliberately',
+	);
+	assert.equal(parsed.tabs[0].isEditing, true, 'the UI state that IS persisted survives');
+	assert.equal(parsed.tabs[0].scrollPercentage, 0.42);
 });
 
-test('restoreState rebuilds clean tabs and drops legacy untitled entries', () => {
-	const fn = sliceBetween(tabs, 'restoreState(', 'addTab(');
-	// path is the identity of a restored tab; entries without a real file path
-	// are skipped, including 'HOME' entries left by older builds
-	assert.match(fn, /!hasRealFilePath\(saved\.path\)\) continue;/);
-	// restored tabs start clean; content is read from disk afterwards
-	assert.match(fn, /isDirty: false/);
-	assert.match(fn, /rawContent: ''/);
-	// a stale activeTabId falls back to the first restored tab
-	assert.match(fn, /activeTabId/);
+test('a tab with no file behind it is not persisted', () => {
+	// Untitled tabs are resolved by the close dialogs, and the Home tab's path
+	// is the sentinel 'HOME' rather than a file. Persisting either restores a
+	// tab that can never be read.
+	tabManager.closeAll();
+	tabManager.addTab('/notes/a.md', 'saved');
+	tabManager.addTab('', 'untitled draft');
+
+	const parsed = JSON.parse(tabManager.serializeState());
+
+	assert.deepEqual(parsed.tabs.map((t: { path: string }) => t.path), ['/notes/a.md']);
+});
+
+test('a restored tab comes back clean, empty and in its old place', () => {
+	tabManager.closeAll();
+	tabManager.addTab('/notes/a.md', 'on disk');
+	const first = tabManager.activeTab!;
+	first.isSplit = true;
+	first.splitRatio = 0.3;
+	tabManager.addTab('/notes/b.md', 'b on disk');
+	const second = tabManager.activeTab!;
+	tabManager.updateTabRawContent(second.id, 'unsaved');
+	const snapshot = tabManager.serializeState();
+
+	tabManager.closeAll();
+	tabManager.restoreState(snapshot);
+
+	assert.deepEqual(tabManager.tabs.map((t) => t.path), ['/notes/a.md', '/notes/b.md']);
+	assert.equal(tabManager.activeTabId, second.id, 'the tab that was active is active again');
+	for (const tab of tabManager.tabs) {
+		assert.equal(tab.rawContent, '', 'content is read from disk afterwards, not from the snapshot');
+		assert.equal(tab.isDirty, false, 'and a restored tab is never dirty on arrival');
+	}
+	assert.equal(tabManager.tabs[0].isSplit, true, 'per-tab layout survives the round trip');
+	assert.equal(tabManager.tabs[0].splitRatio, 0.3);
+});
+
+test('a snapshot naming a tab that no longer exists still opens something', () => {
+	// activeTabId is written from the live tab list; an entry dropped on the
+	// read side (a legacy 'HOME', an untitled tab from an older build) can
+	// leave it pointing at nothing. Restoring to no active tab is a blank
+	// window with files in the tab bar.
+	tabManager.closeAll();
+	tabManager.restoreState(
+		JSON.stringify({ version: 2, activeTabId: 'gone', tabs: [{ id: 'x', path: '/notes/a.md', title: 'a.md' }] }),
+	);
+
+	assert.equal(tabManager.tabs.length, 1);
+	assert.equal(tabManager.activeTabId, 'x');
+});
+
+test('entries that are not files are dropped on the way back in', () => {
+	tabManager.closeAll();
+	tabManager.restoreState(
+		JSON.stringify({
+			version: 2,
+			tabs: [{ id: 'h', path: 'HOME', title: 'Home' }, { id: 'u', path: '', title: 'Untitled' }, { id: 'a', path: '/notes/a.md', title: 'a.md' }],
+		}),
+	);
+
+	assert.deepEqual(tabManager.tabs.map((t) => t.path), ['/notes/a.md']);
 });
 
 test('startup restore reads content from disk, not from the snapshot', () => {
