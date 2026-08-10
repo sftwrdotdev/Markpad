@@ -49,7 +49,32 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
+      # Chocolatey accepts a version exactly once, so pushing 2.7.2 again is an
+      # error. That is correct on the `release: published` path -- a second
+      # publish of the same version is a real problem -- and wrong on the
+      # `workflow_dispatch` path, whose only possible use is a tag that is
+      # already published: recovering after the snap job failed, or exercising
+      # this workflow without cutting a release. Both would report a Chocolatey
+      # failure that means nothing.
+      #
+      # So it is asked rather than assumed, and asked of the feed rather than
+      # inferred from the text of a push error. A check that cannot answer --
+      # network, rate limit -- deliberately falls through to the push, which is
+      # the real gate; the point is to drop a known non-event, not to make
+      # publishing conditional on a lookup succeeding.
+      - name: Is this version already on Chocolatey?
+        id: already
+        shell: bash
+        run: |
+          VERSION="${TAG#v}"
+          feed="https://community.chocolatey.org/api/v2/Packages()?\$filter=Id%20eq%20'markpad-app'%20and%20Version%20eq%20'${VERSION}'"
+          if curl -fsS --max-time 30 "$feed" | grep -q "<d:Version>${VERSION}</d:Version>"; then
+            echo "::notice::markpad-app ${VERSION} is already on Chocolatey. Nothing to push."
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Take the executable from the release
+        if: steps.already.outputs.published != 'true'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -69,6 +94,7 @@ jobs:
           cp LICENSE packaging/choco/tools/LICENSE.txt
 
       - name: Record what the package contains
+        if: steps.already.outputs.published != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -85,6 +111,7 @@ jobs:
           cat packaging/choco/tools/VERIFICATION.txt
 
       - name: Pack and publish
+        if: steps.already.outputs.published != 'true'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

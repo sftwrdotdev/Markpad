@@ -10,6 +10,7 @@ const testBuildWorkflow = readSource('.github/workflows/test_build.yml');
 const releasing = readSource('RELEASING.md');
 const snapcraft = readSource('snapcraft.yaml');
 const stripAppImage = readSource('scripts/strip-appimage.sh');
+const readme = readSource('README.md');
 const cargoToml = readSource('src-tauri/Cargo.toml');
 const packageJson = JSON.parse(readSource('package.json')) as {
 	scripts: Record<string, string>;
@@ -209,4 +210,51 @@ test('signing uses the environment variables the pinned CLI reads', () => {
 	);
 	assert.doesNotMatch(workflow, /TAURI_PRIVATE_KEY/);
 	assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
+});
+
+test('the package managers we recommend are the ones we publish to', () => {
+	// Three places tell people a package manager can install Markpad: the README,
+	// the download table written into every release body, and the workflow that
+	// actually pushes. They drifted once already and nobody noticed for three
+	// months — the snap build was dead from v2.6.11 while both documents went on
+	// recommending `sudo snap install markpad` and the Snap Store served 2.6.11.
+	//
+	// That drift is about to be possible again in the other direction: #562 asks
+	// whether to retire the snap, and retiring it means deleting the job below.
+	// Doing that without touching the two documents leaves the same failure with
+	// the arrow reversed — a recommendation for a channel that no longer gets
+	// anything. This holds the three together so the deletion cannot be partial.
+	const releaseBody = sliceBetween(workflow, "echo '## Download'", 'RELEASE_BODY');
+	for (const [name, install, push] of [
+		['Chocolatey', /choco install markpad-app/, /choco push/],
+		['Snap', /snap install markpad/, /snapcraft push/],
+	] as const) {
+		const publishes = push.test(publishWorkflow);
+		assert.equal(
+			install.test(readme),
+			publishes,
+			`README ${install.test(readme) ? 'recommends' : 'does not recommend'} ${name}, but the pipeline ` +
+				`${publishes ? 'does' : 'does not'} publish to it`,
+		);
+		assert.equal(
+			install.test(releaseBody),
+			publishes,
+			`the release body ${install.test(releaseBody) ? 'recommends' : 'does not recommend'} ${name}, but the ` +
+				`pipeline ${publishes ? 'does' : 'does not'} publish to it`,
+		);
+	}
+});
+
+test('the Chocolatey job skips a version that is already on the feed', () => {
+	// Chocolatey accepts a version once. On the `release: published` path a
+	// duplicate is a real problem; on the `workflow_dispatch` path it is the
+	// normal case, because the only possible use of that path is a tag that is
+	// already published — recovering after the snap job failed, or exercising
+	// this workflow without cutting a release. Without the skip, that escape
+	// hatch always reports a Chocolatey failure that means nothing.
+	//
+	// The guard must gate the push, not merely exist.
+	assert.match(publishWorkflow, /id: already/);
+	const pack = sliceFrom(publishWorkflow, '- name: Pack and publish');
+	assert.match(pack, /if: steps\.already\.outputs\.published != 'true'/);
 });
