@@ -36,11 +36,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # No `cache: npm`, deliberately — it was the single largest consumer of a
+      # cache budget the cargo caches above have to fit inside.
+      #
+      # Measured: 113 npm cache entries, 8.76 GB, spread over 50 refs, against
+      # a 10 GB per-repository limit. GitHub scopes caches by ref, so one is
+      # written per branch per platform and nothing can bound it the way
+      # `save-if` bounds the cargo caches. Most of those 113 belonged to pull
+      # requests closed weeks earlier; caches are only evicted after seven days
+      # unused, or by least-recently-used pressure that takes the biggest
+      # entries — the cargo caches — first.
+      #
+      # What it bought, measured on runs that hit it: `npm ci` in 6s on Linux,
+      # 9s on macOS, 15-17s on Windows. It caches `~/.npm`, the download
+      # directory, not `node_modules` — `npm ci` still runs and still links all
+      # 190 packages, so the saving is only the registry fetch, and the runners
+      # are close to the registry. Seconds per job, for the budget that makes
+      # an eight-minute saving possible.
       - name: setup node
         uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          cache: 'npm'
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -55,14 +71,21 @@ jobs:
       # looks for Cargo.lock at the repository root, finds none and caches
       # nothing.
       #
-      # This job is also what makes the cache reach anything: a pull request
-      # can only restore caches written on its own branch or on the base
-      # branch, and of the three workflows only this one runs on push to
-      # master. Its master runs are what seed a freshly opened branch.
+      # A pull request can only restore caches written on its own branch or on
+      # the base branch, so master runs are what seed a freshly opened branch.
+      # This job and test_build.yml's matrix both run on push to master for
+      # that reason, and `save-if` keeps them the only writers: a pull request
+      # restores and saves nothing.
+      #
+      # That bound is not cosmetic. One run's cargo caches measured 4.45 GB
+      # against a 10 GB per-repository limit shared with ~110 npm caches, and
+      # GitHub evicts least-recently-used -- so unbounded per-branch copies
+      # would push out the very entries they are meant to reuse.
       - name: cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: install dependencies (ubuntu only)
         run: |

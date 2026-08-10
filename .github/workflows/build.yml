@@ -177,23 +177,23 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
-      # Release builds compile the same dependency graph the test workflows
-      # do, from scratch, on four runners. The measurement that motivated
-      # caching is in test.yml: 7m57s of a 12m14s job was the release compile
-      # alone.
+      # No cargo cache here, deliberately, and it is a budget decision rather
+      # than a judgement that caching does not work.
       #
-      # `workspaces` names the cargo workspace root; without it the action
-      # looks for Cargo.lock at the repository root and caches nothing.
+      # A cargo cache is 1.0-1.2 GB per entry. This workflow has four matrix
+      # entries, so caching it would claim another ~4.5 GB of a 10 GB
+      # per-repository limit that already holds ~110 npm caches and the three
+      # entries test_build.yml writes on master. Over that limit GitHub evicts
+      # least-recently-used, and these would be the least recently used of all:
+      # this workflow is `workflow_dispatch` only and runs about once a week.
       #
-      # `key` is not optional here. The automatic key covers the job id, the
-      # rustc release/host and a hash of the Cargo files -- and the two
-      # windows-latest entries share all three, differing only in `arch`. The
-      # ARM64 job would otherwise restore the x64 job's target directory.
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-          key: ${{ matrix.os }}-${{ matrix.arch }}
+      # What it would buy is also the least valuable minutes in the repository.
+      # A release build is not on anyone's critical path -- nobody waits on it
+      # the way they wait on a pull request check -- and its four jobs already
+      # finish in 12-16 minutes. Spending a third of the cache budget to make a
+      # weekly job faster, at the cost of the caches every pull request reads,
+      # is the wrong trade. If the limit ever stops binding, this is the first
+      # place to add one back.
 
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-24.04'
