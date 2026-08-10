@@ -3,7 +3,30 @@ name: Test Build (No Release)
 on:
   # Keep release packaging changes from reaching a draft release without a
   # platform build check.
+  #
+  # Documentation cannot change what these three platforms compile. No
+  # Markdown file is bundled as a resource -- `tauri.conf.json` has no
+  # `resources` key -- and the frontend suites that do read `samples/*.md` as
+  # fixtures still run on every pull request through test.yml, which carries
+  # no path filter. A documentation-only pull request was therefore spending
+  # three full platform builds, 12m14s on Linux alone, to prove nothing.
+  #
+  # This is only safe while `build-test` is not a required status check: a job
+  # that never starts stays pending forever against a required check, and the
+  # pull request can then never be merged. Checked when this was written --
+  # master's protection reports no required contexts, and `gh pr checks
+  # --required` reports none on the open pull requests. Whoever makes it
+  # required has to delete this filter in the same change.
+  #
+  # `samples/**` is deliberately absent. It holds only `.md` files today, so
+  # `**.md` already covers it, and `npm test` reads `samples/stress-test.md`
+  # as a fixture; naming the directory would drop a future non-Markdown
+  # fixture out of the matrix without anyone noticing.
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'pics/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 # Every push to a pull request queued another full matrix while the previous
@@ -51,6 +74,31 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      # This is the job the 12m14s measurement in test.yml came from: 2m31s of
+      # it was the debug compile behind `cargo test` and 7m57s the release
+      # compile behind `Build app`, all of it from scratch on every run.
+      #
+      # `workspaces` names the cargo workspace root; the action finds no
+      # Cargo.lock without it.
+      #
+      # The automatic key covers the job id, the rustc release/host and a hash
+      # of the Cargo files. All three entries share the job id `build-test`,
+      # which leaves the rustc host as the only thing telling them apart, and
+      # the target list this matrix varies does not appear in the key at all.
+      # `key` makes the cache say which matrix entry wrote it rather than
+      # leaning on that coincidence.
+      #
+      # Note what this cannot do on its own: this workflow has no push
+      # trigger, so its caches are only ever written on pull request branches
+      # and a branch can only restore its own or the base branch's. The first
+      # run of a new pull request will still be a cold compile; later pushes
+      # to the same branch are the ones that hit.
+      - name: cache rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.os-name }}
 
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'
