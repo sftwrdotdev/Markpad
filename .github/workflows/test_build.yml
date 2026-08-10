@@ -27,15 +27,39 @@ on:
       - '**.md'
       - 'pics/**'
       - '.github/ISSUE_TEMPLATE/**'
+  # This trigger exists to fill the cargo cache, not to test master again.
+  #
+  # A GitHub Actions cache can only be restored by the branch that wrote it or
+  # by a branch descended from one that did, and until now nothing wrote a
+  # cargo cache on master: this workflow only ran on `pull_request`, so every
+  # cache was scoped to a pull request branch and no other branch could ever
+  # read it. Every new pull request paid a full cold compile no matter how many
+  # had been cached before it -- which is most of the benefit of caching, lost
+  # to where the cache was written rather than to anything about caching.
+  #
+  # One run per merge seeds all three platforms for every pull request opened
+  # afterwards. Only the first is a cold compile; later master runs restore
+  # master's own cache and recompile little.
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - '**.md'
+      - 'pics/**'
+      - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
 
 # Every push to a pull request queued another full matrix while the previous
 # one was still waiting for a runner, and both then competed for the same
 # scarce macOS capacity. Only the newest revision of a branch is worth
 # building.
+#
+# Not on master, for the same reason test.yml does not: the push trigger above
+# exists to write the cache, and cancelling one master run because a second
+# merge landed would throw away the compile that was going to fill it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-test:
@@ -89,16 +113,23 @@ jobs:
       # `key` makes the cache say which matrix entry wrote it rather than
       # leaning on that coincidence.
       #
-      # Note what this cannot do on its own: this workflow has no push
-      # trigger, so its caches are only ever written on pull request branches
-      # and a branch can only restore its own or the base branch's. The first
-      # run of a new pull request will still be a cold compile; later pushes
-      # to the same branch are the ones that hit.
+      # `save-if` is what keeps this affordable. Without it every pull request
+      # writes its own copy, and a copy here is 1.0-1.2 GB per platform: four
+      # cargo caches from a single run measured 4.45 GB, against a 10 GB
+      # per-repository limit that also holds ~110 npm caches. Two pull requests
+      # in flight would overflow it, and GitHub evicts least-recently-used --
+      # so the largest entries, these, are the ones that vanish, and the cache
+      # would be a slower way of not caching.
+      #
+      # Writing only on master pins the total at one set. Pull requests restore
+      # from master and save nothing, which is also what makes the push trigger
+      # above worth its runner time: it is the only writer.
       - name: cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
           key: ${{ matrix.os-name }}
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: install dependencies (ubuntu only)
         if: matrix.platform == 'ubuntu-22.04'

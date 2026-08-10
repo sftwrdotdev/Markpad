@@ -55,14 +55,21 @@ jobs:
       # looks for Cargo.lock at the repository root, finds none and caches
       # nothing.
       #
-      # This job is also what makes the cache reach anything: a pull request
-      # can only restore caches written on its own branch or on the base
-      # branch, and of the three workflows only this one runs on push to
-      # master. Its master runs are what seed a freshly opened branch.
+      # A pull request can only restore caches written on its own branch or on
+      # the base branch, so master runs are what seed a freshly opened branch.
+      # This job and test_build.yml's matrix both run on push to master for
+      # that reason, and `save-if` keeps them the only writers: a pull request
+      # restores and saves nothing.
+      #
+      # That bound is not cosmetic. One run's cargo caches measured 4.45 GB
+      # against a 10 GB per-repository limit shared with ~110 npm caches, and
+      # GitHub evicts least-recently-used -- so unbounded per-branch copies
+      # would push out the very entries they are meant to reuse.
       - name: cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: install dependencies (ubuntu only)
         run: |
