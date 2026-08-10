@@ -5,6 +5,7 @@
 	import { t, type LanguageCode } from '../utils/i18n.js';
 	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
 	import { toggleLineMarker, type LineMarkerToolId } from '../utils/editorToolbar.js';
+	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
 	import {
@@ -337,38 +338,15 @@
 			theme: getTheme(),
 			dragAndDrop: true,
 			automaticLayout: true,
-			minimap: { enabled: settings.minimap },
+			// The settings-derived options, shared with the updateOptions
+			// effect below. Zoom is 100 here and not `zoomLevel`: that is
+			// what this literal has always passed, and the effect re-applies
+			// the real factor on the tick after creation.
+			...editorOptionsFromSettings(settings, 100),
 			scrollBeyondLastLine: true,
 			stickyScroll: { enabled: settings.stickyScroll },
 			smoothScrolling: true,
 			cursorSmoothCaretAnimation: 'on',
-			wordWrap: settings.wordWrap as
-				| "on"
-				| "off"
-				| "wordWrapColumn"
-				| "bounded",
-			wordWrapColumn: settings.editorMaxWidth,
-			lineNumbers: settings.lineNumbers as
-				| "on"
-				| "off"
-				| "relative"
-				| "interval",
-			renderLineHighlight: settings.renderLineHighlight as "line" | "none",
-			occurrencesHighlight: settings.occurrencesHighlight
-				? "singleFile"
-				: "off",
-			// The other half of "Highlight Occurrences". Monaco splits the
-			// feature across two options, and `SelectionHighlighter` gates
-			// itself on `selectionHighlight` — it reads `occurrencesHighlight`
-			// only to choose which decoration style to draw with. Left unset,
-			// `selectionHighlight` defaults to true, so with the setting off —
-			// which is its default — selecting a word still highlighted every
-			// other copy of it, from a switch the app never exposed. Same shape
-			// as the defects #369 fixed: a setting that does not control the
-			// thing its label names.
-			selectionHighlight: settings.occurrencesHighlight,
-			fontSize: settings.editorFontSize,
-			fontFamily: settings.editorFont,
 			wordBasedSuggestions: "off",
 			quickSuggestions: false,
 			// Monaco's Unicode highlighter is built for source code, where a
@@ -474,7 +452,6 @@
 			// for LINE_SEPARATOR and PARAGRAPH_SEPARATOR unconditionally, so
 			// they stay as visible as they ever were. Only the dialog goes.
 			unusualLineTerminators: "off",
-			renderWhitespace: settings.showWhitespace ? "all" : "none",
 			padding: { top: 20 },
 			scrollbar: {
 				vertical: "visible",
@@ -1684,28 +1661,7 @@
 
 	$effect(() => {
 		if (editorReady && editor) {
-			editor.updateOptions({
-				minimap: { enabled: settings.minimap },
-				wordWrap: settings.wordWrap as
-					| "on"
-					| "off"
-					| "wordWrapColumn"
-					| "bounded",
-				wordWrapColumn: settings.editorMaxWidth,
-				lineNumbers: settings.lineNumbers as
-					| "on"
-					| "off"
-					| "relative"
-					| "interval",
-				renderLineHighlight: settings.renderLineHighlight as "line" | "none",
-				occurrencesHighlight: settings.occurrencesHighlight
-					? "singleFile"
-					: "off",
-				selectionHighlight: settings.occurrencesHighlight,
-				fontSize: settings.editorFontSize * (zoomLevel / 100),
-				fontFamily: settings.editorFont,
-				renderWhitespace: settings.showWhitespace ? "all" : "none",
-			});
+			editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel));
 		}
 	});
 

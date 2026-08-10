@@ -13,6 +13,7 @@ import {
 } from 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHighlighter.js';
 import ts from 'typescript';
 
+import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
 import { functionSource, readSource, sliceBetween } from './sourceTree.js';
 
 // Editor.svelte translates the settings store into Monaco options and
@@ -28,6 +29,19 @@ function count(source: string, pattern: RegExp): number {
 	return source.match(pattern)?.length ?? 0;
 }
 
+/** A settled settings store, so each test names only the field it is about. */
+const SETTINGS = {
+	minimap: false,
+	wordWrap: 'on',
+	editorMaxWidth: 80,
+	lineNumbers: 'on',
+	renderLineHighlight: 'line',
+	occurrencesHighlight: false,
+	editorFontSize: 14,
+	editorFont: 'Menlo',
+	showWhitespace: false,
+};
+
 test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
 	// The store holds 'line' / 'none'. Any non-empty string is truthy, so a
 	// ternary on it can only ever produce "line" and silently defeats both the
@@ -36,43 +50,51 @@ test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
 	assert.match(settingsStore, /this\.renderLineHighlight = this\.renderLineHighlight === 'line' \? 'none' : 'line'/);
 	assert.match(settingsStore, /this\.renderLineHighlight = 'none'/, 'zen mode sets the string to none');
 
-	assert.doesNotMatch(
-		editor,
-		/renderLineHighlight:\s*settings\.renderLineHighlight\s*\?/,
-		'renderLineHighlight must never be branched on as a boolean',
-	);
-	assert.doesNotMatch(
-		editor,
-		/renderLineHighlight:\s*settings\.renderLineHighlight\s*(?:===|!==)/,
-		'renderLineHighlight must not be re-derived from a comparison either',
-	);
-	assert.equal(
-		count(editor, /renderLineHighlight: settings\.renderLineHighlight as "line" \| "none"/g),
-		2,
-		'creation and updateOptions both forward the stored string unchanged',
-	);
+	// Both stored values have to survive the trip. A ternary passes for 'line'
+	// and fails for 'none', which is why one evaluation cannot judge this.
+	for (const stored of ['line', 'none'] as const) {
+		assert.equal(
+			editorOptionsFromSettings({ ...SETTINGS, renderLineHighlight: stored }, 100).renderLineHighlight,
+			stored,
+			`the stored string ${stored} is forwarded unchanged`,
+		);
+		assert.equal(
+			(createdEditorOptions({ renderLineHighlight: stored }) as { renderLineHighlight?: string })
+				.renderLineHighlight,
+			stored,
+			`and reaches the created editor as ${stored}`,
+		);
+	}
 });
 
 test('editor options are applied by a single updateOptions effect', () => {
 	// Two competing effects (one nested in onMount, one top level) wrote the
 	// same Monaco options with different values — notably fontSize with and
 	// without the zoom factor — so the winner depended on effect ordering.
-	assert.equal(count(editor, /editor\.updateOptions\(\{/g), 1, 'exactly one updateOptions call site');
+	assert.equal(count(editor, /editor\.updateOptions\(/g), 1, 'exactly one updateOptions call site');
 
-	const block = sliceBetween(editor, 'editor.updateOptions({', '});');
-	assert.match(block, /wordWrapColumn: settings\.editorMaxWidth/, 'wordWrapColumn survived the merge');
-	assert.match(block, /fontSize: settings\.editorFontSize \* \(zoomLevel \/ 100\)/, 'zoom-aware font size is the surviving one');
-	for (const option of [
-		'minimap',
-		'wordWrap:',
-		'lineNumbers',
-		'renderLineHighlight',
-		'occurrencesHighlight',
-		'fontFamily',
-		'renderWhitespace',
-	]) {
-		assert.ok(block.includes(option), `merged effect still applies ${option}`);
-	}
+	// What that one call applies, evaluated rather than read: every option the
+	// two effects used to fight over, and the zoom-aware font size that was the
+	// value they disagreed on.
+	const applied = editorOptionsFromSettings({ ...SETTINGS, editorFontSize: 20, editorMaxWidth: 90 }, 150);
+	assert.equal(applied.fontSize, 30, 'the surviving font size carries the zoom factor');
+	assert.equal(applied.wordWrapColumn, 90, 'wordWrapColumn survived the merge');
+	assert.deepEqual(
+		Object.keys(applied).sort(),
+		[
+			'fontFamily',
+			'fontSize',
+			'lineNumbers',
+			'minimap',
+			'occurrencesHighlight',
+			'renderLineHighlight',
+			'renderWhitespace',
+			'selectionHighlight',
+			'wordWrap',
+			'wordWrapColumn',
+		],
+		'and the set is exactly the options both call sites share',
+	);
 });
 
 test('tab cycling avoids Cmd+Tab, which macOS never delivers to the app', () => {
@@ -181,10 +203,13 @@ test('Show Whitespace renders every whitespace run, not just trailing', () => {
 	// "显示空白"), so "trailing" left interior spaces unmarked.
 	assert.doesNotMatch(editor, /renderWhitespace: settings\.showWhitespace \? "trailing"/);
 	assert.doesNotMatch(editor, /"trailing"/, 'no trailing-only whitespace rendering remains');
+	assert.equal(editorOptionsFromSettings({ ...SETTINGS, showWhitespace: true }, 100).renderWhitespace, 'all');
+	assert.equal(editorOptionsFromSettings({ ...SETTINGS, showWhitespace: false }, 100).renderWhitespace, 'none');
+	// Both call sites read the same function now, so agreeing is structural
+	// rather than something a count has to police.
 	assert.equal(
-		count(editor, /renderWhitespace: settings\.showWhitespace \? "all" : "none"/g),
-		2,
-		'creation and updateOptions agree on "all"',
+		(createdEditorOptions({ showWhitespace: true }) as { renderWhitespace?: string }).renderWhitespace,
+		'all',
 	);
 });
 
@@ -242,7 +267,10 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 	}).outputText;
 
-	// The literals close over six locals, stubbed rather than reconstructed.
+	// The literals close over six locals and one import, stubbed rather than
+	// reconstructed — except the import, which is the real function: the
+	// settings-derived options live there now, and stubbing them would leave
+	// the evaluated object missing exactly what these tests read.
 	// `documentOptions` is the spread that hands the editor the active tab's
 	// model (or `value`/`language` when there is no tab); an empty object is the
 	// right stub because nothing it can contain is an option this file asserts
@@ -254,13 +282,17 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		'getTheme',
 		'documentOptions',
 		'zoomLevel',
+		'editorOptionsFromSettings',
 		`return ${js};`,
-	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100) as Record<string, unknown>;
+	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, editorOptionsFromSettings) as Record<
+		string,
+		unknown
+	>;
 }
 
 /** The options object Editor.svelte hands to `monaco.editor.create`, evaluated. */
-function createdEditorOptions(): Record<string, unknown> {
-	return optionsPassedTo('monaco.editor.create');
+function createdEditorOptions(settings: Record<string, unknown> = {}): Record<string, unknown> {
+	return optionsPassedTo('monaco.editor.create', { ...SETTINGS, ...settings });
 }
 
 /**
