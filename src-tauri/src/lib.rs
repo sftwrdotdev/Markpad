@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::LazyLock;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// `![[target]]` / `![[target|size]]`. Deliberately NOT `(?s)`: `.` must not
 /// match a newline, so the pattern cannot pair a lone `![[` in prose with the
@@ -1756,7 +1756,13 @@ fn escape_html_text(text: &str) -> String {
 /// line N. The contract, the rationale and the tests that enforce it live in
 /// `mod tests` under "The line-number contract of `convert_markdown`" —
 /// a new step here must also be registered in `line_preserving_transforms()`.
-#[tauri::command]
+///
+/// Not a Tauri command, despite having carried `#[tauri::command]` until the
+/// attribute was removed. It was never in `generate_handler!`, so no frontend
+/// could ever invoke it — the registered entry point is `render_markdown`, and
+/// this is what that and `build_markdown_preview` call underneath. A command
+/// name is a string with no compiler behind it, so an attribute that claims an
+/// exposure the app does not have is a claim nothing was ever going to check.
 fn convert_markdown(content: &str) -> String {
     // The buffer this command was called with, captured before anything runs
     // and never rebound. What `annotate_task_checkboxes` is handed at the end
