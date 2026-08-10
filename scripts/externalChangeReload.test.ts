@@ -34,7 +34,7 @@ const { createDocumentSession } = await import('../src/lib/sessions/documentSess
 
 const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
-function makeSession() {
+function makeSession(overrides: Record<string, unknown> = {}) {
 	return createDocumentSession({
 		setShowHome: () => {},
 		currentFile: () => tabManager.activeTab?.path ?? '',
@@ -54,6 +54,7 @@ function makeSession() {
 		onCloseSaveNewerEdits: () => {},
 		onCloseAutoSaveFailed: () => {},
 		onPartialCopySaved: () => {},
+		...overrides,
 	});
 }
 
@@ -132,6 +133,29 @@ test('our own writes still suppress the reload', async () => {
 	assert.equal(await session.saveContent(tab.id), true);
 
 	assert.deepEqual(session.resolveExternalChange('/notes/a.md'), { action: 'ignore' });
+});
+
+test('the suppression expires, and does not outlive its own grace period', async () => {
+	// The other half of the same guard, and the one with teeth: a suppression
+	// that never lifts turns Live Mode off for that file for the rest of the
+	// session, silently. Grace 0 makes the window already over by the time the
+	// event arrives, which is what a real event a second later looks like.
+	tabManager.closeAll();
+	const session = makeSession({ selfWriteGraceMs: 0 });
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+	handleInvoke = (cmd) => {
+		if (cmd === 'save_file_content') return null;
+		throw new Error(`unexpected invoke: ${cmd}`);
+	};
+	assert.equal(await session.saveContent(tab.id), true);
+
+	assert.equal(session.shouldReloadExternalChange('/notes/a.md'), true, 'a later change is not suppressed');
+	assert.equal(
+		session.shouldReloadExternalChange('/notes/a.md'),
+		true,
+		'and the expired entry is dropped rather than re-consulted',
+	);
 });
 
 // --- wiring that cannot be executed outside a Svelte runtime ---
