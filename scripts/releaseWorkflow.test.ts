@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const workflow = readSource('.github/workflows/build.yml');
+const publishWorkflow = readSource('.github/workflows/publish-packages.yml');
 const testWorkflow = readSource('.github/workflows/test.yml');
 const testBuildWorkflow = readSource('.github/workflows/test_build.yml');
 const releasing = readSource('RELEASING.md');
 const snapcraft = readSource('snapcraft.yaml');
+const stripAppImage = readSource('scripts/strip-appimage.sh');
 const cargoToml = readSource('src-tauri/Cargo.toml');
 const packageJson = JSON.parse(readSource('package.json')) as {
 	scripts: Record<string, string>;
+	devDependencies: Record<string, string>;
 	version: string;
 };
 const tauriConf = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
@@ -116,4 +119,94 @@ test('the updater endpoint names the repository RELEASING.md documents', () => {
 		documented[1],
 		`tauri.conf.json points the updater at ${repo} while RELEASING.md documents ${documented[1]}`,
 	);
+});
+
+test('a package manager is not published from inside the platform matrix', () => {
+	// `choco push` and `snapcraft push` used to run in the Windows and Linux
+	// build jobs, which put an irreversible side effect before the thing that
+	// decides whether a release happens at all. Chocolatey's markpad-app 2.7.2
+	// was published by run 31192564528, which then failed on Linux and produced
+	// no release; the release users got came out of a different run three hours
+	// later. Nothing can un-push a Chocolatey version.
+	//
+	// Matched on the push commands rather than on step names, because the
+	// property is "the build matrix has no irreversible external effect", and a
+	// renamed step would still have one.
+	assert.doesNotMatch(workflow, /choco push/);
+	assert.doesNotMatch(workflow, /snapcraft (pack|push)/);
+	assert.match(publishWorkflow, /choco push/);
+	assert.match(publishWorkflow, /snapcraft push/);
+});
+
+test('package managers are published from a release a human published', () => {
+	// `release: published` fires when a maintainer clicks Publish on the draft,
+	// which RELEASING.md step 6 describes as the gate after checking the assets.
+	// Anything earlier — `created`, a tag push, the end of the build — publishes
+	// on a release nobody has looked at.
+	const on = sliceBetween(publishWorkflow, '\non:', '\npermissions:');
+	assert.match(on, /release:\s*\n\s*types:\s*\[published\]/);
+	assert.doesNotMatch(on, /\bpush:/);
+});
+
+test('a publishing step cannot report success while failing', () => {
+	// The steps this workflow replaces both carried `continue-on-error: true`.
+	// The snap build failed under it from v2.6.11 onward — `'rustup' not found`,
+	// see snapcraft.yaml — for three months and six versions, while the job
+	// reported success and every release still told people to
+	// `sudo snap install markpad`. The Snap Store served 2.6.11 throughout.
+	assert.doesNotMatch(publishWorkflow, /continue-on-error/);
+	assert.doesNotMatch(workflow, /continue-on-error/);
+});
+
+test('the snap build can find rustup', () => {
+	// snapcraft's rust plugin looks for rustup in exactly one place other than
+	// PATH: a part named `rust-deps` that the rust part depends on. Naming the
+	// rustup snap in the rust part's own `build-snaps` does not satisfy it, and
+	// had not since v2.6.11. The name is load-bearing and comes from snapcraft,
+	// so it is asserted literally.
+	assert.match(snapcraft, /^\s*rust-deps:$/m);
+	assert.match(snapcraft, /^\s*after: \[rust-deps\]$/m);
+});
+
+test('the AppImage strip is a script, and its excludelist has one home', () => {
+	// This step failed in two of the three v2.7.2 release attempts. As a heredoc
+	// inside build.yml it could only be exercised by cutting a release; as a
+	// script it can be run against any downloaded AppImage.
+	assert.match(workflow, /bash scripts\/strip-appimage\.sh/);
+	assert.match(stripAppImage, /libwayland-client\.so\.0/);
+	// The libraries are named in the script or nowhere. A second copy in the
+	// workflow is a second copy to keep current.
+	assert.doesNotMatch(workflow, /libwayland/);
+});
+
+test('the strip proves itself against the artifact that ships', () => {
+	// A CI smoke test cannot catch this defect: the runner's Mesa is the one the
+	// libraries were copied from, so nothing mismatches there and the AppImage
+	// starts fine. #498 was found by a user on Arch. That leaves "these
+	// libraries are absent" as the only property checkable before release, and
+	// it has to be checked on the repacked file rather than on the AppDir —
+	// appimagetool packing the wrong directory would pass the weaker check.
+	const verification = sliceFrom(stripAppImage, '--runtime-file');
+	assert.match(verification, /--appimage-extract/);
+	assert.match(verification, /is still bundled after the strip/);
+});
+
+test('signing uses the environment variables the pinned CLI reads', () => {
+	// `tauri signer sign` did not read the TAURI_SIGNING_* names until CLI
+	// 2.10.0, so the strip step had to spell the same secret the deprecated way
+	// (TAURI_PRIVATE_KEY) while `tauri build` used the current one. Those names
+	// are documented as going away, and `signer sign` without a key does not
+	// fail loudly — only the `.sig` existence check turns it into an error.
+	// 2.11.4 also fixes the AppImage bundler writing absolute symlinks for
+	// `.desktop` and `.DirIcon`, in the same artifact this workflow repacks.
+	// See #497.
+	const floor = packageJson.devDependencies['@tauri-apps/cli'];
+	const [, major, minor, patch] = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(floor) ?? [];
+	assert.ok(major, `@tauri-apps/cli must floor at an exact version, found ${floor}`);
+	assert.ok(
+		Number(major) > 2 || (Number(major) === 2 && (Number(minor) > 11 || (Number(minor) === 11 && Number(patch) >= 4))),
+		`@tauri-apps/cli must be floored at ^2.11.4 or later, found ${floor}`,
+	);
+	assert.doesNotMatch(workflow, /TAURI_PRIVATE_KEY/);
+	assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
 });

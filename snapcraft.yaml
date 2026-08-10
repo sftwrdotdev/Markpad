@@ -26,8 +26,8 @@ description: |
 license: BSD-3-Clause
 website: https://markpad.sftwr.dev
 donation: https://github.com/sponsors/alecdotdev
-source-code: https://github.com/alecdotdev/Markpad
-issues: https://github.com/alecdotdev/Markpad/issues
+source-code: https://github.com/sftwrdotdev/Markpad
+issues: https://github.com/sftwrdotdev/Markpad/issues
 
 confinement: strict
 base: core24
@@ -45,7 +45,29 @@ apps:
       - home
 
 parts:
+  # snapcraft's rust plugin refuses to build unless it can see rustup, and it
+  # looks for it in exactly one place other than PATH: a part named `rust-deps`
+  # that the rust part depends on. Naming the snap in `build-snaps` below is not
+  # enough, and had not been since v2.6.11 --
+  #
+  #   Environment validation failed for part 'markpad': 'rustup' not found and
+  #   part 'markpad' does not depend on a part named 'rust-deps' that would
+  #   satisfy the dependency.
+  #
+  # -- which the release workflow swallowed under `continue-on-error`, so the
+  # Snap Store went on serving 2.6.11 for three months and six versions while
+  # every release still told people to install it. The publishing step no longer
+  # swallows anything (.github/workflows/publish-packages.yml); this is the
+  # failure it was hiding.
+  rust-deps:
+    plugin: nil
+    build-snaps:
+      - rustup/latest/stable
+    override-build: |
+      rustup default stable
+
   markpad:
+    after: [rust-deps]
     plugin: rust
     source: .
     build-packages:
@@ -64,7 +86,6 @@ parts:
       - libjavascriptcoregtk-4.1-0
     build-snaps:
       - node/20/stable
-      - rustup/latest/stable
     override-build: |
       set -e
       craftctl set version="$(node -p "require('./package.json').version")"
