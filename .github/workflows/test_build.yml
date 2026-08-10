@@ -88,11 +88,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # No `cache: npm` — see the note in test.yml. It cost 8.76 GB of a 10 GB
+      # budget across 113 unbounded per-branch entries and saved seconds.
       - name: setup node
         uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          cache: npm
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable

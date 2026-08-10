@@ -36,11 +36,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # No `cache: npm`, deliberately — it was the single largest consumer of a
+      # cache budget the cargo caches above have to fit inside.
+      #
+      # Measured: 113 npm cache entries, 8.76 GB, spread over 50 refs, against
+      # a 10 GB per-repository limit. GitHub scopes caches by ref, so one is
+      # written per branch per platform and nothing can bound it the way
+      # `save-if` bounds the cargo caches. Most of those 113 belonged to pull
+      # requests closed weeks earlier; caches are only evicted after seven days
+      # unused, or by least-recently-used pressure that takes the biggest
+      # entries — the cargo caches — first.
+      #
+      # What it bought, measured on runs that hit it: `npm ci` in 6s on Linux,
+      # 9s on macOS, 15-17s on Windows. It caches `~/.npm`, the download
+      # directory, not `node_modules` — `npm ci` still runs and still links all
+      # 190 packages, so the saving is only the registry fetch, and the runners
+      # are close to the registry. Seconds per job, for the budget that makes
+      # an eight-minute saving possible.
       - name: setup node
         uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          cache: 'npm'
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
