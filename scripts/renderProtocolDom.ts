@@ -347,6 +347,27 @@ export class ShimElement extends ShimNode {
 		this.setAttribute('id', value);
 	}
 
+	// A browser reflects these into the attribute, so `link.href = url` is
+	// visible to `getAttribute('href')` and survives serialization. Without
+	// them the assignment lands on a plain JS property, the attribute is never
+	// written, and a test can see that an anchor was created but not where it
+	// points — which is the whole content of a link.
+	get href(): string {
+		return this.getAttribute('href') || '';
+	}
+
+	set href(value: string) {
+		this.setAttribute('href', value);
+	}
+
+	get src(): string {
+		return this.getAttribute('src') || '';
+	}
+
+	set src(value: string) {
+		this.setAttribute('src', value);
+	}
+
 	get className(): string {
 		return this.getAttribute('class') || '';
 	}
