@@ -160,7 +160,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let liveMode = $state(false);
 
 	let findOpen = $state(false);
-	let findBar = $state<{ reapply: () => void; clearHighlights: () => void } | null>(null);
+	let findBar = $state<{
+		reapply: () => void;
+		clearHighlights: () => void;
+		focusInput: () => void;
+	} | null>(null);
 
 	// Decide where Cmd/Ctrl+F should land based on what's visible and where
 	// focus is. The in-window shortcut remains the canonical route on every
@@ -172,7 +176,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (editorHasFocus || !previewVisible) {
 			editorPane?.triggerFind?.();
 		} else if (markdownBody) {
+			// Focus explicitly: once the bar is open, `findOpen = true` changes
+			// nothing, so a repeated shortcut after clicking into the document
+			// used to be swallowed (#559).
 			findOpen = true;
+			findBar?.focusInput();
 		}
 	}
 

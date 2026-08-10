@@ -288,6 +288,20 @@
 		}, DEBOUNCE_MS);
 	}
 
+	/**
+	 * Put the caret back in the input with the previous query selected.
+	 * Re-opening an already-open bar is a no-op — `open` never changes, so
+	 * the effect below does not re-run — which left Cmd/Ctrl+F doing nothing
+	 * once the user had clicked into the document (#559). Chrome, Firefox and
+	 * VS Code all re-focus and re-select on a repeated find shortcut.
+	 */
+	export function focusInput() {
+		tick().then(() => {
+			inputEl?.focus();
+			inputEl?.select();
+		});
+	}
+
 	export function reapply() {
 		// Public hook for parent: call after the preview HTML is replaced
 		// so existing matches survive across re-renders.
@@ -324,10 +338,7 @@
 			return;
 		}
 		// On open, focus and select the input so typing replaces.
-		tick().then(() => {
-			inputEl?.focus();
-			inputEl?.select();
-		});
+		focusInput();
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
