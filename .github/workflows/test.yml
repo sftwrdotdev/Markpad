@@ -11,6 +11,24 @@ on:
     branches:
       - master
 
+# A pull request branch gets pushed to repeatedly, and every push queued
+# another full run of this suite while the previous revision was still being
+# tested. Only the newest revision of a branch is worth testing -- the same
+# reasoning test_build.yml already applies to its platform matrix.
+#
+# `github.ref` is `refs/pull/<n>/merge` under the pull_request trigger and
+# `refs/heads/master` under the push trigger, so the two triggers land in
+# different groups and neither can cancel the other.
+#
+# Cancellation is restricted to pull requests. The push trigger exists because
+# a commit can reach master without ever having been a pull request (see the
+# comment above it); cancelling a master run because a second commit landed
+# would leave the first one untested, which is the exact hole that trigger was
+# added to close.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
     runs-on: ubuntu-22.04
@@ -26,6 +44,25 @@ jobs:
 
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
+
+      # Nothing in this repository cached cargo output, so every job compiled
+      # the whole dependency graph from scratch. Measured on the Linux
+      # `build-test` job of run 31382758646: `cargo test` took 2m31s and the
+      # release `Build app` 7m57s out of 12m14s -- 86% of the job was Rust
+      # compilation, none of it reused.
+      #
+      # `src-tauri` is the cargo workspace root. Without naming it the action
+      # looks for Cargo.lock at the repository root, finds none and caches
+      # nothing.
+      #
+      # This job is also what makes the cache reach anything: a pull request
+      # can only restore caches written on its own branch or on the base
+      # branch, and of the three workflows only this one runs on push to
+      # master. Its master runs are what seed a freshly opened branch.
+      - name: cache rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
 
       - name: install dependencies (ubuntu only)
         run: |

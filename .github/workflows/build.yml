@@ -177,6 +177,24 @@ jobs:
         with:
           targets: ${{ matrix.rust_target }}
 
+      # Release builds compile the same dependency graph the test workflows
+      # do, from scratch, on four runners. The measurement that motivated
+      # caching is in test.yml: 7m57s of a 12m14s job was the release compile
+      # alone.
+      #
+      # `workspaces` names the cargo workspace root; without it the action
+      # looks for Cargo.lock at the repository root and caches nothing.
+      #
+      # `key` is not optional here. The automatic key covers the job id, the
+      # rustc release/host and a hash of the Cargo files -- and the two
+      # windows-latest entries share all three, differing only in `arch`. The
+      # ARM64 job would otherwise restore the x64 job's target directory.
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.os }}-${{ matrix.arch }}
+
       - name: Install Linux dependencies
         if: matrix.platform == 'ubuntu-24.04'
         run: |
