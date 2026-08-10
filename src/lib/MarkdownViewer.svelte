@@ -18,6 +18,7 @@
 	import Toc from './components/Toc.svelte';
 	import Toast from './components/Toast.svelte';
 	import FindBar from './components/FindBar.svelte';
+	import { reviewDirtyTabs } from './sessions/closeReview.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath } from './utils/homeTab.js';
@@ -3294,21 +3295,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							// let the dialog name each tab. Re-find every round —
 							// a save can leave a tab dirty again (TOCTOU) and
 							// tabs can change while a dialog is up.
-							while (true) {
-								const dirty = tabManager.tabs.find((t) => t.isDirty);
-								if (!dirty) break;
-								tabManager.setActive(dirty.id);
-								await tick();
-								if (!(await canCloseTab(dirty.id))) return;
+							const resolved = await reviewDirtyTabs({
+								nextDirtyTab: () => tabManager.tabs.find((t) => t.isDirty),
+								setActive: (id) => tabManager.setActive(id),
+								settle: tick,
+								canCloseTab,
+								closeTab: (id) => tabManager.closeTab(id),
 								// Resolved tabs (saved, or reverted by Don't Save)
 								// stay open for the window-state snapshot when
 								// restore is enabled; untitled tabs have nothing to
 								// restore, and with restore off the red button
 								// closes tabs one by one.
-								if (!settings.restoreStateOnReopen || dirty.path === '') {
-									tabManager.closeTab(dirty.id);
-								}
-							}
+								shouldCloseAfterResolving: (tab) =>
+									!settings.restoreStateOnReopen || tab.path === '',
+							});
+							if (!resolved) return;
 						} finally {
 							isCloseWalkActive = false;
 						}

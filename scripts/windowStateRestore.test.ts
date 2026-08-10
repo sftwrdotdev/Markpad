@@ -148,7 +148,7 @@ test('the discard choice reverts the tab to its last saved content', () => {
 
 test('the close flow resolves dirty tabs before serializing window state', () => {
 	const handler = closeHandler();
-	const walk = offsetOf(handler, 'canCloseTab(dirty.id)');
+	const walk = offsetOf(handler, 'reviewDirtyTabs({');
 	const persist = offsetOf(handler, 'persistWindowState()');
 	assert.ok(walk < persist, 'dirty tabs must be resolved before the snapshot is written');
 });
@@ -205,13 +205,15 @@ test('exit discards the snapshot only once startup has finished', () => {
 
 test('with restore enabled resolved titled tabs stay open for the snapshot', () => {
 	const handler = closeHandler();
-	// tabs are closed one-by-one only when restore is off (or untitled)
-	assert.match(handler, /restoreStateOnReopen \|\| dirty\.path === ''/);
+	// tabs are closed one-by-one only when restore is off (or untitled).
+	// The walk itself is covered by windowClosePerTab, which runs it; what is
+	// asserted here is the policy the component hands it.
+	assert.match(handler, /!settings\.restoreStateOnReopen \|\| tab\.path === ''/);
 });
 
 test('auto-save fast path silently saves titled tabs before the walk', () => {
 	const handler = closeHandler();
 	const fastPath = offsetOf(handler, 'if (settings.autoSave) {');
-	const walk = offsetOf(handler, 'canCloseTab(dirty.id)');
+	const walk = offsetOf(handler, 'reviewDirtyTabs({');
 	assert.ok(fastPath < walk, 'the silent save runs before the per-tab walk');
 });

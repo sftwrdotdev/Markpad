@@ -433,7 +433,7 @@ test('closing the window still reviews unsaved tabs', () => {
 	assert.match(exit, /if \(\w+ !== 'discard'\) return;/, "an answer other than 'discard' stops the exit");
 
 	const closeHandler = sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
-	assert.match(closeHandler, /await canCloseTab\(dirty\.id\)/);
+	assert.match(closeHandler, /canCloseTab,\n/, 'the walk still runs the per-tab dialog');
 });
 
 test('the view toggles no longer re-read the file to leave an editable pane', () => {
