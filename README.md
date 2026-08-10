@@ -73,7 +73,9 @@ Every file below is on the [latest release](https://github.com/sftwrdotdev/Markp
 
 The two Windows files differ only in that one installs and one does not — `-setup.exe` puts Markpad in Program Files and the Start menu; the plain `.exe` runs from wherever you put it.
 
-> After a direct `.dmg` (macOS), `*-setup.exe` (Windows NSIS) or `.AppImage` (Linux) install, Markpad self-updates from GitHub releases via the in-app *Check for Updates…* entry (macOS app menu, or Settings elsewhere). Snap, Chocolatey, `.deb` and `.rpm` users continue to update through their distribution channels.
+> After a direct `.dmg` (macOS), `*-setup.exe` (Windows NSIS) or `.AppImage` (Linux) install, Markpad self-updates from GitHub releases via the in-app *Check for Updates…* entry (macOS app menu, or Settings elsewhere). Chocolatey and Snap keep Markpad current through those package managers instead.
+>
+> **`.deb` and `.rpm` are one-time installs.** `tauri-plugin-updater` cannot update either format, and there is no apt or dnf repository to update them from — upgrading means downloading a newer package from the releases page. Nothing in Markpad will tell you one exists.
 
 ## What Markpad renders
 
