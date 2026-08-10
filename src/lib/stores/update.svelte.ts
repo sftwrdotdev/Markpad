@@ -1,12 +1,14 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 
 type UpdatePhase =
 	| 'idle'
 	| 'checking'
 	| 'up-to-date'
 	| 'available'
+	| 'package-managed'
 	| 'downloading'
 	| 'error';
 
@@ -83,6 +85,21 @@ class UpdateStore {
 		this.#pending = null;
 
 		try {
+			// Ask whether this install can update itself BEFORE checking, not
+			// after. A `.deb`, `.rpm` or snap install passes the check happily —
+			// latest.json publishes `linux-x86_64` and every Linux build asks for
+			// exactly that key — and then fails at install time, because the
+			// updater's only Linux strategy is renaming a file over the running
+			// binary. Being offered an update that cannot be installed is worse
+			// than not being offered one, so the question is asked first and the
+			// dialog says where updates actually come from. See #570.
+			if (!(await invoke<boolean>('self_update_supported'))) {
+				if (token !== this.#checkToken) return;
+				this.phase = 'package-managed';
+				return;
+			}
+			if (token !== this.#checkToken) return;
+
 			// Cache the running app's version after the first successful fetch.
 			// Tauri reads it from the bundle once at startup so subsequent calls
 			// only return the cached value, but keeping it stable across

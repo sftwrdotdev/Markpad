@@ -2546,6 +2546,44 @@ async fn get_system_fonts() -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// Whether this install is able to replace its own binary.
+///
+/// `tauri-plugin-updater` has exactly one install strategy on Linux: rename the
+/// downloaded file over the running executable. That works for an AppImage,
+/// which is a file the user owns, and for nothing else — a `.deb` or `.rpm`
+/// puts the binary in `/usr/bin` and a snap mounts it from a read-only
+/// squashfs.
+///
+/// It would normally choose `install_deb` / `install_rpm` instead, from a bundle
+/// type patched into the binary after the build. That patch fails on Linux —
+/// three `Failed to add bundler type to the binary` warnings in every release
+/// build, one per bundle — so `tauri_utils::platform::bundle_type()` returns
+/// `None` and all three formats fall through to the AppImage path. Those users
+/// were told an update existed and then watched it fail to install. See #570;
+/// `build.yml` already documents the same missing symbol for a different
+/// consequence, the shape of `latest.json`'s platform keys.
+///
+/// Read through `Env` rather than `std::env::var("APPIMAGE")` directly: tauri
+/// also checks that the running executable sits under `$TMPDIR/.mount_`, so
+/// setting the variable by hand cannot make a package-managed install claim it
+/// is updatable.
+///
+/// Windows and macOS are unaffected. Windows' updater runs the downloaded NSIS
+/// installer rather than overwriting anything in place, and macOS is the one
+/// platform where `bundle_type()` answers without the patch.
+#[tauri::command]
+fn self_update_supported(app: AppHandle) -> bool {
+    #[cfg(target_os = "linux")]
+    {
+        app.env().appimage.is_some()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        true
+    }
+}
+
 #[tauri::command]
 fn get_os_type() -> String {
     #[cfg(target_os = "macos")]
@@ -3091,6 +3129,7 @@ pub fn run() {
             save_theme,
             get_system_fonts,
             get_os_type,
+            self_update_supported,
             fetch_vscode_theme,
             get_saved_vscode_themes,
             read_vscode_theme,

@@ -96,7 +96,8 @@
 			e.preventDefault();
 			if (updateStore.phase === 'available') startDownload();
 			else if (updateStore.phase === 'error') retry();
-			else if (updateStore.phase === 'up-to-date') close();
+			else if (updateStore.phase === 'up-to-date' || updateStore.phase === 'package-managed')
+				close();
 		}
 	}
 
@@ -159,6 +160,8 @@
 						{tk('upToDateHeader')}
 					{:else if updateStore.phase === 'available'}
 						{tk('availableHeader')}
+					{:else if updateStore.phase === 'package-managed'}
+						{tk('packageManagedHeader')}
 					{:else if updateStore.phase === 'downloading'}
 						{tk('downloadingHeader')}
 					{:else if updateStore.phase === 'error'}
@@ -194,6 +197,8 @@
 							<pre>{updateStore.notes}</pre>
 						</details>
 					{/if}
+				{:else if updateStore.phase === 'package-managed'}
+					<p>{tk('packageManagedBody')}</p>
 				{:else if updateStore.phase === 'downloading'}
 					<p class="lead">{tk('downloadingBody', { version: updateStore.latest })}</p>
 					{#if updateStore.total > 0}
@@ -233,7 +238,7 @@
 						disabled={updateStore.phase === 'downloading'}>
 						{tk('cancel')}
 					</button>
-				{:else if updateStore.phase === 'up-to-date'}
+				{:else if updateStore.phase === 'up-to-date' || updateStore.phase === 'package-managed'}
 					<button class="btn primary" onclick={close}>{tk('ok')}</button>
 				{:else if updateStore.phase === 'available'}
 					<button class="btn secondary" onclick={close}>{tk('cancel')}</button>
