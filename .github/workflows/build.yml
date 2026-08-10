@@ -194,18 +194,6 @@ jobs:
           sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm xdg-utils \
           libxcb1-dev libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev
 
-      - name: Setup Snapcraft
-        if: matrix.platform == 'ubuntu-24.04'
-        continue-on-error: true
-        run: |
-          sudo snap install lxd
-          sudo lxd waitready
-          sudo lxd init --auto
-          sudo usermod -aG lxd $USER
-          sudo iptables -F FORWARD
-          sudo iptables -P FORWARD ACCEPT
-          sudo snap install snapcraft --classic
-
       - name: Install Frontend Dependencies
         run: npm ci
 
@@ -228,28 +216,6 @@ jobs:
           gh release upload v$VERSION "Markpad_${VERSION}_x64.exe" --clobber
           find src-tauri/target/release/bundle/nsis -name "*-setup.exe" -exec gh release upload v$VERSION {} --clobber \;
           find src-tauri/target/release/bundle/nsis -name "*-setup.exe.sig" -exec gh release upload v$VERSION {} --clobber \;
-
-      - name: Create Chocolatey Package
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'x64'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          mkdir -p packaging/choco/tools
-          cp src-tauri/target/release/Markpad.exe packaging/choco/tools/Markpad.exe
-          cp LICENSE packaging/choco/tools/LICENSE.txt
-          choco pack packaging/choco/markpad-app.nuspec --version ${{ needs.create-release.outputs.version }} --outdir .
-          gh release upload v${{ needs.create-release.outputs.version }} markpad-app.${{ needs.create-release.outputs.version }}.nupkg --clobber
-
-      - name: Publish to Chocolatey
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'x64'
-        continue-on-error: true
-        shell: pwsh
-        env:
-          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
-        run: |
-          choco apikey --key $env:CHOCO_API_KEY --source https://push.chocolatey.org/
-          choco push markpad-app.${{ needs.create-release.outputs.version }}.nupkg --source https://push.chocolatey.org/
 
       # --- Windows Build (ARM64) ---
       - name: Build Windows ARM64
@@ -287,70 +253,37 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
-      # tauri/linuxdeploy bundles libwayland-client.so.0 (and other host-graphics
-      # libraries) from the ubuntu-24.04 runner into the AppImage. On a host whose
-      # Mesa is newer than the runner's, that older bundled libwayland-client
-      # shadows the system one and breaks host libEGL: WebKit's WebProcess aborts
-      # with "Could not create default EGL display: EGL_BAD_PARAMETER" and the
-      # window comes up blank. These libraries are on the AppImage excludelist
-      # precisely because they must come from the host. Strip them, repack, and
-      # re-sign so the updater signature still matches. See #498; #463 fixed the
-      # separate WebKitGTK version pin.
+      # Why the AppImage has to be repacked at all, and what is removed, is in
+      # scripts/strip-appimage.sh. It is a script rather than a heredoc because
+      # this is the step that failed in two of the three v2.7.2 release
+      # attempts, and an inline one can only be exercised by cutting a release.
       - name: Strip host-coupled libraries from AppImage
         if: matrix.platform == 'ubuntu-24.04'
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -1)
           if [ -z "$APPIMAGE" ]; then
             echo "::error::No AppImage found to repackage" >&2
             exit 1
           fi
-          APPIMAGE=$(realpath "$APPIMAGE")
-          echo "Repackaging $APPIMAGE"
+          echo "APPIMAGE=$(realpath "$APPIMAGE")" >> "$GITHUB_ENV"
+          bash scripts/strip-appimage.sh "$APPIMAGE"
 
-          # appimagetool + a type2 runtime. --appimage-extract-and-run (below) and
-          # --appimage-extract both unpack without libfuse2, which the runner lacks.
-          tools=$(mktemp -d)
-          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage -O "$tools/appimagetool"
-          wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 -O "$tools/runtime-x86_64"
-          chmod +x "$tools/appimagetool"
-
-          work=$(mktemp -d)
-          ( cd "$work" && "$APPIMAGE" --appimage-extract >/dev/null )
-          libdir="$work/squashfs-root/usr/lib"
-
-          # Host-coupled graphics libraries (AppImageCommunity/pkg2appimage
-          # excludelist). libwayland-client.so.0 is the one that actually breaks
-          # EGL; the rest belong to the host graphics stack for the same reason.
-          for lib in libwayland-client.so.0 libwayland-cursor.so.0 libwayland-egl.so.1 \
-                     libwayland-server.so.0 libxcb-render.so.0 libxcb-shm.so.0; do
-            rm -fv "$libdir/$lib"
-          done
-          if [ -e "$libdir/libwayland-client.so.0" ]; then
-            echo "::error::libwayland-client.so.0 still bundled after strip" >&2
-            exit 1
-          fi
-
-          # Repack in place so the filename (and updater target) is unchanged.
-          ARCH=x86_64 "$tools/appimagetool" --appimage-extract-and-run \
-            --runtime-file "$tools/runtime-x86_64" \
-            "$work/squashfs-root" "$APPIMAGE"
-
-          # Re-sign: tauri build already produced a .sig for the pre-strip file,
-          # which no longer matches. signer sign reads the key/password from the
-          # env above and writes <APPIMAGE>.sig, which the upload and the
-          # latest.json job below both consume.
+      # tauri build already produced a .sig for the pre-strip file, which no
+      # longer matches what the updater will download. Signing is kept out of
+      # the script so the script can be run on any AppImage without a key.
+      - name: Re-sign the repacked AppImage
+        if: matrix.platform == 'ubuntu-24.04'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
           npm run tauri signer sign -- "$APPIMAGE"
           if [ ! -f "$APPIMAGE.sig" ]; then
             echo "::error::signer sign did not produce $APPIMAGE.sig" >&2
             exit 1
           fi
-
-          echo "Repacked and re-signed:"
           ls -la "$APPIMAGE" "$APPIMAGE.sig"
 
       - name: Upload Linux Artifacts
@@ -363,30 +296,6 @@ jobs:
           find src-tauri/target/release/bundle/rpm -name "*.rpm" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
           find src-tauri/target/release/bundle/appimage -name "*.AppImage" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
           find src-tauri/target/release/bundle/appimage -name "*.AppImage.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-
-      - name: Build and Publish Snap Package
-        if: matrix.platform == 'ubuntu-24.04'
-        continue-on-error: true
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
-        run: |
-          # Build snap
-          sg lxd -c 'snapcraft pack'
-          sg lxd -c 'snapcraft pack'
-          
-          # Find and upload the snap
-          SNAP_FILE=$(ls *.snap | head -n 1)
-          if [ -n "$SNAP_FILE" ]; then
-            gh release upload v${{ needs.create-release.outputs.version }} $SNAP_FILE --clobber
-            
-            # Publish to snap store
-            snapcraft push $SNAP_FILE --release stable
-          else
-            echo "Snap file not found!"
-            exit 1
-          fi
 
       # --- MacOS Build ---
       - name: Build MacOS (Universal)

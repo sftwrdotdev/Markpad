@@ -1,10 +1,20 @@
 VERIFICATION
 
-The Markpad executable in this Chocolatey package was built automatically from
-source code using GitHub Actions.
+Markpad is open source and this package is built by its own GitHub Actions
+workflow (.github/workflows/publish-packages.yml).
 
-Source Repository: https://github.com/sftwrdotdev/markpad
+Source Repository: https://github.com/sftwrdotdev/Markpad
 
-The build process produces `Markpad.exe` via `npm run tauri build`, which is
-then copied directly into the `tools` folder of this package. The process is fully
-automated. No pre-compiled binaries from external sources are included.
+The `Markpad.exe` in this package is not a separate build. It is the portable
+x64 executable published on the corresponding GitHub release --
+`Markpad_<version>_x64.exe` -- downloaded from that release and renamed. The
+release asset is produced by `npm run tauri build` in
+.github/workflows/build.yml.
+
+To verify, download that file from the release page and compare it against the
+copy in this package:
+
+  checksum -t sha256 -f Markpad.exe
+
+The expected value and the exact URL it came from are appended below when the
+package is built.

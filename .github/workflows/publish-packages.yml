@@ -1,0 +1,136 @@
+name: Publish Packages
+
+# Chocolatey and the Snap Store used to be pushed from inside the platform
+# matrix in build.yml, which put an irreversible side effect before the thing
+# that decides whether a release happens at all.
+#
+# It is not hypothetical. Chocolatey's markpad-app 2.7.2 was published at
+# 15:37 UTC on 2026-08-07 by run 31192564528 -- a run that then failed on Linux
+# and produced no release. The release users actually got came out of a
+# different run three hours later. Nothing can un-push a Chocolatey version.
+#
+# So publishing to package managers hangs off `release: published`, which is a
+# human clicking Publish on a draft whose assets they have checked. Both jobs
+# consume that release rather than rebuilding, so what a package manager serves
+# is what the release page serves.
+#
+# Neither job is allowed to swallow a failure. The two steps these replace both
+# were, and the snap build failed under that for three months and six versions
+# while the job reported success -- the Snap Store still served 2.6.11 while
+# every release told people to install it. A publishing channel that cannot fail
+# loudly is a publishing channel nobody is maintaining.
+
+on:
+  release:
+    types: [published]
+  # Recovery, and a way to exercise this without cutting a release: point it at
+  # a tag that already has a published release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Published release tag, e.g. v2.7.2'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-packages-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+
+jobs:
+  chocolatey:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Take the executable from the release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          # The portable x64 executable published on the release page, not a
+          # fresh build. A rebuild from the same commit is not guaranteed to be
+          # the same bytes, and VERIFICATION.txt below promises it is.
+          mkdir -p packaging/choco/tools
+          gh release download "$TAG" \
+            --pattern "Markpad_${VERSION}_x64.exe" \
+            --dir packaging/choco/tools
+          mv "packaging/choco/tools/Markpad_${VERSION}_x64.exe" packaging/choco/tools/Markpad.exe
+          cp LICENSE packaging/choco/tools/LICENSE.txt
+
+      - name: Record what the package contains
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHA=$(sha256sum packaging/choco/tools/Markpad.exe | cut -d' ' -f1)
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/Markpad_${VERSION}_x64.exe"
+          {
+            echo
+            echo "For this package:"
+            echo
+            echo "  Version:  ${VERSION}"
+            echo "  File:     ${URL}"
+            echo "  SHA256:   ${SHA}"
+          } >> packaging/choco/tools/VERIFICATION.txt
+          cat packaging/choco/tools/VERIFICATION.txt
+
+      - name: Pack and publish
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHOCO_API_KEY: ${{ secrets.CHOCO_API_KEY }}
+        run: |
+          set -euo pipefail
+          choco pack packaging/choco/markpad-app.nuspec --version "$VERSION" --outdir .
+          gh release upload "$TAG" "markpad-app.${VERSION}.nupkg" --clobber
+          choco apikey --key "$CHOCO_API_KEY" --source https://push.chocolatey.org/
+          choco push "markpad-app.${VERSION}.nupkg" --source https://push.chocolatey.org/
+
+  snap:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Setup Snapcraft
+        run: |
+          set -euo pipefail
+          sudo snap install lxd
+          sudo lxd waitready
+          sudo lxd init --auto
+          sudo usermod -aG lxd "$USER"
+          sudo iptables -F FORWARD
+          sudo iptables -P FORWARD ACCEPT
+          sudo snap install snapcraft --classic
+
+      # snapcraft.yaml builds the app from source inside LXD, so this job needs
+      # the checkout above and nothing from the release.
+      - name: Build and publish the snap
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          set -euo pipefail
+          sg lxd -c 'snapcraft pack'
+
+          shopt -s nullglob
+          snaps=( *.snap )
+          if [ ${#snaps[@]} -eq 0 ]; then
+            echo "::error::snapcraft pack reported success but produced no .snap" >&2
+            exit 1
+          fi
+          SNAP_FILE="${snaps[0]}"
+
+          gh release upload "$TAG" "$SNAP_FILE" --clobber
+          snapcraft push "$SNAP_FILE" --release stable

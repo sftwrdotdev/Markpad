@@ -81,7 +81,18 @@ The workflow uses `npm ci`, so its installed dependency graph is exactly the com
    - **Windows ARM64**: `Markpad_<version>_arm64.exe` (portable), `*_arm64-setup.exe` (NSIS installer), `*_arm64-setup.exe.sig`
    - **Linux**: `*.deb`, `*.rpm`, `*.AppImage`, `*.AppImage.sig`
    - **Update feed**: `latest.json` (one entry per successfully built platform)
-6. **Click "Publish release"** — this is the gate that activates auto-update for all clients pointing at `releases/latest/download/latest.json`.
+6. **Click "Publish release"** — this is the gate. It activates auto-update for all clients pointing at `releases/latest/download/latest.json`, **and** it starts [`publish-packages.yml`](.github/workflows/publish-packages.yml), which pushes to Chocolatey and the Snap Store.
+7. **Watch `Publish Packages` finish.** Two independent jobs; either can fail without affecting the release that already went out. Re-run the failed job after fixing, or run the workflow by hand with the tag as input.
+
+### Why package managers publish after the release, not during the build
+
+Chocolatey and the Snap Store used to be pushed from inside `build.yml`'s platform matrix, so an irreversible external side effect happened *before* anything decided whether a release existed.
+
+That is not hypothetical. Chocolatey's `markpad-app` 2.7.2 was published at 15:37 UTC on 2026-08-07 by run `31192564528` — a run that then failed on Linux and produced no release. The release users actually got came out of a different run three hours later. A Chocolatey version cannot be un-pushed.
+
+Both steps also carried `continue-on-error: true`, which turned a dead channel into a green check: the snap build failed from v2.6.11 onward and the Snap Store went on serving 2.6.11 for three months and six versions, while every release told people to `sudo snap install markpad`. Neither job swallows a failure now. `scripts/releaseWorkflow.test.ts` holds both properties.
+
+`publish-packages.yml` also takes `workflow_dispatch` with a tag, so it can be exercised against an already-published release without cutting a new one — worth doing after any change to `snapcraft.yaml` or the Chocolatey packaging, since neither is reachable from a pull request.
 
 ## First auto-update-capable release
 
@@ -96,7 +107,7 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 - **macOS** uses one universal binary (`darwin-aarch64` + `darwin-x86_64` share the same `.app.tar.gz` and signature).
 - **Windows** uses NSIS — the auto-updater downloads `*-setup.exe` (verified by `*-setup.exe.sig`) and runs it in `passive` install mode. The existing raw portable `.exe` distribution path is preserved alongside, so users who download the portable `.exe` directly continue to work; only the auto-updater path uses the NSIS installer.
 - **Linux**: only `AppImage` users get auto-updates — `tauri-plugin-updater` doesn't support `.deb` or `.rpm`. `apt`/`rpm` users keep getting updates via their distro package manager (or by downloading a fresh package).
-- **Snap / Chocolatey**: independent distribution channels. Their update mechanisms are unaffected.
+- **Snap / Chocolatey**: independent distribution channels, published by `publish-packages.yml` after the release is published. Their update mechanisms are unaffected. The Chocolatey package wraps the release's own `Markpad_<version>_x64.exe` rather than a second build, which is what `packaging/choco/tools/VERIFICATION.txt` promises.
 
 ## Troubleshooting
 
@@ -107,6 +118,9 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 | `latest.json` missing entirely | The `generate-update-feed` job didn't run — usually because no `*.sig` files were uploaded. Check the `Upload * Artifacts` steps. |
 | Users don't see the update | (1) Did you click *Publish release*? Drafts aren't visible to clients. (2) Is the user on a version older than the first auto-update-capable release? They need a one-time manual reinstall. |
 | Update download succeeds but install fails with signature error | Pubkey mismatch — the Secrets and `tauri.conf.json` `pubkey` belong to different keypairs. |
+| `Strip host-coupled libraries from AppImage` fails | Run [`scripts/strip-appimage.sh`](scripts/strip-appimage.sh) locally against the AppImage from the draft release — it needs no signing key. It failed in two of the three v2.7.2 attempts, once because `signer sign` had a stray flag and once because it was reading the deprecated `TAURI_PRIVATE_KEY` names on a CLI too old to accept the current ones. |
+| `Publish Packages` / snap job fails | Read the snapcraft error rather than re-running: `Environment validation failed for part 'markpad'` means the `rust-deps` part in `snapcraft.yaml` is gone or renamed. Fix, then re-run the workflow with the tag as `workflow_dispatch` input. |
+| `Publish Packages` / chocolatey job fails on push | A version can only be pushed to Chocolatey once. If it is already there, nothing needs doing; if it is not, check `CHOCO_API_KEY`. |
 
 ## Out of scope (not handled by this workflow)
 
