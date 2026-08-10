@@ -155,7 +155,12 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 ## Testing
 
 - **Rust**: `cargo test` in `src-tauri/` directory
-- **Frontend**: `npm test` runs the behavior tests in `scripts/*.test.ts` (`node --test --import tsx`)
+- **Frontend**: `npm test` runs `scripts/*.test.ts` (`node --test --import tsx`). Two kinds
+  live there: behavior tests, which import and run the real modules, and source-shape
+  assertions, which match the source text for a contract the compiler cannot check — a Tauri
+  command name, an i18n key, a second copy of a fixed behavior. A green run is not a claim
+  that every behavior is covered; a source-shape assertion passes as long as the line it
+  matches is still spelled that way.
 - **CI**: Runs `npm audit`, `npm run check`, `npm test` and `cargo test` on PRs
 
 ## Notes

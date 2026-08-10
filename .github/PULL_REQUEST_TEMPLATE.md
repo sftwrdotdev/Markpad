@@ -26,6 +26,16 @@ and chose not to fix here belongs in this section too.
 What you added or changed. For a fix: revert the fix, keep the test, and say
 whether it goes red. A test that passes either way isn't testing the fix.
 
+If the test matches source text rather than running the code, say what the
+anchor is. Pinning a contract the compiler can't check — a Tauri command name,
+an i18n key, a second copy of a fixed behaviour — is what those are for.
+Pinning an internal call site pins today's spelling instead, so it goes red on
+a rename that broke nothing and stays green on a change that broke something.
+
+Not every fix needs one. A defect that announces itself — a crash, a type
+error, something the next person to open the app would see — is already caught
+by `npm run check`, `cargo test` and a single manual run.
+
 ## Verification
 
 The commands you ran and what they said — the ones CI runs are:
