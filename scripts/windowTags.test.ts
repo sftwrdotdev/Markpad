@@ -3,16 +3,70 @@ import test from 'node:test';
 
 import { offsetOf, readSource } from './sourceTree.js';
 
-const tabs = readSource('src/lib/stores/tabs.svelte.ts');
+const g = globalThis as any;
+const runeEffect = (fn: () => void) => {
+	void fn;
+};
+runeEffect.root = (fn: () => unknown) => fn();
+g.$state = (value: unknown) => value;
+g.$state.raw = (value: unknown) => value;
+g.$state.snapshot = (value: unknown) => value;
+g.$derived = (value: unknown) => value;
+g.$derived.by = (fn: () => unknown) => fn();
+g.$effect = runeEffect;
+g.window = g.window ?? {};
+g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? { invoke: () => Promise.resolve(null) };
+
+const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const runtime = readSource('src-tauri/src/window_runtime.rs');
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 const titleBar = readSource('src/lib/components/TitleBar.svelte');
 const home = readSource('src/lib/components/HomePage.svelte');
 
-test('window tags persist with the v2 window snapshot', () => {
-	assert.match(tabs, /windowTag = \$state/);
-	assert.match(tabs, /windowTag: this\.windowTag/);
-	assert.match(tabs, /data\.windowTag\.pinned === true/);
+function roundTrip(): { name: string; color: string; pinned: boolean } | null {
+	const snapshot = tabManager.serializeState();
+	tabManager.closeAll();
+	tabManager.setWindowTag(null);
+	tabManager.restoreState(snapshot);
+	return tabManager.windowTag;
+}
+
+test('a window tag survives the snapshot round trip', () => {
+	tabManager.closeAll();
+	tabManager.addTab('/notes/a.md', 'x');
+	tabManager.setWindowTag({ name: 'Drafts', color: '#ff8c00', pinned: true });
+
+	assert.deepEqual(roundTrip(), { name: 'Drafts', color: '#ff8c00', pinned: true });
+});
+
+test('pinned defaults to false rather than to whatever was written', () => {
+	// `pinned` decides whether the tag creates a reusable session, so an
+	// older snapshot with no `pinned` field, or one carrying a non-boolean,
+	// must not be read as pinned.
+	tabManager.closeAll();
+	tabManager.addTab('/notes/a.md', 'x');
+	tabManager.setWindowTag({ name: 'Drafts', color: '#ff8c00' });
+	assert.equal(tabManager.windowTag?.pinned, false, 'omitted means not pinned');
+	assert.equal(roundTrip()?.pinned, false, 'and it stays that way through the snapshot');
+
+	tabManager.closeAll();
+	tabManager.restoreState(
+		JSON.stringify({ version: 2, tabs: [], windowTag: { name: 'D', color: '#fff', pinned: 'yes' } }),
+	);
+	assert.equal(tabManager.windowTag?.pinned, false, 'a truthy non-boolean is not a pin');
+});
+
+test('a malformed tag produces no tag at all', () => {
+	// A tag with no name renders as an empty chip the user cannot see or
+	// remove; one with no colour has nothing to paint. Restore runs on a fresh
+	// window, so the starting point here is no tag — the read side only ever
+	// installs one, it does not clear an existing one.
+	for (const windowTag of [{ color: '#fff' }, { name: '', color: '#fff' }, { name: 'D' }, null, 'Drafts']) {
+		tabManager.closeAll();
+		tabManager.setWindowTag(null);
+		tabManager.restoreState(JSON.stringify({ version: 2, tabs: [], windowTag }));
+		assert.equal(tabManager.windowTag, null, `${JSON.stringify(windowTag)} is rejected`);
+	}
 });
 
 test('only explicitly pinned tags create reusable sessions', () => {
