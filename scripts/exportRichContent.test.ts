@@ -32,6 +32,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { installShimDom } from './renderProtocolDom.ts';
+import { readSource } from './sourceTree.js';
 
 installShimDom();
 (globalThis as any).window = globalThis;
@@ -385,4 +386,37 @@ test('an element with no math needs no fonts', () => {
 	const root = (globalThis as any).document.createElement('div');
 	root.innerHTML = '<p>plain text</p>';
 	assert.equal(collectUsedKatexFamilies(root, KATEX_CSS).size, 0);
+});
+
+test('the installed KaTeX still gives the exporter fonts it can find', async () => {
+	// `KATEX_CSS` above is a slice of katex.min.css frozen at the version it was
+	// written against, so it proves the logic and not the coupling. A KaTeX
+	// upgrade that renamed `.katex` or the `KaTeX_` family prefix would leave it
+	// green while PDF export shipped a document with no maths fonts in it — and
+	// 0.18.0 renamed KaTeX's internal classes, so that upgrade is not
+	// hypothetical.
+	//
+	// This asks the installed KaTeX to render, and the installed stylesheet what
+	// that rendering needs. Nothing here is written down: rename anything and the
+	// intersection empties.
+	const katex = ((await import('katex')) as any).default;
+	const css = readSource('node_modules/katex/dist/katex.min.css');
+
+	const root = (globalThis as any).document.createElement('div');
+	root.innerHTML = katex.renderToString('\\mathcal{L} = \\frac{1}{2}', { throwOnError: false });
+
+	const families = collectUsedKatexFamilies(root, css);
+	assert.ok(
+		families.size > 0,
+		'the installed KaTeX renders markup the installed stylesheet gives no font to; ' +
+			'PDF export would embed nothing and the maths would fall back to a UI font',
+	);
+	assert.ok(
+		families.has('KaTeX_Main'),
+		`expected the base family among ${[...families].join(', ') || '(none)'}`,
+	);
+	assert.ok(
+		katexFontUrlsToEmbed(css, families).length > 0,
+		'families were found but no @font-face src to embed for them',
+	);
 });

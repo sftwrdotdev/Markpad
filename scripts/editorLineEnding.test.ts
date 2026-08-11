@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { PieceTreeTextBufferBuilder } from 'monaco-editor/esm/vs/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder.js';
-import { DefaultEndOfLine } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
+import { PieceTreeTextBufferBuilder } from 'monaco-editor/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder.js';
+import { DefaultEndOfLine } from 'monaco-editor/editor/common/standalone/standaloneEnums.js';
 
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { readSource, sliceBetween } from './sourceTree.js';
