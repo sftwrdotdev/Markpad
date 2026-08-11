@@ -77,7 +77,22 @@ jobs:
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin'
             os-name: 'macos-universal'
-          - platform: 'ubuntu-22.04'
+          # The same Ubuntu build.yml releases from. This said 22.04 from the
+          # commit that created this workflow and was never revisited, while
+          # build.yml moved to 24.04 and has been maintained there -- #463's
+          # WebKitGTK unpin takes the current version from noble-updates, and
+          # #499's AppImage strip was written against what noble's linuxdeploy
+          # bundles. Two different sets of system libraries: "the pull request
+          # compiled" did not mean "the release will", and the AppImage a pull
+          # request produced bundled libraries from a distribution nothing
+          # ships.
+          #
+          # The other direction -- releasing from 22.04 -- is the usual AppImage
+          # advice, because a binary linked against an older glibc runs on more
+          # systems. It is not available here: jammy's WebKitGTK is older than
+          # noble's, and older WebKitGTK failing EGL against current Mesa is
+          # exactly what #463 was. Taking that route means solving #463 again.
+          - platform: 'ubuntu-24.04'
             args: ''
             os-name: 'linux'
           - platform: 'windows-latest'

@@ -26,6 +26,11 @@ function nodeVersions(source: string): string[] {
 	return [...source.matchAll(/^\s*node-version:\s*'?([^'\s]+)'?\s*$/gm)].map((m) => m[1]);
 }
 
+/** Every Ubuntu named as a `platform:` in a build matrix, in file order. */
+function ubuntuPlatforms(source: string): string[] {
+	return [...source.matchAll(/^\s*-?\s*platform:\s*'?(ubuntu-[\w.]+)'?\s*$/gm)].map((m) => m[1]);
+}
+
 test('release builds install the locked dependency graph', () => {
 	assert.match(workflow, /name: Install Frontend Dependencies\s+run: npm ci/);
 	assert.doesNotMatch(workflow, /npm install/);
@@ -74,6 +79,25 @@ test('the shipped app is built on the Node the tests ran on', () => {
 		expected,
 		'build.yml must request the same Node as the workflows that test the code it ships',
 	);
+});
+
+test('the shipped app is compiled on the Ubuntu the tests compiled on', () => {
+	// The same drift as the assertion above, one axis over, and it outlived it:
+	// test_build.yml's Linux entry said ubuntu-22.04 from the commit that
+	// created the workflow, while build.yml moved to 24.04 and stayed maintained
+	// there. Two Ubuntus are two sets of system libraries, so "the pull request
+	// compiled" did not mean "the release will" — and the AppImage a pull
+	// request produces bundles libraries from a release nothing ships, which is
+	// the class of defect #463 and #498 both were.
+	//
+	// Asserted against each other rather than against a literal, for the reason
+	// the Node one is: a version named here is a fourth place to update.
+	assert.deepEqual(
+		ubuntuPlatforms(testBuildWorkflow),
+		ubuntuPlatforms(workflow),
+		'the pull request build and the release build must compile on the same Ubuntu',
+	);
+	assert.ok(ubuntuPlatforms(workflow).length > 0, 'no Ubuntu platform found in build.yml to compare against');
 });
 
 test('the updater feed publishes the keys an installed Markpad can ask for', () => {
