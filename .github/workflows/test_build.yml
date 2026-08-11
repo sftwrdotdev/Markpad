@@ -113,7 +113,7 @@ jobs:
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.os-name == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # This is the job the 12m14s measurement in test.yml came from: 2m31s of
       # it was the debug compile behind `cargo test` and 7m57s the release
@@ -147,8 +147,13 @@ jobs:
           key: ${{ matrix.os-name }}
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
+      # Keyed on which entry this is, not on which Ubuntu it happens to be.
+      # This asked for `ubuntu-22.04` literally, so moving the matrix to 24.04
+      # silently skipped the step and `cargo test` failed on a missing
+      # libwebkit2gtk-4.1-dev instead (run 31486273066). `os-name` does not
+      # change when the runner does.
       - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.os-name == 'linux'
         run: |
             sudo apt-get update
             sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm
