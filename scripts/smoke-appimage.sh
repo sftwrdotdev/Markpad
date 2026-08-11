@@ -58,9 +58,14 @@ set -euo pipefail
 # an AppImage deliberately does not carry them -- they are on the same
 # excludelist as the six strip-appimage.sh removes, for the same reason -- so a
 # host without them fails to start the app for a reason that says nothing about
-# the build. `libfontconfig.so.1: cannot open shared object file` was the first
-# one, on run 31494803899.
-pacman -Sy --noconfirm --needed xorg-server-xvfb mesa fontconfig ttf-dejavu >/dev/null 2>&1
+# the build.
+#
+# `gtk3` rather than a list of individual libraries, because naming them one at
+# a time is a round of CI each: run 31494803899 wanted libfontconfig.so.1, and
+# with that added run 31497012965 wanted libfribidi.so.0. The set is not
+# arbitrary -- it is GTK's own dependency closure, which is what a machine that
+# can run a GTK app has. Installing GTK asks for all of it at once.
+pacman -Sy --noconfirm --needed xorg-server-xvfb mesa gtk3 ttf-dejavu >/dev/null 2>&1
 
 cd /tmp
 cp Markpad.AppImage app.AppImage
