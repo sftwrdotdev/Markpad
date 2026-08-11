@@ -44,7 +44,7 @@ http-range = "0.1"
 percent-encoding = "2"
 tauri-utils = "2"
 
-reqwest = "0.12"
+reqwest = "0.13"
 zip = { version = "2.1", default-features = false, features = ["deflate", "time"] }
 opener = { version = "0.7", features = ["reveal"] }
 font-kit = "0.14"
@@ -57,7 +57,7 @@ encoding_rs = "0.8"
 
 
 [target.'cfg(windows)'.dependencies]
-winreg = "0.52"
+winreg = "0.55"
 webview2-com = "0.38.2"
 windows = "0.61.3"
 
