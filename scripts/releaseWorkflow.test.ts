@@ -160,13 +160,20 @@ test('a publishing step cannot report success while failing', () => {
 });
 
 test('the snap build can find rustup', () => {
-	// snapcraft's rust plugin looks for rustup in exactly one place other than
-	// PATH: a part named `rust-deps` that the rust part depends on. Naming the
-	// rustup snap in the rust part's own `build-snaps` does not satisfy it, and
-	// had not since v2.6.11. The name is load-bearing and comes from snapcraft,
-	// so it is asserted literally.
-	assert.match(snapcraft, /^\s*rust-deps:$/m);
-	assert.match(snapcraft, /^\s*after: \[rust-deps\]$/m);
+	// Rust has to be installed by a phase that runs before any part is pulled,
+	// because the alternative -- a part that installs it -- is too late for the
+	// part that pulls alongside it. `after:` orders build and stage, not pull.
+	// build-packages is that phase, and apt is also the only carrier tried that
+	// is an ordinary ELF: the rustup snap is linked against its own runtime and
+	// picked the gnome SDK's libc.so.6 off LD_LIBRARY_PATH.
+	assert.match(snapcraft, /^\s*build-packages:\n(?:\s*-\s.*\n)*\s*-\s*rustup$/m);
+	// And nothing may ask snapcraft's rust plugin to validate the environment.
+	// It reported `'rustup' not found` twice with rustup present and runnable,
+	// once from the snap and once from apt. snapcraft.yaml has the run IDs.
+	assert.doesNotMatch(snapcraft, /^\s*plugin: rust$/m);
+	// apt's cargo and rustc are shims that refuse to run until a toolchain is
+	// chosen, and with no rust plugin there is no pull script choosing one.
+	assert.match(snapcraft, /^\s*rustup default stable$/m);
 });
 
 test('the AppImage strip is a script, and its excludelist has one home', () => {
