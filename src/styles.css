@@ -1870,10 +1870,13 @@ body {
 	text-decoration-color: var(--color-fg-muted);
 }
 
+/* The live path -- `task-done` is the class the app sets. The `:has` block
+ * further down is the fallback for reload and initial state, and both carried
+ * the same defect; fixing one and not the other changes nothing a user sees.
+ * See the note on the `:has` rule for why opacity may not be applied per
+ * descendant, and why it may not move up onto the `li` either. */
 .markdown-body li.task-done .task-text,
-.markdown-body li.task-done p,
-.markdown-body li.task-done > *:not(input):not(ul):not(ol),
-.markdown-body li.task-done * {
+.markdown-body li.task-done > *:not(input):not(.task-text):not(ul):not(ol) {
 	text-decoration: line-through;
 	opacity: 0.65;
 }
