@@ -50,8 +50,45 @@ jobs:
           # one line away rather than a bisect.
           snap list snapcraft
 
+      # snapcraft.yaml packages a .deb rather than building one, and a pull
+      # request has no release of its own to take one from. The latest release's
+      # is the right stand-in: what is under test here is snapcraft.yaml, and a
+      # .deb is a .deb. The snap this produces is thrown away.
+      - name: Take a .deb to package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release download \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*_amd64.deb' \
+            --output markpad.deb
+          dpkg-deb -f markpad.deb Package Version Architecture
+
       - name: Pack
         run: |
           set -euo pipefail
-          sg lxd -c 'snapcraft pack'
+          sg lxd -c 'snapcraft pack' 2>&1 | tee pack.log
           ls -la ./*.snap
+
+      # During priming, snapcraft resolves what the staged binaries need against
+      # the base, the extension and stage-packages, and names anything it could
+      # not place -- as a warning, and a warning in a several-hundred-line log
+      # is not a result. This is the one place the resolution happens in the
+      # environment the snap will actually run in, so it is worth promoting to a
+      # failure. The binary names 16 libraries; two of them, libssl.so.3 and
+      # libcrypto.so.3, are in neither stage-packages nor obviously in the gnome
+      # runtime, which is what makes this worth asserting rather than assuming.
+      #
+      # It reads snapcraft's wording, so a reworded warning would pass silently.
+      # Running the snap is what would catch that, and needs a display; the
+      # AppImage smoke test is where that belongs.
+      - name: snapcraft placed every library the binary asks for
+        run: |
+          set -euo pipefail
+          if grep -qi 'missing dependencies' pack.log; then
+            grep -i -A20 'missing dependencies' pack.log
+            echo "::error::snapcraft could not place a library the binary needs" >&2
+            exit 1
+          fi
+          echo "No missing-dependency report in the pack log."

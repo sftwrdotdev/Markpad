@@ -141,8 +141,21 @@ jobs:
           sudo iptables -P FORWARD ACCEPT
           sudo snap install snapcraft --classic
 
-      # snapcraft.yaml builds the app from source inside LXD, so this job needs
-      # the checkout above and nothing from the release.
+      # The snap is a repackaging of this release's own .deb, so what the Snap
+      # Store serves is the binary the release page serves rather than a second
+      # compilation of the same source. snapcraft.yaml reads it from here.
+      - name: Take the .deb from the release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "Markpad_${VERSION}_amd64.deb" \
+            --output markpad.deb
+          dpkg-deb -f markpad.deb Package Version Architecture
+
       - name: Build and publish the snap
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
