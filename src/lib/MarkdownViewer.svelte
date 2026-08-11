@@ -74,6 +74,7 @@ import {
 	type MarkdownLinkTarget as RelativeMarkdownTarget,
 } from './utils/markdownLinks.js';
 import { resolveLocalFileLinkPath } from './utils/localFileLinks.js';
+import { findSeedFromSelection } from './utils/findSeed.js';
 import { normalizeAssetPath } from './utils/exportHtml.js';
 import {
 	dropRecentFile,
@@ -165,6 +166,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		reapply: () => void;
 		clearHighlights: () => void;
 		focusInput: () => void;
+		setQuery: (value: string) => void;
 	} | null>(null);
 
 	// Decide where Cmd/Ctrl+F should land based on what's visible and where
@@ -177,6 +179,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (editorHasFocus || !previewVisible) {
 			editorPane?.triggerFind?.();
 		} else if (markdownBody) {
+			// Seed BEFORE opening, so the bar that appears already holds the query.
+			// Nothing to seed leaves the previous query alone, which is what a
+			// repeated Cmd/Ctrl+F expects.
+			const seed = findSeedFromSelection(window.getSelection(), markdownBody);
+			if (seed) findBar?.setQuery(seed);
 			// Focus explicitly: once the bar is open, `findOpen = true` changes
 			// nothing, so a repeated shortcut after clicking into the document
 			// used to be swallowed (#559).

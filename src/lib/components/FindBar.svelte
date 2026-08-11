@@ -302,6 +302,18 @@
 		});
 	}
 
+	/**
+	 * Put a query in the box from outside — what Cmd/Ctrl+F does with the text the
+	 * user had selected in the preview.
+	 *
+	 * Only the assignment: the `query` effect below is what schedules the search,
+	 * so a seed behaves exactly like typing, including the debounce and the guard
+	 * that holds the search back until the bar is open.
+	 */
+	export function setQuery(value: string) {
+		query = value;
+	}
+
 	export function reapply() {
 		// Public hook for parent: call after the preview HTML is replaced
 		// so existing matches survive across re-renders.
