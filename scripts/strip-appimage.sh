@@ -76,10 +76,18 @@ ARCH=x86_64 "$tools/appimagetool" --appimage-extract-and-run \
 	"$work/squashfs-root" "$APPIMAGE"
 
 # Assert the property on the artifact that ships, not on the AppDir it was
-# built from. A CI smoke test cannot catch this defect at all — the runner's
-# Mesa is the one the libraries came from, so nothing mismatches there — which
-# leaves "these libraries are absent" as the only thing that can actually be
-# checked before a user on a newer distro finds out.
+# built from.
+#
+# This used to say a CI smoke test cannot catch the defect at all, because the
+# runner's Mesa is the one the libraries came from. That is true of the runner
+# and only of the runner: scripts/smoke-appimage.sh now starts the repacked
+# AppImage on another distribution's userspace in a container, which is a host
+# that can disagree. This check is still worth keeping — it is the one that says
+# the strip did what it meant to, and it costs nothing.
+#
+# The other half is scripts/check-appimage-libraries.sh, on every pull request:
+# this list being removed successfully says nothing about whether it is still
+# the right list.
 ( cd "$check" && "$APPIMAGE" --appimage-extract >/dev/null )
 failed=0
 for lib in "${EXCLUDED[@]}"; do

@@ -310,6 +310,20 @@ jobs:
           fi
           ls -la "$APPIMAGE" "$APPIMAGE.sig"
 
+      # The last thing before the artifact becomes downloadable, and the only
+      # check in this pipeline that starts Markpad rather than inspecting it.
+      # It runs on another distribution's userspace, because the runner cannot
+      # disagree with libraries that were copied out of the runner.
+      #
+      # Placed after the re-sign so it starts the exact bytes latest.json will
+      # point at, and before the upload so a failure leaves the draft release
+      # without a Linux artifact. generate-update-feed needs `build` to have
+      # succeeded, so it does not run either -- nothing is published, and
+      # nothing was ever installable.
+      - name: The AppImage starts on a distribution it was not built on
+        if: matrix.os == 'linux'
+        run: bash scripts/smoke-appimage.sh "$APPIMAGE"
+
       - name: Upload Linux Artifacts
         if: matrix.os == 'linux'
         shell: bash

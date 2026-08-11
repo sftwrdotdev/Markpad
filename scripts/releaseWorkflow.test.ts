@@ -10,6 +10,8 @@ const testBuildWorkflow = readSource('.github/workflows/test_build.yml');
 const releasing = readSource('RELEASING.md');
 const snapcraft = readSource('snapcraft.yaml');
 const stripAppImage = readSource('scripts/strip-appimage.sh');
+const checkAppImageLibraries = readSource('scripts/check-appimage-libraries.sh');
+const smokeAppImage = readSource('scripts/smoke-appimage.sh');
 const readme = readSource('README.md');
 const cargoToml = readSource('src-tauri/Cargo.toml');
 const packageJson = JSON.parse(readSource('package.json')) as {
@@ -306,6 +308,61 @@ test('the AppImage strip is a script, and its excludelist has one home', () => {
 	// The libraries are named in the script or nowhere. A second copy in the
 	// workflow is a second copy to keep current.
 	assert.doesNotMatch(workflow, /libwayland/);
+});
+
+test('the excludelist is checked against what is actually bundled', () => {
+	// The strip proving its six are gone says nothing about whether six is still
+	// the right number, and what decides that is not in this repository:
+	// `tauri build` fetches linuxdeploy-plugin-gtk from the tip of someone else's
+	// branch on every run, so the libraries copied into the AppDir can change
+	// with no commit here.
+	//
+	// On the pull request build, deliberately. That AppImage is the un-stripped
+	// one, which for this question is the right artifact rather than a worse one
+	// — and it only became comparable when this job moved to the release's
+	// Ubuntu, since before that it bundled jammy's libraries.
+	assert.match(testBuildWorkflow, /bash scripts\/check-appimage-libraries\.sh/);
+	assert.doesNotMatch(workflow, /check-appimage-libraries\.sh/);
+	// It reads the strip list rather than restating it, so the two cannot drift.
+	assert.match(checkAppImageLibraries, /strip-appimage\.sh/);
+	assert.doesNotMatch(checkAppImageLibraries, /libwayland/);
+});
+
+test('the AppImage is started before it can be downloaded', () => {
+	// The only check that runs Markpad rather than reading it, and the only one
+	// that could have caught #463 or #498 before a user did. It has to be on the
+	// release build: the file it starts is the repacked, re-signed one, which is
+	// the one latest.json points at and the one no pull request produces.
+	//
+	// Order is the whole safety argument. After the re-sign, so it starts the
+	// bytes that ship; before the upload, so a failure leaves the draft without
+	// a Linux artifact and generate-update-feed — which requires `build` to have
+	// succeeded — never runs.
+	const linuxSteps = sliceBetween(workflow, 'Re-sign the repacked AppImage', 'MacOS Build');
+	const smoke = linuxSteps.indexOf('scripts/smoke-appimage.sh');
+	const upload = linuxSteps.indexOf('Upload Linux Artifacts');
+	assert.ok(smoke > 0, 'the release build never starts the AppImage it is about to publish');
+	assert.ok(upload > 0, 'the Linux upload step moved; this assertion no longer means anything');
+	assert.ok(smoke < upload, 'the AppImage is uploaded before anything checks that it starts');
+
+	// Liveness alone would have passed both defects: #499 records that the GTK
+	// shell survives while WebKit's WebProcess aborts behind a blank window. The
+	// abort line is the actual signal.
+	assert.match(smokeAppImage, /EGL_BAD_PARAMETER/);
+	assert.match(smokeAppImage, /docker run/);
+
+	// And it runs on pull requests too, after a strip, because otherwise both
+	// scripts would reach the release path having never run anywhere: the strip
+	// failed in two of the three v2.7.2 release attempts, and a smoke test that
+	// only a release can exercise is the problem it exists to solve.
+	const prLinux = sliceFrom(testBuildWorkflow, 'The AppImage bundles nothing');
+	const prStrip = prLinux.indexOf('scripts/strip-appimage.sh');
+	const prSmoke = prLinux.indexOf('scripts/smoke-appimage.sh');
+	assert.ok(prStrip > 0 && prSmoke > 0, 'a pull request never runs the strip or the smoke test');
+	assert.ok(
+		prStrip < prSmoke,
+		'the pull request smokes the AppImage before stripping it, which reproduces #498 rather than testing for it',
+	);
 });
 
 test('the strip proves itself against the artifact that ships', () => {

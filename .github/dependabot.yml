@@ -193,6 +193,15 @@ updates:
   # carries no version for Dependabot to compare), so a bump here is usually the
   # tag moving to a new major -- exactly the case the group excludes. In
   # practice this ecosystem will open single pull requests rather than a batch.
+  #
+  # This covers `uses:` and nothing else. `runs-on:` is not a dependency --
+  # there is no manifest and no version to resolve -- so nothing here or
+  # anywhere else proposes `ubuntu-24.04` -> `ubuntu-26.04`. That move is
+  # manual, and until someone makes it the build sits on an image that is
+  # quietly ageing: test.yml and test_build.yml were on ubuntu-22.04 from the
+  # commits that created them until 2026-08-11, two Ubuntus behind what
+  # build.yml releases from. `releaseWorkflow.test.ts` now fails if the three
+  # disagree, which makes the move all-or-nothing rather than proposing it.
   - package-ecosystem: github-actions
     directory: /
     schedule:
