@@ -45,7 +45,7 @@
 	import { invoke } from "@tauri-apps/api/core";
 
 	let {
-		value = $bindable(),
+		value,
 		language = "markdown",
 		onsave,
 		onnew,
@@ -498,13 +498,24 @@
 
 		editor.focus();
 
+		// The one route from a keystroke to the document. `value` is a plain
+		// prop — it reads the active tab's `rawContent` and nothing here writes
+		// it back — so this call is not a second opinion about the buffer, it is
+		// the only opinion. It used to be a `bind:value` writing the field
+		// directly PLUS this call, and the tab only stayed dirty-tracked because
+		// Svelte's assignment happened to run first: deleting this line left the
+		// text on screen correct and the dirty flag, the auto-save trigger and
+		// the close prompt silently dead. Delete it now and the editor stops
+		// editing the document at all, which is a bug you can see.
+		//
+		// The guard is what stops the loop: the effect below pushes an external
+		// buffer replacement in with `setValue`, which fires this listener with
+		// text `value` already holds, and writing that back to the store would
+		// be a write the user did not make.
 		editor.onDidChangeModelContent(() => {
 			const newValue = editor.getValue();
-			if (value !== newValue) {
-				value = newValue;
-				if (tabManager.activeTabId) {
-					tabManager.updateTabRawContent(tabManager.activeTabId, newValue);
-				}
+			if (value !== newValue && tabManager.activeTabId) {
+				tabManager.updateTabRawContent(tabManager.activeTabId, newValue);
 			}
 
 			syncStatusFromModel();

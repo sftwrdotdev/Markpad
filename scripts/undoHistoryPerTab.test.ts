@@ -319,9 +319,6 @@ type Component = {
 	undo: () => void;
 	acquireTabModel: (tabId: string, seed: string, language: string) => FakeModel | null;
 	setLanguage: (language: string) => void;
-	/** Svelte's `bind:value={tabManager.activeTab.rawContent}`, by hand. */
-	syncBoundValue: () => void;
-	value: () => string;
 	currentTabId: () => string | null;
 	currentLanguage: () => string;
 	wordCount: () => number;
@@ -335,7 +332,6 @@ type Component = {
  */
 const factorySource = ts.transpileModule(
 	`const __component = (tabManager, monaco, editor, getTabModel, tabModelUri, lineEndingLabel) => {
-		let value = '';
 		let currentTabId = null;
 		let language = 'markdown';
 		let currentLanguage = 'markdown';
@@ -355,8 +351,6 @@ const factorySource = ts.transpileModule(
 			undo,
 			acquireTabModel,
 			setLanguage: (next) => { language = next; },
-			syncBoundValue: () => { value = tabManager.activeTab ? tabManager.activeTab.rawContent : ''; },
-			value: () => value,
 			currentTabId: () => currentTabId,
 			currentLanguage: () => currentLanguage,
 			wordCount: () => wordCount,
@@ -365,8 +359,26 @@ const factorySource = ts.transpileModule(
 	{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
 ).outputText;
 
+/**
+ * The `value` prop, modelled as what Svelte compiles a dynamic prop to: a
+ * getter over the parent's expression, which is
+ * `value={tabManager.activeTab.rawContent}`. It used to be `bind:value`, and
+ * this harness used to mirror it with a local the tests re-synced by hand —
+ * which is the same second copy of the buffer, and the same chance for the two
+ * to disagree, that the component itself no longer keeps.
+ *
+ * A null-prototype object so `with` captures this one name and not
+ * `toString`, `constructor` and the rest of Object.prototype.
+ */
+const propsScope = Object.defineProperty(Object.create(null), 'value', {
+	get: () => tabManager.activeTab?.rawContent ?? '',
+});
+
 function createComponent(editor: Editor): Component {
-	const factory = new Function(`${factorySource}\nreturn __component;`)() as (
+	const factory = new Function(
+		'__props',
+		`with (__props) { ${factorySource}\nreturn __component; }`,
+	)(propsScope) as (
 		tabManager: unknown,
 		monaco: unknown,
 		editor: unknown,
@@ -403,7 +415,6 @@ function setup(): Harness {
 
 	const show = (tabId: string) => {
 		tabManager.setActive(tabId);
-		component.syncBoundValue();
 		component.activate();
 	};
 
@@ -534,7 +545,6 @@ test('a buffer replaced behind the editor still clears undo', () => {
 	h.type('1');
 
 	tabManager.setTabRawContent(a, 'from disk');
-	h.component.syncBoundValue();
 	h.component.activate();
 
 	assert.equal(h.text(), 'from disk', 'the external write did not reach the editor');
@@ -553,7 +563,6 @@ test('a tab pointed at another document does not carry its undo history across',
 
 	tabManager.navigate(a, '/docs/linked.md');
 	tabManager.setTabRawContent(a, 'linked');
-	h.component.syncBoundValue();
 	h.component.activate();
 
 	h.component.undo();
@@ -570,7 +579,6 @@ test('renaming a tab keeps the undo history, because the document did not change
 	h.type('1');
 
 	tabManager.renameTab(a, '/docs/renamed.md');
-	h.component.syncBoundValue();
 	h.component.activate();
 
 	h.component.undo();
@@ -590,7 +598,6 @@ test('a tab that follows a link into another file type re-languages its model', 
 
 	tabManager.navigate(a, '/docs/script.ts');
 	h.component.setLanguage('typescript');
-	h.component.syncBoundValue();
 	h.component.activate();
 
 	assert.equal(h.modelOf(a)?.getLanguageId(), 'typescript', 'the model kept the language of the previous document');

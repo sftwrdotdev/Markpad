@@ -3582,7 +3582,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							{/if}
 							<Editor
 								bind:this={editorPane}
-								bind:value={tabManager.activeTab.rawContent}
+								value={tabManager.activeTab.rawContent}
 								language={editorLanguage}
 								{theme}
 								onsave={saveContent}

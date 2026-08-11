@@ -25,8 +25,9 @@ export interface Tab {
 	 * document, and picking the wrong one loses the user's work.
 	 *
 	 * `rawContent` IS the document — the Markdown as it stands right now. The
-	 * editor two-way binds to it, the preview and the HTML export render from
-	 * it, and it is the exact string `saveContent` hands to `save_file_content`.
+	 * editor shows it and writes every keystroke back through
+	 * `updateTabRawContent`, the preview and the HTML export render from it,
+	 * and it is the exact string `saveContent` hands to `save_file_content`.
 	 * Anything that reads or changes the user's text wants this one.
 	 *
 	 * `originalContent` is that same buffer as it last came off, or last went
