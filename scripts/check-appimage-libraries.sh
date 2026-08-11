@@ -80,11 +80,21 @@ if [ -n "$appeared" ]; then
 	echo "::error::this is the shape of #463 and #498. Add it to EXCLUDED in scripts/strip-appimage.sh, or explain why it is safe to bundle." >&2
 	status=1
 fi
+# Reported and not failed, because the list is deliberately wider than what any
+# one build bundles. #499 named libwayland-client.so.0 as necessary and
+# sufficient and added five more that "belong to the host graphics stack for the
+# same reason and are on the same excludelist" -- prophylaxis, and `rm -f` costs
+# nothing when they are absent.
+#
+# It is worth printing because the two builds disagree. On the release's package
+# list, `rm -v` reported all six removed in v2.7.2 and v2.7.3; on the pull
+# request's shorter list only libwayland-client.so.0 is there. Which of the two
+# differences does it -- the packages, or the linuxdeploy build.yml
+# pre-downloads -- is not isolated. After the package lists are the same, the
+# next release's `removed` lines answer it.
 if [ -n "$vanished" ]; then
-	echo "::error::strip-appimage.sh removes a library nothing bundles any more:" >&2
+	echo "::notice::strip-appimage.sh also removes these, and this build did not bundle them:" >&2
 	printf '  %s\n' $vanished >&2
-	echo "::error::drop it from EXCLUDED so the list keeps describing what is actually there." >&2
-	status=1
 fi
 
 [ "$status" -eq 0 ] && echo "The ${#stripped[@]} libraries strip-appimage.sh removes are exactly the ones bundled."

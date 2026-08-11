@@ -324,8 +324,14 @@ test('the excludelist is checked against what is actually bundled', () => {
 	assert.match(testBuildWorkflow, /bash scripts\/check-appimage-libraries\.sh/);
 	assert.doesNotMatch(workflow, /check-appimage-libraries\.sh/);
 	// It reads the strip list rather than restating it, so the two cannot drift.
+	// Comments are exempt, as in the Ubuntu assertion above: naming a library
+	// while explaining what was measured is not a second copy of the list.
 	assert.match(checkAppImageLibraries, /strip-appimage\.sh/);
-	assert.doesNotMatch(checkAppImageLibraries, /libwayland/);
+	const restated = checkAppImageLibraries
+		.split('\n')
+		.filter((line) => !/^\s*#/.test(line))
+		.filter((line) => /\blib[A-Za-z0-9_.+-]*\.so\.[0-9]/.test(line));
+	assert.deepEqual(restated, [], 'the library list has a second copy in check-appimage-libraries.sh');
 });
 
 test('the AppImage is started before it can be downloaded', () => {
