@@ -36,16 +36,24 @@
 // line in each pane. `PREVIEW_ANCHOR_OFFSET` is a separate decision about a
 // separate feature — where to put a line the reader is being *returned* to.
 
+import type { BufferLine } from './lineCoordinates.js';
+
 export type ScrollSyncPosition = {
 	section: 'frontmatter' | 'body';
 	ratio: number;
 	/**
-	 * Fractional source line at the sending pane's anchor. Absent when the
+	 * Fractional BUFFER line at the sending pane's anchor. Absent when the
 	 * sender could not resolve one — front matter (which renders as a panel with
 	 * no source range at all, so only `section`/`ratio` can carry it) or a
 	 * document with no annotated block. The receiver falls back to the ratio.
+	 *
+	 * Buffer, because the editor is the only pane that can produce one and the
+	 * buffer is all it knows. The preview's own numbering starts at the first
+	 * line of the body, so its half of this crossing goes through
+	 * `lineCoordinates` — and the type is what says so, rather than a comment
+	 * the next crossing can be written without reading.
 	 */
-	line?: number;
+	line?: BufferLine;
 };
 
 function clampScrollRatio(value: number) {

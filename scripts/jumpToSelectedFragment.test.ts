@@ -322,17 +322,46 @@ test('the real stress document shifts by its front matter', () => {
 // through `toBufferRange`. A test that only pinned the arithmetic would pass
 // with either call site still handing over a raw body line.
 
+const { asBufferLine, asRendererLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.js');
+
+test('the shift is what the module applies, in both directions', () => {
+	// The arithmetic itself, called rather than matched. A round trip through
+	// the pair has to be the identity, or a position handed from one pane to the
+	// other and back walks up the document by the height of the front matter
+	// every time it crosses.
+	const raw = ['---', 'title: "T"', 'tags:', '  - a', '---', '', '# Title'].join('\n') + '\n';
+	const coords = lineCoordinates(raw);
+	assert.equal(coords.frontMatterLines, 6);
+
+	assert.equal(coords.toBufferLine(asRendererLine(1)), 7, 'the body starts on buffer line 7');
+	assert.equal(coords.toRendererLine(asBufferLine(7)), 1);
+	for (const line of [1, 2, 40, 137]) {
+		assert.equal(coords.toRendererLine(coords.toBufferLine(asRendererLine(line))), line, `renderer line ${line}`);
+		assert.equal(coords.toBufferLine(coords.toRendererLine(asBufferLine(line + 6))), line + 6, `buffer line ${line + 6}`);
+	}
+
+	// A range shifts by the same amount at both ends, so it still covers the
+	// same text rather than growing or sliding.
+	assert.deepEqual(coords.toBufferRange({ startLine: 3, endLine: 9 }), { startLine: 9, endLine: 15 });
+
+	// And a document without front matter is left exactly where it is, which is
+	// why the shift went unnoticed for as long as it did.
+	const plain = lineCoordinates('# Title\n\nbody\n');
+	assert.equal(plain.frontMatterLines, 0);
+	assert.deepEqual(plain.toBufferRange({ startLine: 3, endLine: 9 }), { startLine: 3, endLine: 9 });
+});
+
 test('every renderer line reaching the editor goes through the shift', () => {
 	// Two consumers hand a `data-sourcepos` number to the editor, and both have
 	// to shift it. `toggleEditView` is not a third: it resolves the range and
 	// passes it to `editSourceRange`, which is where the shift happens.
 	const edit = functionSource(viewerSource, 'editSourceRange');
-	assert.match(edit, /pendingEditReveal = toBufferRange\(range\)/, 'the context menu and ⌘E shift');
+	assert.match(edit, /pendingEditReveal = lineCoords\.toBufferRange\(range\)/, 'the context menu and ⌘E shift');
 
 	// The outline is wired inline in the markup rather than in a function.
 	assert.match(
 		viewerSource,
-		/editorPane\.revealHeader\(\s*sourceLine === null \? null : toBufferRange\(/,
+		/editorPane\.revealHeader\(\s*sourceLine === null \? null : lineCoords\.toBufferLine\(/,
 		'the outline shifts',
 	);
 });
@@ -348,14 +377,14 @@ test('scroll sync converts in both directions', () => {
 	const capture = functionSource(viewerSource, 'getPreviewScrollSyncPosition');
 	assert.match(
 		capture,
-		/line: toBufferLine\(line\)/,
+		/lineCoords\.bufferLineAtPreviewOffset\(/,
 		'a line read off the preview is shifted before the editor sees it',
 	);
 
 	const apply = functionSource(viewerSource, 'scrollPreviewToSyncPosition');
 	assert.match(
 		apply,
-		/toRendererLine\(position\.line\)/,
+		/lineCoords\.previewOffsetForBufferLine\(/,
 		'a line coming from the editor is shifted back before the preview seeks',
 	);
 });
@@ -365,18 +394,19 @@ test('the outline is fed body lines from both panes', () => {
 	// lines (`getPreviewScrollAnchor`); the editor's has to be converted, or the
 	// highlighted heading changes depending on which pane you scrolled.
 	const fromEditor = functionSource(viewerSource, 'handleEditorScrollSync');
-	assert.match(fromEditor, /tocActiveLine = toRendererLine\(position\.line\)/);
+	assert.match(fromEditor, /tocActiveLine = lineCoords\.toRendererLine\(position\.line\)/);
 
 	const fromPreview = functionSource(viewerSource, 'getPreviewScrollAnchor');
 	assert.doesNotMatch(fromPreview, /toBufferLine|toRendererLine/, 'already a body line');
 });
 
 test('the shift reads the buffer, not the rendered body', () => {
-	// `frontMatterLineOffset(rawContent)` — measuring the render would answer 0
+	// `lineCoordinates(rawContent)` — measuring the render would answer 0
 	// forever, since the render is what the front matter was stripped out of.
-	for (const name of ['toBufferRange', 'toBufferLine', 'toRendererLine']) {
-		assert.match(functionSource(viewerSource, name), /frontMatterLineOffset\(rawContent\)/, name);
-	}
+	// One derivation, so there is one answer for the whole document rather than
+	// a per-call-site chance to read the wrong thing.
+	assert.match(viewerSource, /let lineCoords = \$derived\(lineCoordinates\(rawContent\)\)/);
+	assert.equal(viewerSource.match(/lineCoordinates\(/g)?.length, 1);
 });
 
 // The menu is opened BY right-clicking a selection, and two of its items act

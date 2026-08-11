@@ -18,13 +18,22 @@
  * disagree while both are live: the last entry at or above the position, and
  * the first entry when the position is above all of them.
  */
+import { asRendererLine, type RendererLine } from './lineCoordinates.js';
+
 export type TocLineEntry = {
 	id: string;
 	/** `null` for an entry the renderer gave no source range (a block anchor). */
-	line: number | null;
+	line: RendererLine | null;
 };
 
-export function activeTocIdForLine(entries: readonly TocLineEntry[], line: number): string | null {
+/**
+ * Renderer lines throughout: the outline is built out of `data-sourcepos`, so
+ * both the entries and the position they are compared against count from the
+ * first line of the body. The editor's answer is a buffer line and has to go
+ * through `lineCoordinates` on the way in — which the types now insist on,
+ * because that conversion was missing for as long as the outline existed.
+ */
+export function activeTocIdForLine(entries: readonly TocLineEntry[], line: RendererLine): string | null {
 	if (!Number.isFinite(line) || entries.length === 0) return null;
 
 	// Above the first heading the first entry is the active one — what the
@@ -38,7 +47,7 @@ export function activeTocIdForLine(entries: readonly TocLineEntry[], line: numbe
 }
 
 /** The start line of a rendered block, from the `data-sourcepos` comrak wrote. */
-export function sourceLineOf(sourcepos: string | null | undefined): number | null {
+export function sourceLineOf(sourcepos: string | null | undefined): RendererLine | null {
 	const line = Number(sourcepos?.match(/^(\d+):/)?.[1]);
-	return Number.isInteger(line) && line > 0 ? line : null;
+	return Number.isInteger(line) && line > 0 ? asRendererLine(line) : null;
 }

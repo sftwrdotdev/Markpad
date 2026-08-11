@@ -20,6 +20,7 @@
 		getVerticalOffsetForLine,
 		type ScrollSyncPosition,
 	} from '../utils/scrollSync.js';
+	import { asBufferLine, type BufferLine } from '../utils/lineCoordinates.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
 	// parse+eval, paid once per window because every window is its own webview)
@@ -1319,7 +1320,10 @@
 		const model = position.section === 'body' ? editor.getModel() : null;
 		if (!model) return position;
 
-		const line = getLineAtVerticalOffset(editor.getScrollTop(), model.getLineCount(), getEditorLineTop);
+		// Monaco counts from the first line of the FILE, so what comes back is a
+		// buffer line. Saying so here is what obliges the preview to convert:
+		// everything it answers with counts from the first line of the body.
+		const line = asBufferLine(getLineAtVerticalOffset(editor.getScrollTop(), model.getLineCount(), getEditorLineTop));
 
 		return Number.isFinite(line) ? { ...position, line } : position;
 	}
@@ -1833,7 +1837,13 @@
 		editor.focus();
 	}
 
-	export function revealHeader(sourceLine: number | null, text: string) {
+	/**
+	 * `sourceLine` is a BUFFER line, and the type is the whole point: the
+	 * outline reads `data-sourcepos`, which counts from the first line of the
+	 * body, and handed it over unshifted for as long as both features existed.
+	 * The caller now has to go through `lineCoordinates` to produce one.
+	 */
+	export function revealHeader(sourceLine: BufferLine | null, text: string) {
 		if (!editor) return;
 		const model = editor.getModel();
 		if (!model) return;

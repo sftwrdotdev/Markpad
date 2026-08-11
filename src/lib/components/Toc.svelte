@@ -4,6 +4,8 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
+	import { PREVIEW_ANCHOR_OFFSET } from '../utils/previewAnchor.js';
+	import type { RendererLine } from '../utils/lineCoordinates.js';
 
 	let { markdownBody, htmlContent, activeLine = null, onBeforeJump, collapsedHeaders, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
 		markdownBody: HTMLElement | null;
@@ -13,13 +15,13 @@
 		 * outline should follow the preview alone (the setting is off, or nothing
 		 * is being edited). See `tocFollow.ts`.
 		 */
-		activeLine?: number | null;
+		activeLine?: RendererLine | null;
 		onBeforeJump?: () => void;
 		collapsedHeaders?: Set<string>;
 		ontoggleFold?: (id: string) => void;
 		oncopyref?: (text: string, slug: string) => void;
 		oncontext?: (e: MouseEvent, item: TocItem) => void;
-		onjump?: (id: string, text: string, sourceLine: number | null) => void;
+		onjump?: (id: string, text: string, sourceLine: RendererLine | null) => void;
 		onshowTooltip?: (e: MouseEvent, text: string, shortcut?: string, align?: 'top' | 'right' | 'left' | 'below') => void;
 		onhideTooltip?: () => void;
 	}>();
@@ -31,7 +33,7 @@
 		isBlock: boolean;
 		hasChildren?: boolean;
 		/** Where this entry starts in the source, for following the editor. */
-		line: number | null;
+		line: RendererLine | null;
 	}
 
 	let items = $state<TocItem[]>([]);
@@ -306,7 +308,7 @@
 
 			const containerRect = markdownBody.getBoundingClientRect();
 			const elRect = el.getBoundingClientRect();
-			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - 60;
+			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - PREVIEW_ANCHOR_OFFSET;
 			markdownBody.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
 
 			// release lock after scroll settles
