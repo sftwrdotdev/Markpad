@@ -1892,10 +1892,23 @@ body {
 	text-decoration-color: var(--color-fg-muted);
 }
 
+/*
+ * `opacity` does not inherit -- it composites, once per element that declares
+ * it. The selector list here ended in `... :checked *`, every descendant, so a
+ * ticked item multiplied 0.65 by itself all the way down its own markup. Plain
+ * words survived that at one or two levels deep. KaTeX nests twelve spans, so a
+ * formula landed at 0.65^12 = 0.006 and vanished, while the words beside it only
+ * faded -- see the two task items in samples/katex-stress.md, which exist as a
+ * pair for exactly this reason.
+ *
+ * Applied to the wrapper the content sits in, so it happens once. Not moved up
+ * onto the `li`: opacity on an ancestor cannot be undone by a descendant, and
+ * the rules below deliberately restore the checkbox and any nested list to full
+ * opacity. `text-decoration` needs no such help -- it propagates to descendant
+ * text on its own, which is why the `li` rule above already carries it.
+ */
 .markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) .task-text,
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) p,
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) > *:not(input):not(ul):not(ol),
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) * {
+.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) > *:not(input):not(.task-text):not(ul):not(ol) {
 	text-decoration: line-through;
 	opacity: 0.65;
 }

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { buildExportDocument, exportThemeAttribute } from '../src/lib/utils/export.js';
 import { DEFAULT_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
-import { readSource } from './sourceTree.js';
+import { readSource, sliceBetween } from './sourceTree.js';
 
 const styles = readSource('src/styles.css');
 const exportSource = readSource('src/lib/utils/export.ts');
@@ -112,4 +112,26 @@ test('the copied stylesheet and the article still land in the document', () => {
 	assert.match(doc, /<style>[\s\S]*\.sentinel \{ color: red; \}/);
 	assert.match(doc, /<article class="markdown-body">\n<p id="sentinel">hello<\/p>/);
 	assert.match(doc, /^<!DOCTYPE html>\n/);
+});
+
+test('a ticked task dims its content once, not once per nesting level', () => {
+	// `opacity` composites rather than inherits, so a rule matching every
+	// descendant multiplies itself down the tree. This rule ended in
+	// `:checked *`, which words survive at one or two levels deep and KaTeX does
+	// not: it nests twelve spans, so a formula in a ticked item rendered at
+	// 0.65^12 = 0.006 and disappeared while the text beside it merely faded.
+	// samples/katex-stress.md holds a ticked and an unticked task item next to
+	// each other so the difference is visible rather than arguable.
+	//
+	// Asserted as "no universal descendant selector carries opacity here", not
+	// as a literal selector list, because the defect is the shape and not the
+	// spelling.
+	const styles = readSource('src/styles.css');
+	const block = sliceBetween(styles, 'input[data-task-checkbox]:checked) .task-text', '/* restore');
+	assert.doesNotMatch(
+		block,
+		/:checked\)\s*\*[\s,]/,
+		'a ticked task item applies opacity to every descendant; deep markup compounds it away',
+	);
+	assert.match(block, /opacity:\s*0?\.\d+/, 'the ticked-item rule stopped dimming anything at all');
 });
