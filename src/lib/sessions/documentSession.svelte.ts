@@ -41,7 +41,7 @@ type DocumentSessionOptions = {
 	setShowHome: (value: boolean) => void;
 	currentFile: () => string;
 	resetScrollHistory: () => void;
-	renderMarkdown: (raw: string, path: string, collapsedHeaders: Set<string>) => Promise<string>;
+	renderMarkdown: (raw: string, path: string, foldOverrides: Set<string>) => Promise<string>;
 	afterLoad: () => Promise<unknown>;
 	saveRecentFile: (path: string) => void;
 	deleteRecentFile: (path: string) => void;
@@ -64,15 +64,15 @@ type DocumentSessionOptions = {
 };
 
 /**
- * Which heading sections the tab being loaded has folded, read at render time
- * rather than captured up front. A large file is rendered twice — the 5MB
- * preview, then the whole document once the background read lands — and the
- * user can fold something in between; the second render has to honour that.
- * An unknown tab folds nothing, which is what a load of a tab that has since
- * been closed should hand a renderer.
+ * Which folds the tab being loaded has flipped from the opening position its
+ * own source asks for, read at render time rather than captured up front. A
+ * large file is rendered twice — the 5MB preview, then the whole document once
+ * the background read lands — and the user can fold something in between; the
+ * second render has to honour that. An unknown tab flips nothing, which is what
+ * a load of a tab that has since been closed should hand a renderer.
  */
 function foldsForTab(tabId: string): Set<string> {
-	return tabManager.tabs.find((item) => item.id === tabId)?.collapsedHeaders ?? new Set<string>();
+	return tabManager.tabs.find((item) => item.id === tabId)?.foldOverrides ?? new Set<string>();
 }
 
 export function createDocumentSession(options: DocumentSessionOptions) {

@@ -40,7 +40,7 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
 		isScrollSynced: true,
 		hasReplacementChars: false,
 		encoding: 'UTF-8',
-		collapsedHeaders: new Set<string>(),
+		foldOverrides: new Set<string>(),
 		...overrides,
 	};
 }

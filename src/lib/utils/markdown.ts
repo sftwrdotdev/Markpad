@@ -1,4 +1,5 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { assignFoldKey, isFolded } from "./foldState.js";
 import { parseSourceposLineRange } from "./previewAnchor.js";
 import { carrySourcepos } from "./richContent.js";
 
@@ -536,10 +537,14 @@ function processSoftLineAnchors(root: Element, doc: Document) {
 export function processMarkdownHtml(
 	html: string,
 	filePath: string,
-	collapsedHeaders: Set<string>,
+	foldOverrides: Set<string>,
 ): string {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(html, "text/html");
+
+	// The keys handed out in THIS render, shared by the callout pass and the
+	// heading pass below so that neither can hand out a key the other used.
+	const foldKeys = new Set<string>();
 
 	for (const img of doc.querySelectorAll("img")) {
 		const src = img.getAttribute("src");
@@ -732,9 +737,17 @@ export function processMarkdownHtml(
 			if (contentInner.childNodes.length === 0) {
 				container.classList.add("callout-title-only");
 			} else {
-				if (fold === "-") {
-					contentWrapper.classList.add("is-collapsed");
-					container.classList.add("is-collapsed");
+				// A callout the reader folds is remembered exactly like a
+				// heading, and `> [!note]-` is the document's opening position
+				// rather than a state of its own — see `foldState.ts`. A
+				// title-only callout hides nothing and so is not a fold at all,
+				// which is why the key is assigned in this branch.
+				if (isFoldable) {
+					const key = assignFoldKey(container, foldKeys);
+					if (isFolded(foldOverrides, key, fold === "-")) {
+						contentWrapper.classList.add("is-collapsed");
+						container.classList.add("is-collapsed");
+					}
 				}
 				container.appendChild(contentWrapper);
 			}
@@ -755,11 +768,11 @@ export function processMarkdownHtml(
 	let nextFoldId = 0;
 	for (const h of headings) {
 		// comrak puts the deduplicated heading id ("title", "title-1", ...)
-		// on an empty inner <a class="anchor">, so h.id is empty and every
-		// consumer that keys folds by `h.id || textContent` falls back to
-		// the heading text — which collides for duplicate titles and never
-		// matches the ToC's id-based keys. Promote the id onto the heading
-		// itself (and off the anchor, so the document keeps unique ids).
+		// on an empty inner <a class="anchor">, so h.id is empty and the fold
+		// key falls all the way back to the heading text — which collides for
+		// duplicate titles and never matches an id-based anchor link. Promote
+		// the id onto the heading itself (and off the anchor, so the document
+		// keeps unique ids). See `assignFoldKey`.
 		const headingAnchor = h.querySelector("a.anchor");
 		if (headingAnchor && headingAnchor.id && !h.id) {
 			h.id = headingAnchor.id;
@@ -796,8 +809,8 @@ export function processMarkdownHtml(
 		h.setAttribute("data-fold-target", mappingId);
 		wrapper.id = mappingId;
 
-		const key = h.id || h.textContent?.trim() || "";
-		if (collapsedHeaders.has(key)) {
+		const key = assignFoldKey(h, foldKeys);
+		if (isFolded(foldOverrides, key)) {
 			h.classList.add("is-collapsed");
 			wrapper.classList.add("is-collapsed");
 		}

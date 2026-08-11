@@ -37,6 +37,13 @@ import {
 	type RichContentLibraries,
 } from './utils/richContent.js';
 import { observeFoldLayout } from './utils/foldLayout.js';
+import {
+	applyFold,
+	flipFold,
+	foldRegionAt,
+	foldRegionByKey,
+	isFoldCollapsed,
+} from './utils/foldState.js';
 import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
@@ -270,16 +277,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let zoomData = $state<{ src?: string; html?: string } | null>(null);
 
 	// What a document with no tab behind it has folded. Never written to — every
-	// write goes through `setCollapsedHeaders`, which needs an active tab.
-	const NO_COLLAPSED_HEADERS = new Set<string>();
+	// write goes through `setFoldOverrides`, which needs an active tab.
+	const NO_FOLD_OVERRIDES = new Set<string>();
 
 	// derived from tab manager
 	let activeTab = $derived(tabManager.activeTab);
 	// Fold state belongs to the document, so it lives on the tab (see
-	// `Tab.collapsedHeaders`). Reading it through a derived is what makes a tab
+	// `Tab.foldOverrides`). Reading it through a derived is what makes a tab
 	// switch swap the whole set: the preview render, the table of contents and
 	// find all see the folds of the document on screen and no other document's.
-	let collapsedHeaders = $derived(activeTab?.collapsedHeaders ?? NO_COLLAPSED_HEADERS);
+	let foldOverrides = $derived(activeTab?.foldOverrides ?? NO_FOLD_OVERRIDES);
 	let isEditing = $derived(activeTab?.isEditing ?? false);
 	let rawContent = $derived(activeTab?.rawContent ?? '');
 	let isSplit = $derived(activeTab?.isSplit ?? false);
@@ -585,7 +592,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// carrying `true` from `markTabContentUnavailable`, which would have
 			// gone on refusing every save of a buffer that is now complete.
 			tabManager.setTabRawContent(tabId, raw);
-			const processed = await renderMarkdownPreview(raw, tab.path, tab.collapsedHeaders);
+			const processed = await renderMarkdownPreview(raw, tab.path, tab.foldOverrides);
 			if (isDisposed) return;
 			tabManager.updateTabContent(tab.id, processed);
 			if (tabManager.activeTabId === tab.id) tick().then(renderRichContent);
@@ -845,7 +852,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	async function renderTabPreviewFromRaw(tab: Tab) {
-		const processed = await renderMarkdownPreview(tab.rawContent, tab.path, tab.collapsedHeaders);
+		const processed = await renderMarkdownPreview(tab.rawContent, tab.path, tab.foldOverrides);
 		tabManager.updateTabContent(tab.id, processed);
 		tab.previewedRawContent = tab.rawContent;
 		await tick();
@@ -1377,43 +1384,38 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	// The one place fold state is written. It goes to the tab the user is
-	// looking at, which is the document the fold is a fold OF — both toggle
-	// paths below act on the preview or the table of contents of that tab.
-	function setCollapsedHeaders(next: Set<string>) {
-		if (tabManager.activeTabId) tabManager.setTabCollapsedHeaders(tabManager.activeTabId, next);
+	// looking at, which is the document the fold is a fold OF — every toggle
+	// path below acts on the preview or the table of contents of that tab.
+	function setFoldOverrides(next: Set<string>) {
+		if (tabManager.activeTabId) tabManager.setTabFoldOverrides(tabManager.activeTabId, next);
 	}
 
+	/**
+	 * The single write path for a fold, whichever of the three drivers asked:
+	 * the preview chevron and the callout title (`handleLinkClick`), the
+	 * outline's fold button, and find opening what hides a match (`revealFold`).
+	 *
+	 * Both halves happen here, and that is the point. The stored deviation is
+	 * what the NEXT render reads; the two class writes are what the current DOM
+	 * shows. A driver that did only the second — which is what the callout title
+	 * used to do — folds something that springs open again on the next
+	 * keystroke, and there is nothing on screen to say why.
+	 *
+	 * The state is flipped even when the fold is not in the DOM (the preview is
+	 * hidden in editor-only mode, and the outline is still there to click), so
+	 * the fold is honoured by the render that brings it back.
+	 */
 	function toggleFold(key: string) {
-		const isCurrentlyCollapsed = collapsedHeaders.has(key);
+		setFoldOverrides(flipFold(foldOverrides, key));
 
-		if (isCurrentlyCollapsed) {
-			const next = new Set(collapsedHeaders);
-			next.delete(key);
-			setCollapsedHeaders(next);
-		} else {
-			setCollapsedHeaders(new Set([...collapsedHeaders, key]));
-		}
+		const region = markdownBody ? foldRegionByKey(markdownBody, key) : null;
+		if (region) applyFold(region, !isFoldCollapsed(region));
+	}
 
-		if (!markdownBody) return;
-
-		let h = markdownBody.querySelector(`[id="${CSS.escape(key)}"].foldable-header`) as HTMLElement | null;
-		if (!h) {
-			const allHeaders = markdownBody.querySelectorAll('.foldable-header');
-			for (const el of Array.from(allHeaders)) {
-				if ((el.textContent?.trim() || '') === key) {
-					h = el as HTMLElement;
-					break;
-				}
-			}
-		}
-		if (!h) return;
-
-		const wrapId = h.getAttribute('data-fold-target');
-		const wrapper = wrapId ? document.getElementById(wrapId) : null;
-		if (!wrapper) return;
-
-		h.classList.toggle('is-collapsed', !isCurrentlyCollapsed);
-		wrapper.classList.toggle('is-collapsed', !isCurrentlyCollapsed);
+	/** Open this fold if it is shut — what FindBar asks for on the way to a match. */
+	function revealFold(key: string) {
+		const region = markdownBody ? foldRegionByKey(markdownBody, key) : null;
+		if (region && isFoldCollapsed(region)) toggleFold(key);
 	}
 
 	function scrollToAnchor(anchor: string, options: { pushHistory?: boolean } = {}) {
@@ -1482,40 +1484,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function handleLinkClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 
-		// header fold toggle
-		const foldIcon = target.closest('.header-fold-icon');
-		const foldableHeader = foldIcon ? foldIcon.closest('.foldable-header') as HTMLElement : null;
-		if (foldableHeader) {
+		// Fold toggle: the heading's chevron, or a foldable callout's whole title
+		// bar. One branch for both, because they are one feature — the callout's
+		// own branch used to toggle the classes and stop there, so a folded
+		// callout re-opened on the next render while a folded heading did not.
+		const foldControl = target.closest('.header-fold-icon, .callout-toggle');
+		if (foldControl) {
 			if (e.detail > 1) e.preventDefault(); // prevent double-click selection
 			e.stopPropagation();
-			const key = foldableHeader.id || foldableHeader.textContent?.trim() || '';
-			const wrapId = foldableHeader.getAttribute('data-fold-target');
-			const wrapper = wrapId ? document.getElementById(wrapId) : null;
-			if (wrapper) {
-				const isCollapsed = foldableHeader.classList.toggle('is-collapsed');
-				wrapper.classList.toggle('is-collapsed', isCollapsed);
-				if (isCollapsed) {
-					setCollapsedHeaders(new Set([...collapsedHeaders, key]));
-				} else {
-					const next = new Set(collapsedHeaders);
-					next.delete(key);
-					setCollapsedHeaders(next);
-				}
-			}
-			return;
-		}
-
-		// callout fold toggle
-		const calloutToggle = target.closest('.callout-toggle');
-		if (calloutToggle) {
-			if (e.detail > 1) e.preventDefault(); // prevent double-click selection
-			e.stopPropagation();
-			const alert = calloutToggle.closest('.callout-foldable');
-			const content = alert?.querySelector('.markdown-alert-content');
-			if (alert && content) {
-				alert.classList.toggle('is-collapsed');
-				content.classList.toggle('is-collapsed');
-			}
+			const region = foldRegionAt(foldControl);
+			if (region) toggleFold(region.key);
 			return;
 		}
 
@@ -2134,7 +2112,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (rawContent === undefined) return;
 		if (tab.previewedRawContent === rawContent) return;
 		try {
-			const processed = await renderMarkdownPreview(rawContent, tab.path, tab.collapsedHeaders);
+			const processed = await renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides);
 			const current = tabManager.activeTab;
 			if (tabManager.activeTabId !== tabId || current?.rawContent !== rawContent) return;
 			tabManager.updateTabContent(tabId, processed);
@@ -2652,7 +2630,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (tab.previewedRawContent === rawContent) return;
 
 			const timer = setTimeout(() => {
-				renderMarkdownPreview(rawContent, tab.path, tab.collapsedHeaders)
+				renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides)
 					.then((processed) => {
 						const currentTab = tabManager.activeTab;
 						if (
@@ -3625,6 +3603,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							bind:this={findBar}
 							bind:open={findOpen}
 							{markdownBody}
+							onunfold={revealFold}
 							language={settings.language} />
 
 							<div class="viewer-content">
@@ -3811,7 +3790,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										{markdownBody} 
 										htmlContent={sanitizedHtml}
 										onBeforeJump={pushScrollHistory} 
-										{collapsedHeaders} 
+										{foldOverrides} 
 										ontoggleFold={toggleFold} 
 										oncopyref={(text: string, slug: string) => copyHeadingReference(text, slug)}
 										onjump={(id: string, text: string, sourceLine: RendererLine | null) => {
