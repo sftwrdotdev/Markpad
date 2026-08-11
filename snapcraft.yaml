@@ -63,8 +63,24 @@ parts:
     plugin: nil
     build-snaps:
       - rustup/latest/stable
+    # `extensions: [gnome]` puts the gnome SDK's libraries on LD_LIBRARY_PATH
+    # for every part's build, and the rustup snap's own binary then resolves
+    # libc.so.6 out of the SDK instead of out of the one it was linked
+    # against:
+    #
+    #   /snap/rustup/1504/bin/rustup: symbol lookup error:
+    #   /snap/gnome-46-2404-sdk/current/usr/lib/x86_64-linux-gnu/libc.so.6:
+    #   undefined symbol: __nptl_change_stack_perm, version GLIBC_PRIVATE
+    #
+    # This is the same shape as #463 and #499 on the AppImage side -- a
+    # packaging layer putting its own copy of a library ahead of the one that
+    # had to be used -- moved from the user's machine to the builder.
+    #
+    # Cleared for this one call rather than for the part or the build: the
+    # `node/20/stable` snap below runs under the same LD_LIBRARY_PATH and has
+    # always been fine, and the markpad part links against the SDK on purpose.
     override-build: |
-      rustup default stable
+      env -u LD_LIBRARY_PATH rustup default stable
 
   markpad:
     after: [rust-deps]
