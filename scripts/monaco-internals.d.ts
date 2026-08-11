@@ -1,5 +1,5 @@
 // monaco-editor publishes types for its public surface only
-// (`monaco-editor/editor/editor.api.d.ts`). The ESM internals ship as
+// (`monaco-editor/esm/vs/editor/editor.api.d.ts`). The ESM internals ship as
 // plain `.js` with no declarations beside them.
 //
 // pasteUrlContext.test.ts drives Monarch directly — `monaco.editor.tokenize()`
@@ -7,14 +7,14 @@
 // create — so it reaches for three of those internals. Declared here with the
 // shapes that test actually uses, rather than left implicitly `any`.
 
-declare module 'monaco-editor/editor/standalone/common/monarch/monarchCompile.js' {
+declare module 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchCompile.js' {
 	import type { languages } from 'monaco-editor';
 
 	/** Compiles a Monarch language definition into the lexer the tokenizer runs. */
 	export function compile(languageId: string, json: languages.IMonarchLanguage): unknown;
 }
 
-declare module 'monaco-editor/editor/standalone/common/monarch/monarchLexer.js' {
+declare module 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchLexer.js' {
 	/**
 	 * Constructed with (languageService, themeService, languageId, lexer,
 	 * configurationService). The services are stubs here, so the parameters stay
@@ -26,7 +26,7 @@ declare module 'monaco-editor/editor/standalone/common/monarch/monarchLexer.js' 
 	};
 }
 
-declare module 'monaco-editor/languages/definitions/markdown/markdown.js' {
+declare module 'monaco-editor/esm/vs/basic-languages/markdown/markdown.js' {
 	import type { languages } from 'monaco-editor';
 
 	export const conf: languages.LanguageConfiguration;

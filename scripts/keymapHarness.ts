@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 
-import { decodeKeybinding, type KeyCodeChord } from 'monaco-editor/base/common/keybindings.js';
-import { KeyCodeUtils } from 'monaco-editor/base/common/keyCodes.js';
-import { KeyCode } from 'monaco-editor/editor/common/standalone/standaloneEnums.js';
-import { KeyMod } from 'monaco-editor/editor/common/services/editorBaseApi.js';
+import { decodeKeybinding, type KeyCodeChord } from 'monaco-editor/esm/vs/base/common/keybindings.js';
+import { KeyCodeUtils } from 'monaco-editor/esm/vs/base/common/keyCodes.js';
+import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
+import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 import ts from 'typescript';
 
 import { readSource, functionSource } from './sourceTree.js';

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { compile } from 'monaco-editor/editor/standalone/common/monarch/monarchCompile.js';
-import { MonarchTokenizer } from 'monaco-editor/editor/standalone/common/monarch/monarchLexer.js';
-import { language as markdownLanguage } from 'monaco-editor/languages/definitions/markdown/markdown.js';
+import { compile } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchCompile.js';
+import { MonarchTokenizer } from 'monaco-editor/esm/vs/editor/standalone/common/monarch/monarchLexer.js';
+import { language as markdownLanguage } from 'monaco-editor/esm/vs/basic-languages/markdown/markdown.js';
 
 import { readSource } from './sourceTree.js';
 
