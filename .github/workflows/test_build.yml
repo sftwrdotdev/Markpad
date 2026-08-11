@@ -192,6 +192,48 @@ jobs:
           NODE_OPTIONS: "--max_old_space_size=4096"
         run: npm run tauri build -- --no-sign ${{ matrix.args }}
 
+      # The AppImage this job just built is the un-stripped one, and for this
+      # question that is the artifact to ask, not a worse one: it shows what
+      # linuxdeploy put in before anything was taken back out. What decides that
+      # is linuxdeploy-plugin-gtk, fetched from the tip of someone else's branch
+      # on every build -- so the answer can change with no commit here.
+      #
+      # Only possible since this job moved to the release's Ubuntu. Before that
+      # it bundled jammy's libraries and the comparison meant nothing.
+      - name: The AppImage bundles nothing that has to come from the host
+        if: matrix.os-name == 'linux'
+        run: |
+          set -euo pipefail
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -1)
+          if [ -z "$APPIMAGE" ]; then
+            echo "::error::the Linux build produced no AppImage to check" >&2
+            exit 1
+          fi
+          bash scripts/check-appimage-libraries.sh "$APPIMAGE"
+          echo "APPIMAGE=$(realpath "$APPIMAGE")" >> "$GITHUB_ENV"
+
+      # The release strips the AppImage and then starts it. Doing both here as
+      # well is what makes those two steps testable at all: strip-appimage.sh
+      # has never run outside a release -- it failed in two of the three v2.7.2
+      # release attempts -- and smoke-appimage.sh would otherwise ship into the
+      # release path having never run anywhere.
+      #
+      # The order matters and is the release's order. Un-stripped, this AppImage
+      # still carries the libraries #498 was about, so smoking it before the
+      # strip would be reproducing the defect rather than testing for it.
+      #
+      # Not free: the strip repacks, and the smoke pulls a container image and a
+      # graphics stack. Roughly three minutes on a twelve-minute job. If that
+      # stops being worth it, path-filter these two steps rather than deleting
+      # them -- the release depends on both scripts either way.
+      - name: Strip the AppImage, as the release does
+        if: matrix.os-name == 'linux'
+        run: bash scripts/strip-appimage.sh "$APPIMAGE"
+
+      - name: The AppImage starts on a distribution it was not built on
+        if: matrix.os-name == 'linux'
+        run: bash scripts/smoke-appimage.sh "$APPIMAGE"
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
