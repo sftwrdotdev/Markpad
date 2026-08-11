@@ -27,7 +27,14 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
 	process.exit(2);
 }
 
-/** Replace once, and fail loudly rather than writing a file that changed nothing. */
+/**
+ * Replace once, and fail loudly rather than writing a file that changed nothing.
+ *
+ * @param {string} path
+ * @param {RegExp} pattern
+ * @param {string} replacement
+ * @returns {string}
+ */
 function edit(path, pattern, replacement) {
 	const before = readFileSync(path, 'utf8');
 	const after = before.replace(pattern, replacement);
