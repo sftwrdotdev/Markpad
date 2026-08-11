@@ -2283,15 +2283,6 @@ async fn export_pdf_windows(window: tauri::WebviewWindow, path: String) -> Resul
     }
 }
 
-#[tauri::command]
-async fn save_file_binary(path: String, data: Vec<u8>) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        atomic_write(Path::new(&path), &data).map_err(|e| e.to_string())
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
-}
-
 /// Async because `reveal` blocks its caller until the file manager answers:
 /// on Windows it spawns a COM worker for `SHOpenFolderAndSelectItems` and
 /// joins it, on macOS it waits for `open -R`. Selecting a file on a network
@@ -3125,7 +3116,6 @@ pub fn run() {
             save_file_content,
             export_pdf_windows,
             print_pdf,
-            save_file_binary,
             is_win11,
             open_file_folder,
             rename_file,
