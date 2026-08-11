@@ -21,9 +21,9 @@ test('installer advertises only Markdown file associations', () => {
 // extensions by hand and `.txt` was reachable only via "All Files".
 test('the Open dialog offers every extension Markpad treats as a document', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-	const sanitize = readSource('src/lib/utils/sanitize.ts');
+	const links = readSource('src/lib/utils/markdownLinks.ts');
 
-	assert.match(sanitize, /MARKDOWN_LINK_EXTENSIONS = \[[^\]]*'txt'/);
+	assert.match(links, /MARKDOWN_LINK_EXTENSIONS = \[[^\]]*'txt'/);
 	assert.match(viewer, /\{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS \}/);
 	// A literal list is how the two drifted apart in the first place.
 	assert.doesNotMatch(viewer, /extensions: \['md/);

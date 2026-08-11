@@ -1,7 +1,7 @@
 import { getFrontMatterListItems, type FrontMatterParseResult } from './frontMatter.js';
 import { resolvePath } from './markdown.js';
+import { MARKDOWN_LINK_EXTENSION_PATTERN } from './markdownLinks.js';
 
-const localMarkdownExtensionPattern = /\.(?:md|markdown|mdown|mkd|txt)$/i;
 const windowsDrivePathPattern = /^[a-zA-Z]:[\\/]/;
 
 export function escapeHtml(value: string): string {
@@ -112,9 +112,9 @@ export function rewriteMarkdownHrefForExport(href: string): string {
 	if (!trimmed || hasNonFileScheme(trimmed)) return href;
 
 	const { base, suffix } = splitUrlSuffix(trimmed);
-	if (!localMarkdownExtensionPattern.test(base)) return href;
+	if (!MARKDOWN_LINK_EXTENSION_PATTERN.test(base)) return href;
 
-	return base.replace(localMarkdownExtensionPattern, '.html') + suffix;
+	return base.replace(MARKDOWN_LINK_EXTENSION_PATTERN, '.html') + suffix;
 }
 
 export function renderStaticFrontMatterPanel(frontMatter: FrontMatterParseResult): string {

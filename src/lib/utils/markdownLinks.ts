@@ -3,6 +3,26 @@ export type MarkdownLinkTarget = {
 	hash: string;
 };
 
+// The one list of extensions Markpad treats as a document, and the lowest-level
+// module that can hold it: everything that needs it — the link resolver below,
+// the sanitizer's URI pattern (./sanitize.ts), the export's `.md` -> `.html`
+// rewrite (./exportHtml.ts) and the Open dialog filter — imports it from here.
+// Three hand-written copies of these five names used to exist, one of them
+// documented as a copy and pinned by a test; a list is cheaper to share than to
+// police.
+//
+// The Rust renderer keeps the sixth copy, in `MARKDOWN_LINK_EXTENSIONS` in
+// src-tauri/src/markdown.rs, because no import crosses that boundary. It is
+// pinned against this one by `the extension list the rewriter mirrors still
+// matches markdownLinks.ts` in scripts/wikilinkFileTargets.test.ts.
+export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
+
+/** `.md`, `.markdown`, … anchored at the end of a path. Also used to replace it. */
+export const MARKDOWN_LINK_EXTENSION_PATTERN = new RegExp(
+	`\\.(?:${MARKDOWN_LINK_EXTENSIONS.map((ext) => ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`,
+	'i',
+);
+
 export function decodeLinkPath(path: string): string {
 	try {
 		return decodeURIComponent(path);
@@ -12,7 +32,7 @@ export function decodeLinkPath(path: string): string {
 }
 
 export function hasMarkdownLinkExtension(path: string): boolean {
-	return /\.(md|markdown|mdown|mkd|txt)$/i.test(path);
+	return MARKDOWN_LINK_EXTENSION_PATTERN.test(path);
 }
 
 function isAbsoluteMarkdownPath(path: string): boolean {
