@@ -1,0 +1,57 @@
+name: Test Snap Build (No Publish)
+
+# snapcraft.yaml is the only build in this repository that no pull request has
+# ever run. It is built from publish-packages.yml, which checks out a release
+# tag -- so a change to snapcraft.yaml is first executed after it has been
+# merged, tagged and published, and the release it breaks is the one users are
+# already being pointed at. That is exactly how #566's rust-deps fix reached
+# v2.7.3 as a failed publish.
+#
+# This packs the snap and stops. Nothing is uploaded to the release and nothing
+# is pushed to the Snap Store; that stays in publish-packages.yml behind a
+# release a human published. A green run here means `snapcraft pack` produced a
+# .snap, which is the half that has been failing.
+#
+# Path-filtered because it costs ~20 minutes and recompiles the whole app
+# inside LXD. `.github/workflows/test_snap.yml` is in the list so a change to
+# this file tests itself.
+
+on:
+  pull_request:
+    paths:
+      - snapcraft.yaml
+      - .github/workflows/test_snap.yml
+  workflow_dispatch:
+
+concurrency:
+  group: test-snap-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pack:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Snapcraft
+        run: |
+          set -euo pipefail
+          sudo snap install lxd
+          sudo lxd waitready
+          sudo lxd init --auto
+          sudo usermod -aG lxd "$USER"
+          sudo iptables -F FORWARD
+          sudo iptables -P FORWARD ACCEPT
+          sudo snap install snapcraft --classic
+          # The workflow installs whatever the store is serving today, and the
+          # 8.x -> 9.x bump between v2.6.11 and v2.6.12 is what broke the snap
+          # in the first place. Print it, so a future failure of that shape is
+          # one line away rather than a bisect.
+          snap list snapcraft
+
+      - name: Pack
+        run: |
+          set -euo pipefail
+          sg lxd -c 'snapcraft pack'
+          ls -la ./*.snap
