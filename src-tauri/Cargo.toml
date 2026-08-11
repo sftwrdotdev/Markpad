@@ -34,7 +34,7 @@ serde_json = "1"
 tauri-plugin-prevent-default = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
-notify = "6"
+notify = "8"
 regex = "1"
 # For the `asset:` protocol handler in `asset_protocol`. All three are already
 # in the lock file as transitive dependencies of tauri, so naming them here
