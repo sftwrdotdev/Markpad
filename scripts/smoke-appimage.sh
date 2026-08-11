@@ -54,7 +54,13 @@ docker run --rm -i \
 	"$IMAGE" bash -s <<'INNER'
 set -euo pipefail
 
-pacman -Sy --noconfirm --needed xorg-server-xvfb mesa >/dev/null 2>&1
+# A bare container is not a desktop. These are the host's side of the bargain:
+# an AppImage deliberately does not carry them -- they are on the same
+# excludelist as the six strip-appimage.sh removes, for the same reason -- so a
+# host without them fails to start the app for a reason that says nothing about
+# the build. `libfontconfig.so.1: cannot open shared object file` was the first
+# one, on run 31494803899.
+pacman -Sy --noconfirm --needed xorg-server-xvfb mesa fontconfig ttf-dejavu >/dev/null 2>&1
 
 cd /tmp
 cp Markpad.AppImage app.AppImage
@@ -75,7 +81,11 @@ echo "--- exit code: $rc ---"
 # `timeout` returns 124 when it had to stop the process, which is the pass: the
 # app was still running when its time was up.
 if [ "$rc" != "124" ]; then
-	echo "::error::Markpad exited on its own after less than ${SECONDS_TO_LIVE}s (exit $rc). It should still have been running." >&2
+	if grep -q 'error while loading shared libraries' /tmp/output; then
+		echo "::error::the container is missing a library the AppImage expects the host to provide. Add it to the pacman line in scripts/smoke-appimage.sh; this is the test's environment, not a defect in the build." >&2
+	else
+		echo "::error::Markpad exited on its own after less than ${SECONDS_TO_LIVE}s (exit $rc). It should still have been running." >&2
+	fi
 	exit 1
 fi
 
