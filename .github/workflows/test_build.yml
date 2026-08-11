@@ -140,11 +140,25 @@ jobs:
       # Writing only on master pins the total at one set. Pull requests restore
       # from master and save nothing, which is also what makes the push trigger
       # above worth its runner time: it is the only writer.
+      # rust-cache's key ends `-Linux-x64`: `runner.os`, not the image. A cache
+      # written on ubuntu-22.04 restores onto ubuntu-24.04 as a full match --
+      # measured, `v0-rust-linux-build-test-Linux-x64-e8b3ee54-a2c94f3a` on both
+      # -- and cargo fingerprints do not track system libraries, so the
+      # webkit2gtk-sys build script's probe of jammy's headers would be reused
+      # against noble's without anything noticing.
+      #
+      # `$ImageOS` is `ubuntu22`/`ubuntu24`/`macos15`, so this invalidates the
+      # next runner move too, including the ones `-latest` makes without a
+      # commit. Named once, from the runner itself, rather than written down.
+      - name: name the runner image for the cache key
+        run: echo "IMAGE_OS=$ImageOS" >> "$GITHUB_ENV"
+        shell: bash
+
       - name: cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ${{ matrix.os-name }}
+          key: ${{ matrix.os-name }}-${{ env.IMAGE_OS }}
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
       # Keyed on which entry this is, not on which Ubuntu it happens to be.

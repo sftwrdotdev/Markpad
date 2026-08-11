@@ -81,10 +81,17 @@ jobs:
       # against a 10 GB per-repository limit shared with ~110 npm caches, and
       # GitHub evicts least-recently-used -- so unbounded per-branch copies
       # would push out the very entries they are meant to reuse.
+      - name: name the runner image for the cache key
+        run: echo "IMAGE_OS=$ImageOS" >> "$GITHUB_ENV"
+
       - name: cache rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+          # See the note in test_build.yml: rust-cache keys on `runner.os`, so
+          # ubuntu-22.04 and ubuntu-24.04 share a cache and a build script's
+          # probe of the wrong distribution's headers gets reused.
+          key: ${{ env.IMAGE_OS }}
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
       - name: install dependencies (ubuntu only)

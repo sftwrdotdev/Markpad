@@ -133,6 +133,29 @@ test('a step asks which matrix entry it is, not which runner it landed on', () =
 	}
 });
 
+test('a cargo cache cannot outlive the runner image that filled it', () => {
+	// rust-cache's key ends `-Linux-x64`: `runner.os`, not the image. Measured on
+	// two runs of the same job, one per Ubuntu, the key was identical --
+	// `v0-rust-linux-build-test-Linux-x64-e8b3ee54-a2c94f3a` -- so moving the
+	// runner would have restored a jammy-built target/ into a noble build as a
+	// full match. Cargo fingerprints do not track system libraries: the
+	// webkit2gtk-sys build script's probe of the wrong distribution's headers
+	// would have been reused with nothing to notice.
+	//
+	// `$ImageOS` comes from the runner, so this also covers the image changing
+	// under `macos-latest` and `windows-latest`, which happens without a commit.
+	for (const [name, source] of [
+		['test.yml', testWorkflow],
+		['test_build.yml', testBuildWorkflow],
+	] as const) {
+		const cacheStep = sliceFrom(source, 'uses: Swatinem/rust-cache@v2');
+		const key = /^\s*key:\s*(.+)$/m.exec(cacheStep)?.[1];
+		assert.ok(key, `${name} caches cargo without a key naming the runner image`);
+		assert.match(key, /env\.IMAGE_OS/, `${name}'s cache key does not change when the runner image does`);
+		assert.match(source, /IMAGE_OS=\$ImageOS/, `${name} never reads $ImageOS into the environment`);
+	}
+});
+
 test('the updater feed publishes the keys an installed Markpad can ask for', () => {
 	// tauri-plugin-updater tries `{os}-{arch}-{installer}` and then `{os}-{arch}`,
 	// and only tries the first when the binary knows its own bundle type. Ours
