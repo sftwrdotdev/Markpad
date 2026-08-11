@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "Markpad"
-version = "2.7.2"
+version = "2.7.3"
 dependencies = [
  "arboard",
  "base64 0.22.1",

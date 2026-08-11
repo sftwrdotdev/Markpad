@@ -172,14 +172,22 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 
 ## Versioning
 
-When bumping the app version, update both files in the same commit:
+When bumping the app version, update all three files in the same commit:
 
 - `package.json` `version`
 - `src-tauri/Cargo.toml` `version`
+- `src-tauri/Cargo.lock` — not by hand: run `cargo update -p Markpad --precise
+  <version>` in `src-tauri` (or any `cargo check` there, which rewrites it as a
+  side effect) and commit the one-line diff.
 
 Tauri runtime reads `app.package_info().version` from `Cargo.toml`, while the
 Tauri config and the frontend rely on `package.json`. Keeping them in sync is
 mandatory for `tauri-plugin-updater` to compare versions correctly.
+
+The lock file is the one that gets forgotten, because nothing in the editing
+loop reads it — a bump without it lands green and stays wrong until the next
+person's `cargo build` rewrites the line and leaves them a dirty working tree.
+`scripts/versionSync.test.ts` asserts the three agree.
 
 ## Releasing
 
