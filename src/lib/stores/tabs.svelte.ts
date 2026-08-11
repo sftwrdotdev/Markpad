@@ -154,6 +154,26 @@ export interface Tab {
 	 */
 	isTruncated?: boolean;
 	/**
+	 * The `rawContent` the preview in `content` was rendered from — the answer
+	 * to "is what is on screen still this document?".
+	 *
+	 * Its whole job is to let the render effect skip work: a re-render rebuilds
+	 * the article and takes the reader's scroll position, fold state and find
+	 * highlights with it, so the effect renders only when this does not match
+	 * `rawContent`. Which also makes it a claim anyone may make on the
+	 * preview's behalf: `toggleTaskCheckbox` updates the DOM by hand and then
+	 * says so here, and that is the one place outside the viewer allowed to.
+	 *
+	 * Not the same question as `content !== ''`. `content` is the rendered
+	 * HTML and is allowed to lag; this says whether it lags.
+	 *
+	 * Optional, and absent is the safe direction: "nothing has been rendered
+	 * from this buffer", which costs one render. It lived on the tab as an
+	 * undeclared `_lastRenderedRawContent` reached through `as any` from two
+	 * files, which is the same field with nothing to check the spelling of it.
+	 */
+	previewedRawContent?: string;
+	/**
 	 * `rawContent` was decoded with U+FFFD substitutions because NO encoding
 	 * could read the file: a truncated multi-byte tail, or bytes that are not
 	 * text at all. Not merely "not UTF-8" — a legacy codepage is detected and
