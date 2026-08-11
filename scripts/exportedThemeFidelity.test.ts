@@ -148,3 +148,32 @@ test('a ticked task dims its content once, not once per nesting level', () => {
 		);
 	}
 });
+
+test('the marker rules are pseudo-elements, which is what makes them apply', () => {
+	// `summary:marker` sat in the stylesheet as a single colon. `:marker` is not
+	// a pseudo-class, so the rule matched nothing and the disclosure triangle was
+	// never hidden -- silently, for as long as it had been there. esbuild, which
+	// vite 6 minifies with, passes it through; lightningcss, which vite 8 uses,
+	// rejects it by name:
+	//
+	//   'marker' is not recognized as a valid pseudo-class.
+	//   Did you mean '::marker' (pseudo-element) or is this a typo?
+	//
+	// A rule that matches nothing is invisible in every direction: nothing renders
+	// differently, nothing errors, and the CSS reads as if it works.
+	//
+	// Only the pseudo-elements with no legacy spelling. `:before`, `:after`,
+	// `:first-line` and `:first-letter` are CSS2 and every browser still accepts
+	// one colon -- this file inherits several from github-markdown-css and they
+	// work. The ones CSS3 introduced have no such form: written with one colon
+	// they parse as an unknown pseudo-class and the whole rule is discarded.
+	const styles = readSource('src/styles.css');
+	const singleColon = styles
+		.split('\n')
+		.filter((line) => /[^:]:(marker|placeholder|selection|backdrop|file-selector-button)\b/.test(line));
+	assert.deepEqual(
+		singleColon,
+		[],
+		'a CSS3 pseudo-element is written with one colon here, so the rule matches nothing',
+	);
+});
