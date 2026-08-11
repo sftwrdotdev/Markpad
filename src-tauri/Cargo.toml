@@ -48,7 +48,7 @@ reqwest = "0.12"
 zip = { version = "2.1", default-features = false, features = ["deflate", "time"] }
 opener = { version = "0.7", features = ["reveal"] }
 font-kit = "0.14"
-base64 = "0.22"
+base64 = "0.23"
 arboard = "3"
 image = { version = "0.25", default-features = false, features = ["png"] }
 chardetng = "1"
