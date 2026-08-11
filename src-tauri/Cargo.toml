@@ -44,7 +44,7 @@ http-range = "0.1"
 percent-encoding = "2"
 tauri-utils = "2"
 
-reqwest = "0.12"
+reqwest = "0.13"
 zip = { version = "2.1", default-features = false, features = ["deflate", "time"] }
 opener = { version = "0.7", features = ["reveal"] }
 font-kit = "0.14"
