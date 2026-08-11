@@ -62,9 +62,19 @@ The failure is quiet and unfixable from here: `latest.json` 404s, the updater re
 
 The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. The same applies to [`snapcraft.yaml`](snapcraft.yaml), which builds the snap outside GitHub Actions; `scripts/releaseWorkflow.test.ts` guards both.
 
-1. **Bump version in both files** (mandatory — Tauri reads runtime version from `Cargo.toml`):
-   - [`package.json`](package.json) `version`
-   - [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml) `[package].version`
+1. **Bump the version:**
+   ```bash
+   npm run release X.Y.Z
+   ```
+   It writes all three files the version lives in and checks they agree —
+   [`package.json`](package.json), [`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)
+   `[package].version`, and the `Markpad` entry in
+   [`src-tauri/Cargo.lock`](src-tauri/Cargo.lock). The lock is the one that gets
+   forgotten by hand: nothing in the editing loop reads it, so a bump without it
+   lands green and stays wrong until someone's `cargo build` rewrites the line.
+   That is how the 2.7.2/2.7.3 skew was found, one release after it shipped.
+
+   It stops there. Committing, tagging and dispatching stay below, on purpose.
 2. **Commit, tag, push:**
    ```bash
    git commit -am "chore: bump version to X.Y.Z"

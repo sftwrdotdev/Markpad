@@ -14,7 +14,8 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"build:test-bundle": "node scripts/build-test-bundle.mjs",
-		"tauri": "tauri"
+		"tauri": "tauri",
+		"release": "node scripts/release.mjs"
 	},
 	"license": "BSD-3-Clause",
 	"dependencies": {

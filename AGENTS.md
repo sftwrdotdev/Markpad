@@ -172,7 +172,8 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 
 ## Versioning
 
-When bumping the app version, update all three files in the same commit:
+When bumping the app version, run `npm run release X.Y.Z` — it writes all
+three and checks they agree. By hand, all three go in the same commit:
 
 - `package.json` `version`
 - `src-tauri/Cargo.toml` `version`
