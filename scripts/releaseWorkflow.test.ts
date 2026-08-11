@@ -5,6 +5,7 @@ import { readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const workflow = readSource('.github/workflows/build.yml');
 const publishWorkflow = readSource('.github/workflows/publish-packages.yml');
+const snapWorkflow = readSource('.github/workflows/test_snap.yml');
 const testWorkflow = readSource('.github/workflows/test.yml');
 const testBuildWorkflow = readSource('.github/workflows/test_build.yml');
 const releasing = readSource('RELEASING.md');
@@ -295,6 +296,21 @@ test('a publishing step cannot report success while failing', () => {
 	// `sudo snap install markpad`. The Snap Store served 2.6.11 throughout.
 	assert.doesNotMatch(publishWorkflow, /continue-on-error/);
 	assert.doesNotMatch(workflow, /continue-on-error/);
+});
+
+test('the snap build is sampled on a schedule, not only when we edit it', () => {
+	// The path filter catches us breaking snapcraft.yaml. It cannot catch
+	// snapcraft breaking it, and that is the failure that happened: the Snap Store
+	// served 2.6.11 for three months and six versions because `snap install
+	// snapcraft --classic` went 8.14.5 -> 9.0.1 between two releases and the 9.x
+	// rust plugin refused a file nobody had touched. No commit was involved, so no
+	// path filter could have fired.
+	//
+	// Asserted as "there is a schedule", not as a particular cron: how often is a
+	// judgement, having any sampling at all is not.
+	const on = sliceBetween(snapWorkflow, '\non:', '\nconcurrency:');
+	assert.match(on, /^\s*schedule:$/m, 'nothing runs the snap build unless somebody edits it');
+	assert.match(on, /cron:/);
 });
 
 test('the AppImage strip is a script, and its excludelist has one home', () => {

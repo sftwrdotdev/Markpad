@@ -21,6 +21,24 @@ on:
     paths:
       - snapcraft.yaml
       - .github/workflows/test_snap.yml
+  # The pull request trigger above catches us breaking this. It cannot catch
+  # snapcraft breaking it, and that is what actually happened: the Snap Store
+  # served 2.6.11 for three months and six versions because `snap install
+  # snapcraft --classic` went from 8.14.5 to 9.0.1 between two releases and the
+  # 9.x rust plugin refused a snapcraft.yaml nobody had touched. No commit here
+  # was involved, so no path filter could ever have fired.
+  #
+  # Once a month is the sampling rate for that. The pack is ~6 minutes now that
+  # it repackages the release's .deb instead of compiling, so twelve runs a year
+  # is not a budget question; the point is that a snapcraft 10 lands on a
+  # scheduled run rather than on a release.
+  #
+  # It fails to whoever GitHub notifies for scheduled workflows, which is worse
+  # than a red pull request and better than a green release. If that stops being
+  # read, the answer is to make it louder rather than to delete it -- the
+  # alternative is what the three months were.
+  schedule:
+    - cron: '0 6 1 * *'
   workflow_dispatch:
 
 concurrency:
