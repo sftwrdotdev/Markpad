@@ -15,7 +15,7 @@
 // Only the members the test calls are declared. This is not an attempt to type
 // Monaco's internals in general.
 
-declare module 'monaco-editor/esm/vs/editor/common/config/editorOptions.js' {
+declare module 'monaco-editor/editor/common/config/editorOptions.js' {
 	/** Sentinel default for the options gated on workspace trust. */
 	export const inUntrustedWorkspace: 'inUntrustedWorkspace';
 
@@ -60,7 +60,7 @@ declare module 'monaco-editor/esm/vs/editor/common/config/editorOptions.js' {
 	};
 }
 
-declare module 'monaco-editor/esm/vs/base/common/strings.js' {
+declare module 'monaco-editor/base/common/strings.js' {
 	/**
 	 * Monaco's own predicate for U+2028 / U+2029 — the one whose result the
 	 * piece-tree buffer stores as `mightContainUnusualLineTerminators`, which is
@@ -69,7 +69,7 @@ declare module 'monaco-editor/esm/vs/base/common/strings.js' {
 	export function containsUnusualLineTerminators(str: string): boolean;
 }
 
-declare module 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHighlighter.js' {
+declare module 'monaco-editor/editor/common/services/unicodeTextModelHighlighter.js' {
 	export interface UnicodeHighlightRange {
 		startLineNumber: number;
 		startColumn: number;
@@ -123,7 +123,7 @@ declare module 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHigh
 // reached at the modules that define them, plus the decoder that reads what they
 // produce.
 
-declare module 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js' {
+declare module 'monaco-editor/editor/common/services/editorBaseApi.js' {
 	/** Modifier bits, and the chord-sequence packer. Identical to `monaco.KeyMod`. */
 	export const KeyMod: {
 		readonly CtrlCmd: number;
@@ -134,7 +134,7 @@ declare module 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js' {
 	};
 }
 
-declare module 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js' {
+declare module 'monaco-editor/editor/common/standalone/standaloneEnums.js' {
 	/**
 	 * Typed as an index rather than member by member: the test reads
 	 * `KeyCode.KeyA + n` and `KeyCode.Digit0 + n` to build its key table, and
@@ -151,7 +151,7 @@ declare module 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js
 // The text buffer itself, for `editorLineEnding.test.ts`. A `TextModel` needs a
 // browser to build; the buffer under it does not, and it is where the EOL of a
 // document is decided — `createTextBufferFactory` is these three calls.
-declare module 'monaco-editor/esm/vs/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder.js' {
+declare module 'monaco-editor/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder.js' {
 	/** Only the two members the test reads; this is not the whole buffer API. */
 	export interface TextBuffer {
 		getEOL(): '\n' | '\r\n';
@@ -171,14 +171,14 @@ declare module 'monaco-editor/esm/vs/editor/common/model/pieceTreeTextBuffer/pie
 	}
 }
 
-declare module 'monaco-editor/esm/vs/base/common/keyCodes.js' {
+declare module 'monaco-editor/base/common/keyCodes.js' {
 	export const KeyCodeUtils: {
 		/** The printable name Monaco gives a KeyCode — `KeyE` -> "E", `Period` -> ".". */
 		toString(keyCode: number): string;
 	};
 }
 
-declare module 'monaco-editor/esm/vs/base/common/keybindings.js' {
+declare module 'monaco-editor/base/common/keybindings.js' {
 	/** One keystroke of a resolved keybinding. */
 	export interface KeyCodeChord {
 		readonly ctrlKey: boolean;
@@ -199,7 +199,7 @@ declare module 'monaco-editor/esm/vs/base/common/keybindings.js' {
 	): { readonly chords: readonly KeyCodeChord[] } | null;
 }
 
-declare module 'monaco-editor/esm/vs/editor/common/core/wordHelper.js' {
+declare module 'monaco-editor/editor/common/core/wordHelper.js' {
 	/**
 	 * The `wordSeparators` default. The editor does not set that option, so this
 	 * is the string its word classifier is actually built with.
@@ -207,7 +207,7 @@ declare module 'monaco-editor/esm/vs/editor/common/core/wordHelper.js' {
 	export const USUAL_WORD_SEPARATORS: string;
 }
 
-declare module 'monaco-editor/esm/vs/editor/common/core/wordCharacterClassifier.js' {
+declare module 'monaco-editor/editor/common/core/wordCharacterClassifier.js' {
 	/**
 	 * Decides where words begin and end for ⌥←/→, double-click-to-select and
 	 * ⌥⌫. `intlSegmenterLocales` is `wordSegmenterLocales`: a non-empty list

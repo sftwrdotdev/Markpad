@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { containsUnusualLineTerminators } from 'monaco-editor/esm/vs/base/common/strings.js';
+import { containsUnusualLineTerminators } from 'monaco-editor/base/common/strings.js';
 import {
 	EditorOptions,
 	inUntrustedWorkspace,
 	type UnicodeHighlightOptions,
-} from 'monaco-editor/esm/vs/editor/common/config/editorOptions.js';
+} from 'monaco-editor/editor/common/config/editorOptions.js';
 import {
 	UnicodeTextModelHighlighter,
 	type UnicodeHighlightResult,
-} from 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHighlighter.js';
+} from 'monaco-editor/editor/common/services/unicodeTextModelHighlighter.js';
 import ts from 'typescript';
 
 import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
@@ -596,12 +596,12 @@ test('the character that opens that dialog is one prose really carries', () => {
 // asserting the option is spelled correctly in Editor.svelte.
 
 const { getMapForWordSeparators } = await import(
-	'monaco-editor/esm/vs/editor/common/core/wordCharacterClassifier.js'
+	'monaco-editor/editor/common/core/wordCharacterClassifier.js'
 );
 // Monaco's own default — the editor does not set `wordSeparators`, so this is
 // what the classifier is built with in the app.
 const { USUAL_WORD_SEPARATORS } = await import(
-	'monaco-editor/esm/vs/editor/common/core/wordHelper.js'
+	'monaco-editor/editor/common/core/wordHelper.js'
 );
 
 /** Every word boundary Monaco would find on `line`, walking it end to end. */
