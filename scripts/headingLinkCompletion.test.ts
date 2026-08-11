@@ -19,12 +19,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
 
 const editorSource = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
-const rustSource = readSource(new URL('../src-tauri/src/lib.rs', import.meta.url));
+const rustSource = readRustBackend();
 
 test('an inline link destination after # wants the slug', () => {
 	assert.equal(headingLinkContext('See [the diagrams](#'), 'slug');

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
-const tauriLib = readSource('src-tauri/src/lib.rs');
+const tauriLib = readRustBackend();
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 const menuSetup = sliceBetween(

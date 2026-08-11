@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
-const backend = readSource('src-tauri/src/lib.rs');
+const backend = readRustBackend();
 
 test('startup reuses the window handle returned by the builder', () => {
 	assert.match(backend, /let window = window_builder\.build\(\)\?;/);

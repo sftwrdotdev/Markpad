@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 const runtime = readSource('src-tauri/src/window_runtime.rs');
 const session = readSource('src/lib/sessions/windowSession.svelte.ts');
@@ -48,10 +48,10 @@ test('moving to an existing window uses the acknowledged transfer protocol', () 
 // `async` is invisible until "Move to New Window" freezes a Windows user's app
 // hard enough to need a force-kill. Issue #356.
 test('create_transfer_window is async so window creation cannot deadlock the main thread', () => {
-	const lib = readSource('src-tauri/src/lib.rs');
+	const lib = readRustBackend();
 
-	assert.match(lib, /#\[tauri::command\]\nasync fn create_transfer_window\(/);
-	assert.doesNotMatch(lib, /#\[tauri::command\]\nfn create_transfer_window\(/);
+	assert.match(lib, /#\[tauri::command\]\n(?:pub )?async fn create_transfer_window\(/);
+	assert.doesNotMatch(lib, /#\[tauri::command\]\n(?:pub )?fn create_transfer_window\(/);
 });
 
 test('window organization exposes move, merge, and carry actions', () => {

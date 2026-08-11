@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { functionSource, offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 const styles = readSource('src/styles.css');
@@ -190,7 +190,7 @@ test('the menu bar copies the same clipboard the other two routes do', () => {
 	// while ⌘C and the context menu put Markdown. Removed once on the reasoning
 	// that Monaco's copy had become unreachable; it had not.
 	assert.match(readSource('src/lib/components/Editor.svelte'), /copyWithSyntaxHighlighting: false,/);
-	assert.match(readSource('src-tauri/src/lib.rs'), /PredefinedMenuItem::copy/, 'precondition: the menu bar route exists');
+	assert.match(readRustBackend(), /PredefinedMenuItem::copy/, 'precondition: the menu bar route exists');
 });
 
 

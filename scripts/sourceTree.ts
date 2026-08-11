@@ -126,6 +126,36 @@ export function readSourceFiles(dir: string): SourceFile[] {
 	return walkSourceFiles(dir).map((path) => ({ path, text: readSource(path) }));
 }
 
+/**
+ * Every `.rs` file of the backend, repo-relative and sorted.
+ *
+ * Named rather than listed because the list changes: `lib.rs` was one 5,500
+ * line file until it was split into `fs_safety`/`markdown`/`commands`/`app`,
+ * and every test that had spelled `src-tauri/src/lib.rs` went red on a change
+ * that moved no code. A test asking "does the backend do X" is asking about
+ * the crate, not about which file the author last put X in.
+ */
+export function rustSourceFiles(): string[] {
+	const dir = new URL('../src-tauri/src/', import.meta.url);
+	return readdirSync(dir)
+		.filter((name) => name.endsWith('.rs'))
+		.sort()
+		.map((name) => `src-tauri/src/${name}`);
+}
+
+/**
+ * The whole Rust backend as one text, in filename order.
+ *
+ * For the assertions that are about the crate rather than about a file. An
+ * anchor pair handed to `sliceBetween` still has to be unique across the
+ * concatenation, which is the same requirement it had within one file.
+ */
+export function readRustBackend(): string {
+	return rustSourceFiles()
+		.map((path) => readSource(new URL(`../${path}`, import.meta.url)))
+		.join('\n');
+}
+
 /** src-relative paths of the files that contain `marker`, sorted. */
 export function filesMatching(sources: SourceFile[], marker: RegExp): string[] {
 	return sources
