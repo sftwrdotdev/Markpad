@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { buildExportDocument, exportThemeAttribute } from '../src/lib/utils/export.js';
 import { DEFAULT_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
-import { readSource } from './sourceTree.js';
+import { readSource, sliceFrom } from './sourceTree.js';
 
 const styles = readSource('src/styles.css');
 const exportSource = readSource('src/lib/utils/export.ts');
@@ -112,4 +112,39 @@ test('the copied stylesheet and the article still land in the document', () => {
 	assert.match(doc, /<style>[\s\S]*\.sentinel \{ color: red; \}/);
 	assert.match(doc, /<article class="markdown-body">\n<p id="sentinel">hello<\/p>/);
 	assert.match(doc, /^<!DOCTYPE html>\n/);
+});
+
+test('a ticked task dims its content once, not once per nesting level', () => {
+	// `opacity` composites rather than inherits, so a rule matching every
+	// descendant multiplies itself down the tree. Words survive that at one or two
+	// levels deep and KaTeX does not: it nests twelve spans, so a formula in a
+	// ticked item rendered at 0.65^12 = 0.006 and disappeared while the text beside
+	// it merely faded. samples/katex-stress.md keeps a ticked and an unticked task
+	// item next to each other so the difference is visible rather than arguable.
+	//
+	// Scanned across the whole stylesheet rather than inside one rule, because the
+	// first attempt at this fixed `:has(:checked)` -- labelled in the file as the
+	// fallback for reload and initial state -- and left `.task-done`, which is the
+	// class the app actually sets. Both carried it. An assertion scoped to the
+	// block being edited passed, and nothing a user sees had changed.
+	const styles = readSource('src/styles.css');
+	const universal = styles
+		.split('\n')
+		.filter((line) => /(task-done|data-task-checkbox\]:checked\))\s*\*\s*[,{]/.test(line));
+	assert.deepEqual(
+		universal,
+		[],
+		'a completed task applies opacity to every descendant; deep markup compounds it away',
+	);
+
+	// And both paths still dim something -- deleting the rules would pass the
+	// assertion above for the wrong reason.
+	for (const marker of ['li.task-done .task-text', ':checked) .task-text']) {
+		const block = sliceFrom(styles, marker);
+		assert.match(
+			block.slice(0, 300),
+			/opacity:\s*0?\.\d+/,
+			`the rule at "${marker}" stopped dimming anything at all`,
+		);
+	}
 });
