@@ -5,7 +5,7 @@
  * outline's fold button, and find opening whatever is hiding a match. Each of
  * them used to reach the state by a different route, and the routes disagreed.
  *
- * - The heading chevron wrote `tab.collapsedHeaders`; the callout title wrote
+ * - The heading chevron wrote the tab's fold set; the callout title wrote
  *   `classList.toggle('is-collapsed')` and nothing else, so a folded callout
  *   sprang open again on the next render — which is every keystroke in split
  *   view. Two affordances that look identical, one of them amnesiac.
@@ -31,8 +31,8 @@
  * why the stored field survived this change unaltered in meaning for every
  * heading. Callouts do not: `> [!note]-` starts closed. Storing "closed" would
  * make a callout the reader OPENED indistinguishable from one they never
- * touched, and the next render would shut it again — symptom A over, with the
- * sign flipped. Storing the deviation costs one `!==` and answers both.
+ * touched, and the next render would shut it again — the callout defect above,
+ * with the sign flipped. Storing the deviation costs one `!==` and answers both.
  */
 
 /** Where `assignFoldKey` leaves its answer for every later reader. */

@@ -297,7 +297,7 @@ test('the HTML export renders every heading fold open', () => {
 	// the Set it passes is the fold state that render is given. An empty one is
 	// what makes every section expanded.
 	assert.match(exportSource, /processMarkdownHtml\(safeHtml, ctx\.tabPath, new Set\(\)\)/);
-	assert.doesNotMatch(exportSource, /processMarkdownHtml\([^)]*collapsedHeaders/);
+	assert.doesNotMatch(exportSource, /processMarkdownHtml\([^)]*foldOverrides/);
 });
 
 test('a callout collapsed in the source is still readable in an exported file', () => {
