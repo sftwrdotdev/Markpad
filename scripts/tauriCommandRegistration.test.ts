@@ -22,7 +22,7 @@ function declaredCommands(): { name: string; file: string }[] {
 function registeredCommands(): Set<string> {
 	// `sliceBetween` keeps its start anchor, so the first comma-separated entry
 	// would otherwise be `generate_handler![\n  clipboard_write_text`.
-	const handler = sliceBetween(readSource('src-tauri/src/lib.rs'), 'generate_handler![', '])').replace(
+	const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'generate_handler![', '])').replace(
 		'generate_handler![',
 		'',
 	);

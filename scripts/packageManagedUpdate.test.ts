@@ -44,7 +44,7 @@ test('only Linux is gated', () => {
 	// anything in place, and macOS is the one platform where bundle_type()
 	// answers without the build-time patch. Gating either would break a working
 	// updater for 95% of downloads.
-	const command = sliceBetween(rust, 'fn self_update_supported', '\nfn get_os_type');
+	const command = sliceBetween(rust, 'fn self_update_supported', '\npub fn get_os_type');
 	assert.match(command, /#\[cfg\(target_os = "linux"\)\]/);
 	assert.match(command, /appimage\.is_some\(\)/);
 	assert.match(command, /#\[cfg\(not\(target_os = "linux"\)\)\]/);
