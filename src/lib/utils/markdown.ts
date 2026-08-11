@@ -23,8 +23,9 @@ const alertIcons: Record<string, string> = {
  * Deliberately not the same function as `resolveHrefRelativePath` in
  * ./markdownLinks.ts, which resolves an *href*. The two were named alike and
  * differ in three ways that are each right for one caller and wrong for the
- * other, so `three path resolvers stay three` in scripts/exportHtml.test.ts
- * pins the differences rather than papering over them:
+ * other, so `the path resolver for documents and the one for hrefs differ on
+ * purpose` in scripts/exportHtml.test.ts pins the differences rather than
+ * papering over them:
  *
  *   - `\` separates here, in the relative half too: a Windows author writes
  *     `![](img\a.png)` and means a directory. In an href `\` is an ordinary
@@ -167,7 +168,8 @@ function extractDisplayMathBlock(element: Element): string | null {
  * That in turn is why `\$` arrives here still escaped. comrak would have
  * resolved it, and then `\$\$x\$\$` and `$$x$$` would be the same eight bytes
  * and the reader's literal dollars would be typeset. `mask_math_spans` in
- * src-tauri/src/lib.rs hides the escape from comrak for exactly this moment.
+ * src-tauri/src/markdown.rs hides the escape from comrak for exactly this
+ * moment.
  */
 function convertInlineMathDelimiters(text: string): string {
 	const parts: string[] = [];
