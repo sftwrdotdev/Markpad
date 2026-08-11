@@ -197,29 +197,26 @@ jobs:
 
       - name: Install Linux dependencies
         if: matrix.os == 'linux'
-        # One list, one apt call. This was two `apt-get install` invocations
-        # naming 21 packages between them, five of them in both --
-        # libappindicator3-dev, librsvg2-dev, patchelf, rpm and
-        # libwebkit2gtk-4.1-dev. Same 16 packages, said once.
+        # The same list test_build.yml installs, which is what makes it a
+        # check: a pull request now compiles and bundles against exactly the
+        # packages a release does. An assertion holds the two together.
+        #
+        # It was sixteen. Six of those apt installs anyway --
+        # libwebkit2gtk-4.1-dev depends on libwebkit2gtk-4.1-0,
+        # libjavascriptcoregtk-4.1-dev, gir1.2-webkit2-4.1 and libgtk-3-dev,
+        # and those pull the remaining two -- and four libxcb *-dev packages
+        # and xdg-utils appear in no Tauri v2 prerequisite list. Run
+        # 31487547674 built the .deb, the .rpm and the AppImage on
+        # ubuntu-24.04 with the six below and nothing else.
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            gir1.2-javascriptcoregtk-4.1 \
-            gir1.2-webkit2-4.1 \
-            libappindicator3-dev \
             libgtk-3-dev \
-            libjavascriptcoregtk-4.1-0 \
-            libjavascriptcoregtk-4.1-dev \
-            librsvg2-dev \
-            libwebkit2gtk-4.1-0 \
             libwebkit2gtk-4.1-dev \
-            libxcb1-dev \
-            libxcb-render0-dev \
-            libxcb-shape0-dev \
-            libxcb-xfixes0-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
             patchelf \
-            rpm \
-            xdg-utils
+            rpm
 
       - name: Install Frontend Dependencies
         run: npm ci
