@@ -29,7 +29,7 @@
 		"highlightjs-svelte": "^1.0.6",
 		"katex": "^0.18.4",
 		"mermaid": "^11.16.0",
-		"monaco-editor": "^0.56.0",
+		"monaco-editor": "^0.55.1",
 		"monaco-vim": "^0.4.4",
 		"yaml": "^2.9.0"
 	},

@@ -242,3 +242,60 @@ test('no source file outside Editor.svelte reintroduces a static Monaco import',
 
 	assert.deepEqual(offenders, []);
 });
+
+test("monaco-vim's one import into monaco still resolves", () => {
+	// monaco-vim 0.4.4 is the latest release and is unmaintained. It imports
+	// exactly one monaco module, and without an extension:
+	//
+	//   monaco-editor/esm/vs/editor/editor.api
+	//
+	// monaco-editor 0.55 maps `"./*": "./*"` -- an identity -- so a bundler adds
+	// `.js` on the filesystem and finds it. 0.56 changed it to
+	// `"./*": "./esm/vs/*.js"`, which prepends a prefix the specifier already
+	// carries: the path doubles to `esm/vs/esm/vs/…` and nothing is there. Once a
+	// package declares `exports`, a resolver may not fall back to the filesystem
+	// path it would otherwise have used, so there is no recovery.
+	//
+	// The 0.56 bump built clean, passed 976 tests on three platforms, and shipped
+	// vim mode dead. Nothing here loads monaco-vim, and no build step resolved it
+	// strictly enough to notice. So this applies the map by hand and asks whether
+	// the file is there -- which is the whole of what went wrong.
+	const monacoPkg = JSON.parse(readSource('node_modules/monaco-editor/package.json'));
+	const patterns = Object.entries((monacoPkg.exports ?? {}) as Record<string, unknown>).filter(
+		([key]) => key.includes('*'),
+	);
+
+	// One build of the package rather than a walk of its dist: the .mjs, .cjs and
+	// .umd.js are the same source through three bundlers and name the same import.
+	const specifiers = new Set<string>();
+	for (const match of readSource('node_modules/monaco-vim/dist/index.mjs').matchAll(
+		/['"](monaco-editor\/[^'"]+)['"]/g,
+	)) {
+		specifiers.add(match[1]);
+	}
+	assert.ok(specifiers.size > 0, 'found no monaco imports in monaco-vim; this check has nothing to ask about');
+
+	const unresolvable: string[] = [];
+	for (const specifier of specifiers) {
+		const subpath = `.${specifier.slice('monaco-editor'.length)}`;
+		let target: string | null = null;
+		for (const [pattern, value] of patterns) {
+			const [before, after] = pattern.split('*');
+			if (!subpath.startsWith(before) || !subpath.endsWith(after)) continue;
+			const star = subpath.slice(before.length, subpath.length - after.length);
+			target = String(value).replace('*', star);
+			break;
+		}
+		if (!target) continue;
+		const base = `node_modules/monaco-editor/${target.slice(2)}`;
+		// The extensions a bundler will try after the map has had its say.
+		if (![base, `${base}.js`, `${base}.mjs`].some((candidate) => existsSync(candidate))) {
+			unresolvable.push(`${specifier} → ${target}`);
+		}
+	}
+	assert.deepEqual(
+		unresolvable,
+		[],
+		"monaco-editor's exports map sends a monaco-vim import somewhere that does not exist; vim mode will be dead",
+	);
+});
