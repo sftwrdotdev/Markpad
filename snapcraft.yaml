@@ -45,58 +45,54 @@ apps:
       - home
 
 parts:
-  # snapcraft's rust plugin refuses to build unless it can see rustup, and it
-  # looks for it in exactly one place other than PATH: a part named `rust-deps`
-  # that the rust part depends on. Naming the snap in `build-snaps` below is not
-  # enough, and had not been since v2.6.11 --
+  # `rustup` is an ordinary apt package here, and that is load-bearing twice
+  # over. Two release-blocking failures and two runs of test_snap.yml went into
+  # narrowing it down to the one carrier that satisfies both constraints; both
+  # of the other two are documented here so nobody re-tries them.
   #
-  #   Environment validation failed for part 'markpad': 'rustup' not found and
-  #   part 'markpad' does not depend on a part named 'rust-deps' that would
-  #   satisfy the dependency.
+  #   `build-snaps: [rustup/latest/stable]`, which is what v2.7.3 shipped:
+  #   right place in the lifecycle, wrong kind of binary. `extensions: [gnome]`
+  #   puts the gnome SDK's libraries on LD_LIBRARY_PATH for every part, and a
+  #   classic snap's binary is linked against its own runtime, so it resolved
+  #   libc.so.6 out of the SDK and died on a symbol only ever resolved between
+  #   a matched libc.so.6 and ld.so --
   #
-  # -- which the release workflow swallowed under `continue-on-error`, so the
-  # Snap Store went on serving 2.6.11 for three months and six versions while
-  # every release still told people to install it. The publishing step no longer
-  # swallows anything (.github/workflows/publish-packages.yml); this is the
-  # failure it was hiding.
+  #     /snap/rustup/1504/bin/rustup: symbol lookup error:
+  #     /snap/gnome-46-2404-sdk/current/usr/lib/x86_64-linux-gnu/libc.so.6:
+  #     undefined symbol: __nptl_change_stack_perm, version GLIBC_PRIVATE
   #
-  # rustup comes from rustup.rs rather than from the `rustup` snap, which is
-  # what v2.7.3 tried. `extensions: [gnome]` puts the gnome SDK's libraries on
-  # LD_LIBRARY_PATH for every part's build, and a classic snap's binary is
-  # linked against its own runtime, so the snap's rustup resolved libc.so.6 out
-  # of the SDK and died on a symbol that is only ever resolved between a
-  # matched libc.so.6 and ld.so:
+  #   -- the same shape as #463 and #499 on the AppImage side, a packaging
+  #   layer putting its own copy of a library ahead of the one that had to be
+  #   used, moved from the user's machine to the builder. `env -u
+  #   LD_LIBRARY_PATH` fixes the one call this file makes and not the ones
+  #   snapcraft makes (run 31479631082).
   #
-  #   /snap/rustup/1504/bin/rustup: symbol lookup error:
-  #   /snap/gnome-46-2404-sdk/current/usr/lib/x86_64-linux-gnu/libc.so.6:
-  #   undefined symbol: __nptl_change_stack_perm, version GLIBC_PRIVATE
+  #   The rustup.rs installer in a `rust-deps` part's override-build: right
+  #   kind of binary, wrong place in the lifecycle. `after:` orders build and
+  #   stage, not pull, so both parts pull in the same second and the rust
+  #   plugin's own pull script runs `rustup update stable` before any
+  #   override-build has executed (run 31480354438) --
   #
-  # This is the same shape as #463 and #499 on the AppImage side -- a packaging
-  # layer putting its own copy of a library ahead of the one that had to be
-  # used -- moved from the user's machine to the builder.
+  #     Pulling rust-deps / Pulling markpad     both 10:06:42
+  #     /root/parts/markpad/run/pull.sh: line 4: rustup: command not found
   #
-  # Prefixing the call with `env -u LD_LIBRARY_PATH` does fix that one line and
-  # is not enough, because snapcraft runs rustup itself when it validates the
-  # rust plugin's environment. That attempt is run 31479631082: `rust-deps`
-  # built, and `markpad` then failed with the short form of the message above,
-  # `'rustup' not found` with no rust-deps clause -- the part is found, the
-  # binary will not run. The installer's rustup is an ordinary ELF against the
-  # instance's glibc, which is the same 2.39 the Ubuntu 24.04-based SDK ships,
-  # so it does not care which of the two is ahead on the path.
-  rust-deps:
-    plugin: nil
-    build-packages:
-      - curl
-    override-build: |
-      curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain stable --no-modify-path
-      "$HOME/.cargo/bin/rustup" --version
-
+  # build-packages are installed before anything is pulled, which is the only
+  # phase early enough, and an apt binary links against the instance's glibc --
+  # the same 2.39 the Ubuntu 24.04-based SDK ships, so it does not care which
+  # of the two is ahead on the library path. It also needs no `rust-deps` part
+  # at all: that part existed to satisfy the rust plugin when rustup was not on
+  # PATH, and now it is.
+  #
+  # None of this was reachable before this file was built on a pull request.
+  # v2.6.11 was the last version to reach the Snap Store; the release workflow
+  # swallowed every failure since under `continue-on-error` and reported green
+  # for three months and six versions while the store told those users they
+  # were current.
   markpad:
-    after: [rust-deps]
     plugin: rust
     source: .
     build-packages:
+      - rustup
       - libwebkit2gtk-4.1-dev
       - build-essential
       - curl
@@ -115,7 +111,8 @@ parts:
     override-build: |
       set -e
       # This replaces the rust plugin's own build step, so the cargo the plugin
-      # would have put on PATH is not there -- name where rust-deps installed it.
+      # would have put on PATH is not there. rustup's pull script installed the
+      # toolchain under the default CARGO_HOME; name it rather than assume it.
       export PATH="$HOME/.cargo/bin:$PATH"
       craftctl set version="$(node -p "require('./package.json').version")"
       npm ci
