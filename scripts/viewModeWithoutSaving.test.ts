@@ -162,7 +162,6 @@ function buildHarness(fakes: Fakes, isEditing: boolean): Harness {
 			if (fakes.typeDuringSave) tab.rawContent = snapshot + fakes.typeDuringSave;
 			fakes.disk.set(tab.path, snapshot);
 			tab.originalContent = snapshot;
-			tab.isDirty = tab.rawContent !== snapshot;
 			return true;
 		},
 		cancelPendingAutoSave: () => {},

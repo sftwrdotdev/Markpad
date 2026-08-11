@@ -27,6 +27,12 @@ export interface TransferableTab {
 	title: string;
 	rawContent: string;
 	originalContent: string;
+	/**
+	 * Redundant with the two buffers above, and kept anyway: it is the wire
+	 * format, the strict validator on the receiving side requires it, and the
+	 * window on the other end of the broker can be running an older build that
+	 * still reads it. `buildTransferredTab` derives its own answer.
+	 */
 	isDirty: boolean;
 	isEditing: boolean;
 	isSplit: boolean;
@@ -185,7 +191,13 @@ export function buildTransferredTab(
 		rawContent: snap.rawContent,
 		originalContent: snap.originalContent,
 		scrollTop: snap.scrollTop,
-		isDirty: snap.isDirty,
+		// Recomputed from the two buffers that just arrived, not copied from
+		// `snap.isDirty`: the payload can only be believed about what it
+		// carries, and the answer is a function of what it carries. The wire
+		// field stays — see `TransferableTab.isDirty`.
+		get isDirty() {
+			return this.rawContent !== this.originalContent;
+		},
 		isEditing: snap.isEditing,
 		history: [...snap.history],
 		historyIndex: snap.historyIndex,

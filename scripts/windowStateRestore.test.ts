@@ -24,7 +24,6 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const tabs = readSource('src/lib/stores/tabs.svelte.ts');
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 const session = readSource('src/lib/sessions/windowSession.svelte.ts');
-const documentSession = readSource('src/lib/sessions/documentSession.svelte.ts');
 
 // Session restore persists WINDOW state only: which files are open, the
 // active tab, and per-tab UI (edit mode, split, scroll). Document content
@@ -138,12 +137,6 @@ test('startup restore reads content from disk, not from the snapshot', () => {
 	// 'HOME' sentinel (homeSentinelSnapshot.test.ts)
 	assert.match(restore, /if \(!hasRealFilePath\(tab\.path\)\) \{\s*\n\s*options\.dropRestoredTab\(tab\.id\);/);
 	assert.match(viewer, /await windowSession\.restore\(\);/);
-});
-
-test('the discard choice reverts the tab to its last saved content', () => {
-	const fn = sliceBetween(documentSession, 'async function canCloseTab', 'return { loadMarkdown');
-	assert.match(fn, /tab\.rawContent = tab\.originalContent;/);
-	assert.match(fn, /tab\.isDirty = false;/);
 });
 
 test('the close flow resolves dirty tabs before serializing window state', () => {

@@ -636,8 +636,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					tabManager.updateTabPath(tab.id, targetPath, targetKey);
 					options.saveRecentFile(targetPath);
 				}
+				// The baseline is the text that reached the file, not the buffer:
+				// anything typed while the write was in flight is still unsaved,
+				// and `isDirty` reads that off these two by itself.
 				tab.originalContent = snapshot;
-				tab.isDirty = tab.rawContent !== snapshot;
 				return true;
 			} catch (error) {
 				clearSelfWrite(targetPath);
@@ -713,8 +715,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// lines below set on purpose.
 				tab.isTruncated = false;
 				options.saveRecentFile(selected);
+				// Same as the ordinary save: the baseline is what was written,
+				// and edits made during the write stay dirty against it.
 				tab.originalContent = snapshot;
-				tab.isDirty = tab.rawContent !== snapshot;
 				// Said after the write rather than before the dialog: nothing is lost
 				// by proceeding, and a reader who came here to rescue unsaved text
 				// still has to know that what landed on disk stops where the load did.
@@ -788,7 +791,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		if (response === 'save') {
 			return saveContent(tabId);
 		}
-		// Kept, but not because the timer would otherwise fire: the three lines
+		// Kept, but not because the timer would otherwise fire: the two lines
 		// below are synchronous, so nothing can run between them, and the
 		// auto-save effect drops the timer on its own once `isDirty` is false.
 		// That route rests on the effect flushing ahead of a pending macrotask
@@ -798,7 +801,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// to do it on this path's behalf.
 		options.cancelPendingAutoSave(tabId);
 		tab.rawContent = tab.originalContent;
-		tab.isDirty = false;
 		return true;
 	}
 
