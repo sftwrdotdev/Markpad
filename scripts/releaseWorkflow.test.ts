@@ -31,12 +31,30 @@ test('release builds install the locked dependency graph', () => {
 	assert.doesNotMatch(workflow, /npm install/);
 });
 
-test('the snap build installs the locked dependency graph too', () => {
-	// RELEASING.md promises every release channel resolves exactly the committed
-	// lockfile. The snap is built by snapcraft, not by build.yml, so the
-	// assertion above cannot see it.
-	assert.match(snapcraft, /^\s+npm ci$/m);
-	assert.doesNotMatch(snapcraft, /npm install/);
+test('the snap ships the binary the release shipped, not a second build of it', () => {
+	// This used to assert `npm ci` in snapcraft.yaml, because the snap resolved
+	// its own dependency graph and compiled its own binary. RELEASING.md promises
+	// every channel resolves the committed lockfile, and two compilations of one
+	// source satisfy that while still producing two different binaries: a snap
+	// user and a .deb user of the same version did not have the same file.
+	//
+	// Packaging the release's .deb makes the promise structural instead. It also
+	// takes rust and node out of a file that had no other reason to hold them.
+	assert.match(snapcraft, /^\s*source-type: deb$/m);
+	for (const builder of [/npm ci/, /npm install/, /tauri build/, /rustup/, /cargo/]) {
+		assert.doesNotMatch(snapcraft, builder, `snapcraft.yaml is building, not packaging: ${builder}`);
+	}
+});
+
+test('the .deb the snap packages is the one from the release being published', () => {
+	// The whole guarantee is that the Snap Store serves what the release page
+	// serves. It rests on where this file comes from, so the download is pinned
+	// to the tag and to the exact name build.yml uploads — not `latest`, and not
+	// a pattern that could match a different architecture.
+	const snapJob = sliceFrom(publishWorkflow, '\n  snap:');
+	assert.match(snapJob, /gh release download "\$TAG"/);
+	assert.match(snapJob, /--pattern "Markpad_\$\{VERSION\}_amd64\.deb"/);
+	assert.match(snapJob, /--output markpad\.deb/);
 });
 
 test('the runtime version and the frontend version cannot drift apart', () => {
@@ -157,23 +175,6 @@ test('a publishing step cannot report success while failing', () => {
 	// `sudo snap install markpad`. The Snap Store served 2.6.11 throughout.
 	assert.doesNotMatch(publishWorkflow, /continue-on-error/);
 	assert.doesNotMatch(workflow, /continue-on-error/);
-});
-
-test('the snap build can find rustup', () => {
-	// Rust has to be installed by a phase that runs before any part is pulled,
-	// because the alternative -- a part that installs it -- is too late for the
-	// part that pulls alongside it. `after:` orders build and stage, not pull.
-	// build-packages is that phase, and apt is also the only carrier tried that
-	// is an ordinary ELF: the rustup snap is linked against its own runtime and
-	// picked the gnome SDK's libc.so.6 off LD_LIBRARY_PATH.
-	assert.match(snapcraft, /^\s*build-packages:\n(?:\s*-\s.*\n)*\s*-\s*rustup$/m);
-	// And nothing may ask snapcraft's rust plugin to validate the environment.
-	// It reported `'rustup' not found` twice with rustup present and runnable,
-	// once from the snap and once from apt. snapcraft.yaml has the run IDs.
-	assert.doesNotMatch(snapcraft, /^\s*plugin: rust$/m);
-	// apt's cargo and rustc are shims that refuse to run until a toolchain is
-	// chosen, and with no rust plugin there is no pull script choosing one.
-	assert.match(snapcraft, /^\s*rustup default stable$/m);
 });
 
 test('the AppImage strip is a script, and its excludelist has one home', () => {

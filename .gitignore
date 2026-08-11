@@ -16,3 +16,7 @@ src-tauri/output.txt
 dist/
 .cache/
 .worktrees/
+
+# Downloaded by the snap jobs; snapcraft.yaml packages it. Never committed.
+markpad.deb
+pack.log
