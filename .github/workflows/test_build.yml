@@ -77,7 +77,22 @@ jobs:
           - platform: 'macos-latest'
             args: '--target universal-apple-darwin'
             os-name: 'macos-universal'
-          - platform: 'ubuntu-22.04'
+          # The same Ubuntu build.yml releases from. This said 22.04 from the
+          # commit that created this workflow and was never revisited, while
+          # build.yml moved to 24.04 and has been maintained there -- #463's
+          # WebKitGTK unpin takes the current version from noble-updates, and
+          # #499's AppImage strip was written against what noble's linuxdeploy
+          # bundles. Two different sets of system libraries: "the pull request
+          # compiled" did not mean "the release will", and the AppImage a pull
+          # request produced bundled libraries from a distribution nothing
+          # ships.
+          #
+          # The other direction -- releasing from 22.04 -- is the usual AppImage
+          # advice, because a binary linked against an older glibc runs on more
+          # systems. It is not available here: jammy's WebKitGTK is older than
+          # noble's, and older WebKitGTK failing EGL against current Mesa is
+          # exactly what #463 was. Taking that route means solving #463 again.
+          - platform: 'ubuntu-24.04'
             args: ''
             os-name: 'linux'
           - platform: 'windows-latest'
@@ -98,7 +113,7 @@ jobs:
       - name: install rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.os-name == 'macos-universal' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       # This is the job the 12m14s measurement in test.yml came from: 2m31s of
       # it was the debug compile behind `cargo test` and 7m57s the release
@@ -132,8 +147,13 @@ jobs:
           key: ${{ matrix.os-name }}
           save-if: ${{ github.ref == 'refs/heads/master' }}
 
+      # Keyed on which entry this is, not on which Ubuntu it happens to be.
+      # This asked for `ubuntu-22.04` literally, so moving the matrix to 24.04
+      # silently skipped the step and `cargo test` failed on a missing
+      # libwebkit2gtk-4.1-dev instead (run 31486273066). `os-name` does not
+      # change when the runner does.
       - name: install dependencies (ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.os-name == 'linux'
         run: |
             sudo apt-get update
             sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf rpm

@@ -26,6 +26,18 @@ function nodeVersions(source: string): string[] {
 	return [...source.matchAll(/^\s*node-version:\s*'?([^'\s]+)'?\s*$/gm)].map((m) => m[1]);
 }
 
+/**
+ * Every versioned Ubuntu runner a workflow names, ignoring comments — naming a
+ * superseded runner is what a comment is for. `ubuntu-latest` is not versioned
+ * and not part of the fact.
+ */
+function ubuntuRunners(source: string): string[] {
+	return source
+		.split('\n')
+		.filter((line) => !/^\s*#/.test(line))
+		.flatMap((line) => [...line.matchAll(/\bubuntu-\d+\.\d+\b/g)].map((m) => m[0]));
+}
+
 test('release builds install the locked dependency graph', () => {
 	assert.match(workflow, /name: Install Frontend Dependencies\s+run: npm ci/);
 	assert.doesNotMatch(workflow, /npm install/);
@@ -92,6 +104,51 @@ test('the shipped app is built on the Node the tests ran on', () => {
 		expected,
 		'build.yml must request the same Node as the workflows that test the code it ships',
 	);
+});
+
+test('every workflow that compiles compiles on the same Ubuntu', () => {
+	// The same drift as the Node assertion above, one axis over, and it outlived
+	// it. test.yml ran on ubuntu-22.04 and test_build.yml's Linux entry said
+	// ubuntu-22.04 -- both from the commits that created them, neither revisited
+	// -- while build.yml moved to 24.04 and stayed maintained there through
+	// #463's WebKitGTK unpin and #499's AppImage strip. All three run `cargo`
+	// against the distribution's WebKitGTK headers, so two Ubuntus meant "the
+	// pull request compiled" did not mean "the release will", and the AppImage a
+	// pull request produced bundled libraries from a release nothing ships --
+	// the class of defect #463 and #498 both were.
+	//
+	// Compared against each other rather than against a literal, for the reason
+	// the Node one is: a version named here becomes another place to update.
+	const named = new Set([
+		...ubuntuRunners(testWorkflow),
+		...ubuntuRunners(testBuildWorkflow),
+		...ubuntuRunners(workflow),
+	]);
+	assert.ok(named.size > 0, 'no versioned Ubuntu runner found in any workflow');
+	assert.equal(named.size, 1, `the workflows disagree on Ubuntu: ${[...named].sort().join(', ')}`);
+});
+
+test('a step asks which matrix entry it is, not which runner it landed on', () => {
+	// `install dependencies (ubuntu only)` in test_build.yml asked for
+	// `matrix.platform == 'ubuntu-22.04'`. Moving the matrix to 24.04 therefore
+	// skipped it in silence, and `cargo test` failed on a missing
+	// libwebkit2gtk-4.1-dev instead of on anything to do with the change --
+	// run 31486273066, on the pull request that made it.
+	//
+	// Every matrix here already carries a stable name for the entry (`os` in
+	// build.yml, `os-name` in test_build.yml) that does not change when the
+	// runner does. Conditions use that; the runner is named once, where the
+	// matrix declares it.
+	for (const [name, source] of [
+		['build.yml', workflow],
+		['test_build.yml', testBuildWorkflow],
+	] as const) {
+		const repeats = source
+			.split('\n')
+			.filter((line) => !/^\s*#/.test(line))
+			.filter((line) => /matrix\.platform\s*==/.test(line));
+		assert.deepEqual(repeats, [], `${name} branches on the runner name; branch on the matrix entry instead`);
+	}
 });
 
 test('the updater feed publishes the keys an installed Markpad can ask for', () => {

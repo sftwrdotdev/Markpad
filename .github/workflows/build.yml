@@ -196,7 +196,7 @@ jobs:
       # place to add one back.
 
       - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         # One list, one apt call. This was two `apt-get install` invocations
         # naming 21 packages between them, five of them in both --
         # libappindicator3-dev, librsvg2-dev, patchelf, rpm and
@@ -226,14 +226,14 @@ jobs:
 
       # --- Windows Build (x64) ---
       - name: Build Windows x64
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'x64'
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
       - name: Upload Windows x64 Artifacts
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'x64'
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -246,14 +246,14 @@ jobs:
 
       # --- Windows Build (ARM64) ---
       - name: Build Windows ARM64
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'arm64'
+        if: matrix.os == 'windows' && matrix.arch == 'arm64'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build -- --target aarch64-pc-windows-msvc
 
       - name: Upload Windows ARM64 Artifacts
-        if: matrix.platform == 'windows-latest' && matrix.arch == 'arm64'
+        if: matrix.os == 'windows' && matrix.arch == 'arm64'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -266,7 +266,7 @@ jobs:
 
       # --- Linux Build ---
       - name: Pre-download AppImage Dependencies
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         run: |
           mkdir -p ~/.cache/tauri
           wget -q https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64 -O ~/.cache/tauri/AppRun-x86_64
@@ -274,7 +274,7 @@ jobs:
           chmod +x ~/.cache/tauri/AppRun-x86_64 ~/.cache/tauri/linuxdeploy-x86_64.AppImage
 
       - name: Build Linux
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -285,7 +285,7 @@ jobs:
       # this is the step that failed in two of the three v2.7.2 release
       # attempts, and an inline one can only be exercised by cutting a release.
       - name: Strip host-coupled libraries from AppImage
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         run: |
           set -euo pipefail
           APPIMAGE=$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' | head -1)
@@ -300,7 +300,7 @@ jobs:
       # longer matches what the updater will download. Signing is kept out of
       # the script so the script can be run on any AppImage without a key.
       - name: Re-sign the repacked AppImage
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -314,7 +314,7 @@ jobs:
           ls -la "$APPIMAGE" "$APPIMAGE.sig"
 
       - name: Upload Linux Artifacts
-        if: matrix.platform == 'ubuntu-24.04'
+        if: matrix.os == 'linux'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -326,7 +326,7 @@ jobs:
 
       # --- MacOS Build ---
       - name: Build MacOS (Universal)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.os == 'macos'
         env:
           # Fix OOM issue
           NODE_OPTIONS: "--max-old-space-size=8192"
@@ -335,7 +335,7 @@ jobs:
         run: npm run tauri build -- --target universal-apple-darwin
 
       - name: Upload MacOS Artifacts
-        if: matrix.platform == 'macos-latest'
+        if: matrix.os == 'macos'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
