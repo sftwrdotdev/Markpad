@@ -249,7 +249,7 @@ test('the Edit entry resolves its target while the selection still exists', () =
 	// clicked a menu item, and a click is how a selection goes away.
 	const handler = functionSource(viewerSource, 'handleContextMenu');
 	assert.match(handler, /const editSourceTarget = getContextMenuSourceRange\(e\);/);
-	assert.match(handler, /t\('menu\.edit', uiLanguage\), onClick: \(\) => editSourceRange\(editSourceTarget\)/);
+	assert.match(handler, /t\('menu\.edit', settings\.language\), onClick: \(\) => editSourceRange\(editSourceTarget\)/);
 	assert.doesNotMatch(handler, /onClick: \(\) => toggleEdit\(\)/);
 });
 

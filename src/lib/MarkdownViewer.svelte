@@ -130,12 +130,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	let showSettings = $state(false);
 
-	let uiLanguage = $state(settings.language);
-
-	$effect(() => {
-		uiLanguage = settings.language;
-	});
-
 	let recentFiles = $state<string[]>([]);
 	let isFocused = $state(true);
 	
@@ -226,7 +220,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function reportUnsupportedDrop(path: string) {
 		const filename = path.split(/[/\\]/).pop() || 'File';
-		addToast(t('toast.unsupportedFile', uiLanguage).replace('{{filename}}', filename), 'error');
+		addToast(t('toast.unsupportedFile', settings.language).replace('{{filename}}', filename), 'error');
 	}
 	let editorPaneEl = $state<HTMLElement>();
 	let viewerPaneEl = $state<HTMLElement>();
@@ -2341,9 +2335,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// No chord printed beside these three: ⌘X/⌘C/⌘V are the one set of
 				// shortcuts nobody needs told, and the reminder costs a column of
 				// width in every language.
-				{ label: t('menu.cut', uiLanguage), onClick: () => editorPane?.cutToClipboard() },
-				{ label: t('menu.copy', uiLanguage), onClick: () => editorPane?.copyToClipboard() },
-				{ label: t('menu.paste', uiLanguage), onClick: () => editorPane?.pasteFromClipboard() },
+				{ label: t('menu.cut', settings.language), onClick: () => editorPane?.cutToClipboard() },
+				{ label: t('menu.copy', settings.language), onClick: () => editorPane?.copyToClipboard() },
+				{ label: t('menu.paste', settings.language), onClick: () => editorPane?.pasteFromClipboard() },
 				{ separator: true },
 				// The two Monaco put here that this app can actually use, and
 				// that drawing our own menu would otherwise have taken away.
@@ -2354,12 +2348,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// Translated here, which they were not before: Monaco's menu is
 				// English whatever the app's language is.
 				{
-					label: t('menu.commandPalette', uiLanguage),
+					label: t('menu.commandPalette', settings.language),
 					shortcut: 'F1',
 					onClick: () => editorPane?.runEditorAction('editor.action.quickCommand'),
 				},
 				{
-					label: t('menu.changeAllOccurrences', uiLanguage),
+					label: t('menu.changeAllOccurrences', settings.language),
 					shortcut: chord('Mod+F2'),
 					onClick: () => editorPane?.runEditorAction('editor.action.changeAll'),
 				},
@@ -2424,7 +2418,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const linkItems: ContextMenuItem[] =
 			linkTarget && resolveMarkdownTargetPath(currentFile, linkTarget)
 				? [
-						{ label: t('menu.openInNewTab', uiLanguage), onClick: () => openMarkdownTargetInNewTab(linkTarget) },
+						{ label: t('menu.openInNewTab', settings.language), onClick: () => openMarkdownTargetInNewTab(linkTarget) },
 						{ separator: true },
 					]
 				: [];
@@ -2439,7 +2433,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// nests inside the heading rather than on the heading itself.
 			const slug = heading.id || heading.querySelector('a.anchor')?.id || '';
 			copyRefItem = [
-				{ label: t('menu.copyReference', uiLanguage), onClick: () => copyHeadingReference(text, slug) },
+				{ label: t('menu.copyReference', settings.language), onClick: () => copyHeadingReference(text, slug) },
 				{ separator: true },
 			];
 		}
@@ -2448,7 +2442,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		let mediaItems: any[] = [];
 		if (img) {
 			mediaItems = [
-				{ label: t('menu.saveImageAs', uiLanguage), onClick: () => saveImageAs(img.src) },
+				{ label: t('menu.saveImageAs', settings.language), onClick: () => saveImageAs(img.src) },
 				{ separator: true }
 			];
 		}
@@ -2461,7 +2455,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const mermaidDiag = (e.target as HTMLElement).closest('.mermaid-diagram');
 		if (mermaidDiag) {
 			mediaItems = [
-				{ label: t('menu.saveDiagramAsSvg', uiLanguage), onClick: () => saveDiagramAs(mermaidDiag as HTMLElement) },
+				{ label: t('menu.saveDiagramAsSvg', settings.language), onClick: () => saveDiagramAs(mermaidDiag as HTMLElement) },
 				{ separator: true }
 			];
 		}
@@ -2474,11 +2468,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				...linkItems,
 				...copyRefItem,
 				...mediaItems,
-				...(hasSelection ? [{ label: t('menu.copy', uiLanguage), onClick: () => {
+				...(hasSelection ? [{ label: t('menu.copy', settings.language), onClick: () => {
 					const selection = window.getSelection()?.toString();
 					if (selection) invoke('clipboard_write_text', { text: selection });
 				} }] : []),
-				{ label: t('menu.selectAll', uiLanguage), onClick: () => {
+				{ label: t('menu.selectAll', settings.language), onClick: () => {
 					if (!markdownBody) return;
 					const range = document.createRange();
 					range.selectNodeContents(markdownBody);
@@ -2487,10 +2481,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					selection?.addRange(range);
 				} },
 				{ separator: true },
-				{ label: t('menu.openLocation', uiLanguage), onClick: openFileLocation, disabled: !currentFile },
-				{ label: t('menu.edit', uiLanguage), onClick: () => editSourceRange(editSourceTarget) },
+				{ label: t('menu.openLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
+				{ label: t('menu.edit', settings.language), onClick: () => editSourceRange(editSourceTarget) },
 				{ separator: true },
-				{ label: t('menu.closeFile', uiLanguage), onClick: closeFile },
+				{ label: t('menu.closeFile', settings.language), onClick: closeFile },
 			],
 		};
 	}
@@ -3819,7 +3813,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 												y: e.clientY,
 												items: [
 													{ 
-														label: t('menu.copyReference', uiLanguage),
+														label: t('menu.copyReference', settings.language),
 														onClick: () => {
 															copyHeadingReference(item.text, item.id);
 															docContextMenu.show = false;
@@ -3917,14 +3911,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				{#if isSplit || isEditing}
 					<div class="drag-zone editor-zone" class:active={dragTarget === 'editor'}>
 								<div class="drag-message">
-									<span>{t('dragAndDrop.embed', uiLanguage)}</span>
+									<span>{t('dragAndDrop.embed', settings.language)}</span>
 								</div>
 							</div>
 				{/if}
 				{#if isSplit || !isEditing}
 					<div class="drag-zone viewer-zone" class:active={dragTarget === 'preview'}>
 								<div class="drag-message">
-									<span>{t('dragAndDrop.open', uiLanguage)}</span>
+									<span>{t('dragAndDrop.open', settings.language)}</span>
 								</div>
 							</div>
 				{/if}
