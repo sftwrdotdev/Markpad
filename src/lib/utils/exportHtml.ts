@@ -1,5 +1,5 @@
 import { getFrontMatterListItems, type FrontMatterParseResult } from './frontMatter.js';
-import { resolvePath } from './markdown.js';
+import { resolveDocumentRelativePath } from './markdown.js';
 import { MARKDOWN_LINK_EXTENSION_PATTERN } from './markdownLinks.js';
 
 const windowsDrivePathPattern = /^[a-zA-Z]:[\\/]/;
@@ -77,6 +77,12 @@ export function normalizeAssetPath(src: string): string | null {
 	}
 }
 
+/**
+ * Not a third path resolver: everything above the last line decides *which
+ * kind* of reference `src` is — asset URL, `file:`, remote scheme, absolute
+ * path — and only the relative case is a resolution at all, which it delegates
+ * to `resolveDocumentRelativePath`.
+ */
 export function resolveExportImagePath(src: string, tabPath: string): string | null {
 	const trimmed = src.trim();
 	if (!trimmed) return null;
@@ -104,7 +110,7 @@ export function resolveExportImagePath(src: string, tabPath: string): string | n
 		return decoded.replace(/\\/g, '/');
 	}
 
-	return resolvePath(tabPath, decoded);
+	return resolveDocumentRelativePath(tabPath, decoded);
 }
 
 export function rewriteMarkdownHrefForExport(href: string): string {

@@ -54,7 +54,22 @@ export function getMarkdownLinkTarget(href: string): MarkdownLinkTarget | null {
 	};
 }
 
-export function resolvePath(base: string, relative: string): string {
+/**
+ * Resolves the **href** of a markdown link against the document holding it.
+ *
+ * An href is URL-shaped even when it names a local file, which is what makes
+ * this a different function from `resolveDocumentRelativePath` in ./markdown.ts
+ * rather than a copy of it — see that function's comment for the three
+ * differences and scripts/exportHtml.test.ts for the test that pins them. Here:
+ * only `/` separates in the relative half (a `\` in a URL is a character, and
+ * `sub\note.md` names one file), empty segments collapse (`a//b.md` is
+ * `a/b.md`), and the base is normalized to `/` before its directory is taken.
+ *
+ * Not exported: `resolveMarkdownTargetPath` is the only caller, and it is what
+ * refuses the degenerate bases — a base with no `/` at all would come back
+ * rooted at `/`, which is a real directory and the wrong one.
+ */
+function resolveHrefRelativePath(base: string, relative: string): string {
 	if (relative.startsWith('/') || /^[a-z]:/i.test(relative)) return relative;
 
 	const normalizedBase = base.replace(/\\/g, '/');
@@ -73,7 +88,7 @@ export function resolvePath(base: string, relative: string): string {
 export function resolveMarkdownTargetPath(currentFile: string, target: MarkdownLinkTarget): string | null {
 	if (isAbsoluteMarkdownPath(target.path)) return target.path;
 	if (!currentFile) return null;
-	return resolvePath(currentFile, target.path);
+	return resolveHrefRelativePath(currentFile, target.path);
 }
 
 export function isOpenInNewTabMarkdownTarget(href: string, currentFile: string): boolean {

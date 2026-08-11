@@ -16,7 +16,30 @@ const alertIcons: Record<string, string> = {
 	example: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list"><line x1="8" x2="21" y1="6" y2="6"/><line x1="8" x2="21" y1="12" y2="12"/><line x1="8" x2="21" y1="18" y2="18"/><line x1="3" x2="3.01" y1="6" y2="6"/><line x1="3" x2="3.01" y1="12" y2="12"/><line x1="3" x2="3.01" y1="18" y2="18"/></svg>',
 };
 
-export function resolvePath(basePath: string, relativePath: string): string {
+/**
+ * Resolves a **filesystem path** an author wrote in a document — an image
+ * `src`, a local file link — against the document holding it.
+ *
+ * Deliberately not the same function as `resolveHrefRelativePath` in
+ * ./markdownLinks.ts, which resolves an *href*. The two were named alike and
+ * differ in three ways that are each right for one caller and wrong for the
+ * other, so `three path resolvers stay three` in scripts/exportHtml.test.ts
+ * pins the differences rather than papering over them:
+ *
+ *   - `\` separates here, in the relative half too: a Windows author writes
+ *     `![](img\a.png)` and means a directory. In an href `\` is an ordinary
+ *     character and must survive.
+ *   - Empty segments survive (`a//b` stays `a//b`), because a path is bytes
+ *     the OS will be handed, not a URL to tidy up.
+ *   - A base with no separator at all — an unsaved buffer's `""`, a bare
+ *     `note.md` — yields a *relative* result rather than one rooted at `/`.
+ *     Callers that cannot use a relative answer refuse it themselves;
+ *     `resolveLocalFileLinkPath` is the one that does.
+ */
+export function resolveDocumentRelativePath(
+	basePath: string,
+	relativePath: string,
+): string {
 	if (relativePath.match(/^[a-zA-Z]:/) || relativePath.startsWith("/"))
 		return relativePath;
 	const parts = basePath.split(/[/\\]/);
@@ -552,7 +575,9 @@ export function processMarkdownHtml(
 		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
 			try {
 				const decodedSrc = decodeURIComponent(src);
-				finalSrc = convertFileSrc(resolvePath(filePath, decodedSrc));
+				finalSrc = convertFileSrc(
+					resolveDocumentRelativePath(filePath, decodedSrc),
+				);
 				img.setAttribute("src", finalSrc);
 			} catch (e) {
 				console.error("Failed to decode/resolve image src:", src, e);
