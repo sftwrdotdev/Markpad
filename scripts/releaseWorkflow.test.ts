@@ -151,6 +151,46 @@ test('a step asks which matrix entry it is, not which runner it landed on', () =
 	}
 });
 
+/** The packages an `apt-get install -y` line asks for, sorted. */
+function aptPackages(source: string): string[] {
+	const line = /apt-get install -y((?:[^\n]*\\\n)*[^\n]*)/.exec(source)?.[1] ?? '';
+	return line
+		.split(/[\s\\]+/)
+		.filter(Boolean)
+		.sort();
+}
+
+test('a release installs the dependencies a pull request proved it can build with', () => {
+	// build.yml only runs on workflow_dispatch, so its apt list is the one part
+	// of the Linux build no pull request exercises -- it asked for sixteen
+	// packages against test_build.yml's six, and nothing said which was right.
+	// Six of the ten extras apt installs anyway as dependencies of
+	// libwebkit2gtk-4.1-dev; the four libxcb *-dev packages and xdg-utils are in
+	// no Tauri v2 prerequisite list. Run 31487547674 built the .deb, the .rpm and
+	// the AppImage on ubuntu-24.04 with six.
+	//
+	// One list rather than a shorter one is the point. Both workflows compile and
+	// bundle, so a difference between them is a release depending on something
+	// nothing tested — which is what this was.
+	assert.deepEqual(
+		aptPackages(sliceFrom(workflow, 'Install Linux dependencies')),
+		aptPackages(sliceFrom(testBuildWorkflow, 'install dependencies (ubuntu only)')),
+		'the release build and the pull request build install different Linux packages',
+	);
+
+	// test.yml compiles but never bundles, so it needs everything above except
+	// the bundlers. Asserted as a subset rather than as its own list, so adding a
+	// dependency in one place cannot leave it behind.
+	const bundlers = new Set(['rpm']);
+	assert.deepEqual(
+		aptPackages(sliceFrom(testWorkflow, 'install dependencies (ubuntu only)')),
+		aptPackages(sliceFrom(testBuildWorkflow, 'install dependencies (ubuntu only)')).filter(
+			(p) => !bundlers.has(p),
+		),
+		'test.yml has drifted from the list the builds use',
+	);
+});
+
 test('a cargo cache cannot outlive the runner image that filled it', () => {
 	// rust-cache's key ends `-Linux-x64`: `runner.os`, not the image. Measured on
 	// two runs of the same job, one per Ubuntu, the key was identical --
