@@ -315,6 +315,10 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # See the same variable in test_build.yml. A release must not be the
+          # place this is discovered: the PR check hits it about half the time,
+          # and there is nothing about a tag that would make it less likely.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri build
 
       # Why the AppImage has to be repacked at all, and what is removed, is in
