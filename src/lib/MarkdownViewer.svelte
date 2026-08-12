@@ -36,7 +36,8 @@ import {
 	sanitizeDiagramSvg,
 	type RichContentLibraries,
 } from './utils/richContent.js';
-import { observeFoldLayout } from './utils/foldLayout.js';
+import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
+import { patchPreviewBlocks } from './utils/blockPatch.js';
 import {
 	applyFold,
 	flipFold,
@@ -135,7 +136,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isFocused = $state(true);
 	
 	let markdownBody: HTMLElement | null = $state(null);
-	let stopObservingFoldLayout: (() => void) | null = null;
+	/**
+	 * The element holding the rendered document, and the only part of the
+	 * preview Svelte does not manage.
+	 *
+	 * `{@html sanitizedHtml}` used to sit here, which meant every keystroke threw
+	 * the article away and built a new one — the defect three rounds of fixes
+	 * could not reach, because a rebuilt tree is not obliged to lay out to the
+	 * same pixels. `blockPatch.ts` owns these children instead, so the ownership
+	 * has to be exclusive: Svelte's `{@html}` tracks the first and last node it
+	 * inserted and removes everything between them on the next update, which a
+	 * diff that removes either end quietly breaks. The front-matter panel stays
+	 * Svelte's, in the article, outside this element.
+	 */
+	let previewBlocks: HTMLElement | null = $state(null);
+	let foldLayout: FoldLayoutObservation | null = null;
 	
 	const highlightColorMap: Record<string, string> = {
 		default: 'color-mix(in srgb, var(--color-accent-fg) 40%, transparent)',
@@ -597,7 +612,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const processed = await renderMarkdownPreview(raw, tab.path, tab.foldOverrides);
 			if (isDisposed) return;
 			tabManager.updateTabContent(tab.id, processed);
-			if (tabManager.activeTabId === tab.id) tick().then(renderRichContent);
 		},
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
 		// A partially loaded buffer must never be handed to another window.
@@ -833,12 +847,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// tightening of the policy silently delete parts of the exported file; the
 	// exported document carries a CSP as the second line of defence.
 	//
-	// The preview has no second line: what it produces is injected straight into
-	// the live application document by `{@html sanitizedHtml}`. So the filter runs
-	// last, on exactly the string that gets injected — the processed HTML is
-	// cached in `tab.content` and re-sanitized at the sink (see `sanitizedHtml`),
-	// which means no parse/serialize round trip happens after the sanitizer has
-	// had its say. Moving the call here instead would inject a string the
+	// The preview has no second line: what it produces becomes nodes in the live
+	// application document, so the filter runs last, on exactly the string
+	// `patchPreviewBlocks` parses — the processed HTML is cached in `tab.content`
+	// and re-sanitized at the sink (see `sanitizedHtml`), which means no
+	// parse/serialize round trip happens after the sanitizer has had its say.
+	// The patch does not cut that string up or filter any part of it a second
+	// time: it parses the whole thing into a `<template>` and moves nodes out of
+	// it, so the bytes DOMPurify saw are the bytes that reach the document.
+	// Moving the call here instead would inject a string the
 	// sanitizer never saw.
 	//
 	// `folds` is a parameter rather than a read of the active tab because this
@@ -857,8 +874,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const processed = await renderMarkdownPreview(tab.rawContent, tab.path, tab.foldOverrides);
 		tabManager.updateTabContent(tab.id, processed);
 		tab.previewedRawContent = tab.rawContent;
+		// The patch effect turns the new `tab.content` into DOM and enriches what
+		// it changed, so this only has to wait for the flush. It used to call
+		// `renderRichContent()` here as well, over the whole article — a second
+		// pass that now competes with the first one for the same nodes.
 		await tick();
-		renderRichContent();
 	}
 
 	function frontMatterFieldId(key: string) {
@@ -1080,12 +1100,19 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * The preview half of the shared renderer: same function the HTML export
 	 * calls, pointed at the live preview element and given the copy-to-clipboard
 	 * behaviour an exported file cannot have.
+	 *
+	 * `roots` is what the block patch just inserted. Omitting it means the whole
+	 * article, which is what a theme change (Mermaid bakes its colours into the
+	 * SVG) and the pre-export refresh need; passing it is what makes a keystroke
+	 * typeset one paragraph.
 	 */
-	async function renderRichContent() {
+	async function renderRichContent(roots?: HTMLElement[]) {
 		if (!markdownBody || !richLibraries) return;
+		const targets = roots ?? [markdownBody];
+		if (targets.length === 0) return;
 
 		await renderRichContentInto({
-			root: markdownBody,
+			roots: targets,
 			libraries: richLibraries,
 			mermaidTheme: currentMermaidTheme(),
 			onCopyCode: (code, label) => {
@@ -1106,33 +1133,60 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		});
 	}
 
+	/**
+	 * The one place a rendered document becomes preview DOM.
+	 *
+	 * It used to be three: `{@html sanitizedHtml}` put the markup in, this effect
+	 * enriched it — but only when `!isEditing`, so split view could not use it —
+	 * and the debounced render path called `tick().then(renderRichContent)` for
+	 * itself. The patch has to happen before the enrichment and the enrichment
+	 * has to be told what the patch changed, so the two stop being independent
+	 * effects racing on the same dependency and become one statement.
+	 */
 	$effect(() => {
-		if (sanitizedHtml && markdownBody && !isEditing && hljs && renderMathInElement && mermaid) renderRichContent();
+		const host = previewBlocks;
+		if (!host) {
+			// Still a read, so a document that lands before the element exists
+			// re-runs this rather than being missed.
+			void sanitizedHtml;
+			return;
+		}
+
+		const patch = patchPreviewBlocks(host, sanitizedHtml);
+		// Only the new blocks. `ResizeObserver.observe` on a target it is already
+		// watching re-registers it rather than doing nothing, and a fresh
+		// registration delivers an initial observation — so handing it the whole
+		// host would put back exactly the per-keystroke re-measure of every fold
+		// that keeping the observation alive removed.
+		for (const block of patch.inserted) foldLayout?.observe(block);
+		if (hljs && renderMathInElement && mermaid) renderRichContent(patch.inserted);
 	});
 
 	$effect(() => {
-		const html = sanitizedHtml;
 		const body = markdownBody;
-		if (!html || !body || (isEditing && !isSplit)) return;
+		if (!body || (isEditing && !isSplit)) return;
 
-		let cancelled = false;
-		tick().then(() => {
-			if (cancelled || body !== markdownBody) return;
-			stopObservingFoldLayout?.();
-			stopObservingFoldLayout = observeFoldLayout(body);
-		});
+		// Keyed on the article, not on the document it is showing. This used to
+		// depend on `sanitizedHtml` and so tore the observation down and rebuilt
+		// it on every keystroke — and a fresh `ResizeObserver.observe` delivers an
+		// initial observation, so every fold in the document re-measured per
+		// character whether or not anything about it had changed. A keystroke no
+		// longer reaches here at all: the blocks the patch left alone keep the
+		// registration they already had, and the ones it inserted are handed to
+		// `observe` by the patch effect above.
+		const observation = observeFoldLayout(body);
+		foldLayout = observation;
 
 		return () => {
-			cancelled = true;
-			stopObservingFoldLayout?.();
-			stopObservingFoldLayout = null;
+			observation.stop();
+			if (foldLayout === observation) foldLayout = null;
 		};
 	});
 
-	// Re-apply find highlights after the preview HTML is replaced. The
-	// `bind:innerHTML={sanitizedHtml}` on the article wipes the DOM on every
-	// edit/render pass; without this, highlights vanish until the user
-	// re-types in the find bar.
+	// Re-apply find highlights after a render. The patch only replaces the blocks
+	// that changed, so most highlights now survive on their own nodes — but the
+	// ones inside a replaced block do not, and without this they vanish until the
+	// user re-types in the find bar.
 	$effect(() => {
 		const _ = sanitizedHtml;
 		if (!findOpen || !findBar) return;
@@ -2635,8 +2689,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// 120ms, and the reason is arithmetic rather than taste. This is a
 			// trailing debounce in front of the whole preview pipeline — one
 			// `render_markdown` round trip to Rust, `processMarkdownHtml`,
-			// DOMPurify, `{@html}` reparsing the article, then KaTeX, highlight.js
-			// and Mermaid over the result — and it arrived at 16ms with the split
+			// DOMPurify, the block patch, then KaTeX, highlight.js
+			// and Mermaid over what it changed — and it arrived at 16ms with the split
 			// view (ef219cf), unexplained. 16ms merges nothing a human types: even
 			// inside a fast burst keystrokes land 60–80ms apart, and at a normal
 			// pace roughly 125ms apart. Every character therefore started its own
@@ -2660,7 +2714,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						) return;
 						tabManager.updateTabContent(tabId, processed);
 						currentTab.previewedRawContent = rawContent;
-						tick().then(renderRichContent);
+						// No `tick().then(renderRichContent)`: the new content is a
+						// dependency of the patch effect, which patches the blocks
+						// that changed and enriches exactly those. Calling it from
+						// here as well would re-run the whole document — the work
+						// this path exists to stop doing.
 					})
 					.catch(console.error);
 			}, 120);
@@ -3742,7 +3800,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 										</details>
 									{/if}
-									{@html sanitizedHtml}
+									<!-- Filled by the block patch, not by Svelte: see `previewBlocks`. -->
+									<div class="markdown-blocks" bind:this={previewBlocks}></div>
 								</article>
 								{#if tabManager.activeTabId && loadingTabs.includes(tabManager.activeTabId) && isAtBottom}
 								<div class="loading-chip" transition:fly={{ y: 20, duration: 300, easing: cubicOut }}>
