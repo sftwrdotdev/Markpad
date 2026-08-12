@@ -212,7 +212,10 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{
 		id: 'toggle-zen-mode',
 		labelKey: 'menu.zenMode',
-		chords: ['Mod+Shift+Z'],
+		// D for distraction-free. This was Mod+Shift+Z until it turned out that
+		// chord is redo's only binding on macOS — see the note at the keybinding
+		// in Editor.svelte.
+		chords: ['Mod+Shift+D'],
 		group: 'view',
 		editorAction: true,
 	},

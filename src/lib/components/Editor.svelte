@@ -1121,8 +1121,18 @@
 			editor.addAction({
 				id: "toggle-zen-mode",
 				label: t('settings.zenMode', lang),
+				// NOT Ctrl/Cmd+Shift+Z, which this used to be. That chord is REDO,
+				// and on macOS it is redo's only one: Monaco's mac override replaces
+				// the default rule rather than adding to it, so Cmd+Y — the escape
+				// hatch Windows and Linux keep — does not exist there. `addAction`
+				// registers at weight 1000, so zen mode did not share the key, it
+				// took it, and a mac user had no way to redo from the keyboard at
+				// all. D is for distraction-free; it is unclaimed in Monaco on all
+				// three platforms and joins the app's own Ctrl/Cmd+Shift row
+				// (B, E, F, M, R, S, T, X). `monacoChordOwnership.spec.ts` reads
+				// Monaco's real keymap and is what refuses the next such landing.
 				keybindings: [
-					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyZ,
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyD,
 				],
 				run: () => {
 					settings.toggleZenMode();
