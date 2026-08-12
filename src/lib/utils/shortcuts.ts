@@ -234,15 +234,33 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		group: 'edit',
 		editorAction: true,
 	},
-	// INSERT COLUMN IS NOT HERE ANY MORE. It was on `Mod+K C`, and `Mod+K` is
-	// Insert Link now, so the sequence cannot be typed. `Mod+Alt+C` was the
-	// intended replacement and is not available: on macOS it is Monaco's
-	// `toggleFindCaseSensitive`, bound whenever the editor has focus, and
-	// registered as an editor COMMAND rather than an action — so it has no
-	// command palette entry to fall back on, which is the one thing every
-	// override in monacoChordOwnership.spec.ts requires. Insert Column is
-	// palette-only until a chord is chosen for it; see
-	// TABLE_VERBS_WITHOUT_A_CHORD in shortcutRegistry.test.ts.
+	{
+		id: 'table-insert-column',
+		labelKey: 'menu.insertTableColumn',
+		// C for Column, and it joins the Mod+Shift+7/8/9 family above: those are all
+		// "insert a structure", which is what this is.
+		//
+		// NOT `Mod+Alt+C`, which was the obvious pick and is not available — on macOS
+		// that is Monaco's `toggleFindCaseSensitive`. The reason it cannot be taken is
+		// recorded in monacoChordOwnership.spec.ts, where the next person hunting for
+		// a free chord will be.
+		chords: ['Mod+Shift+C'],
+		group: 'edit',
+		editorAction: true,
+	},
+	{
+		id: 'table-delete-column',
+		labelKey: 'menu.deleteTableColumn',
+		// NOT a letter, and that is the whole point. `Mod+Shift+D` is free, but D is
+		// the physical neighbour of C — one slip would turn "insert a column" into
+		// "delete a column". A destructive verb must not sit next to its constructive
+		// counterpart; that is the defect the old `Mod+K Shift+R` had, one slip from
+		// Monaco's delete-line. Backspace is across the keyboard and already means
+		// "remove" everywhere, so it carries no mnemonic to learn.
+		chords: ['Mod+Shift+Backspace'],
+		group: 'edit',
+		editorAction: true,
+	},
 
 	// ---------------------------------------------------------------- keys
 	//
