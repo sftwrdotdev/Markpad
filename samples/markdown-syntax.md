@@ -147,6 +147,10 @@ A list item can hold anything:
 - [ ] An unfinished one
   - [ ] Nested, and also clickable
 
+**The editor writes the markers.** Press `Enter` inside an item and the next line carries the same one: a bullet keeps the character it was written with, a numbered item increments, a task item arrives unticked. `Tab` and `Shift`+`Tab` change the level. `Enter` on an item with nothing in it clears the marker and leaves the list, which is how you get out.
+
+A list can also be started from the keyboard: `Ctrl`/`Cmd` + `Shift` + `8` for bullets, `7` for numbers, `9` for a task list.
+
 ## 4. Quotes and alerts
 
 > An ordinary blockquote.
@@ -260,6 +264,18 @@ An empty cell is written with two pipes — `| 1 || 3 |` — which is why the sp
 |---|---|---|
 | 1 || 3 |
 
+**None of that has to be typed by hand.** With the caret in a table:
+
+| Key | Does |
+|---|---|
+| `Tab` / `Shift`+`Tab` | move to the next / previous cell — `Tab` in the last one appends a row |
+| `Ctrl`/`Cmd` + `Enter` | insert a row below, `Shift` for above |
+| `Ctrl`/`Cmd` + `Shift` + `C` | insert a column |
+| `Ctrl`/`Cmd` + `Shift` + `Backspace` | delete the column |
+| `Ctrl`/`Cmd` + `Alt`/`Option` + `T` | insert a table to begin with |
+
+Every edit reformats the table, so the pipes stay lined up — including in CJK text, where a character is two columns wide. To delete a row, delete its line. The rest of the table commands are in the command palette (`F1`).
+
 ## 7. Thematic breaks
 
 Three or more of `-`, `*` or `_` on their own line, all the same rule:
@@ -284,6 +300,8 @@ The [CommonMark spec][spec] and the [GFM spec][gfm] disagree in about twenty pla
 [gfm]: https://github.github.com/gfm/ "GitHub Flavored Markdown"
 
 A link to a heading in this document: [back to the table](#what-is-supported-and-what-travels). Type `](#` in the editor and Markpad completes the headings for you.
+
+`Ctrl`/`Cmd` + `K` inserts a link around whatever is selected.
 
 ### Wikilinks
 

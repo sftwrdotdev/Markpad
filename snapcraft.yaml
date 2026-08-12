@@ -60,9 +60,11 @@ parts:
   # left to go wrong, because none of it is here.
   #
   # `markpad.deb` is put next to this file by the job that runs snapcraft:
-  # .github/workflows/publish-packages.yml takes it from the release being
-  # published, and .github/workflows/test_snap.yml from the latest release.
-  # Missing, snapcraft fails at pull with the path in the message.
+  # .github/workflows/publish-packages.yml, which takes it from the release
+  # being published. That is the only thing that executes this file — #601
+  # removed the pull-request check — so a change here is first run against a
+  # published tag. Missing, snapcraft fails at pull with the path in the
+  # message.
   markpad:
     plugin: dump
     source: markpad.deb
