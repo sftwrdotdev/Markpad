@@ -107,6 +107,12 @@ export class ShimNode {
 		return (candidate as ShimElement) ?? null;
 	}
 
+	get previousElementSibling(): ShimElement | null {
+		let candidate = this.previousSibling;
+		while (candidate && candidate.nodeType !== NODE_ELEMENT) candidate = candidate.previousSibling;
+		return (candidate as ShimElement) ?? null;
+	}
+
 	get textContent(): string {
 		return this.childNodes.map((child) => child.textContent).join('');
 	}

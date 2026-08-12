@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { installShimDom, parseHtml, type ShimElement } from './renderProtocolDom.ts';
-import { readSource } from './sourceTree.js';
 
 installShimDom();
 
 const { processMarkdownHtml } = await import('../src/lib/utils/markdown.ts');
+const { foldKeyOf } = await import('../src/lib/utils/foldState.ts');
 
 // Fold state is keyed by `h.id || textContent`. comrak emits the deduplicated
 // heading id ("setup", "setup-1", …) on an empty inner <a class="anchor">, not
@@ -82,12 +82,59 @@ test('a heading that already carries an id keeps it', () => {
 	assert.equal(heading.getAttribute('id'), 'hand-written');
 });
 
-test('the preview reads the heading id before falling back to text', () => {
-	// Kept as a source-shape assertion on purpose: the consumer lives in a
-	// Svelte component, which this runner cannot import. The anchor is the
-	// keying convention itself — the producer above is only useful if every
-	// consumer prefers the id — so it is a contract, not an internal call site.
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-	assert.match(viewer, /foldableHeader\.id \|\| foldableHeader\.textContent/, 'preview chevron keys by heading id first');
-	assert.match(viewer, /\[id="\$\{CSS\.escape\(key\)\}"\]\.foldable-header/, 'toggleFold resolves the heading by id');
+// This used to be a source-shape assertion — the preview and the outline were
+// each grepped for their own copy of `id || textContent`, because the two
+// consumers live in Svelte components this runner cannot import. That is the
+// wrong shape of check for a rule about agreement: three spellings of one
+// expression pass it happily, right up until one of them is edited.
+//
+// There is one spelling now. `assignFoldKey` computes the key while the markup
+// is built and leaves it on the element, so every consumer reads the answer
+// instead of recomputing it, and this file can check the producer by running it.
+
+test('the key a fold is stored under is written onto the markup', () => {
+	const root = parseHtml(processMarkdownHtml(DUPLICATE_TITLES, '/doc.md', new Set()));
+	const [first, second] = root.querySelectorAll('h2') as unknown as ShimElement[];
+
+	assert.equal(foldKeyOf(first as unknown as Element), 'setup');
+	assert.equal(foldKeyOf(second as unknown as Element), 'setup-1', 'the deduplicated id, not the shared text');
+});
+
+test('a foldable callout is named too, and two with the same title fold apart', () => {
+	// Callouts have no id and no slug, so before they were keyed at all their
+	// fold state had nowhere to live — the title toggled two classes and the
+	// next render put them back. Keyed by title, in a namespace of their own.
+	const html = processMarkdownHtml(
+		[
+			'<blockquote><p>[!note]- Details<br>first body</p></blockquote>',
+			'<blockquote><p>[!note]- Details<br>second body</p></blockquote>',
+		].join('\n'),
+		'/doc.md',
+		new Set(['callout:Details']),
+	);
+	const root = parseHtml(html);
+	const [first, second] = root.querySelectorAll('.callout-foldable') as unknown as ShimElement[];
+
+	assert.equal(foldKeyOf(first as unknown as Element), 'callout:Details');
+	assert.equal(foldKeyOf(second as unknown as Element), 'callout:Details~1');
+
+	// `[!note]-` opens folded, and the set holds the folds the reader flipped —
+	// so the first callout, whose key is in the set, is the OPEN one.
+	assert.equal(first.classList.contains('is-collapsed'), false, 'the flipped callout is open');
+	assert.equal(second.classList.contains('is-collapsed'), true, 'its same-titled sibling keeps the source default');
+});
+
+test('a callout key cannot collide with a heading that reads the same', () => {
+	const root = parseHtml(
+		processMarkdownHtml(
+			'<h2>Details</h2>\n<blockquote><p>[!note]+ Details<br>body</p></blockquote>',
+			'/doc.md',
+			new Set(),
+		),
+	);
+	const heading = root.querySelector('h2') as unknown as ShimElement;
+	const callout = root.querySelector('.callout-foldable') as unknown as ShimElement;
+
+	assert.equal(foldKeyOf(heading as unknown as Element), 'Details');
+	assert.equal(foldKeyOf(callout as unknown as Element), 'callout:Details');
 });

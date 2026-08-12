@@ -116,12 +116,19 @@ export interface Tab {
 	splitRatio: number;
 	isScrollSynced: boolean;
 	/**
-	 * Which heading sections are folded shut in THIS document. The entries are
-	 * the fold keys `processMarkdownHtml` writes and reads: the heading's id
-	 * (comrak's slug), falling back to its trimmed text.
+	 * Which folds in THIS document the reader has changed their mind about.
+	 * The entries are the fold keys `foldState.ts` assigns while the preview
+	 * markup is built — a heading's id (comrak's slug) falling back to its
+	 * trimmed text, and `callout:<title>` for a foldable callout.
 	 *
-	 * Per tab, not per window, because that key only identifies a heading
-	 * WITHIN a document. Every file with an `## Introduction` gets the key
+	 * Deviations, not closures. A heading always starts open, so for headings
+	 * the two readings are the same set. A callout does not: `> [!note]-` opens
+	 * folded, and a set of "what is closed" cannot tell a callout the reader
+	 * OPENED from one they never touched — the next render would shut it again.
+	 * `isFolded` is the one place the two are combined.
+	 *
+	 * Per tab, not per window, because a fold key only identifies a fold WITHIN
+	 * a document. Every file with an `## Introduction` gets the key
 	 * `introduction`, so a single window-wide set folded that section in all of
 	 * them at once, kept the key after the document it was folded in was
 	 * closed, and pre-folded the next document to contain that heading with
@@ -143,7 +150,7 @@ export interface Tab {
 	 * Required, like `hasReplacementChars`: every consumer calls `.has()` on
 	 * it, so a construction site that forgot it would hand them `undefined`.
 	 */
-	collapsedHeaders: Set<string>;
+	foldOverrides: Set<string>;
 	/**
 	 * True while `rawContent` holds only the leading slice of a large file
 	 * (the >5MB preview read) instead of the whole document. Such a buffer
@@ -269,7 +276,7 @@ class TabManager {
 	 * permanently unreadable phantom tab — or, when the home tab was the only
 	 * one, a window that came back empty.
 	 *
-	 * `collapsedHeaders` is deliberately NOT in here. Every other field written
+	 * `foldOverrides` is deliberately NOT in here. Every other field written
 	 * below describes the window and survives whatever happened to the file
 	 * while Markpad was closed; a fold key describes a heading in a particular
 	 * revision of the document. The restore reads the file fresh from disk, so
@@ -355,7 +362,7 @@ class TabManager {
 					splitRatio: typeof saved.splitRatio === 'number' ? saved.splitRatio : 0.5,
 					isScrollSynced: saved.isScrollSynced === true,
 					// Not persisted — see serializeState.
-					collapsedHeaders: new Set<string>(),
+					foldOverrides: new Set<string>(),
 					isTruncated: false,
 					hasReplacementChars: false,
 					encoding: 'UTF-8'
@@ -493,7 +500,7 @@ class TabManager {
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
-			collapsedHeaders: new Set<string>(),
+			foldOverrides: new Set<string>(),
 			isTruncated: false,
 			hasReplacementChars: false,
 			encoding: 'UTF-8',
@@ -530,7 +537,7 @@ class TabManager {
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
-			collapsedHeaders: new Set<string>(),
+			foldOverrides: new Set<string>(),
 			isTruncated: false,
 			hasReplacementChars: false,
 			encoding: 'UTF-8'
@@ -567,7 +574,7 @@ class TabManager {
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
-			collapsedHeaders: new Set<string>(),
+			foldOverrides: new Set<string>(),
 			isTruncated: false,
 			hasReplacementChars: false,
 			encoding: 'UTF-8'
@@ -786,13 +793,13 @@ class TabManager {
 	}
 
 	/**
-	 * Replace this tab's folded-heading set. Callers build a NEW set rather
-	 * than mutating the old one — see `Tab.collapsedHeaders`.
+	 * Replace this tab's fold overrides. Callers build a NEW set rather
+	 * than mutating the old one — see `Tab.foldOverrides`.
 	 */
-	setTabCollapsedHeaders(id: string, collapsedHeaders: Set<string>) {
+	setTabFoldOverrides(id: string, foldOverrides: Set<string>) {
 		const tab = this.tabs.find((t) => t.id === id);
 		if (tab) {
-			tab.collapsedHeaders = collapsedHeaders;
+			tab.foldOverrides = foldOverrides;
 		}
 	}
 
@@ -935,7 +942,7 @@ class TabManager {
 	private forgetPreviousDocument(tab: Tab) {
 		this.clearUnsavedEdits(tab);
 		this.clearReadingPosition(tab);
-		this.clearCollapsedHeaders(tab);
+		this.clearFoldOverrides(tab);
 	}
 
 	/**
@@ -986,10 +993,10 @@ class TabManager {
 	}
 
 	/**
-	 * The folded-heading set of the document this tab has just left. Called only
+	 * The fold overrides of the document this tab has just left. Called only
 	 * from `forgetPreviousDocument`.
 	 *
-	 * A fold key is a heading slug (see `Tab.collapsedHeaders`), which is only
+	 * A fold key is a heading slug or a callout title (see `Tab.foldOverrides`), which is only
 	 * unique WITHIN a document, so carrying the set across means the incoming
 	 * document is rendered with any section whose slug happens to match already
 	 * shut. `loadMarkdown` reads the set on the line after the `navigate` call,
@@ -1002,8 +1009,8 @@ class TabManager {
 	 * viewer holds it through a `$derived`, and Svelte cannot see a `.clear()`
 	 * of a Set it is already holding.
 	 */
-	private clearCollapsedHeaders(tab: Tab) {
-		tab.collapsedHeaders = new Set<string>();
+	private clearFoldOverrides(tab: Tab) {
+		tab.foldOverrides = new Set<string>();
 	}
 
 	navigate(id: string, path: string, pathKey?: string) {

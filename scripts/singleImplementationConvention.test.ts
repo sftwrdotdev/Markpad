@@ -182,6 +182,15 @@ const RULES: Rule[] = [
 		},
 	},
 	{
+		name: 'a fold is named in one place',
+		why: "The expression that names a fold was written out three times — in the renderer, in the preview's click handler and in the outline — and two of them disagreed: the outline strips a trailing `^block-id` off the heading text before keying by it and the renderer does not, so for those headings the outline's fold button and the preview's chevron addressed different folds. Nothing type-checks a string built the same way in three files. `assignFoldKey` computes it once, while the markup is built, and leaves it on the element for `foldKeyOf` to read back.",
+		// The shape of the defect, not the helper's name: a second site is by
+		// construction one that does NOT call `assignFoldKey`, and what it would
+		// contain instead is this — the id-then-text fallback, spelled out.
+		marker: /id \|\| [A-Za-z.]*textContent/g,
+		allowed: ['src/lib/utils/foldState.ts'],
+	},
+	{
 		name: 'this suite reads a file through one function',
 		why: "A test that reads source with its own readFileSync gets the bytes Git checked out, and on Windows `core.autocrlf` makes those CRLF. Every `\\n` in a pattern then matches nothing and every anchor containing one is 'not found' — fifteen files were red on the maintainer's Windows checkout while cutting v2.7.0 and were hand-patched assertion by assertion (#452). `readSource` in sourceTree.ts decides the line ending once, on read, so the assertions stay written against `\\n` and a new test cannot re-open the hole by accident. Read the file with `readSource(path)` from './sourceTree.js' — it takes a cwd-relative string or a `new URL(…, import.meta.url)` — and write the assertion against `\\n`.",
 		// The call, not the import: `import { readFileSync }` on its own reads

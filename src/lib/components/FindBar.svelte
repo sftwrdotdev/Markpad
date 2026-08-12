@@ -3,15 +3,25 @@
 	import { tick } from 'svelte';
 	import { t } from '../utils/i18n.js';
 	import type { LanguageCode } from '../utils/i18n.js';
+	import { collapsedFoldsAround } from '../utils/foldState.js';
 
 	let {
 		open = $bindable(false),
 		markdownBody,
-		language = 'en' as LanguageCode,
+		onunfold,
+		language,
 	} = $props<{
 		open: boolean;
 		markdownBody: HTMLElement | null;
-		language?: LanguageCode;
+		/** Open the fold with this key. Only the owner of the fold state can. */
+		onunfold?: (key: string) => void;
+		/**
+		 * Required, and deliberately without a default. `= 'en'` here was a
+		 * caller that forgot the prop silently rendering an English find bar in
+		 * a Chinese window — the compiler's one chance to catch that, given
+		 * away for a default nobody wants.
+		 */
+		language: LanguageCode;
 	}>();
 
 	const FIND_MARK_CLASS = 'markpad-find-match';
@@ -27,8 +37,7 @@
 	// (content the browser cannot reveal, `display: none`, is not matched at
 	// all). So the matches stay in the count and the fold opens on the way to
 	// them.
-	const FOLD_CONTENT_SELECTOR =
-		'.foldable-content-wrapper.is-collapsed, .markdown-alert-content.is-collapsed';
+	//
 	// styles.css animates the fold height for 0.25s.
 	const FOLD_TRANSITION_MS = 300;
 
@@ -67,44 +76,29 @@
 	}
 
 	/**
-	 * The control a user would click to open this fold.
+	 * Opens every collapsed fold between `mark` and the preview root.
 	 *
-	 * Expanding by clearing `is-collapsed` here would work for exactly one
-	 * frame: MarkdownViewer owns `collapsedHeaders`, re-applies the class on
-	 * every re-render and hands the same set to the table of contents. Going
-	 * through the affordance keeps that bookkeeping the single source of
-	 * truth — the same reason Chrome fires `beforematch` before it reveals
-	 * `hidden=until-found` content.
+	 * Clearing `is-collapsed` here would work for exactly one frame: the fold
+	 * state belongs to the tab, the render re-applies the class from it, and
+	 * the outline reads the same set. Asking its owner is what keeps that
+	 * bookkeeping the single source of truth — the same reason Chrome fires
+	 * `beforematch` before it reveals `hidden=until-found` content.
+	 *
+	 * This used to say so by building a `MouseEvent` and firing it at the
+	 * chevron, so that the viewer's delegated click handler would treat find
+	 * like a user. That coupled three modules through a class name and a
+	 * synthetic event: the fold key is a string now, and `onunfold` is a
+	 * function.
 	 */
-	function foldToggleFor(container: Element, root: HTMLElement): HTMLElement | null {
-		if (container.classList.contains('foldable-content-wrapper')) {
-			const header = container.id
-				? root.querySelector(`.foldable-header[data-fold-target="${CSS.escape(container.id)}"]`)
-				: null;
-			return (header?.querySelector('.header-fold-icon') as HTMLElement | null) ?? null;
-		}
-		return (container.closest('.callout-foldable')?.querySelector('.callout-toggle') as HTMLElement | null) ?? null;
-	}
-
-	/** Opens every collapsed fold between `mark` and the preview root. */
 	function revealFoldsAround(mark: HTMLElement): boolean {
 		const root = markdownBody as HTMLElement | null;
 		if (!root) return false;
 
-		const collapsed: Element[] = [];
-		let curr: Element | null = mark.parentElement;
-		while (curr && curr !== root) {
-			if (curr.matches(FOLD_CONTENT_SELECTOR)) collapsed.push(curr);
-			curr = curr.parentElement;
-		}
-		if (collapsed.length === 0) return false;
-
-		// Collected innermost first; open the outermost fold first so a nested
-		// one is already on screen by the time its own toggle fires.
-		for (const container of collapsed.reverse()) {
-			foldToggleFor(container, root)?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-		}
-		return true;
+		// Outermost first, so a nested fold is already on screen by the time its
+		// own height is measured.
+		const folds = collapsedFoldsAround(mark, root);
+		for (const fold of folds) onunfold?.(fold.key);
+		return folds.length > 0;
 	}
 
 	export function clearHighlights() {

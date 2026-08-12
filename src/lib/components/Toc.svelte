@@ -4,10 +4,11 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
+	import { foldKeyOf } from '../utils/foldState.js';
 	import { PREVIEW_ANCHOR_OFFSET } from '../utils/previewAnchor.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
-	let { markdownBody, htmlContent, activeLine = null, onBeforeJump, collapsedHeaders, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
+	let { markdownBody, htmlContent, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
 		markdownBody: HTMLElement | null;
 		htmlContent: string;
 		/**
@@ -17,8 +18,8 @@
 		 */
 		activeLine?: RendererLine | null;
 		onBeforeJump?: () => void;
-		collapsedHeaders?: Set<string>;
-		ontoggleFold?: (id: string) => void;
+		foldOverrides?: Set<string>;
+		ontoggleFold?: (key: string) => void;
 		oncopyref?: (text: string, slug: string) => void;
 		oncontext?: (e: MouseEvent, item: TocItem) => void;
 		onjump?: (id: string, text: string, sourceLine: RendererLine | null) => void;
@@ -32,6 +33,15 @@
 		level: number;
 		isBlock: boolean;
 		hasChildren?: boolean;
+		/**
+		 * How the fold state names this heading — read off the rendered heading,
+		 * never recomputed. The outline used to build its own `id || text`, which
+		 * is not the renderer's answer for a heading whose text carries a block
+		 * id: the outline strips the `^id` suffix and the renderer does not, so
+		 * the two disagreed for exactly the headings nobody tests. `''` for a
+		 * block anchor, which is not a fold.
+		 */
+		foldKey: string;
 		/** Where this entry starts in the source, for following the editor. */
 		line: RendererLine | null;
 	}
@@ -58,7 +68,7 @@
 				const anchor = h.querySelector('a.anchor') as HTMLElement | null;
 				const id = h.id || (anchor ? anchor.id : '');
 				if (id) {
-					result.push({ id, text: text.trim(), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
+					result.push({ id, text: text.trim(), foldKey: foldKeyOf(h), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
 				}
 			}
 
@@ -66,7 +76,7 @@
 			for (const el of Array.from(blockAnchors)) {
 				const id = el.id;
 				const label = el.getAttribute('data-label') || id;
-				result.push({ id, text: label, level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
+				result.push({ id, text: label, foldKey: '', level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
 			}
 
 			const allIds = new Map<string, number>();
@@ -128,15 +138,13 @@
 			if (item.level <= hideUntilLevel) {
 				hideUntilLevel = 99;
 				result.push(item);
-				const key = item.id || item.text || '';
-				if (collapsedHeaders?.has(key)) {
+				if (foldOverrides?.has(item.foldKey)) {
 					hideUntilLevel = item.level;
 				}
 			} else {
 				if (hideUntilLevel === 99) {
 					result.push(item);
-					const key = item.id || item.text || '';
-					if (collapsedHeaders?.has(key)) {
+					if (foldOverrides?.has(item.foldKey)) {
 						hideUntilLevel = item.level;
 					}
 				}
@@ -377,7 +385,7 @@
 					</button>
 					{:else}
 						<div class="toc-link-wrapper level-{item.level}">
-							<button aria-label={t('tooltip.toggleFold', settings.language)} class="toc-fold-btn {collapsedHeaders?.has(item.id || item.text || '') ? 'collapsed' : ''}" style={item.hasChildren ? '' : 'visibility: hidden'} onclick={(e) => { e.stopPropagation(); ontoggleFold?.(item.id || item.text || ''); }}>
+							<button aria-label={t('tooltip.toggleFold', settings.language)} class="toc-fold-btn {foldOverrides?.has(item.foldKey) ? 'collapsed' : ''}" style={item.hasChildren ? '' : 'visibility: hidden'} onclick={(e) => { e.stopPropagation(); ontoggleFold?.(item.foldKey); }}>
 								<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 							</button>
 							<button

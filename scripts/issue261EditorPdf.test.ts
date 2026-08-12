@@ -57,8 +57,8 @@ test('the two Monaco entries this app can use survive drawing our own menu', () 
 
 	// Through the app's own translations, which is a gain rather than parity:
 	// Monaco's menu is English whatever language the app is in.
-	assert.match(menu, /t\('menu\.commandPalette', uiLanguage\)/);
-	assert.match(menu, /t\('menu\.changeAllOccurrences', uiLanguage\)/);
+	assert.match(menu, /t\('menu\.commandPalette', settings\.language\)/);
+	assert.match(menu, /t\('menu\.changeAllOccurrences', settings\.language\)/);
 });
 
 test('every label the editor menu asks for exists in every language', () => {
@@ -70,7 +70,7 @@ test('every label the editor menu asks for exists in every language', () => {
 	assert.ok(locales >= 6, `expected at least six locales, found ${locales}`);
 
 	const menu = functionSource(viewer, 'showEditorContextMenu');
-	for (const key of [...menu.matchAll(/t\('menu\.(\w+)', uiLanguage\)/g)].map((m) => m[1])) {
+	for (const key of [...menu.matchAll(/t\('menu\.(\w+)', settings\.language\)/g)].map((m) => m[1])) {
 		assert.equal(
 			(i18n.match(new RegExp(`\\b${key}:`, 'g')) ?? []).length >= locales,
 			true,
