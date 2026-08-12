@@ -381,7 +381,7 @@ class TabManager {
 			for (const saved of data.tabs) {
 				if (!saved || typeof saved.path !== 'string' || !hasRealFilePath(saved.path)) continue;
 				const filename = saved.path.split('\\').pop()?.split('/').pop() || saved.path;
-				const fileHistory = createFileHistory(saved.path, '');
+				const fileHistory = createFileHistory(saved.path);
 				restored.push({
 					id: typeof saved.id === 'string' ? saved.id : crypto.randomUUID(),
 					path: saved.path,
@@ -519,7 +519,7 @@ class TabManager {
 				this.tabs.map((tab) => tab.title),
 				t('tabs.untitled', settings.language),
 			);
-		const fileHistory = createFileHistory(path, rawContent);
+		const fileHistory = createFileHistory(path);
 
 		this.tabs.push({
 			id,
@@ -926,7 +926,6 @@ class TabManager {
 			// write would have been marked saved. The other caller repoints an
 			// untitled, empty, already-clean tab at the file it is about to load.
 			const fileHistory = replaceCurrentHistoryEntry({
-				currentPath: tab.path,
 				targetPath: path,
 				history: tab.history,
 				historyIndex: tab.historyIndex,
@@ -947,7 +946,6 @@ class TabManager {
 			tab.pathKey = pathKey;
 			tab.title = newPath.split(/[/\\]/).pop() || 'Untitled';
 			const fileHistory = replaceCurrentHistoryEntry({
-				currentPath: tab.path,
 				targetPath: newPath,
 				history: tab.history,
 				historyIndex: tab.historyIndex,
@@ -1104,7 +1102,6 @@ class TabManager {
 			// literally; the caller loads the file straight afterwards and
 			// `loadMarkdown` resolves the key then.
 			this.claimPath(path, id);
-			tab.history = result.history;
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
 			tab.pathKey = undefined;
@@ -1122,7 +1119,6 @@ class TabManager {
 			if (!result.path) return null;
 			const path = result.path;
 			this.claimPath(path, id);
-			tab.history = result.history;
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
 			tab.pathKey = undefined;
