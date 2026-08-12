@@ -10,6 +10,7 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
+	import { listEnter, parseListItem } from '../utils/listEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
@@ -714,6 +715,49 @@
 		// re-register on a language change.
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteFromClipboard, "editorTextFocus");
 
+		// Enter and Tab on a list item (#604). Bare commands rather than actions
+		// for the same reason Ctrl+V is one: they carry no label, appear in no
+		// menu and are not chords a user is told about — they are what those two
+		// keys already mean, one Markdown rule further on.
+		//
+		// THE `when` CLAUSES ARE THE WHOLE RISK HERE.
+		//
+		// `addCommand` registers at weight 1000, above every Monaco default
+		// including the suggest widget's — so a binding with no condition does not
+		// merely add a meaning to Enter, it TAKES Enter away from whatever else
+		// wanted it. Each clause below names something that owns the key first:
+		//
+		//   editorTextFocus      the caret is in the text, not in the find box or
+		//                        the rename input (both of which take Enter);
+		//   !editorReadonly      reading mode types nothing;
+		//   !suggestWidgetVisible  the completion popup is open, where Enter
+		//                        accepts and Tab accepts — this app has a heading
+		//                        and a file-path completion provider, so it is a
+		//                        live case, not a hypothetical one;
+		//   !inSnippetMode       Tab jumps to the next placeholder;
+		//   !editorTabMovesFocus the accessibility toggle, whose entire purpose is
+		//                        that Tab leaves the editor.
+		//
+		// Neither handler is a dead end: when the caret is not on a list item they
+		// re-trigger the ordinary command, so a non-list Enter is a plain Enter and
+		// a non-list Tab is a plain Tab, auto-indent and all.
+		//
+		// VIM MODE NEEDS NO CLAUSE OF ITS OWN. monaco-vim listens on
+		// `editor.onKeyDown`, which fires on the textarea — inside the container
+		// the keybinding service listens on — and it calls `stopPropagation()` on
+		// every key its keymap claims. So in normal mode vim's Enter (move down a
+		// line) runs and this command never sees the key; in insert mode vim
+		// passes the key through and continuation happens, which is what a vim
+		// user writing a list wants. The order is DOM nesting, not luck.
+		const LIST_KEY_CONTEXT =
+			"editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inSnippetMode";
+		editor.addCommand(monaco.KeyCode.Enter, continueListOnEnter, LIST_KEY_CONTEXT);
+		editor.addCommand(
+			monaco.KeyCode.Tab,
+			indentListItemOnTab,
+			`${LIST_KEY_CONTEXT} && !editorTabMovesFocus`,
+		);
+
 		editorReady = true;
 
 		// After the view-state / anchor-line restore above, deliberately: an
@@ -836,6 +880,76 @@
 	// renders, so a list toggle cannot forget to displace a competing marker.
 	const toggleLineMarkerTool = (id: LineMarkerToolId) => {
 		transformSelectedLines(id, (lines) => toggleLineMarker(id, lines));
+	};
+
+	/**
+	 * Enter on a list item writes the next item's marker; Enter on an item that
+	 * has a marker and no text takes the marker away instead, which is how a
+	 * list ends. What the next line should say is decided by `listEnter` in
+	 * utils/listEditing.ts, where it can be tested without a browser.
+	 *
+	 * Only a single collapsed caret is claimed. A selection, or several carets,
+	 * gets the ordinary Enter: replacing a multi-cursor edit with one edit at
+	 * the primary selection would silently drop the others' work.
+	 */
+	const continueListOnEnter = () => {
+		const model = editor.getModel();
+		const selections = editor.getSelections();
+		// The key's ordinary meaning, re-sent. `type` with a newline is what the
+		// keyboard itself delivers, so auto-indent and the model's own EOL still
+		// apply — this handler is a detour, never a replacement.
+		const plainEnter = () => editor.trigger("keyboard", "type", { text: "\n" });
+		if (!model || selections?.length !== 1 || !selections[0].isEmpty()) return plainEnter();
+
+		const selection = selections[0];
+		const line = selection.startLineNumber;
+		const next = listEnter(model.getLineContent(line), selection.startColumn);
+		if (!next) return plainEnter();
+
+		// Its own undo step, so one Ctrl+Z gives back the marker this took away
+		// rather than unwinding the sentence typed before it.
+		editor.pushUndoStop();
+
+		if (next.kind === "clear") {
+			editor.executeEdits(
+				"list-continuation",
+				[{ range: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)), text: next.line }],
+				[new monaco.Selection(line, next.line.length + 1, line, next.line.length + 1)],
+			);
+			return;
+		}
+
+		const column = next.text.length + 1;
+		editor.executeEdits(
+			"list-continuation",
+			[{ range: selection, text: `${model.getEOL()}${next.text}` }],
+			[new monaco.Selection(line + 1, column, line + 1, column)],
+		);
+	};
+
+	/**
+	 * Tab on a list item raises its nesting level; anywhere else it is a Tab.
+	 *
+	 * SHIFT+TAB IS DELIBERATELY NOT BOUND. Monaco's own `outdent` command already
+	 * has that chord and already takes one indent level off the current line
+	 * wherever the caret sits on it — which is precisely "lower the level". A
+	 * command of ours in front of it would be a second name for a key that is
+	 * already right, and one more `when` clause to get wrong.
+	 *
+	 * `editor.action.indentLines` rather than a hand-written edit for the same
+	 * reason, and it is also what makes Tab mean the level and not the caret: the
+	 * core `tab` command inserts indentation AT the caret, so a Tab in the middle
+	 * of an item's text would drop a tab character into the sentence.
+	 */
+	const indentListItemOnTab = () => {
+		const model = editor.getModel();
+		const selections = editor.getSelections();
+		const onListItem =
+			!!model &&
+			selections?.length === 1 &&
+			selections[0].isEmpty() &&
+			parseListItem(model.getLineContent(selections[0].startLineNumber)) !== null;
+		editor.trigger("keyboard", onListItem ? "editor.action.indentLines" : "tab", null);
 	};
 
 	const wrapAsCodeBlock = () => {
