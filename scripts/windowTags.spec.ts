@@ -1,21 +1,19 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { offsetOf, readSource } from './sourceTree.js';
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
+// `get_os_type` is the settings store booting on import: `initOSType` only
+// catches a rejection, so answering `null` leaves `osType` null and the font
+// defaults it then indexes are undefined.
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
+	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? { invoke: () => Promise.resolve(null) };
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const runtime = readSource('src-tauri/src/window_runtime.rs');
