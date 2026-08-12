@@ -247,6 +247,21 @@ test('the scanner actually found the call sites', () => {
 	assert.equal(languages.length, 26);
 });
 
+test('t() requires a language, so a call site cannot forget one', () => {
+	// `lang: LanguageCode = 'en'` made the language optional at ~322 call sites,
+	// and 9 of them omitted it — including the window-control aria-labels a
+	// screen reader reads out, which said "Close" in all 26 languages. tsc is
+	// the real guard now; this asserts the source form so nobody types the
+	// default back in and re-opens the hole.
+	const signature = /export function t\((.*?)\): string/.exec(readSource('src/lib/utils/i18n.ts'));
+	assert.ok(signature, 'the exported t() signature moved; this test can no longer see it');
+	assert.equal(
+		signature[1],
+		'key: string, lang: LanguageCode',
+		't() must take the language as a required parameter, with no default',
+	);
+});
+
 test('every key the source asks for exists in English', () => {
 	// TitleBar called t('common.save'); en.common has close/minimize/maximize/
 	// loadingFullDocument and no save, so the button rendered "common.save".

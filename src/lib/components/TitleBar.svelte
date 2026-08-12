@@ -428,14 +428,14 @@
 	<div class="window-controls-left" data-tauri-drag-region>
 		{#if isMac && !useNativeMacChrome}
 			<div class="macos-traffic-lights" class:visible={isMac}>
-				<button class="mac-btn mac-close" onclick={() => appWindow.close()} aria-label={t('common.close')}>
+				<button class="mac-btn mac-close" onclick={() => appWindow.close()} aria-label={t('common.close', currentLanguage)}>
 						<svg width="6" height="6" viewBox="0 0 6 6" class="mac-icon"
 								><path d="M0.5 0.5L5.5 5.5M5.5 0.5L0.5 5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
 					</button>
-					<button class="mac-btn mac-minimize" onclick={() => appWindow.minimize()} aria-label={t('common.minimize')}>
+					<button class="mac-btn mac-minimize" onclick={() => appWindow.minimize()} aria-label={t('common.minimize', currentLanguage)}>
 						<svg width="6" height="6" viewBox="0 0 6 6" class="mac-icon"><path d="M0.5 3H5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
 					</button>
-					<button class="mac-btn mac-maximize" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize')}>
+					<button class="mac-btn mac-maximize" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize', currentLanguage)}>
 						<svg width="6" height="6" viewBox="0 0 6 6" class="mac-icon"><path d="M0.5 3H5.5M3 0.5V5.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" /></svg>
 					</button>
 			</div>
@@ -1091,16 +1091,16 @@
 
 	<div class="window-controls-right" data-tauri-drag-region>
 		{#if !isMac}
-			<button class="control-btn" onclick={() => appWindow.minimize()} aria-label={t('common.minimize')}>
+			<button class="control-btn" onclick={() => appWindow.minimize()} aria-label={t('common.minimize', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6" /></svg>
 			</button>
-			<button class="control-btn" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize')}>
+			<button class="control-btn" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5" /></svg>
 			</button>
 			<button
 				class="control-btn close-btn"
 				onclick={() => appWindow.close()}
-				aria-label={t('common.close')}>
+				aria-label={t('common.close', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><path fill="currentColor" d="M11 1.7L10.3 1 6 5.3 1.7 1 1 1.7 5.3 6 1 10.3 1.7 11 6 6.7 10.3 11 11 10.3 6.7 6z" /></svg>
 			</button>
 		{/if}

@@ -6804,7 +6804,11 @@ for (const [language, sections] of Object.entries(interactiveLabelTranslations) 
     }
 }
 
-export function t(key: string, lang: LanguageCode = 'en'): string {
+// `lang` is deliberately required. When it defaulted to 'en', a call site that
+// forgot to pass the language compiled, ran, and showed English in all 26
+// languages — silently, including on aria-labels a screen reader reads out.
+// The default is the bug; the compiler is the check. Do not restore it.
+export function t(key: string, lang: LanguageCode): string {
     const keys = key.split('.');
     
     const getValue = (dict: any) => {

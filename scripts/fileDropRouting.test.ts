@@ -94,6 +94,6 @@ test('the viewer routes both panes through it, and acts on all three answers', (
 	// to say.
 	assert.match(
 		viewerSource,
-		/function reportUnsupportedDrop\(path: string\)[\s\S]{0,300}?t\('toast\.unsupportedFile'\)/,
+		/function reportUnsupportedDrop\(path: string\)[\s\S]{0,300}?t\('toast\.unsupportedFile', uiLanguage\)/,
 	);
 });

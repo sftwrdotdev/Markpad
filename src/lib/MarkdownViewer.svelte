@@ -214,7 +214,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function reportUnsupportedDrop(path: string) {
 		const filename = path.split(/[/\\]/).pop() || 'File';
-		addToast(t('toast.unsupportedFile').replace('{{filename}}', filename), 'error');
+		addToast(t('toast.unsupportedFile', uiLanguage).replace('{{filename}}', filename), 'error');
 	}
 	let editorPaneEl = $state<HTMLElement>();
 	let viewerPaneEl = $state<HTMLElement>();
@@ -3939,14 +3939,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				{#if isSplit || isEditing}
 					<div class="drag-zone editor-zone" class:active={dragTarget === 'editor'}>
 								<div class="drag-message">
-									<span>{t('dragAndDrop.embed')}</span>
+									<span>{t('dragAndDrop.embed', uiLanguage)}</span>
 								</div>
 							</div>
 				{/if}
 				{#if isSplit || !isEditing}
 					<div class="drag-zone viewer-zone" class:active={dragTarget === 'preview'}>
 								<div class="drag-message">
-									<span>{t('dragAndDrop.open')}</span>
+									<span>{t('dragAndDrop.open', uiLanguage)}</span>
 								</div>
 							</div>
 				{/if}
