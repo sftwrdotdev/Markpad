@@ -38,17 +38,22 @@ setNavigatorLanguage('en-US');
 const settingsModule = await import('../src/lib/stores/settings.svelte.js');
 const {
 	CODE_FONT_SIZE_RANGE,
+	DEFAULT_PRE_ZEN_STATE,
 	EDITOR_FONT_SIZE_RANGE,
 	EDITOR_MAX_WIDTH_RANGE,
 	PREVIEW_FONT_SIZE_RANGE,
 	SettingsStore,
+	ZOOM_LEVEL_RANGE,
 	clampToRange,
 	createSettingsPersistence,
 	detectSystemLanguage,
 	isSupportedLanguage,
+	isThemeSetting,
 	isWithinRange,
+	normalizePreZenState,
 	parseStoredNumber,
 	resolveLanguageTag,
+	resolveTheme,
 	stepWithinRange,
 	writeStoredSetting,
 } = settingsModule;
@@ -385,6 +390,190 @@ test('numeric setting inputs are one-way bound and commit through the clamp', ()
 
 /*
  * ---------------------------------------------------------------------------
+ * Task 3b — the three values that used to write localStorage on their own.
+ *
+ * `theme`, `zoomLevel` and `preview.fullWidth` each had their own `$state` in
+ * MarkdownViewer.svelte with a bare `localStorage.setItem` beside it. What that
+ * cost is asserted below, one property per test; that no such write can come
+ * back is asserted by the `localStorage is written through one function` rule in
+ * singleImplementationConvention.test.ts.
+ * ---------------------------------------------------------------------------
+ */
+
+test('a theme picked in one window reaches the others without a restart', () => {
+	// THE BUG. Every other switch in the appearance panel synced live, because
+	// every other switch was a persisted entry and got the `storage` listener for
+	// free. The theme <select> sat in the same panel and did not: it wrote
+	// `localStorage` directly, and nothing in the app listened for `theme`.
+	resetStorage();
+	const store = new SettingsStore();
+	// The `storage` listener is only wired up once the effects flush.
+	flushSync();
+	assert.equal(store.theme, 'system');
+
+	// A real `storage` event through the real `window`, so what is exercised is
+	// the listener the store actually registered — not a callback this test
+	// captured and called itself.
+	localStorage.setItem('theme', 'dark');
+	dispatchStorage('theme', 'dark');
+	assert.equal(store.theme, 'dark');
+
+	localStorage.setItem('theme', 'vscode:Ayu Dark');
+	dispatchStorage('theme', 'vscode:Ayu Dark');
+	assert.equal(store.theme, 'vscode:Ayu Dark');
+
+	// And the arriving value is not echoed back at the window that sent it.
+	const entry = createSettingsPersistence().find((item) => item.key === 'theme') as PersistedEntry;
+	assert.equal(writeStoredSetting(entry.key, entry.read(store)), false);
+});
+
+test('the persisted theme key is the one app.html paints from', () => {
+	// The first-paint script in src/app.html reads `theme` before the bundle
+	// loads and picks the background from it; renaming the key (to
+	// `editor.theme`, say, matching its neighbours) brings back the white flash
+	// that script exists to prevent, and nothing else in the app would notice.
+	const keys = createSettingsPersistence().map((entry) => entry.key);
+	assert.ok(keys.includes('theme'), 'the theme is persisted');
+	const appHtml = readSource('src/app.html');
+	assert.match(appHtml, /localStorage\.getItem\('theme'\)/);
+});
+
+test('the startup background is told the appearance, not the theme name', () => {
+	// The fourth reader of this one setting, and the one that cannot see
+	// localStorage at all: `app.rs` paints a window's background before the
+	// webview exists, reading `theme.txt`. Its vocabulary is "dark", "light" and
+	// "anything else means ask the OS" — so every `vscode:` name fell into that
+	// last arm, and a dark VS Code theme on a light desktop flashed white on
+	// every launch. Whether such a theme is dark is inside its own JSON, which
+	// only the frontend parses, so the resolved answer is what gets sent.
+	const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
+	assert.match(viewerSource, /function saveStartupAppearance\(appearance: 'system' \| 'light' \| 'dark'\)/);
+	assert.match(viewerSource, /invoke\('save_theme', \{ theme: appearance \}\)/);
+	assert.equal(
+		(viewerSource.match(/invoke\('save_theme'/g) ?? []).length,
+		1,
+		'save_theme has one caller, so nothing can send it a raw theme name',
+	);
+	// The VS Code branch answers only after the parse, because that is when the
+	// appearance becomes knowable.
+	assert.match(
+		viewerSource,
+		/await parseAndApplyVscodeTheme\(json, name\);[\s\S]{0,300}?saveStartupAppearance\(document\.documentElement\.dataset\.themeType === 'dark' \? 'dark' : 'light'\)/,
+	);
+	// The viewer keeps no theme of its own beside the store's.
+	assert.doesNotMatch(viewerSource, /let theme = \$state/);
+
+	// Both words are literals in two languages with no compiler between them.
+	const appRs = readSource('src-tauri/src/app.rs');
+	assert.match(appRs, /"dark" => Some\(tauri::window::Color/);
+	assert.match(appRs, /"light" => Some\(tauri::window::Color/);
+});
+
+test('an unusable stored theme falls back rather than being applied', () => {
+	assert.equal(resolveTheme('dark'), 'dark');
+	assert.equal(resolveTheme('vscode:Ayu Dark'), 'vscode:Ayu Dark');
+	assert.equal(resolveTheme(null), 'system');
+	assert.equal(resolveTheme('midnight'), 'system');
+	// A bare `vscode:` names no theme; `theme.replace('vscode:', '')` would ask
+	// Rust to read the file called "".
+	assert.equal(resolveTheme('vscode:'), 'system');
+	assert.equal(isThemeSetting('vscode:'), false);
+	assert.equal(isThemeSetting(42), false);
+
+	resetStorage({ theme: 'midnight' });
+	assert.equal(new SettingsStore().theme, 'system');
+	resetStorage({ theme: 'vscode:Ayu Dark' });
+	assert.equal(new SettingsStore().theme, 'vscode:Ayu Dark');
+});
+
+test('a corrupt stored zoom level loads as 100, not as NaN', () => {
+	// THE BUG. The viewer read this key with `parseInt(… || '100', 10)` and no
+	// validation, so any value that is not a number became NaN — and NaN is a
+	// trap, not a glitch: the preview renders `zoom: NaN`, and both ways out
+	// (`Math.min(NaN + 10, 500)` on the wheel and on Mod+=) are NaN as well. Only
+	// the reset button could recover the app.
+	for (const stored of ['banana', 'null', '', '   ', 'NaN', 'Infinity']) {
+		resetStorage({ zoomLevel: stored });
+		const store = new SettingsStore();
+		assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default, `zoomLevel=${JSON.stringify(stored)}`);
+		assert.ok(Number.isFinite(store.zoomLevel));
+	}
+
+	resetStorage({ zoomLevel: '250' });
+	assert.equal(new SettingsStore().zoomLevel, 250, 'a good value still survives a restart');
+	resetStorage({ zoomLevel: '9000' });
+	assert.equal(new SettingsStore().zoomLevel, ZOOM_LEVEL_RANGE.max, 'and one out of range is clamped, not dropped');
+});
+
+test('the zoom operations are bounded by one range, and recover a corrupt level', () => {
+	// The 25/500 pair used to be written out three times (the viewer's wheel
+	// handler, its keyboard chords, and the editor's own wheel handler) beside a
+	// `100` in three more. These are the operations all of them call now.
+	assert.deepEqual(
+		{ min: ZOOM_LEVEL_RANGE.min, max: ZOOM_LEVEL_RANGE.max, step: ZOOM_LEVEL_RANGE.step, default: ZOOM_LEVEL_RANGE.default },
+		{ min: 25, max: 500, step: 10, default: 100 },
+	);
+
+	resetStorage();
+	const store = new SettingsStore();
+	store.zoomIn();
+	assert.equal(store.zoomLevel, 110);
+	store.zoomOut();
+	store.zoomOut();
+	assert.equal(store.zoomLevel, 90);
+	store.resetZoom();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default);
+
+	store.zoomLevel = ZOOM_LEVEL_RANGE.max;
+	store.zoomIn();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.max, 'zooming in at the top is a no-op, not 510');
+	store.zoomLevel = ZOOM_LEVEL_RANGE.min;
+	store.zoomOut();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.min);
+
+	// The other half of the NaN trap: a level that is already corrupt has to be
+	// escapable with the wheel, not only with the reset button.
+	store.zoomLevel = Number.NaN;
+	store.zoomIn();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default + ZOOM_LEVEL_RANGE.step);
+});
+
+test('zoom and preview width follow the other windows too', () => {
+	resetStorage();
+	const store = new SettingsStore();
+	flushSync();
+
+	localStorage.setItem('zoomLevel', '150');
+	dispatchStorage('zoomLevel', '150');
+	assert.equal(store.zoomLevel, 150);
+
+	// Including garbage another window somehow published: the load path is the
+	// same one the constructor uses, so it validates the same way.
+	localStorage.setItem('zoomLevel', 'banana');
+	dispatchStorage('zoomLevel', 'banana');
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default);
+
+	localStorage.setItem('preview.fullWidth', 'true');
+	dispatchStorage('preview.fullWidth', 'true');
+	assert.equal(store.previewFullWidth, true);
+	store.togglePreviewFullWidth();
+	assert.equal(store.previewFullWidth, false);
+});
+
+test('the legacy full-width key is honoured once and then superseded', () => {
+	resetStorage({ isFullWidth: 'true' });
+	assert.equal(new SettingsStore().previewFullWidth, true, 'an install upgrading from the old key keeps its setting');
+
+	// The old key is left in place rather than deleted — `read` touches one field
+	// and so cannot remove a second key — and the new one takes precedence from
+	// the first write onwards, which is how `editor.openFileMode` and
+	// `editor.autoSaveEdits` treat theirs.
+	resetStorage({ isFullWidth: 'true', 'preview.fullWidth': 'false' });
+	assert.equal(new SettingsStore().previewFullWidth, false);
+});
+
+/*
+ * ---------------------------------------------------------------------------
  * Task 4 — language tag resolution.
  * ---------------------------------------------------------------------------
  */
@@ -498,6 +687,149 @@ test('the open effect neither reads the app version nor re-enters itself', () =>
 	// so they must not be reactive.
 	assert.match(componentSource, /\n\tlet loaded = false;/);
 	assert.match(componentSource, /\n\tlet previousActiveElement: HTMLElement \| null = null;/);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Task 6 — the zen-mode snapshot is validated like every other stored value.
+ *
+ * `editor.preZenState` was the one entry in the table that trusted what it
+ * found: a bare `JSON.parse` straight onto the field, with a `console.error`
+ * for the only failure it considered possible. Its neighbours all validate —
+ * `normalizeEditorToolbarOrder`, `parseStoredNumber`, `isSupportedLanguage`,
+ * `raw === 'left' || raw === 'right'` — and this is the entry whose unchecked
+ * value is copied back onto six other settings the moment zen mode ends.
+ * ---------------------------------------------------------------------------
+ */
+
+/** A snapshot whose six values all differ from the store's defaults. */
+const USER_SNAPSHOT = {
+	renderLineHighlight: 'none',
+	showTabs: false,
+	statusBar: false,
+	minimap: true,
+	lineNumbers: 'off',
+	showToc: true,
+};
+
+/** Every way a stored snapshot can be unusable, as it appears in localStorage. */
+const CORRUPT_SNAPSHOTS: Record<string, string> = {
+	'a field of the wrong type': '{"renderLineHighlight":"none","showTabs":"yes","statusBar":true,"minimap":false,"lineNumbers":"on","showToc":false}',
+	'a missing field': '{"renderLineHighlight":"none","statusBar":true,"minimap":false,"lineNumbers":"on","showToc":false}',
+	'not an object': '"showTabs"',
+	'unparseable JSON': '{"showTabs":',
+};
+
+test('a stored zen snapshot is accepted only whole', () => {
+	assert.deepEqual(normalizePreZenState({ ...USER_SNAPSHOT }), USER_SNAPSHOT);
+	// Fields nobody declared are dropped rather than carried onto the store.
+	assert.deepEqual(normalizePreZenState({ ...USER_SNAPSHOT, wordWrap: 'off' }), USER_SNAPSHOT);
+
+	// One field wrong is the whole record wrong: a snapshot this version cannot
+	// read comes from a version whose other five fields it cannot vouch for
+	// either, and a half-applied restore is a state the user never had.
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showTabs: 'yes' }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showTabs: 1 }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, lineNumbers: 0 }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showToc: null }), null);
+	const { showTabs, ...missingShowTabs } = USER_SNAPSHOT;
+	assert.equal(normalizePreZenState(missingShowTabs), null);
+	assert.equal(normalizePreZenState({}), null);
+
+	// And nothing that is not an object gets that far.
+	for (const value of [null, undefined, 42, 'showTabs', true, [USER_SNAPSHOT]]) {
+		assert.equal(normalizePreZenState(value), null, `${JSON.stringify(value)} is not a snapshot`);
+	}
+});
+
+test('a corrupt zen snapshot never reaches the settings it would restore', () => {
+	for (const [description, stored] of Object.entries(CORRUPT_SNAPSHOTS)) {
+		resetStorage({ 'editor.preZenState': stored });
+		const store = new SettingsStore();
+		assert.equal(store.preZenState, null, description);
+		// The store's own fields are untouched: the record was rejected before
+		// anything could be copied out of it.
+		assert.equal(store.showTabs, true, description);
+		assert.equal(store.statusBar, true, description);
+	}
+
+	resetStorage({ 'editor.preZenState': JSON.stringify(USER_SNAPSHOT) });
+	assert.deepEqual(new SettingsStore().preZenState, USER_SNAPSHOT, 'a good snapshot still survives a restart');
+});
+
+test('the tab bar comes back on leaving zen mode even when the snapshot is unusable', () => {
+	// THE BUG, end to end. Zen mode had already hidden the tab bar and written
+	// `editor.showTabs=false`; the snapshot that says how to put it back is one
+	// this version cannot read.
+	//
+	// Unvalidated, the missing-field case restored `showTabs = undefined`, whose
+	// write effect stored the *string* `"undefined"` — and `raw === 'true'` is
+	// false forever after, so the tab bar was gone on every later launch too,
+	// with only the settings dialog to bring it back.
+	for (const [description, stored] of Object.entries(CORRUPT_SNAPSHOTS)) {
+		resetStorage({
+			'editor.zenMode': 'true',
+			'editor.showTabs': 'false',
+			'editor.statusBar': 'false',
+			'editor.lineNumbers': 'off',
+			'editor.preZenState': stored,
+		});
+		const store = new SettingsStore();
+		flushSync();
+		assert.equal(store.zenMode, true, description);
+		assert.equal(store.showTabs, false, description);
+
+		store.toggleZenMode();
+		flushSync();
+
+		assert.equal(store.zenMode, false, description);
+		assert.equal(store.showTabs, true, `${description}: the tab bar is back`);
+		assert.equal(store.statusBar, true, description);
+		assert.equal(store.lineNumbers, 'on', description);
+		assert.equal(store.renderLineHighlight, 'line', description);
+		assert.equal(store.showToc, false, description);
+
+		// What was persisted is a boolean's spelling, not "undefined"...
+		assert.equal(localStorage.getItem('editor.showTabs'), 'true', description);
+		assert.equal(localStorage.getItem('editor.preZenState'), null, `${description}: the bad record is gone`);
+		// ...so the next launch keeps the tab bar instead of reading it back as false.
+		assert.equal(new SettingsStore().showTabs, true, `${description}: and it is still there after a restart`);
+	}
+});
+
+test('a good snapshot still restores what the user had, not the defaults', () => {
+	// The other half: the fallback must not be reached while there is a record
+	// to honour, or leaving zen mode would reset six settings every time.
+	resetStorage();
+	const store = new SettingsStore();
+	Object.assign(store, USER_SNAPSHOT);
+	flushSync();
+
+	store.toggleZenMode();
+	flushSync();
+	assert.equal(store.showTabs, false);
+	assert.equal(store.minimap, false, 'zen mode flattens everything, including what was already off');
+
+	// Through localStorage and a restart, the way a real session gets there.
+	const restarted = new SettingsStore();
+	assert.deepEqual(restarted.preZenState, USER_SNAPSHOT);
+	restarted.toggleZenMode();
+	assert.equal(restarted.zenMode, false);
+	for (const [field, value] of Object.entries(USER_SNAPSHOT)) {
+		assert.equal(Reflect.get(restarted, field), value, `${field} came back as the user left it`);
+	}
+	assert.equal(restarted.preZenState, null, 'the snapshot is spent once it has been restored');
+});
+
+test('the zen fallback is each setting own default', () => {
+	// DEFAULT_PRE_ZEN_STATE spells out six values the store already declares in
+	// its field initializers. This is what stops the two copies drifting.
+	resetStorage();
+	const fresh = new SettingsStore();
+	for (const [field, value] of Object.entries(DEFAULT_PRE_ZEN_STATE)) {
+		assert.equal(Reflect.get(fresh, field), value, `${field} default differs from the zen fallback`);
+	}
+	assert.equal(Object.keys(DEFAULT_PRE_ZEN_STATE).length, 6);
 });
 
 /*

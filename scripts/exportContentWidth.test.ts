@@ -376,6 +376,6 @@ test('the exporter is handed the preview\'s own derived width', () => {
 	// And `previewContentWidth` is the same derived value the live preview
 	// renders with, which is what makes "one source of truth" true rather than
 	// merely intended. (previewWidth.test.ts holds the other end of this.)
-	assert.match(viewerSource, /previewContentWidth = \$derived\(getPreviewContentWidth\(settings\.previewMaxWidth, isFullWidth\)\)/);
+	assert.match(viewerSource, /previewContentWidth = \$derived\(getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)\)/);
 	assert.match(viewerSource, /--preview-max-width: \{previewContentWidth === null \? '100%' : `\$\{previewContentWidth\}px`\}/);
 });

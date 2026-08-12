@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
-import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, offsetOf, readSource } from './sourceTree.js';
 
 /*
  * `[data](./data.csv)` did nothing on macOS and Linux, and opened a dead page
@@ -90,7 +90,11 @@ test('a markdown link still resolves to a path, so branch order is what keeps it
 // --- wiring ------------------------------------------------------------------
 
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
-const handler = sliceBetween(viewer, 'async function handleDocumentClick', 'let zoomLevel');
+// Extracted by name rather than by an anchor pair: the closing anchor used to be
+// `'let zoomLevel'`, the next declaration in the file, and it vanished the day
+// zoom moved into the settings store — an anchor whose only qualification is
+// being the next thing down is an anchor that moves for unrelated reasons.
+const handler = functionSource(viewer, 'handleDocumentClick');
 
 test('markdown targets are still claimed before the local-file branch', () => {
 	const markdown = offsetOf(handler, 'getRelativeMarkdownTarget(rawHref)');

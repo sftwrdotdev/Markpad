@@ -60,7 +60,10 @@
 		onprevTab,
 		onundoClose,
 		onscrollsync,
-		zoomLevel = $bindable(100),
+		// Read-only now: the wheel handler below changes the zoom through the
+		// settings store, which is what persists it and syncs it across windows,
+		// so there is no longer a value for the parent to bind back to.
+		zoomLevel = 100,
 		theme = "system",
 	} = $props<{
 		value: string;
@@ -549,9 +552,9 @@
 				e.preventDefault();
 				e.stopPropagation();
 				if (e.deltaY < 0) {
-					zoomLevel = Math.min(zoomLevel + 10, 500);
+					settings.zoomIn();
 				} else {
-					zoomLevel = Math.max(zoomLevel - 10, 25);
+					settings.zoomOut();
 				}
 			}
 		};

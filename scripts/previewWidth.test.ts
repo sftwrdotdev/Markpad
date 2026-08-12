@@ -65,7 +65,7 @@ test('settings load, persist, and reset the preview width through one normalizer
 });
 
 test('preview layout derives width and ToC geometry from the same preference', () => {
-	assert.match(viewerSource, /getPreviewContentWidth\(settings\.previewMaxWidth, isFullWidth\)/);
+	assert.match(viewerSource, /getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)/);
 	// The gutter arithmetic moved to `tocOverlay.ts` with #176, which added the
 	// question the inline expression could not answer: whether the pane under
 	// the outline is the preview at all. Both halves still feed on this same
@@ -89,13 +89,24 @@ test('preview width keyboard shortcuts avoid editable controls and app modals', 
 	assert.match(viewerSource, /showSettings \|\| modalState\.show \|\| promptModal\.show \|\| showHome/);
 	assert.match(viewerSource, /closest\('input, textarea, select, \[contenteditable="true"\], \[role="textbox"\]'\)/);
 	assert.match(viewerSource, /cmdOrCtrl && e\.altKey && !e\.shiftKey && \(code === 'BracketLeft' \|\| code === 'BracketRight'\)/);
-	assert.match(viewerSource, /isFullWidth = false/);
+	assert.match(viewerSource, /settings\.previewFullWidth = false/);
 	assert.match(viewerSource, /settings\.previewMaxWidth = adjustPreviewMaxWidth\(settings\.previewMaxWidth, code === 'BracketLeft' \? -40 : 40\)/);
 });
 
 test('preview full-width state migrates from the legacy localStorage key', () => {
-	assert.match(viewerSource, /localStorage\.getItem\('preview\.fullWidth'\)/);
-	assert.match(viewerSource, /localStorage\.getItem\('isFullWidth'\)/);
-	assert.match(viewerSource, /localStorage\.setItem\('preview\.fullWidth', String\(isFullWidth\)\)/);
-	assert.match(viewerSource, /localStorage\.removeItem\('isFullWidth'\)/);
+	// The pair the migration is made of, asserted on the function rather than on
+	// its call site: `??` is what makes the new key win once it exists.
+	assert.equal(getStoredPreviewFullWidth('true', null), true);
+	assert.equal(getStoredPreviewFullWidth(null, 'true'), true, 'the legacy key still decides while the new one is absent');
+	assert.equal(getStoredPreviewFullWidth('false', 'true'), false, 'the new key wins outright, it is not OR-ed with the old one');
+	assert.equal(getStoredPreviewFullWidth(null, null), false);
+
+	// It is a persisted setting like every other one now, which is what gets it
+	// cross-window sync — the viewer used to read and write `preview.fullWidth`
+	// with bare localStorage calls and no `storage` listener, so a second window
+	// only noticed after a restart. See scripts/settingsPersistence.test.ts.
+	assert.match(settingsSource, /key: 'preview\.fullWidth'/);
+	assert.match(settingsSource, /read: \(s\) => String\(s\.previewFullWidth\)/);
+	assert.match(settingsSource, /getStoredPreviewFullWidth\(raw, readStoredKey\(LEGACY_PREVIEW_FULL_WIDTH_KEY\)\)/);
+	assert.match(settingsSource, /const LEGACY_PREVIEW_FULL_WIDTH_KEY = 'isFullWidth';/);
 });

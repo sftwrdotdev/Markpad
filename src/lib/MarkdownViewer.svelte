@@ -102,14 +102,14 @@ import {
 	import HomePage from './components/HomePage.svelte';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
-import { adjustPreviewMaxWidth, getPreviewContentWidth, getStoredPreviewFullWidth } from './utils/previewWidth.js';
+import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
 import { isTocOverhanging } from './utils/tocOverlay.js';
 import {
 	getScrollSyncPositionFromPixels,
 	getScrollTopForSyncPosition,
 	type ScrollSyncPosition,
 } from './utils/scrollSync.js';
-import { settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
+import { resolveTheme, settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord } from './utils/shortcuts.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
@@ -320,10 +320,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isAtBottom = $state(false);
 
 	let showHome = $state(false);
-	let isFullWidth = $state(getStoredPreviewFullWidth(
-		localStorage.getItem('preview.fullWidth'),
-		localStorage.getItem('isFullWidth'),
-	));
 	let viewerWidth = $state(0);
 	// The bounds come from TOC_WIDTH_RANGE, the same object settings.setTocWidth
 	// clamps against, so the handle cannot offer a width persistence would shrink.
@@ -333,23 +329,18 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isTocResizing = $state(false);
 	let tocWrapperEl = $state<HTMLElement | null>(null);
 	let tocToggleEl = $state<HTMLElement | null>(null);
-	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, isFullWidth));
+	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
 	let isOverhanging = $derived(
 		isTocOverhanging({
 			isEditing,
 			isSplit,
 			tocSide: settings.tocSide,
-			isFullWidth,
+			isFullWidth: settings.previewFullWidth,
 			viewerWidth,
 			previewContentWidth,
 			tocWidth: settings.tocWidth,
 		}),
 	);
-
-	$effect(() => {
-		localStorage.setItem('preview.fullWidth', String(isFullWidth));
-		localStorage.removeItem('isFullWidth');
-	});
 
 	/**
 	 * Reaching past a floating outline to touch what it is covering is a request
@@ -375,19 +366,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	import { parseAndApplyVscodeTheme, clearVscodeTheme } from './utils/theme';
 
-	// Theme State
-	let theme = $state<string>('system');
-
 	onMount(() => {
-		const storedTheme = localStorage.getItem('theme');
-		if (storedTheme) theme = storedTheme;
 		// Clear the forced background color from app.html
 		document.documentElement.style.removeProperty('background-color');
 	});
 
+	/**
+	 * What Rust should paint the next window's background before any webview
+	 * exists — the appearance, not the theme.
+	 *
+	 * `theme.txt` is read in exactly one place (`app.rs`, at window creation) and
+	 * for exactly one purpose, and its vocabulary there is "dark", "light" and
+	 * "anything else means ask the OS". A `vscode:` name fell into that last
+	 * branch, so choosing a dark VS Code theme on a light desktop flashed a white
+	 * window on every launch. Whether such a theme is dark is knowable only after
+	 * its JSON has been parsed — which happens here — so the resolved answer is
+	 * what gets stored, instead of a name Rust would have to learn to parse.
+	 */
+	function saveStartupAppearance(appearance: 'system' | 'light' | 'dark') {
+		invoke('save_theme', { theme: appearance }).catch(console.error);
+	}
+
 	$effect(() => {
-		localStorage.setItem('theme', theme);
-		invoke('save_theme', { theme }).catch(console.error);
+		// Persistence and cross-window sync belong to the settings store; this
+		// effect is only the part that cannot: applying the theme to the document.
+		const theme = settings.theme;
 
 		if (theme === 'system' || theme === 'light' || theme === 'dark') {
 			if (theme === 'system') {
@@ -398,19 +401,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				document.documentElement.dataset.themeType = theme;
 			}
 			clearVscodeTheme();
+			saveStartupAppearance(theme);
 			const monaco = (window as any).monaco;
 			if (monaco && monaco.editor) {
 				const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
 				const effectiveTheme = theme === 'system' ? (isSystemDark ? 'dark' : 'light') : theme;
 				monaco.editor.setTheme(effectiveTheme === 'dark' ? 'vs-dark' : 'vs');
 			}
-		} else if (theme.startsWith('vscode:')) {
+		} else {
 			const name = theme.replace('vscode:', '');
-			invoke('read_vscode_theme', { name }).then((json: any) => {
-				parseAndApplyVscodeTheme(json, name);
+			invoke('read_vscode_theme', { name }).then(async (json: any) => {
+				await parseAndApplyVscodeTheme(json, name);
+				// `parseAndApplyVscodeTheme` decides dark vs. light from the theme's
+				// own `type` field and publishes it here.
+				saveStartupAppearance(document.documentElement.dataset.themeType === 'dark' ? 'dark' : 'light');
 			}).catch(e => {
 				console.error("Failed to load vscode theme", e);
-				theme = 'system';
+				settings.theme = 'system';
 			});
 		}
 
@@ -1062,7 +1069,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function currentMermaidTheme() {
 		return resolveMermaidTheme({
-			theme,
+			theme: settings.theme,
 			datasetThemeType: document.documentElement.dataset.themeType,
 			systemPrefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
 		});
@@ -2607,18 +2614,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	let zoomLevel = $state(parseInt(localStorage.getItem('zoomLevel') || '100', 10));
-
-	$effect(() => {
-		localStorage.setItem('zoomLevel', String(zoomLevel));
-	});
-
 	function handleWheel(e: WheelEvent) {
 		if (e.ctrlKey || e.metaKey) {
 			if (e.deltaY < 0) {
-				zoomLevel = Math.min(zoomLevel + 10, 500);
+				settings.zoomIn();
 			} else {
-				zoomLevel = Math.max(zoomLevel - 10, 25);
+				settings.zoomOut();
 			}
 		}
 	}
@@ -2740,7 +2741,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (cmdOrCtrl && e.altKey && !e.shiftKey && (code === 'BracketLeft' || code === 'BracketRight')) {
 			if (!canUsePreviewWidthShortcut(e.target, !!isSplit)) return;
 			e.preventDefault();
-			isFullWidth = false;
+			settings.previewFullWidth = false;
 			settings.previewMaxWidth = adjustPreviewMaxWidth(settings.previewMaxWidth, code === 'BracketLeft' ? -40 : 40);
 			return;
 		}
@@ -2865,15 +2866,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 		if (cmdOrCtrl && (key === '=' || key === '+')) {
 			e.preventDefault();
-			zoomLevel = Math.min(zoomLevel + 10, 500);
+			settings.zoomIn();
 		}
 		if (cmdOrCtrl && key === '-') {
 			e.preventDefault();
-			zoomLevel = Math.max(zoomLevel - 10, 25);
+			settings.zoomOut();
 		}
 		if (cmdOrCtrl && key === '0') {
 			e.preventDefault();
-			zoomLevel = 100;
+			settings.resetZoom();
 		}
 		if (cmdOrCtrl && key === ',') {
 			e.preventDefault();
@@ -3453,7 +3454,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{liveMode}
 		windowTitle="Markpad"
 		showHome={false}
-		{zoomLevel}
+		zoomLevel={settings.zoomLevel}
 		onselectFile={selectFile}
 		onnewFile={handleNewFile}
 		onopenFile={selectFile}
@@ -3472,11 +3473,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{isEditing}
 		ondetach={handleDetach}
 		ontabclick={() => (showHome = false)}
-		onresetZoom={() => (zoomLevel = 100)}
-		{isFullWidth}
-		ontoggleFullWidth={() => (isFullWidth = !isFullWidth)}
-		{theme}
-		onSetTheme={(t) => (theme = t)}
+		onresetZoom={() => settings.resetZoom()}
+		isFullWidth={settings.previewFullWidth}
+		ontoggleFullWidth={() => settings.togglePreviewFullWidth()}
+		theme={settings.theme}
+		onSetTheme={(t: string) => (settings.theme = resolveTheme(t))}
 		onopenSettings={() => (showSettings = true)}
 		onfind={triggerFindAction}
 		oncloseTab={closeTabAndWindowIfLast} />
@@ -3493,7 +3494,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{liveMode}
 		{windowTitle}
 		{showHome}
-		{zoomLevel}
+		zoomLevel={settings.zoomLevel}
 		onselectFile={selectFile}
 		onnewFile={handleNewFile}
 		onopenFile={selectFile}
@@ -3513,13 +3514,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{isEditing}
 		ondetach={handleDetach}
 		ontabclick={() => (showHome = false)}
-		onresetZoom={() => (zoomLevel = 100)}
+		onresetZoom={() => settings.resetZoom()}
 		{isScrollSynced}
 		ontoggleSync={() => tabManager.activeTabId && tabManager.toggleScrollSync(tabManager.activeTabId)}
-		{isFullWidth}
-		ontoggleFullWidth={() => (isFullWidth = !isFullWidth)}
-		{theme}
-		onSetTheme={(t) => (theme = t)}
+		isFullWidth={settings.previewFullWidth}
+		ontoggleFullWidth={() => settings.togglePreviewFullWidth()}
+		theme={settings.theme}
+		onSetTheme={(t: string) => (settings.theme = resolveTheme(t))}
 		onopenSettings={() => (showSettings = true)}
 		onfind={triggerFindAction}
 		canGoBack={canGoBackInFileHistory}
@@ -3528,7 +3529,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		onforward={() => navigateFileHistory('forward')}
 		oncloseTab={closeTabAndWindowIfLast} />
 
-	<Settings show={showSettings} {theme} onSetTheme={(t) => (theme = t)} onclose={() => (showSettings = false)} />
+	<Settings show={showSettings} theme={settings.theme} onSetTheme={(t) => (settings.theme = t)} onclose={() => (showSettings = false)} />
 
 	{#if activeExternalChangeConflict && !showHome}
 		<div class="external-change-bar" role="status">
@@ -3545,7 +3546,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
 			<div
 				class="markdown-container"
-				style="zoom: {isEditing && !isSplit ? 1 : zoomLevel / 100}; --code-font: {settings.codeFont}, monospace; --code-font-size: {settings.codeFontSize}px; --highlight-color: {highlightColorMap[settings.highlightColor] || highlightColorMap.yellow};"
+				style="zoom: {isEditing && !isSplit ? 1 : settings.zoomLevel / 100}; --code-font: {settings.codeFont}, monospace; --code-font-size: {settings.codeFontSize}px; --highlight-color: {highlightColorMap[settings.highlightColor] || highlightColorMap.yellow};"
 				onwheel={handleWheel}
 				role="presentation">
 				<div class="layout-container" 
@@ -3587,9 +3588,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								bind:this={editorPane}
 								value={tabManager.activeTab.rawContent}
 								language={editorLanguage}
-								{theme}
+								theme={settings.theme}
 								onsave={saveContent}
-								bind:zoomLevel
+								zoomLevel={settings.zoomLevel}
 								onnew={handleNewFile}
 								onopen={selectFile}
 								onclose={closeFile}
@@ -3631,7 +3632,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								<article
 									bind:this={markdownBody}
 									contenteditable="false"
-									class="markdown-body {isFullWidth ? 'full-width' : ''} {settings.showToc ? 'toc-active' : ''}"
+									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''} {settings.showToc ? 'toc-active' : ''}"
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
 									onchange={handleTaskCheckboxChange}

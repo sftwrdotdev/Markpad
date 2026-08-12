@@ -217,12 +217,12 @@ const FUZZ_KEYS: Array<{ keyCode: number; key: string; code: string }> = [
  * the handler's real branch structure rather than a description of it.
  *
  * ASSIGNMENTS ARE RECORDED TOO, as `name=value`. Several branches do their work
- * by writing a component variable rather than by calling anything —
- * `showSettings = true` for Mod+`,` and `zoomLevel = …` for the zoom chords —
- * and a call-only recorder reported those chords as dead. They were not; the
- * harness simply could not see them, which is the empty-iteration failure mode
- * one level down. `set` on the scope proxy used to return `true` and discard the
- * write.
+ * by writing a variable rather than by calling anything — `showSettings = true`
+ * for Mod+`,` and `settings.previewFullWidth = false` for the preview-width
+ * chords — and a call-only recorder reported those chords as dead. They were
+ * not; the harness simply could not see them, which is the empty-iteration
+ * failure mode one level down. `set` on the scope proxy used to return `true`
+ * and discard the write.
  */
 export function documentKeymap(osType: string): Map<Chord, string[]> {
 	const source = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'handleKeyDown');
@@ -250,19 +250,32 @@ export function documentKeymap(osType: string): Map<Chord, string[]> {
 
 	const known: Record<string, unknown> = {
 		// `has: () => true` below means the scope claims EVERY identifier, globals
-		// included, so `Math` has to be handed back deliberately or the zoom
-		// branches assign a recording stub instead of a number and the value they
-		// wrote becomes unreadable.
+		// included, so `Math` has to be handed back deliberately rather than
+		// answered with a recording stub.
 		Math,
 		mode: 'app',
-		settings: new Proxy({ osType }, { get: (t, k) => (k === 'osType' ? osType : record(`settings.${String(k)}`)) }),
+		// Writes to the store are recorded as well as calls: several branches do
+		// their work by assigning a settings field (`settings.previewFullWidth =
+		// false` for the preview-width chords), and without the `set` trap those
+		// chords come back as firing nothing at all — the same blind spot the
+		// scope proxy's own `set` trap fixed one level up. The trap does not write
+		// through: `get` keeps answering with a fresh stub, so nothing a chord
+		// assigns can leak into the next chord's starting state.
+		settings: new Proxy(
+			{ osType },
+			{
+				get: (t, k) => (k === 'osType' ? osType : record(`settings.${String(k)}`)),
+				set: (t, k, value) => {
+					fired.push(`settings.${String(k)}=${typeof value === 'object' ? '{…}' : String(value)}`);
+					return true;
+				},
+			},
+		),
 		showSettings: false,
 		showHome: false,
 		isEditing: false,
 		modalState: { show: false },
 		promptModal: { show: false },
-		zoomLevel: 100,
-		isFullWidth: false,
 		editorPaneEl: null,
 		document: { activeElement: null },
 		tabManager: new Proxy(
