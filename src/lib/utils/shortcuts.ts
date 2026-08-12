@@ -36,6 +36,8 @@
  * It was invisible in the app until this group existed: #636 shipped list
  * continuation and nothing anywhere told a user it was there.
  */
+import type { ViewerCommand } from './viewerKeymap.js';
+
 type ShortcutGroup = 'file' | 'edit' | 'keys' | 'view' | 'window';
 
 /** Display order of the groups, and the i18n key that titles each one. */
@@ -91,11 +93,22 @@ export type ShortcutEntry = {
 	 */
 	readonly editorCommand?: string;
 	/**
-	 * The app function `MarkdownViewer.svelte`'s document-level handler runs for
-	 * this chord when the editor does not have focus. Recorded as a call path, so
-	 * `tabManager.cycleTab` matches `tabManager.cycleTab:next`.
+	 * The command the document-level dispatcher means by this row's chords when
+	 * the editor does not have focus.
+	 *
+	 * One entry means every chord in the row runs it (`file-new` binds both
+	 * `Mod+T` and `Mod+N`); otherwise there is one per chord, in `chords` order,
+	 * which is how `view-preview-width`'s `[` and `]` say which way each goes.
+	 *
+	 * A `ViewerCommand` rather than a function name, now that the dispatcher has
+	 * a module of its own: the compiler now rejects a row naming a
+	 * command that does not exist, where the old free-text spellings
+	 * (`showSettings=true`, `settings.previewMaxWidth=`, `toggleEdit` for a
+	 * function called `toggleEditView`) were matched by prefix and could only be
+	 * checked at runtime — and `tab-next` and `tab-prev` both said
+	 * `tabManager.cycleTab`, so nothing could tell them apart.
 	 */
-	readonly documentCall?: string;
+	readonly documentCommands?: readonly ViewerCommand[];
 	/**
 	 * Platforms where the document handler deliberately stays out of the way.
 	 * Only Quit uses this: on macOS the native Tauri menu owns `Cmd+Q` and the
@@ -123,7 +136,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+T', 'Mod+N'],
 		group: 'file',
 		editorAction: true,
-		documentCall: 'handleNewFile',
+		documentCommands: ['new-file'],
 	},
 	{
 		id: 'file-open',
@@ -131,7 +144,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+O'],
 		group: 'file',
 		editorAction: true,
-		documentCall: 'selectFile',
+		documentCommands: ['open-file'],
 	},
 	{
 		id: 'file-save',
@@ -139,7 +152,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+S'],
 		group: 'file',
 		editorAction: true,
-		documentCall: 'saveContent',
+		documentCommands: ['save'],
 	},
 	{
 		id: 'file-save-as',
@@ -149,14 +162,14 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		// with no Shift guard, so the advertised keystroke ran a plain Save.
 		chords: ['Mod+Shift+S'],
 		group: 'file',
-		documentCall: 'saveContentAs',
+		documentCommands: ['save-as'],
 	},
 	{
 		id: 'file-reload',
 		labelKey: 'menu.reloadFromDisk',
 		chords: ['F5'],
 		group: 'file',
-		documentCall: 'reloadFromDisk',
+		documentCommands: ['reload-from-disk'],
 	},
 	{
 		id: 'file-close',
@@ -164,7 +177,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+W'],
 		group: 'file',
 		editorAction: true,
-		documentCall: 'closeFile',
+		documentCommands: ['close-file'],
 	},
 	{
 		id: 'file-reveal',
@@ -178,7 +191,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'menu.exit',
 		chords: ['Mod+Q'],
 		group: 'file',
-		documentCall: 'getCurrentWindow',
+		documentCommands: ['close-window'],
 		// On macOS the document handler returns before this branch; the native
 		// menu's CmdOrCtrl+Q is what answers, and #281 left exactly two entries.
 		documentExempt: ['macos'],
@@ -315,7 +328,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+E'],
 		group: 'view',
 		editorAction: true,
-		documentCall: 'toggleEdit',
+		documentCommands: ['toggle-edit-view'],
 	},
 	{
 		id: 'view-toggle-live',
@@ -333,7 +346,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+\\'],
 		group: 'view',
 		editorAction: true,
-		documentCall: 'toggleSplitView',
+		documentCommands: ['toggle-split-view'],
 	},
 	{
 		id: 'toggle-zen-mode',
@@ -359,16 +372,14 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'menu.find',
 		chords: ['Mod+F'],
 		group: 'view',
-		documentCall: 'triggerFindAction',
+		documentCommands: ['find'],
 	},
 	{
 		id: 'app-settings',
 		labelKey: 'menu.settings',
 		chords: ['Mod+,'],
 		group: 'view',
-		// The branch opens Settings by assigning, not by calling; the harness
-		// records the write.
-		documentCall: 'showSettings=true',
+		documentCommands: ['open-settings'],
 		nativeMenuAccelerator: 'CmdOrCtrl+,',
 	},
 	{
@@ -376,16 +387,15 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'settings.previewMaxWidth',
 		// One row, two chords: `[` narrows and `]` widens, the same pair the
 		// settings stepper offers. Both run the same branch, which turns full-width
-		// off before it adjusts the width; the width write is the one this row
-		// names, and the full-width write is accounted for in
-		// DOCUMENT_NOT_ADVERTISED as part of this same shortcut.
+		// off before it adjusts the width — one shortcut, two directions, which is
+		// why this is the one row whose commands are listed per chord.
 		chords: ['Mod+Alt+[', 'Mod+Alt+]'],
 		group: 'view',
-		documentCall: 'settings.previewMaxWidth=',
+		documentCommands: ['preview-width-narrower', 'preview-width-wider'],
 	},
-	{ id: 'view-zoom-in', labelKey: 'menu.zoomIn', chords: ['Mod+='], group: 'view', documentCall: 'settings.zoomIn' },
-	{ id: 'view-zoom-out', labelKey: 'menu.zoomOut', chords: ['Mod+-'], group: 'view', documentCall: 'settings.zoomOut' },
-	{ id: 'view-zoom-reset', labelKey: 'menu.resetZoom', chords: ['Mod+0'], group: 'view', documentCall: 'settings.resetZoom' },
+	{ id: 'view-zoom-in', labelKey: 'menu.zoomIn', chords: ['Mod+='], group: 'view', documentCommands: ['zoom-in'] },
+	{ id: 'view-zoom-out', labelKey: 'menu.zoomOut', chords: ['Mod+-'], group: 'view', documentCommands: ['zoom-out'] },
+	{ id: 'view-zoom-reset', labelKey: 'menu.resetZoom', chords: ['Mod+0'], group: 'view', documentCommands: ['zoom-reset'] },
 
 	// -------------------------------------------------------------- window
 	{
@@ -396,7 +406,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Ctrl+Tab'],
 		group: 'window',
 		editorAction: true,
-		documentCall: 'tabManager.cycleTab',
+		documentCommands: ['next-tab'],
 	},
 	{
 		id: 'tab-prev',
@@ -404,7 +414,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Ctrl+Shift+Tab'],
 		group: 'window',
 		editorAction: true,
-		documentCall: 'tabManager.cycleTab',
+		documentCommands: ['previous-tab'],
 	},
 	{
 		id: 'tab-undo-close',
@@ -412,28 +422,28 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+Shift+T'],
 		group: 'window',
 		editorAction: true,
-		documentCall: 'handleUndoCloseTab',
+		documentCommands: ['undo-close-tab'],
 	},
 	{
 		id: 'tab-move-window',
 		labelKey: 'menu.moveToWindow',
 		chords: ['Mod+Shift+M'],
 		group: 'window',
-		documentCall: 'carryActiveTabToNextWindow',
+		documentCommands: ['move-tab-to-next-window'],
 	},
 	{
 		id: 'nav-back',
 		labelKey: 'menu.back',
 		chords: ['Alt+Left'],
 		group: 'window',
-		documentCall: 'navigateFileHistory',
+		documentCommands: ['history-back'],
 	},
 	{
 		id: 'nav-forward',
 		labelKey: 'menu.forward',
 		chords: ['Alt+Right'],
 		group: 'window',
-		documentCall: 'navigateFileHistory',
+		documentCommands: ['history-forward'],
 	},
 	{
 		id: 'app-command-palette',

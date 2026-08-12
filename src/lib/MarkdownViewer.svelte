@@ -105,6 +105,7 @@ import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
 import { isTocOverhanging } from './utils/tocOverlay.js';
+import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
 	getScrollSyncPositionFromPixels,
 	getScrollTopForSyncPosition,
@@ -2754,254 +2755,111 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	function canUsePreviewWidthShortcut(target: EventTarget | null, isSplit: boolean) {
-		if (showSettings || modalState.show || promptModal.show || showHome || (isEditing && !isSplit)) return false;
-		const element = target instanceof Element ? target : null;
-		return !element?.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
+	/*
+	 * WHICH command a keystroke means is decided by `viewerKeymap.ts`; what is
+	 * left here is which of this component's functions each command runs.
+	 *
+	 * The split is #644's, applied to the other end of the file: the branch
+	 * structure was unreachable from a test while it lived in a `.svelte` file,
+	 * so fourteen assertions across four files read it as TEXT instead, and #647
+	 * turned five of them red on a rename that changed no behaviour. The chord
+	 * logic imports now; the table below is the residue, and
+	 * `keymapHarness.viewerCommandTable()` is the one reader of it left.
+	 *
+	 * Every command preventDefaults, which is why the call does it once rather
+	 * than twenty-two times. A chord the app does not bind — and the two it
+	 * deliberately leaves to someone else, macOS's ⌘Q and Mod+F inside Monaco —
+	 * comes back null and is not prevented.
+	 */
+	function keyContext(): KeyContext {
+		const active = document.activeElement as Node | null;
+		return {
+			mode,
+			osType: settings.osType,
+			isSplit: !!tabManager.activeTab?.isSplit,
+			overlayOpen: showSettings || modalState.show || promptModal.show || showHome,
+			isEditing,
+			editorHasFocus: !!editorPaneEl && !!active && editorPaneEl.contains(active),
+		};
+	}
+
+	function runViewerCommand(command: ViewerCommand) {
+		switch (command) {
+			case 'preview-width-narrower':
+			case 'preview-width-wider':
+				settings.previewFullWidth = false;
+				settings.previewMaxWidth = adjustPreviewMaxWidth(
+					settings.previewMaxWidth,
+					command === 'preview-width-narrower' ? -40 : 40,
+				);
+				return;
+			case 'reload-from-disk':
+				return void reloadFromDisk();
+			case 'move-tab-to-next-window':
+				return void carryActiveTabToNextWindow();
+			case 'close-file':
+				return void closeFile();
+			case 'new-file':
+				return void handleNewFile();
+			case 'open-file':
+				return void selectFile();
+			case 'close-window':
+				return void getCurrentWindow().close();
+			case 'toggle-split-view':
+				if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
+				return;
+			case 'toggle-edit-view':
+				// The `silentSave` argument this used to pass meant "suppress the
+				// unsaved-changes modal on the hotkey path". There is no modal on a
+				// view toggle any more, and a keystroke that says "show me the other
+				// pane" is not a request to write the file: whether a dirty tab is
+				// flushed is now decided by the user's auto-save setting alone,
+				// identically for the hotkey and the toolbar button.
+				return void toggleEditView();
+			case 'save-as':
+				return void saveContentAs();
+			case 'save': {
+				// Reading mode used to swallow the shortcut entirely. An untitled
+				// buffer reaches it with content still unsaved — `toggleEdit` only
+				// runs its save flow for tabs that already have a path — so the only
+				// way to keep that text was to switch back to the editor first.
+				// Saving is never mode-specific; the guard asks whether there is
+				// anything to write, not which pane is visible. A saved, unmodified
+				// document stays a no-op so the shortcut cannot churn its mtime and
+				// wake the file watcher.
+				const saveTarget = tabManager.activeTab;
+				if (saveTarget && (saveTarget.isDirty || saveTarget.path === '')) saveContent();
+				return;
+			}
+			case 'undo-close-tab':
+				return void handleUndoCloseTab();
+			case 'next-tab':
+				return tabManager.cycleTab('next');
+			case 'previous-tab':
+				return tabManager.cycleTab('prev');
+			case 'history-back':
+				return void navigateFileHistory('back');
+			case 'history-forward':
+				return void navigateFileHistory('forward');
+			case 'zoom-in':
+				return settings.zoomIn();
+			case 'zoom-out':
+				return settings.zoomOut();
+			case 'zoom-reset':
+				return settings.resetZoom();
+			case 'open-settings':
+				showSettings = true;
+				return;
+			case 'find':
+				return triggerFindAction();
+		}
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		if (mode !== 'app') return;
-
-		const cmdOrCtrl = e.ctrlKey || e.metaKey;
-		const key = e.key.toLowerCase();
-		const code = e.code;
-
-		/*
-		 * The three modifier shapes almost every branch below wants, named once.
-		 *
-		 * A chord means the modifiers it names AND the absence of the ones it does
-		 * not. Half the branches here used to say only `cmdOrCtrl && key === …`,
-		 * which is not `Mod+X` — it is `Mod+X` plus its whole Shift/Alt cross
-		 * product. `Mod+W` was the expensive case: Shift+Cmd+W and Alt+Cmd+W are
-		 * what a user reaches for when they mean "close the window" or "close
-		 * everything", and both silently closed one document instead. `Mod+Q`,
-		 * `Mod+E`, `Mod+S`, `Mod+,` and the zoom chords all had the same hole, and
-		 * on macOS Shift+Cmd+Q — Log Out — reached the window-close branch.
-		 *
-		 * The guard is here rather than repeated in fourteen branches so that a
-		 * branch added later INHERITS it by reaching for `mod`, instead of having
-		 * to remember three negations. `shortcutRegistry.test.ts` closes the other
-		 * half: any chord this handler answers that the registry does not advertise
-		 * fails there, so a new branch cannot quietly grow a cross product again.
-		 *
-		 * Three branches are deliberately not written in these terms, each with its
-		 * reason at the branch: tab cycling (Shift picks the direction), zoom in
-		 * (`+` is the shifted `=`), and the Alt-only navigation chords.
-		 */
-		const mod = cmdOrCtrl && !e.shiftKey && !e.altKey;
-		const modShift = cmdOrCtrl && e.shiftKey && !e.altKey;
-		const modAlt = cmdOrCtrl && !e.shiftKey && e.altKey;
-
-		// The macOS application menu owns ⌘Q. Document shortcuts remain in the
-		// in-window controls, so they continue to act on the current webview.
-		if (settings.osType === 'macos' && mod && key === 'q') return; // → menu-app-quit
-
-		const isSplit = tabManager.activeTab?.isSplit;
-
-		if (modAlt && (code === 'BracketLeft' || code === 'BracketRight')) {
-			if (!canUsePreviewWidthShortcut(e.target, !!isSplit)) return;
-			e.preventDefault();
-			settings.previewFullWidth = false;
-			settings.previewMaxWidth = adjustPreviewMaxWidth(settings.previewMaxWidth, code === 'BracketLeft' ? -40 : 40);
-			return;
-		}
-
-		if (!cmdOrCtrl && !e.shiftKey && !e.altKey && code === 'F5') {
-			e.preventDefault();
-			reloadFromDisk();
-			return;
-		}
-		if (modShift && key === 'm') {
-			e.preventDefault();
-			carryActiveTabToNextWindow();
-			return;
-		}
-		// Nothing catches the Shift and Alt variants on the way past: they are not
-		// another command in disguise, they are a user asking the WINDOW manager
-		// for something. Leaving them unhandled — and unprevented — is what lets
-		// the OS answer them, which is strictly better than answering with the one
-		// irreversible thing the app can do.
-		if (mod && key === 'w') {
-			e.preventDefault();
-			closeFile();
-		}
-		// Windows only, which is the scope this binding was written to and then
-		// exceeded. `docs/requirements/157-ctrl-f4-close-tab.md`, added by the
-		// same commit as the branch itself (4670743, "add Ctrl+F4 shortcut to
-		// close active tab on Windows"), puts "macOS / Linux (dort ist Ctrl+F4
-		// kein Standard)" under "Out of scope"; the handler bound all three
-		// anyway. So this is not a new product decision, it is the documented one
-		// finally being implemented. The doc went away with the rest of docs/ in
-		// d69c181, which is how the intent stopped being checkable —
-		// `shortcutRegistry.test.ts` now holds it instead.
-		//
-		// The convention argument is why the requirement says that: Ctrl+F4
-		// closes a document window on Windows, still live in Office and the IDEs.
-		// macOS has no equivalent — Cmd+F4 means nothing, and with "Use F1, F2,
-		// etc. as standard function keys" off, which is the default, F4 runs a
-		// system function and the app never receives the event at all
-		// (hand-tested on a Mac: it did nothing). A Mac was therefore offered a
-		// THIRD route to an irreversible action that was at once non-conventional
-		// and nearly unpressable.
-		//
-		// Not a rule about odd-looking chords: `Cmd+Shift+=` stays on every
-		// platform. That one is not a platform convention, it is how "Cmd plus"
-		// is typed — `+` is the shifted `=` on every layout — so Mac users press
-		// it as much as anyone. The question is "does anyone on this platform
-		// actually press this?", not "does it carry a Shift?".
-		//
-		// A bare `settings.osType` comparison next to #646's `platformOf` is
-		// deliberate, not an oversight. `platformOf` answers `'macos' | 'windows'`
-		// and folds Linux INTO `'windows'` — correct for the two questions it was
-		// built for (which modifier to print, which window chrome to draw) and
-		// unable to express this one, which needs all three apart. And the reason
-		// to avoid a bare comparison does not apply to this spelling: `osType` is
-		// `'unknown'` until the Rust command answers, and `=== 'windows'` resolves
-		// that window to DO NOT FIRE. It fails closed, which is the only
-		// acceptable direction for a branch that throws a document away.
-		if (settings.osType === 'windows' && mod && code === 'F4') {
-			e.preventDefault();
-			closeFile();
-		}
-		// New file, both keys, whether or not the editor has focus (#392).
-		//
-		// Monaco resolves its own keybindings on the editor container and calls
-		// stopPropagation() when it consumes one, so this handler only ever runs
-		// for keystrokes the editor did not claim. That is how Ctrl+T came to
-		// mean two things: inside Monaco the `file-new` action answered it and
-		// opened an Untitled buffer, outside it this branch opened a Home tab.
-		// Both of the app's own labels already promised the first one — the tab
-		// strip's + button is titled "New Tab (Ctrl+T)" and the app menu prints
-		// Ctrl/Cmd+T beside "New File" — so the branch, not the labels, was the
-		// odd one out.
-		//
-		// `file-new` binds Ctrl/Cmd+N as well, and this handler used to know
-		// about only one of the two, which left Ctrl+N doing nothing at all
-		// outside the editor. Both are listed here so the two paths cannot
-		// drift again; `formatShortcutKeymap.test.ts` holds them equal.
-		if (mod && (key === 't' || key === 'n')) {
-			e.preventDefault();
-			handleNewFile();
-		}
-		if (mod && key === 'o') {
-			e.preventDefault();
-			selectFile();
-		}
-		if (mod && key === 'q') {
-			e.preventDefault();
-			getCurrentWindow().close();
-		}
-		if (mod && (code === 'Backslash' || code === 'IntlBackslash')) {
-			e.preventDefault();
-			if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
-		}
-		if (mod && key === 'e') {
-			e.preventDefault();
-			// The `silentSave` argument these two used to pass meant "suppress
-			// the unsaved-changes modal on the hotkey path". There is no modal
-			// on a view toggle any more, and a keystroke that says "show me the
-			// other pane" is not a request to write the file: whether a dirty
-			// tab is flushed is now decided by the user's auto-save setting
-			// alone, identically for the hotkey and the toolbar button.
-			//
-			toggleEditView();
-		}
-		if (modShift && key === 's') {
-			// Save As. The app menu advertised this chord for as long as the menu has
-			// existed, but nothing ever bound it: the branch below matched on
-			// `cmdOrCtrl && key === 's'` with no Shift guard, so the advertised
-			// keystroke fell through to a plain Save and silently overwrote the file
-			// the user was asking to write somewhere else. `saveContentAs` had no
-			// keyboard path at all — its only caller was the menu button.
-			e.preventDefault();
-			saveContentAs();
-			return;
-		}
-		if (mod && key === 's') {
-			// Reading mode used to swallow the shortcut entirely. An untitled
-			// buffer reaches it with content still unsaved — `toggleEdit`
-			// only runs its save flow for tabs that already have a path — so
-			// the only way to keep that text was to switch back to the
-			// editor first. Saving is never mode-specific; the guard now
-			// asks whether there is anything to write, not which pane is
-			// visible. A saved, unmodified document stays a no-op so the
-			// shortcut cannot churn its mtime and wake the file watcher.
-			e.preventDefault();
-			const saveTarget = tabManager.activeTab;
-			if (saveTarget && (saveTarget.isDirty || saveTarget.path === '')) saveContent();
-		}
-
-		if (modShift && key === 't') {
-			e.preventDefault();
-			handleUndoCloseTab();
-		}
-		// Not `mod`/`modShift`: Shift is the ARGUMENT here, not part of the chord's
-		// identity — it picks the direction. Alt still has to be up.
-		if (cmdOrCtrl && !e.altKey && code === 'Tab') {
-			e.preventDefault();
-			tabManager.cycleTab(e.shiftKey ? 'prev' : 'next');
-		}
-		if (mod && code === 'PageUp') {
-			e.preventDefault();
-			tabManager.cycleTab('prev');
-		}
-		if (mod && code === 'PageDown') {
-			e.preventDefault();
-			tabManager.cycleTab('next');
-		}
-		// Alt-based chords, so they say what they need by hand: `mod` would demand
-		// Alt be up, which is the opposite of what these two bind.
-		if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowLeft') {
-			e.preventDefault();
-			tabManager.cycleTab('prev');
-		}
-		if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowRight') {
-			e.preventDefault();
-			tabManager.cycleTab('next');
-		}
-		if (e.altKey && !e.shiftKey && !cmdOrCtrl && code === 'ArrowLeft') {
-			e.preventDefault();
-			navigateFileHistory('back');
-		}
-		if (e.altKey && !e.shiftKey && !cmdOrCtrl && code === 'ArrowRight') {
-			e.preventDefault();
-			navigateFileHistory('forward');
-		}
-		// The one chord that cannot demand Shift be up. `+` IS the shifted `=` on
-		// the layouts that have both, so `mod` would delete the `+` spelling
-		// outright and leave Cmd+Shift+= — how a lot of people zoom in — dead. The
-		// guard is per-spelling instead: bare `=` wants no Shift, `+` brings its
-		// own. (The keymap harness only ever fires unshifted characters, so it sees
-		// the `=` half of this and never the `+` half.)
-		if (cmdOrCtrl && !e.altKey && (key === '+' || (key === '=' && !e.shiftKey))) {
-			e.preventDefault();
-			settings.zoomIn();
-		}
-		if (mod && key === '-') {
-			e.preventDefault();
-			settings.zoomOut();
-		}
-		if (mod && key === '0') {
-			e.preventDefault();
-			settings.resetZoom();
-		}
-		if (mod && key === ',') {
-			e.preventDefault();
-			showSettings = true;
-		}
-		// Ctrl/Cmd+F: route to either Monaco's built-in find or the preview
-		// FindBar depending on focus and which panes are visible. We only
-		// preventDefault when we actually take the action ourselves —
-		// otherwise we let Monaco's own keybinding fire.
-		if (mod && key === 'f') {
-			const active = document.activeElement as Node | null;
-			const editorHasFocus = !!editorPaneEl && !!active && editorPaneEl.contains(active);
-			if (!editorHasFocus) {
-				e.preventDefault();
-				triggerFindAction();
-			}
-		}
+		const command = viewerCommandFor(e, keyContext());
+		if (!command) return;
+		e.preventDefault();
+		runViewerCommand(command);
 	}
 
 	async function navigateFileHistory(direction: 'back' | 'forward') {

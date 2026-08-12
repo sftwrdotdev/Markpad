@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 const runtime = readSource('src-tauri/src/window_runtime.rs');
@@ -59,6 +60,15 @@ test('window organization exposes move, merge, and carry actions', () => {
 	assert.match(tab, /menu-tab-move/);
 	assert.match(viewer, /async function mergeAllWindowsHere/);
 	assert.match(viewer, /async function carryActiveTabToNextWindow/);
-	assert.match(viewer, /modShift && key === 'm'/);
+	// The chord itself moved to `viewerKeymap.ts`, so it is asked rather
+	// than matched — and the answer names the command, not the local variable the
+	// branch happened to be written with.
+	assert.equal(
+		viewerCommandFor(
+			{ key: 'm', code: 'KeyM', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false },
+			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, isEditing: false, editorHasFocus: false },
+		),
+		'move-tab-to-next-window',
+	);
 	assert.match(titleBar, /onmergeAllWindows/);
 });

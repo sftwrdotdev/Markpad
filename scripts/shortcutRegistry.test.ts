@@ -16,6 +16,7 @@ import {
 	type ShortcutEntry,
 } from '../src/lib/utils/shortcuts.js';
 import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
+import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import {
 	OperatingSystem,
 	PLATFORMS,
@@ -148,7 +149,7 @@ test('no registry entry is unverifiable', () => {
 	// that implements it, or it cannot be checked and must not be advertised.
 	for (const entry of SHORTCUTS) {
 		assert.ok(
-			entry.editorAction || entry.editorCommand || entry.documentCall || entry.nativeMenuAccelerator,
+			entry.editorAction || entry.editorCommand || entry.documentCommands || entry.nativeMenuAccelerator,
 			`${entry.id} names no implementation, so nothing here can confirm its chord fires`,
 		);
 	}
@@ -202,18 +203,25 @@ test('every chord the registry advertises runs the command it names, outside the
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
 		for (const entry of SHORTCUTS) {
-			if (!entry.documentCall) continue;
+			if (!entry.documentCommands) continue;
 			if (entry.documentExempt?.includes(platform.osType)) continue;
-			for (const chord of entry.chords) {
+			for (const [index, chord] of entry.chords.entries()) {
+				// One command for the whole row, or one per chord in `chords` order.
+				// `assert.equal` rather than the old prefix match: the registry names a
+				// `ViewerCommand` now, so there is an exact answer to compare against
+				// and `tab-next` can no longer be satisfied by `tab-prev`'s branch.
+				const command: ViewerCommand | undefined =
+					entry.documentCommands[entry.documentCommands.length === 1 ? 0 : index];
+				assert.ok(command, `${entry.id} lists ${entry.documentCommands.length} commands for ${entry.chords.length} chords`);
 				const want = toMonacoLabel(chord, platform.mac);
-				const fired = keymap.get(want);
 				assert.ok(
-					fired,
+					keymap.has(want),
 					`${platform.name}: the panel would show ${formatChord(chord, platform.mac ? 'Cmd' : 'Ctrl')} for ${entry.id}, but that chord does nothing outside the editor`,
 				);
-				assert.ok(
-					fired.some((call) => call.startsWith(entry.documentCall!)),
-					`${platform.name}: ${want} is advertised as ${entry.id} (${entry.documentCall}) but runs ${fired.join(', ')}`,
+				assert.equal(
+					keymap.get(want),
+					command,
+					`${platform.name}: ${want} is advertised as ${entry.id} (${command}) but means ${keymap.get(want)}`,
 				);
 				checked++;
 			}
@@ -243,40 +251,34 @@ test('the native accelerator the registry defers to is the one the Rust menu cla
 });
 
 test('each zoom chord reaches its own zoom operation, not just the zoom code', () => {
-	// All three zoom chords land in the same three lines of `handleKeyDown`, so
-	// the contract test above can only prove they reach the zoom code — not that
-	// + and − are the right way round. What tells them apart is which store
-	// method each one calls.
+	// The contract test above compares each chord against the command its
+	// registry row names, so it cannot catch a registry that names the same
+	// command twice — three rows all saying `zoom-in` would agree with a
+	// dispatcher that answers `zoom-in` to all three, and + and − would be the
+	// same key. What is left for this test is that the three are DISTINCT.
 	//
-	// This used to read the number the chord assigned to a local `zoomLevel`,
+	// It used to read the number the chord assigned to a local `zoomLevel`,
 	// because the arithmetic lived in the handler. It lives in the store now, so
 	// the two halves of the claim are checked where each one is: that zoomIn
 	// really raises the level and resetZoom really returns to ZOOM_LEVEL_RANGE's
 	// default is asserted against the real store in settingsPersistence.test.ts,
 	// and what is left here — which chord asks for which — is the half only the
 	// keymap can answer.
-	const operations: Array<[string, string]> = [
-		['view-zoom-in', 'settings.zoomIn'],
-		['view-zoom-out', 'settings.zoomOut'],
-		['view-zoom-reset', 'settings.resetZoom'],
+	const expected: Array<[string, ViewerCommand]> = [
+		['view-zoom-in', 'zoom-in'],
+		['view-zoom-out', 'zoom-out'],
+		['view-zoom-reset', 'zoom-reset'],
 	];
 
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
-		for (const [id, operation] of operations) {
+		const seen = new Map<ViewerCommand, string>();
+		for (const [id, command] of expected) {
 			const entry = SHORTCUTS.find((e) => e.id === id)!;
-			const fired = keymap.get(toMonacoLabel(entry.chords[0], platform.mac));
-			assert.ok(fired, `${id} answers on ${platform.name}`);
-			assert.ok(
-				fired.includes(operation),
-				`${id} must run ${operation}() on ${platform.name}; recorded ${fired.join(', ')}`,
-			);
-			// And nothing else: a chord that called two of the three would satisfy
-			// its own row above while quietly undoing another one.
-			for (const [, other] of operations) {
-				if (other === operation) continue;
-				assert.ok(!fired.includes(other), `${id} also runs ${other}() on ${platform.name}`);
-			}
+			const answered = keymap.get(toMonacoLabel(entry.chords[0], platform.mac));
+			assert.equal(answered, command, `${id} must mean ${command} on ${platform.name}, not ${answered}`);
+			assert.equal(seen.get(command), undefined, `${platform.name}: ${id} and ${seen.get(command)} both mean ${command}`);
+			seen.set(command, id);
 		}
 	}
 });
@@ -537,15 +539,10 @@ test('Save As runs Save As, and not a plain Save', () => {
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
 		const shiftS = platform.mac ? 'Shift+Meta+S' : 'Ctrl+Shift+S';
-		const fired = keymap.get(shiftS);
-		assert.ok(fired, `${shiftS} does nothing on ${platform.name}`);
-		assert.ok(
-			fired.some((call) => call.startsWith('saveContentAs')),
-			`${platform.name}: ${shiftS} runs ${fired.join(', ')} instead of saveContentAs`,
-		);
-		assert.ok(
-			!fired.some((call) => call === 'saveContent'),
-			`${platform.name}: ${shiftS} still falls through to a plain Save`,
+		assert.equal(
+			keymap.get(shiftS),
+			'save-as',
+			`${platform.name}: ${shiftS} means ${keymap.get(shiftS) ?? 'nothing'} instead of save-as`,
 		);
 	}
 });
@@ -561,20 +558,19 @@ test('a close chord wearing an extra modifier destroys nothing', () => {
 	// Not "these three chords do nothing" but "nothing destructive answers to a
 	// modifier it does not name": a fourth spelling nobody thought of fails here
 	// too, and so does a future destructive branch that forgets its guard.
-	const DESTRUCTIVE = ['closeFile', 'getCurrentWindow'];
+	const DESTRUCTIVE: ViewerCommand[] = ['close-file', 'close-window'];
 	let plainClosesFound = 0;
 
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
-		for (const [chord, calls] of keymap) {
-			const damage = calls.filter((call) => DESTRUCTIVE.some((command) => call.startsWith(command)));
-			if (damage.length === 0) continue;
+		for (const [chord, command] of keymap) {
+			if (!DESTRUCTIVE.includes(command)) continue;
 			if (!/\b(Shift|Alt)\b/.test(chord)) {
 				plainClosesFound++;
 				continue;
 			}
 			assert.fail(
-				`${platform.name}: ${chord} runs ${damage.join(', ')} — a chord reached for a window-level or ` +
+				`${platform.name}: ${chord} means ${command} — a chord reached for a window-level or ` +
 					'"close all" gesture must not close the document',
 			);
 		}
@@ -613,17 +609,18 @@ test('Mod+F4 closes a document on Windows, the one platform it was scoped to', (
 		// Both spellings on every platform: `cmdOrCtrl` is `ctrlKey || metaKey`
 		// everywhere, so a Mac or a Linux box answering EITHER one is the defect.
 		for (const spelling of documentSpellings('Mod+F4', platform.mac)) {
-			const fired = keymap.get(spelling) ?? [];
+			const command = keymap.get(spelling);
 			if (platform.osType === 'windows') {
-				assert.ok(
-					fired.includes('closeFile'),
-					`${platform.name}: ${spelling} runs ${fired.join(', ') || 'nothing'} instead of closeFile`,
+				assert.equal(
+					command,
+					'close-file',
+					`${platform.name}: ${spelling} means ${command ?? 'nothing'} instead of close-file`,
 				);
 			} else {
-				assert.deepEqual(
-					fired,
-					[],
-					`${platform.name}: ${spelling} still runs ${fired.join(', ')} — requirement 157 puts this platform out of scope`,
+				assert.equal(
+					command,
+					undefined,
+					`${platform.name}: ${spelling} still means ${command} — requirement 157 puts this platform out of scope`,
 				);
 			}
 		}
@@ -1084,59 +1081,45 @@ test('the panel’s groups are visibly separated, not run together', () => {
 // The editor layer's half of this is `every keybinding the editor registers is
 // either advertised or consciously not`, above.
 
-/** A recorded call, reduced to the command it names: drop the argument and the assigned value. */
-function commandOf(call: string): string {
-	return call.split(':')[0].replace(/=.*$/, '=');
-}
-
-/**
- * Commands the document handler can reach that are deliberately not advertised.
- *
- * One entry, and it is a second write inside a branch that IS advertised rather
- * than a chord of its own: everything the keyboard can *reach* is in the panel.
- * A new branch has to be listed here with a reason, or shown.
- */
-const DOCUMENT_NOT_ADVERTISED: Record<string, string> = {
-	'settings.previewFullWidth=':
-		'The preview-width chords (view-preview-width) turn full-width off before they narrow or widen ' +
-		'the preview, so this write is half of that one shortcut. No chord toggles full width on its own; ' +
-		'the title bar button does.',
-};
-
 /** Native menu accelerators deliberately not advertised. Also empty today. */
 const NATIVE_NOT_ADVERTISED: Record<string, string> = {};
 
-test('every command the document handler can reach is advertised, or consciously not', () => {
-	const advertised = SHORTCUTS.map((entry) => entry.documentCall).filter(Boolean) as string[];
-	assert.ok(advertised.length > 10, `${advertised.length} rows name a document command`);
+test('every command the document dispatcher can reach is advertised', () => {
+	const advertised = new Set(SHORTCUTS.flatMap((entry) => entry.documentCommands ?? []));
+	assert.ok(advertised.size > 10, `${advertised.size} commands are named by a registry row`);
 
-	const reachable = new Set<string>();
-	for (const platform of PLATFORMS) {
-		for (const calls of documentKeymap(platform.osType).values()) for (const call of calls) reachable.add(commandOf(call));
-	}
+	const reachable = new Set<ViewerCommand>();
+	for (const platform of PLATFORMS) for (const command of documentKeymap(platform.osType).values()) reachable.add(command);
 	// Without this the whole test passes vacuously if the harness stops running.
-	assert.ok(reachable.size > 10, `the document handler reached ${reachable.size} commands`);
+	assert.ok(reachable.size > 10, `the dispatcher reached ${reachable.size} commands`);
 
-	// Prefix either way: a row may name `getCurrentWindow` for a chord recorded as
-	// `getCurrentWindow().close`, or `showSettings=true` for one recorded as
-	// `showSettings=`. This direction is a coverage question — is the command
-	// mentioned at all — and the exact chord-by-chord contract is asserted above.
-	const unexplained = [...reachable].filter(
-		(command) =>
-			!advertised.some((call) => command.startsWith(call) || call.startsWith(command)) &&
-			!(command in DOCUMENT_NOT_ADVERTISED),
-	);
 	assert.deepEqual(
-		unexplained.sort(),
+		[...reachable].filter((command) => !advertised.has(command)).sort(),
 		[],
 		'these commands are reachable from the keyboard but the shortcuts panel never mentions them; ' +
-			'add a row to SHORTCUTS or a reason to DOCUMENT_NOT_ADVERTISED',
+			'add a row to SHORTCUTS',
 	);
 
-	for (const command of Object.keys(DOCUMENT_NOT_ADVERTISED)) {
-		assert.ok(reachable.has(command), `${command} is no longer reachable — drop it from DOCUMENT_NOT_ADVERTISED`);
-	}
+	// And the other direction: a row naming a command no chord answers is a
+	// panel entry that does nothing.
+	assert.deepEqual(
+		[...advertised].filter((command) => !reachable.has(command)).sort(),
+		[],
+		'the panel advertises these commands but no chord reaches them',
+	);
 });
+
+/*
+ * WHERE `DOCUMENT_NOT_ADVERTISED` WENT.
+ *
+ * It had one entry, `settings.previewFullWidth=`, and the entry existed only
+ * because the harness recorded WRITES: the preview-width branch turns full
+ * width off before it adjusts the width, so one shortcut looked like two
+ * commands and the second one had to be excused in prose. A `ViewerCommand` is
+ * the shortcut, not its side effects — `preview-width-narrower` covers both
+ * writes — so there is nothing left to excuse, and the test above can assert
+ * both directions instead of one.
+ */
 
 /**
  * Every harness label one registry chord is answered by.
@@ -1192,7 +1175,7 @@ const DOCUMENT_CHORDS_NOT_ADVERTISED: Record<string, string> = {
 test('every chord the document handler answers is advertised, or consciously not', () => {
 	for (const platform of PLATFORMS) {
 		const advertised = new Set(
-			SHORTCUTS.filter((entry) => entry.documentCall)
+			SHORTCUTS.filter((entry) => entry.documentCommands)
 				.flatMap((entry) => entry.chords)
 				.flatMap((chord) => documentSpellings(chord, platform.mac)),
 		);
