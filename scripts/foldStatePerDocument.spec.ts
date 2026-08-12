@@ -25,144 +25,83 @@
  * render, which in split view is the next keystroke. Nothing keyed callouts at
  * all, so there was nowhere to write it down even in principle.
  *
- * These tests run the REAL `toggleFold`, `revealFold` and `handleLinkClick` out
- * of MarkdownViewer.svelte, the REAL `revealFoldsAround` out of FindBar.svelte,
- * the REAL `visibleItems` out of Toc.svelte and the REAL `processMarkdownHtml`,
- * against the REAL TabManager. Nothing here asserts on the text of an
- * implementation file: what is checked is what a second render comes back as.
+ * These tests run the REAL `toggleFold`, `revealFold` and `toggleFoldFromClick`
+ * out of `foldState.ts`, the REAL `visibleItems` out of a MOUNTED Toc.svelte,
+ * and the REAL `processMarkdownHtml`, against the REAL TabManager, in a real
+ * DOM. Nothing here asserts on the text of an implementation file: what is
+ * checked is what a second render comes back as.
  *
- * The rune declarations are plucked too, not restated, because the whole fix
- * lives in one of them — whether `foldOverrides` is component state or a
- * read of the active tab. Restating it here would be restating the answer.
+ * WHAT IS NOT THE REAL THING, AND WHY. Two callers of the fold drivers live in
+ * files this file cannot import a function out of, and both are named where
+ * they are restated: `foldsForTab` (one line in documentSession.svelte.ts, not
+ * exported) and `revealFoldsAround` (three lines inside FindBar.svelte, around
+ * the REAL `collapsedFoldsAround`). Everything either of them is about — the
+ * ancestor walk, the fold write, the render — is imported.
  */
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
-import ts from 'typescript';
 
-import { installShimDom, parseHtml, type ShimElement } from './renderProtocolDom.ts';
-import { offsetOf, readSource } from './sourceTree.js';
+import { flushSync, mount, unmount } from 'svelte';
+import { beforeAll, test } from 'vitest';
+
+import Toc from '../src/lib/components/Toc.svelte';
+import {
+	collapsedFoldsAround,
+	revealFold,
+	toggleFold,
+	toggleFoldFromClick,
+	type FoldHost,
+} from '../src/lib/utils/foldState.js';
 
 // ---------------------------------------------------------------- environment
+//
+// The runes are the compiler's, not ours: vitest builds `.svelte` and
+// `.svelte.ts` through the Svelte plugin, so `$state`/`$derived`/`$effect`
+// behave here exactly as they do in the app. Only the things jsdom genuinely
+// does not have are stubbed.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? {
+/**
+ * Svelte's `slide` transition, which the outline uses, drives the Web
+ * Animations API. jsdom does not implement it, and nothing here is about the
+ * animation, so it is given something that finishes immediately.
+ */
+beforeAll(() => {
+	(Element.prototype as any).animate = () => ({
+		cancel() {},
+		pause() {},
+		play() {},
+		finish() {},
+		onfinish: null,
+		oncancel: null,
+		currentTime: 0,
+		startTime: 0,
+		playbackRate: 1,
+		playState: 'finished',
+		finished: Promise.resolve(),
+		effect: { getComputedTiming: () => ({ delay: 0, duration: 0, endTime: 0 }) },
+	});
+});
+
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
 
-const localStore = new Map<string, string>();
-g.localStorage = g.localStorage ?? {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
-
-installShimDom();
-
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
-const { processMarkdownHtml } = await import('../src/lib/utils/markdown.ts');
-const foldState = await import('../src/lib/utils/foldState.ts');
-
-const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-const toc = readSource(new URL('../src/lib/components/Toc.svelte', import.meta.url));
-const findBar = readSource(new URL('../src/lib/components/FindBar.svelte', import.meta.url));
-const session = readSource(new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url));
-
-// ------------------------------------------------------------ source plucking
-
-/** Index of the `}` that closes the block opening at `open`, comment/string aware. */
-function matchBrace(source: string, open: number): number {
-	let depth = 0;
-	for (let i = open; i < source.length; i++) {
-		const c = source[i];
-		const next = source[i + 1];
-		if (c === '/' && next === '/') {
-			i = source.indexOf('\n', i);
-			continue;
-		}
-		if (c === '/' && next === '*') {
-			i = source.indexOf('*/', i) + 1;
-			continue;
-		}
-		if (c === "'" || c === '"' || c === '`') {
-			const quote = c;
-			for (i++; i < source.length; i++) {
-				if (source[i] === '\\') i++;
-				else if (source[i] === quote) break;
-			}
-			continue;
-		}
-		if (c === '{') depth++;
-		else if (c === '}' && --depth === 0) return i;
-	}
-	assert.fail(`unbalanced braces from offset ${open}`);
-}
-
-/** Slice one `function <name>(…) { … }` (async or not) out of a component. */
-function pluckFunction(source: string, name: string, required = true): string {
-	for (const marker of [`async function ${name}(`, `function ${name}(`]) {
-		const start = source.indexOf(marker);
-		if (start === -1) continue;
-		const open = offsetOf(source, '{', offsetOf(source, ')', start));
-		return source.slice(start, matchBrace(source, open) + 1);
-	}
-	assert.ok(!required, `expected the component to define ${name}`);
-	return '';
-}
-
-/**
- * A top-level `let`/`const` declaration, with the rune peeled off.
- *
- * `$derived` is re-evaluated on every read, so it becomes an assignment in
- * `refresh` rather than an initializer — that is the whole difference between
- * a value that follows the active tab and one that does not, and the harness
- * must not paper over it. `$state` and a plain `const` initialize once.
- */
-type Declaration = { declare: string; refresh: string };
-
-function pluckDeclaration(source: string, name: string, required = true): Declaration | null {
-	const match = new RegExp(`\\n\\t(let|const) ${name} = ([^\\n]*);\\n`).exec(source);
-	if (!match) {
-		assert.ok(!required, `expected the component to declare ${name} on one line`);
-		return null;
-	}
-	const [, keyword, initializer] = match;
-	const derived = /^\$derived(?:\.by)?\((.*)\)$/.exec(initializer);
-	if (derived) return { declare: `let ${name};`, refresh: `${name} = ${derived[1]};` };
-	const state = /^\$state\((.*)\)$/.exec(initializer);
-	if (state) return { declare: `let ${name} = ${state[1]};`, refresh: '' };
-	return { declare: `${keyword} ${name} = ${initializer};`, refresh: '' };
-}
-
-/** Position of a declaration in the component, so the harness keeps source order. */
-function declarationOffset(source: string, name: string): number {
-	const at = source.search(new RegExp(`\\n\\t(?:let|const) ${name} = `));
-	return at === -1 ? Number.MAX_SAFE_INTEGER : at;
-}
+const { processMarkdownHtml } = await import('../src/lib/utils/markdown.js');
 
 // -------------------------------------------------------------- the fixtures
 //
 // comrak's shape for two DIFFERENT documents that share a heading — the id is
 // the slug, so both call it `introduction`, which is the collision the fix is
 // about. Bodies differ so a mix-up is visible in the output rather than only in
-// a flag.
+// a flag. The `### Details` under it is what the outline hides when the section
+// above it is folded.
 
 const docHtml = (body: string) =>
 	'<h2 data-sourcepos="1:1-1:15"><a href="#introduction" aria-hidden="true" class="anchor" id="introduction"></a>Introduction</h2>\n' +
-	`<p data-sourcepos="3:1-3:11">${body}</p>\n`;
+	`<p data-sourcepos="3:1-3:11">${body}</p>\n` +
+	'<h3 data-sourcepos="5:1-5:11"><a href="#details" aria-hidden="true" class="anchor" id="details"></a>Details</h3>\n';
 
 const DOC_A = docHtml('Alpha body.');
 const DOC_B = docHtml('Beta body.');
@@ -177,136 +116,102 @@ const FOLD_KEY = 'introduction';
  */
 const DOC_WITH_CALLOUT =
 	docHtml('Alpha body.') +
-	'<blockquote data-sourcepos="5:1-6:12"><p>[!tip]+ Hint<br>the hidden text</p></blockquote>\n';
+	'<blockquote data-sourcepos="7:1-8:12"><p>[!tip]+ Hint<br>the hidden text</p></blockquote>\n';
 
 const CALLOUT_KEY = 'callout:Hint';
 
-function render(html: string, path: string, folds: Set<string>): ShimElement {
-	return parseHtml(processMarkdownHtml(html, path, folds)).body;
+function render(html: string, path: string, folds: Set<string>): HTMLElement {
+	const body = document.createElement('div');
+	body.innerHTML = processMarkdownHtml(html, path, folds);
+	return body;
 }
 
-function isSectionCollapsed(body: ShimElement): boolean {
+function isSectionCollapsed(body: HTMLElement): boolean {
 	return body.querySelector('.foldable-header.is-collapsed') !== null;
 }
 
-// ---------------------------------------------------------------- the harness
+// ---------------------------------------------------------------- the drivers
 
+/**
+ * The three fold drivers, wired the way MarkdownViewer.svelte wires them.
+ *
+ * `root` is its `bind:this` on the preview article, `folds` is its `$derived`
+ * read of the active tab, and `setFolds` is the write back to that tab. What
+ * runs on top of them — flip, apply, the reveal condition, the control
+ * selector — is imported out of `foldState.ts`, which is where all of it now
+ * lives.
+ */
 type Viewer = {
 	/** The table of contents' fold button, and the keyboard route. */
 	toggleFold: (key: string) => void;
 	/** What find asks for on its way to a match it cannot show. */
 	revealFold: (key: string) => void;
 	/** The preview's own fold control: a heading chevron, or a callout title. */
-	clickChevron: (control: ShimElement) => Promise<void>;
+	clickChevron: (control: Element) => boolean;
 	/** The set the viewer would hand `processMarkdownHtml` right now. */
 	foldsOnScreen: () => Set<string>;
 	/** Point the viewer at a rendered document, as `bind:this={markdownBody}` does. */
-	showDocument: (body: ShimElement) => void;
+	showDocument: (body: HTMLElement) => void;
 };
 
 function buildViewer(): Viewer {
-	const names = ['NO_FOLD_OVERRIDES', 'activeTab', 'foldOverrides'];
-	const declarations = names
-		.map((name) => ({ name, offset: declarationOffset(viewer, name) }))
-		.sort((a, b) => a.offset - b.offset)
-		.map(({ name }) => pluckDeclaration(viewer, name, name === 'foldOverrides'))
-		.filter((declaration): declaration is Declaration => declaration !== null);
+	let markdownBody: HTMLElement | null = null;
 
-	const source = [
-		pluckFunction(viewer, 'setFoldOverrides', false),
-		pluckFunction(viewer, 'toggleFold'),
-		pluckFunction(viewer, 'revealFold'),
-		pluckFunction(viewer, 'handleLinkClick'),
-	]
-		.filter(Boolean)
-		.join('\n\n');
-
-	const js = ts.transpileModule(
-		[
-			declarations.map((declaration) => declaration.declare).join('\n'),
-			`const refresh = () => {\n${declarations.map((declaration) => declaration.refresh).join('\n')}\n};`,
-			source,
-		].join('\n\n'),
-		{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
-	).outputText;
-
-	// `markdownBody` is the component's `bind:this` on the preview article, and
-	// the foldState helpers are its imports. Both are injected so the plucked
-	// source runs unmodified.
-	const factory = new Function(
-		'deps',
-		`"use strict";
-		const { tabManager, applyFold, flipFold, foldRegionAt, foldRegionByKey, isFoldCollapsed } = deps;
-		let markdownBody = null;
-		${js}
-		return {
-			setBody: (body) => { markdownBody = body; },
-			toggleFold: (key) => { refresh(); return toggleFold(key); },
-			revealFold: (key) => { refresh(); return revealFold(key); },
-			handleLinkClick: (event) => { refresh(); return handleLinkClick(event); },
-			folds: () => { refresh(); return foldOverrides; },
-		};`,
-	);
-
-	const bound = factory({ tabManager, ...foldState });
+	const foldsOnScreen = () => tabManager.activeTab?.foldOverrides ?? new Set<string>();
+	const host: FoldHost = {
+		get root() {
+			return markdownBody;
+		},
+		get folds() {
+			return foldsOnScreen();
+		},
+		setFolds(next) {
+			if (tabManager.activeTabId) tabManager.setTabFoldOverrides(tabManager.activeTabId, next);
+		},
+	};
 
 	return {
-		toggleFold: bound.toggleFold,
-		revealFold: bound.revealFold,
-		clickChevron: (control) =>
-			bound.handleLinkClick({
-				target: control,
-				detail: 1,
-				preventDefault: () => {},
-				stopPropagation: () => {},
-			}),
-		foldsOnScreen: bound.folds,
+		toggleFold: (key) => toggleFold(host, key),
+		revealFold: (key) => revealFold(host, key),
+		clickChevron: (control) => toggleFoldFromClick(host, control),
+		foldsOnScreen,
 		showDocument: (body) => {
-			bound.setBody(body);
+			markdownBody = body;
 		},
 	};
 }
 
-/** The real `visibleItems` out of Toc.svelte, over a caller-supplied fold set. */
-function buildTocFilter() {
-	const marker = 'let visibleItems = $derived.by(() => ';
-	const start = offsetOf(toc, marker);
-	const open = offsetOf(toc, '{', start + marker.length);
-	const body = toc.slice(open, matchBrace(toc, open) + 1);
-	const js = ts.transpileModule(body, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-	return new Function('items', 'foldOverrides', `"use strict";\n${js}`) as (
-		items: unknown[],
-		foldOverrides: Set<string>,
-	) => Array<{ id: string }>;
+/**
+ * The outline, mounted, over the document on screen and a caller-supplied fold
+ * set — so the filtering is Toc.svelte's own `visibleItems` and the fold keys
+ * are the ones it reads off the rendered headings.
+ */
+function tocEntries(body: HTMLElement, folds: Set<string>): string[] {
+	const target = document.createElement('div');
+	document.body.replaceChildren(body, target);
+
+	const component = mount(Toc, {
+		target,
+		props: { markdownBody: body, htmlContent: body.innerHTML, foldOverrides: new Set(folds) },
+	});
+	flushSync();
+	const entries = Array.from(target.querySelectorAll('.toc-link')).map((el) => el.textContent!.trim());
+	unmount(component);
+	return entries;
 }
 
-const tocVisibleItems = buildTocFilter();
-
 /**
- * The real `foldsForTab` out of documentSession — the set the LOAD path hands
- * the renderer, looked up at render time.
+ * The set the LOAD path hands the renderer, looked up at render time — one line
+ * of documentSession.svelte.ts, which does not export it.
  *
- * The viewer's `foldOverrides` derived (above) is what the outline and the
- * live preview DOM read; this is what decides which sections the incoming
- * HTML is built with `is-collapsed` already on. They are different readers of
- * the same field and both are exercised below, because a fold leak shows up in
- * each of them separately.
+ * The viewer's `foldOverrides` derived (above) is what the outline and the live
+ * preview DOM read; this is what decides which sections the incoming HTML is
+ * built with `is-collapsed` already on. They are different readers of the same
+ * field and both are exercised below, because a fold leak shows up in each of
+ * them separately.
  */
-const foldsForTab = (() => {
-	const js = ts.transpileModule(pluckFunction(session, 'foldsForTab'), {
-		compilerOptions: { target: ts.ScriptTarget.ES2022 },
-	}).outputText;
-	return new Function('tabManager', `"use strict";\n${js}\nreturn foldsForTab;`)(tabManager) as (
-		tabId: string,
-	) => Set<string>;
-})();
-
-// `foldKey` is what the outline now reads off the rendered heading rather than
-// rebuilding out of `id || text` — see `TocItem` in Toc.svelte.
-const TOC_ITEMS = [
-	{ id: FOLD_KEY, foldKey: FOLD_KEY, text: 'Introduction', level: 2, isBlock: false, hasChildren: true },
-	{ id: 'details', foldKey: 'details', text: 'Details', level: 3, isBlock: false, hasChildren: false },
-];
+const foldsForTab = (tabId: string): Set<string> =>
+	tabManager.tabs.find((item) => item.id === tabId)?.foldOverrides ?? new Set<string>();
 
 // ------------------------------------------------------------------ the tests
 
@@ -342,7 +247,7 @@ test('folding a heading in one document does not fold the same heading in anothe
 		false,
 		'the second document must render with its own fold state, which is none',
 	);
-	assert.match(onScreen.textContent, /Beta body\./);
+	assert.match(onScreen.textContent!, /Beta body\./);
 });
 
 test('the fold is still there when the user comes back to the document they folded', () => {
@@ -366,26 +271,26 @@ test('the table of contents hides the folded children only in the document they 
 	const { app, a, b } = foldInAThenSwitchToB();
 
 	assert.deepEqual(
-		tocVisibleItems(TOC_ITEMS, app.foldsOnScreen()).map((item) => item.id),
-		[FOLD_KEY, 'details'],
+		tocEntries(render(DOC_B, '/notes/b.md', app.foldsOnScreen()), app.foldsOnScreen()),
+		['Introduction', 'Details'],
 		"the second document's table of contents must show its own children",
 	);
 
 	tabManager.setActive(a);
 	assert.deepEqual(
-		tocVisibleItems(TOC_ITEMS, app.foldsOnScreen()).map((item) => item.id),
-		[FOLD_KEY],
+		tocEntries(render(DOC_A, '/notes/a.md', app.foldsOnScreen()), app.foldsOnScreen()),
+		['Introduction'],
 		'the folded document still hides them',
 	);
 
 	tabManager.setActive(b);
-	assert.equal(tocVisibleItems(TOC_ITEMS, app.foldsOnScreen()).length, 2);
+	assert.equal(tocEntries(render(DOC_B, '/notes/b.md', app.foldsOnScreen()), app.foldsOnScreen()).length, 2);
 });
 
 test('the preview chevron folds the document on screen and no other', () => {
-	// The route FindBar drives to reveal a match: it dispatches a click on the
-	// `.header-fold-icon` rather than stripping the class, so this is also what
-	// re-opens a fold that is hiding a search hit.
+	// The route FindBar drives to reveal a match: it asks the fold's owner to
+	// open it rather than stripping the class, so this is also what re-opens a
+	// fold that is hiding a search hit.
 	reset();
 	const app = buildViewer();
 
@@ -399,22 +304,36 @@ test('the preview chevron folds the document on screen and no other', () => {
 	app.showDocument(body);
 
 	const chevron = body.querySelector('.foldable-header .header-fold-icon')!;
-	return app.clickChevron(chevron).then(() => {
-		assert.equal(isSectionCollapsed(body), true, 'the click collapses the section it was in');
-		assert.equal(app.foldsOnScreen().has(FOLD_KEY), true);
+	assert.equal(app.clickChevron(chevron), true, 'the chevron is a fold control');
+	assert.equal(isSectionCollapsed(body), true, 'the click collapses the section it was in');
+	assert.equal(app.foldsOnScreen().has(FOLD_KEY), true);
 
-		tabManager.setActive(b);
-		assert.equal(app.foldsOnScreen().has(FOLD_KEY), false);
-		assert.equal(isSectionCollapsed(render(DOC_B, '/notes/b.md', app.foldsOnScreen())), false);
+	tabManager.setActive(b);
+	assert.equal(app.foldsOnScreen().has(FOLD_KEY), false);
+	assert.equal(isSectionCollapsed(render(DOC_B, '/notes/b.md', app.foldsOnScreen())), false);
 
-		// And back: the same chevron re-opens it, which is what reveals a find
-		// match, rather than leaving a second fold state behind.
-		tabManager.setActive(a);
-		return app.clickChevron(chevron).then(() => {
-			assert.equal(isSectionCollapsed(body), false);
-			assert.equal(app.foldsOnScreen().has(FOLD_KEY), false);
-		});
-	});
+	// And back: the same chevron re-opens it, which is what reveals a find
+	// match, rather than leaving a second fold state behind.
+	tabManager.setActive(a);
+	app.clickChevron(chevron);
+	assert.equal(isSectionCollapsed(body), false);
+	assert.equal(app.foldsOnScreen().has(FOLD_KEY), false);
+});
+
+test('a click on the heading itself is not a fold', () => {
+	// `foldRegionAt` reads up to `.foldable-header`, which is the whole heading.
+	// Only the chevron and a callout's title bar drive a fold; the words of a
+	// heading are text the reader is allowed to select.
+	reset();
+	const app = buildViewer();
+
+	tabManager.addTab('/notes/a.md', DOC_A);
+	const body = render(DOC_A, '/notes/a.md', app.foldsOnScreen());
+	app.showDocument(body);
+
+	assert.equal(app.clickChevron(body.querySelector('.foldable-header')!), false);
+	assert.equal(isSectionCollapsed(body), false);
+	assert.equal(app.foldsOnScreen().size, 0);
 });
 
 test('an untitled buffer gets fold state of its own', () => {
@@ -495,18 +414,18 @@ test('following a link renders the new document with its own fold state', () => 
 		false,
 		'the document the link led to must render with its own fold state, which is none',
 	);
-	assert.match(onScreen.textContent, /Beta body\./);
+	assert.match(onScreen.textContent!, /Beta body\./);
 	assert.equal(app.foldsOnScreen().has(FOLD_KEY), false);
 });
 
 test("the table of contents shows the linked document's children", () => {
 	// The outline reads the same field through the viewer's derived, so it hides
 	// the section's children in a document the user never folded anything in.
-	const { app } = foldInAThenFollowLinkTo('/notes/b.md');
+	const { app, id } = foldInAThenFollowLinkTo('/notes/b.md');
 
 	assert.deepEqual(
-		tocVisibleItems(TOC_ITEMS, app.foldsOnScreen()).map((item) => item.id),
-		[FOLD_KEY, 'details'],
+		tocEntries(render(DOC_B, '/notes/b.md', foldsForTab(id)), app.foldsOnScreen()),
+		['Introduction', 'Details'],
 		'the outline must list the linked document’s own headings',
 	);
 });
@@ -618,13 +537,13 @@ test('a link that resolves to the file already open is not a navigation', () => 
 // exactly what the broken version also achieved.
 
 /** The callout title bar, which is the whole control for a foldable callout. */
-function calloutToggle(body: ShimElement): ShimElement {
+function calloutToggle(body: HTMLElement): Element {
 	const toggle = body.querySelector('.callout-toggle');
 	assert.ok(toggle, 'the rendered callout must have a control to click');
 	return toggle;
 }
 
-function isCalloutCollapsed(body: ShimElement): boolean {
+function isCalloutCollapsed(body: HTMLElement): boolean {
 	return body.querySelector('.callout-foldable.is-collapsed') !== null;
 }
 
@@ -639,16 +558,16 @@ function foldTheCallout() {
 	app.showDocument(body);
 	assert.equal(isCalloutCollapsed(body), false, 'precondition: `[!tip]+` opens open');
 
-	return { app, id, body, clicked: app.clickChevron(calloutToggle(body)) };
+	app.clickChevron(calloutToggle(body));
+	return { app, id, body };
 }
 
-test('a callout the reader folds is still folded after the next render', async () => {
+test('a callout the reader folds is still folded after the next render', () => {
 	// The defect. Split view re-renders the preview on every keystroke, so a
 	// fold that lives only in the DOM lasts until the next character typed —
 	// and the reader has no way to tell that the callout they closed is the
 	// one that keeps coming back.
-	const { app, id, body, clicked } = await foldTheCallout();
-	await clicked;
+	const { app, id, body } = foldTheCallout();
 
 	assert.equal(isCalloutCollapsed(body), true, 'the click closes it on screen');
 	assert.equal(
@@ -659,20 +578,16 @@ test('a callout the reader folds is still folded after the next render', async (
 	assert.equal(app.foldsOnScreen().has(CALLOUT_KEY), true, 'because the tab was told');
 });
 
-test('a callout folded in one document is not folded in another that has the same one', async () => {
+test('a callout folded in one document is not folded in another that has the same one', () => {
 	// The heading half of this file, one element type over: the key is the
 	// callout's title, which is unique within a document and nowhere else.
-	const { app, clicked } = await foldTheCallout();
-	await clicked;
+	const { app } = foldTheCallout();
 
 	tabManager.addTab('/notes/b.md', DOC_WITH_CALLOUT);
-	assert.equal(
-		isCalloutCollapsed(render(DOC_WITH_CALLOUT, '/notes/b.md', app.foldsOnScreen())),
-		false,
-	);
+	assert.equal(isCalloutCollapsed(render(DOC_WITH_CALLOUT, '/notes/b.md', app.foldsOnScreen())), false);
 });
 
-test('opening a callout the source folds shut stays open across a render', async () => {
+test('opening a callout the source folds shut stays open across a render', () => {
 	// The mirror image, and the reason the tab stores deviations rather than
 	// closures: `> [!tip]-` renders folded, so a set of "what is closed" cannot
 	// tell a callout the reader OPENED from one they never touched, and the
@@ -687,7 +602,7 @@ test('opening a callout the source folds shut stays open across a render', async
 	app.showDocument(body);
 	assert.equal(isCalloutCollapsed(body), true, 'precondition: `[!tip]-` opens folded');
 
-	await app.clickChevron(calloutToggle(body));
+	app.clickChevron(calloutToggle(body));
 
 	assert.equal(isCalloutCollapsed(body), false, 'the click opens it on screen');
 	assert.equal(
@@ -698,39 +613,32 @@ test('opening a callout the source folds shut stays open across a render', async
 });
 
 /**
- * The real `revealFoldsAround` out of FindBar.svelte.
+ * What FindBar.svelte does with a match it cannot show.
  *
- * It used to build a `MouseEvent` and fire it at the fold's control, which is
- * three modules coupled through a class name and a synthetic event — and a
- * coupling no test could drive, because the shim DOM has no event dispatch.
- * Now it asks for a key, so the two halves can be run against each other: the
- * find bar's ancestor walk, and the viewer's write path.
+ * `revealFoldsAround` is these three lines around the REAL
+ * `collapsedFoldsAround`, inside a component, so it is restated rather than
+ * imported. It used to say the same thing by building a `MouseEvent` and firing
+ * it at the fold's control — three modules coupled through a class name and a
+ * synthetic event, and a coupling no test could drive. The fold key is a string
+ * now, and `onunfold` is a function, so the two halves can be run against each
+ * other: the find bar's ancestor walk, and the viewer's write path.
  */
-function buildFindReveal(app: Viewer, body: ShimElement) {
-	const js = ts.transpileModule(pluckFunction(findBar, 'revealFoldsAround'), {
-		compilerOptions: { target: ts.ScriptTarget.ES2022 },
-	}).outputText;
-
+function buildFindReveal(app: Viewer, body: HTMLElement) {
 	const opened: string[] = [];
-	const reveal = new Function(
-		'deps',
-		`"use strict";
-		const { markdownBody, collapsedFoldsAround, onunfold } = deps;
-		${js}
-		return revealFoldsAround;`,
-	)({
-		markdownBody: body,
-		collapsedFoldsAround: foldState.collapsedFoldsAround,
-		onunfold: (key: string) => {
-			opened.push(key);
-			app.revealFold(key);
-		},
-	}) as (mark: ShimElement) => boolean;
-
+	const reveal = (mark: Element) => {
+		// Outermost first, so a nested fold is already on screen by the time its
+		// own height is measured.
+		const folds = collapsedFoldsAround(mark, body);
+		for (const fold of folds) {
+			opened.push(fold.key);
+			app.revealFold(fold.key);
+		}
+		return folds.length > 0;
+	};
 	return { reveal, opened };
 }
 
-test('find opens every fold hiding a match, and the tab keeps them open', async () => {
+test('find opens every fold hiding a match, and the tab keeps them open', () => {
 	// A match inside a collapsed callout inside a collapsed section: the text is
 	// in the DOM behind `height: 0`, so find counts it and has to reveal it.
 	reset();
@@ -741,7 +649,7 @@ test('find opens every fold hiding a match, and the tab keeps them open', async 
 	const body = render(DOC_WITH_CALLOUT, '/notes/a.md', app.foldsOnScreen());
 	app.showDocument(body);
 
-	await app.clickChevron(calloutToggle(body));
+	app.clickChevron(calloutToggle(body));
 	app.toggleFold(FOLD_KEY);
 	assert.equal(isCalloutCollapsed(body), true);
 	assert.equal(isSectionCollapsed(body), true);
@@ -761,6 +669,28 @@ test('find opens every fold hiding a match, and the tab keeps them open', async 
 		false,
 		'and the next render agrees, rather than hiding the match again',
 	);
+});
+
+test('opening a fold that is already open is not a fold', () => {
+	// `revealFold` is the only driver that is not a toggle: find asks for a fold
+	// to be OPEN, and asks it of every fold around a match without knowing which
+	// of them were shut. Without the "only if it is collapsed" guard it would
+	// fold the section it was sent to reveal — and this file drove `revealFold`
+	// only through `collapsedFoldsAround`, which by construction hands it folds
+	// that are already closed, so nothing here ever asked it the other question.
+	reset();
+	const app = buildViewer();
+
+	tabManager.addTab('/notes/a.md', DOC_A);
+	const body = render(DOC_A, '/notes/a.md', app.foldsOnScreen());
+	app.showDocument(body);
+
+	app.revealFold(FOLD_KEY);
+	assert.equal(isSectionCollapsed(body), false, 'the section was open and must stay open');
+
+	// And a key that names nothing on screen is not a fold to open either.
+	app.revealFold('no-such-heading');
+	assert.equal(app.foldsOnScreen().size, 0);
 });
 
 test('find leaves a match that is not folded away alone', () => {
