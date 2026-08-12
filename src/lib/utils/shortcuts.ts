@@ -244,14 +244,16 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'settings.previewMaxWidth',
 		// One row, two chords: `[` narrows and `]` widens, the same pair the
 		// settings stepper offers. Both run the same branch, which turns full-width
-		// off before it adjusts — that write is what the harness records.
+		// off before it adjusts the width; the width write is the one this row
+		// names, and the full-width write is accounted for in
+		// DOCUMENT_NOT_ADVERTISED as part of this same shortcut.
 		chords: ['Mod+Alt+[', 'Mod+Alt+]'],
 		group: 'view',
-		documentCall: 'isFullWidth=',
+		documentCall: 'settings.previewMaxWidth=',
 	},
-	{ id: 'view-zoom-in', labelKey: 'menu.zoomIn', chords: ['Mod+='], group: 'view', documentCall: 'zoomLevel=' },
-	{ id: 'view-zoom-out', labelKey: 'menu.zoomOut', chords: ['Mod+-'], group: 'view', documentCall: 'zoomLevel=' },
-	{ id: 'view-zoom-reset', labelKey: 'menu.resetZoom', chords: ['Mod+0'], group: 'view', documentCall: 'zoomLevel=' },
+	{ id: 'view-zoom-in', labelKey: 'menu.zoomIn', chords: ['Mod+='], group: 'view', documentCall: 'settings.zoomIn' },
+	{ id: 'view-zoom-out', labelKey: 'menu.zoomOut', chords: ['Mod+-'], group: 'view', documentCall: 'settings.zoomOut' },
+	{ id: 'view-zoom-reset', labelKey: 'menu.resetZoom', chords: ['Mod+0'], group: 'view', documentCall: 'settings.resetZoom' },
 
 	// -------------------------------------------------------------- window
 	{

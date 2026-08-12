@@ -42,13 +42,16 @@ const {
 	EDITOR_MAX_WIDTH_RANGE,
 	PREVIEW_FONT_SIZE_RANGE,
 	SettingsStore,
+	ZOOM_LEVEL_RANGE,
 	clampToRange,
 	createSettingsPersistence,
 	detectSystemLanguage,
 	isSupportedLanguage,
+	isThemeSetting,
 	isWithinRange,
 	parseStoredNumber,
 	resolveLanguageTag,
+	resolveTheme,
 	stepWithinRange,
 	writeStoredSetting,
 } = settingsModule;
@@ -381,6 +384,189 @@ test('numeric setting inputs are one-way bound and commit through the clamp', ()
 		assert.match(input, /onkeydown=\{\(e\) => handleNumberKeydown\(/, `${id} does not clamp on Enter`);
 	}
 	assert.match(componentSource, /function commitNumberInput[\s\S]{0,400}input\.value = String\(next\)/);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Task 3b — the three values that used to write localStorage on their own.
+ *
+ * `theme`, `zoomLevel` and `preview.fullWidth` each had their own `$state` in
+ * MarkdownViewer.svelte with a bare `localStorage.setItem` beside it. What that
+ * cost is asserted below, one property per test; that no such write can come
+ * back is asserted by the `localStorage is written through one function` rule in
+ * singleImplementationConvention.test.ts.
+ * ---------------------------------------------------------------------------
+ */
+
+test('a theme picked in one window reaches the others without a restart', () => {
+	// THE BUG. Every other switch in the appearance panel synced live, because
+	// every other switch was a persisted entry and got the `storage` listener for
+	// free. The theme <select> sat in the same panel and did not: it wrote
+	// `localStorage` directly, and nothing in the app listened for `theme`.
+	resetStorage();
+	storageListeners.length = 0;
+	const store = new SettingsStore();
+	assert.equal(storageListeners.length, 1);
+	const onStorage = storageListeners[0];
+	assert.equal(store.theme, 'system');
+
+	localStorageShim.setItem('theme', 'dark');
+	onStorage({ key: 'theme', newValue: 'dark', storageArea: localStorageShim });
+	assert.equal(store.theme, 'dark');
+
+	localStorageShim.setItem('theme', 'vscode:Ayu Dark');
+	onStorage({ key: 'theme', newValue: 'vscode:Ayu Dark', storageArea: localStorageShim });
+	assert.equal(store.theme, 'vscode:Ayu Dark');
+
+	// And the arriving value is not echoed back at the window that sent it.
+	const entry = createSettingsPersistence().find((item) => item.key === 'theme') as PersistedEntry;
+	assert.equal(writeStoredSetting(entry.key, entry.read(store)), false);
+});
+
+test('the persisted theme key is the one app.html paints from', () => {
+	// The first-paint script in src/app.html reads `theme` before the bundle
+	// loads and picks the background from it; renaming the key (to
+	// `editor.theme`, say, matching its neighbours) brings back the white flash
+	// that script exists to prevent, and nothing else in the app would notice.
+	const keys = createSettingsPersistence().map((entry) => entry.key);
+	assert.ok(keys.includes('theme'), 'the theme is persisted');
+	const appHtml = readSource(new URL('../src/app.html', import.meta.url));
+	assert.match(appHtml, /localStorage\.getItem\('theme'\)/);
+});
+
+test('the startup background is told the appearance, not the theme name', () => {
+	// The fourth reader of this one setting, and the one that cannot see
+	// localStorage at all: `app.rs` paints a window's background before the
+	// webview exists, reading `theme.txt`. Its vocabulary is "dark", "light" and
+	// "anything else means ask the OS" — so every `vscode:` name fell into that
+	// last arm, and a dark VS Code theme on a light desktop flashed white on
+	// every launch. Whether such a theme is dark is inside its own JSON, which
+	// only the frontend parses, so the resolved answer is what gets sent.
+	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+	assert.match(viewerSource, /function saveStartupAppearance\(appearance: 'system' \| 'light' \| 'dark'\)/);
+	assert.match(viewerSource, /invoke\('save_theme', \{ theme: appearance \}\)/);
+	assert.equal(
+		(viewerSource.match(/invoke\('save_theme'/g) ?? []).length,
+		1,
+		'save_theme has one caller, so nothing can send it a raw theme name',
+	);
+	// The VS Code branch answers only after the parse, because that is when the
+	// appearance becomes knowable.
+	assert.match(
+		viewerSource,
+		/await parseAndApplyVscodeTheme\(json, name\);[\s\S]{0,300}?saveStartupAppearance\(document\.documentElement\.dataset\.themeType === 'dark' \? 'dark' : 'light'\)/,
+	);
+	// The viewer keeps no theme of its own beside the store's.
+	assert.doesNotMatch(viewerSource, /let theme = \$state/);
+
+	// Both words are literals in two languages with no compiler between them.
+	const appRs = readSource('src-tauri/src/app.rs');
+	assert.match(appRs, /"dark" => Some\(tauri::window::Color/);
+	assert.match(appRs, /"light" => Some\(tauri::window::Color/);
+});
+
+test('an unusable stored theme falls back rather than being applied', () => {
+	assert.equal(resolveTheme('dark'), 'dark');
+	assert.equal(resolveTheme('vscode:Ayu Dark'), 'vscode:Ayu Dark');
+	assert.equal(resolveTheme(null), 'system');
+	assert.equal(resolveTheme('midnight'), 'system');
+	// A bare `vscode:` names no theme; `theme.replace('vscode:', '')` would ask
+	// Rust to read the file called "".
+	assert.equal(resolveTheme('vscode:'), 'system');
+	assert.equal(isThemeSetting('vscode:'), false);
+	assert.equal(isThemeSetting(42), false);
+
+	resetStorage({ theme: 'midnight' });
+	assert.equal(new SettingsStore().theme, 'system');
+	resetStorage({ theme: 'vscode:Ayu Dark' });
+	assert.equal(new SettingsStore().theme, 'vscode:Ayu Dark');
+});
+
+test('a corrupt stored zoom level loads as 100, not as NaN', () => {
+	// THE BUG. The viewer read this key with `parseInt(… || '100', 10)` and no
+	// validation, so any value that is not a number became NaN — and NaN is a
+	// trap, not a glitch: the preview renders `zoom: NaN`, and both ways out
+	// (`Math.min(NaN + 10, 500)` on the wheel and on Mod+=) are NaN as well. Only
+	// the reset button could recover the app.
+	for (const stored of ['banana', 'null', '', '   ', 'NaN', 'Infinity']) {
+		resetStorage({ zoomLevel: stored });
+		const store = new SettingsStore();
+		assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default, `zoomLevel=${JSON.stringify(stored)}`);
+		assert.ok(Number.isFinite(store.zoomLevel));
+	}
+
+	resetStorage({ zoomLevel: '250' });
+	assert.equal(new SettingsStore().zoomLevel, 250, 'a good value still survives a restart');
+	resetStorage({ zoomLevel: '9000' });
+	assert.equal(new SettingsStore().zoomLevel, ZOOM_LEVEL_RANGE.max, 'and one out of range is clamped, not dropped');
+});
+
+test('the zoom operations are bounded by one range, and recover a corrupt level', () => {
+	// The 25/500 pair used to be written out three times (the viewer's wheel
+	// handler, its keyboard chords, and the editor's own wheel handler) beside a
+	// `100` in three more. These are the operations all of them call now.
+	assert.deepEqual(
+		{ min: ZOOM_LEVEL_RANGE.min, max: ZOOM_LEVEL_RANGE.max, step: ZOOM_LEVEL_RANGE.step, default: ZOOM_LEVEL_RANGE.default },
+		{ min: 25, max: 500, step: 10, default: 100 },
+	);
+
+	resetStorage();
+	const store = new SettingsStore();
+	store.zoomIn();
+	assert.equal(store.zoomLevel, 110);
+	store.zoomOut();
+	store.zoomOut();
+	assert.equal(store.zoomLevel, 90);
+	store.resetZoom();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default);
+
+	store.zoomLevel = ZOOM_LEVEL_RANGE.max;
+	store.zoomIn();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.max, 'zooming in at the top is a no-op, not 510');
+	store.zoomLevel = ZOOM_LEVEL_RANGE.min;
+	store.zoomOut();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.min);
+
+	// The other half of the NaN trap: a level that is already corrupt has to be
+	// escapable with the wheel, not only with the reset button.
+	store.zoomLevel = Number.NaN;
+	store.zoomIn();
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default + ZOOM_LEVEL_RANGE.step);
+});
+
+test('zoom and preview width follow the other windows too', () => {
+	resetStorage();
+	storageListeners.length = 0;
+	const store = new SettingsStore();
+	const onStorage = storageListeners[0];
+
+	localStorageShim.setItem('zoomLevel', '150');
+	onStorage({ key: 'zoomLevel', newValue: '150', storageArea: localStorageShim });
+	assert.equal(store.zoomLevel, 150);
+
+	// Including garbage another window somehow published: the load path is the
+	// same one the constructor uses, so it validates the same way.
+	localStorageShim.setItem('zoomLevel', 'banana');
+	onStorage({ key: 'zoomLevel', newValue: 'banana', storageArea: localStorageShim });
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default);
+
+	localStorageShim.setItem('preview.fullWidth', 'true');
+	onStorage({ key: 'preview.fullWidth', newValue: 'true', storageArea: localStorageShim });
+	assert.equal(store.previewFullWidth, true);
+	store.togglePreviewFullWidth();
+	assert.equal(store.previewFullWidth, false);
+});
+
+test('the legacy full-width key is honoured once and then superseded', () => {
+	resetStorage({ isFullWidth: 'true' });
+	assert.equal(new SettingsStore().previewFullWidth, true, 'an install upgrading from the old key keeps its setting');
+
+	// The old key is left in place rather than deleted — `read` touches one field
+	// and so cannot remove a second key — and the new one takes precedence from
+	// the first write onwards, which is how `editor.openFileMode` and
+	// `editor.autoSaveEdits` treat theirs.
+	resetStorage({ isFullWidth: 'true', 'preview.fullWidth': 'false' });
+	assert.equal(new SettingsStore().previewFullWidth, false);
 });
 
 /*

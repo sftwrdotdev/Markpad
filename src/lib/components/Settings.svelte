@@ -7,6 +7,7 @@
 		clampToRange,
 		isWithinRange,
 		parseStoredNumber,
+		resolveTheme,
 		stepWithinRange,
 		CODE_FONT_SIZE_RANGE,
 		DEFAULT_FONTS,
@@ -15,6 +16,7 @@
 		PREVIEW_FONT_SIZE_RANGE,
 		type NumericSettingRange,
 		type OSType,
+		type ThemeSetting,
 	} from '../stores/settings.svelte.js';
 	import { updateStore } from '../stores/update.svelte.js';
 	import { fade, scale, fly } from 'svelte/transition';
@@ -35,7 +37,7 @@
 		theme = 'system',
 		onSetTheme,
 		onclose,
-	} = $props<{ show?: boolean; theme?: string; onSetTheme?: (t: string) => void; onclose: () => void }>();
+	} = $props<{ show?: boolean; theme?: ThemeSetting; onSetTheme?: (t: ThemeSetting) => void; onclose: () => void }>();
 
 	let activeCategory = $state<'editor' | 'preview' | 'appearance' | 'toolbars' | 'files' | 'shortcuts'>('editor');
 	let highlightMenuOpen = $state(false);
@@ -671,10 +673,10 @@
 		if (!themeImportUrl) return;
 		importingTheme = true;
 		try {
-			const name = await invoke('fetch_vscode_theme', { url: themeImportUrl });
+			const name = await invoke<string>('fetch_vscode_theme', { url: themeImportUrl });
 			themeImportUrl = '';
 			await loadVscodeThemes();
-			onSetTheme?.(`vscode:${name}` as any);
+			onSetTheme?.(`vscode:${name}`);
 		} catch (e) {
 			console.error('Failed to import theme:', e);
 			alert(`Failed to import theme: ${e}`);
@@ -1251,7 +1253,7 @@
 						<div class="setting-item">
 							<label for="appearance-theme">{t('settings.theme', settings.language)}</label>
 							<div class="select-wrapper">
-								<select id="appearance-theme" value={theme} onchange={(e) => onSetTheme?.(e.currentTarget.value as any)}>
+								<select id="appearance-theme" value={theme} onchange={(e) => onSetTheme?.(resolveTheme(e.currentTarget.value))}>
 									<option value="system">{t('settings.themeFollowSystem', settings.language)}</option>
 									<option value="light">{t('settings.themeDefaultLight', settings.language)}</option>
 									<option value="dark">{t('settings.themeDefaultDark', settings.language)}</option>

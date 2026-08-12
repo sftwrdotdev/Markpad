@@ -187,6 +187,12 @@ pub fn run() {
             let theme_pref =
                 fs::read_to_string(theme_path).unwrap_or_else(|_| "system".to_string());
 
+            // An APPEARANCE, written by `save_theme` — see the note there. It
+            // used to be the raw theme setting, which meant every `vscode:<name>`
+            // theme landed in the fallback arm below and asked the OS instead: a
+            // dark VS Code theme on a light desktop flashed a white window on
+            // every launch. A file left over from that older format still lands
+            // there, and self-corrects as soon as the frontend applies its theme.
             let bg_color = match theme_pref.as_str() {
                 "dark" => Some(tauri::window::Color(24, 24, 24, 255)),
                 "light" => Some(tauri::window::Color(253, 253, 253, 255)),

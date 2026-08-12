@@ -369,6 +369,15 @@ pub async fn watch_file(
     .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+/// Records what colour the NEXT window should be painted before it has a webview.
+///
+/// The argument is an appearance — `"dark"`, `"light"` or `"system"` — and not
+/// the theme the user picked. The theme itself is a frontend setting that lives
+/// in `localStorage`, and one of its forms, `vscode:<name>`, is dark or light
+/// according to a `type` field inside an imported JSON file. Resolving that here
+/// would mean a second theme parser in Rust; the frontend has already parsed the
+/// file by the time it applies the theme, so it sends the answer instead.
+/// `app.rs` is the only reader — see the background colour it picks at startup.
 #[tauri::command]
 pub fn save_theme(app: AppHandle, theme: String) -> Result<(), String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;

@@ -218,27 +218,42 @@ test('the native accelerator the registry defers to is the one the Rust menu cla
 	assert.equal(checked, 2, 'Quit and Settings are the two entries the native menu also claims');
 });
 
-test('zoom in raises the level, zoom out lowers it, and reset returns to the default', () => {
-	// All three zoom chords work by assigning `zoomLevel`, so the contract test
-	// above can only prove they reach the zoom code — not that + and − are the
-	// right way round. The harness records the value written, which is what
-	// tells them apart.
+test('each zoom chord reaches its own zoom operation, not just the zoom code', () => {
+	// All three zoom chords land in the same three lines of `handleKeyDown`, so
+	// the contract test above can only prove they reach the zoom code — not that
+	// + and − are the right way round. What tells them apart is which store
+	// method each one calls.
+	//
+	// This used to read the number the chord assigned to a local `zoomLevel`,
+	// because the arithmetic lived in the handler. It lives in the store now, so
+	// the two halves of the claim are checked where each one is: that zoomIn
+	// really raises the level and resetZoom really returns to ZOOM_LEVEL_RANGE's
+	// default is asserted against the real store in settingsPersistence.test.ts,
+	// and what is left here — which chord asks for which — is the half only the
+	// keymap can answer.
+	const operations: Array<[string, string]> = [
+		['view-zoom-in', 'settings.zoomIn'],
+		['view-zoom-out', 'settings.zoomOut'],
+		['view-zoom-reset', 'settings.resetZoom'],
+	];
+
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
-		const modifier = platform.mac ? 'Meta' : 'Ctrl';
-		const valueOf = (id: string): number => {
+		for (const [id, operation] of operations) {
 			const entry = SHORTCUTS.find((e) => e.id === id)!;
 			const fired = keymap.get(toMonacoLabel(entry.chords[0], platform.mac));
 			assert.ok(fired, `${id} answers on ${platform.name}`);
-			const write = fired.find((call) => call.startsWith('zoomLevel='));
-			assert.ok(write, `${id} writes zoomLevel on ${platform.name}; recorded ${fired.join(', ')}`);
-			return Number(write.slice('zoomLevel='.length));
-		};
-
-		// The harness starts every chord from zoomLevel = 100.
-		assert.ok(valueOf('view-zoom-in') > 100, `${modifier}+= zooms in on ${platform.name}`);
-		assert.ok(valueOf('view-zoom-out') < 100, `${modifier}+- zooms out on ${platform.name}`);
-		assert.equal(valueOf('view-zoom-reset'), 100, `${modifier}+0 resets zoom on ${platform.name}`);
+			assert.ok(
+				fired.includes(operation),
+				`${id} must run ${operation}() on ${platform.name}; recorded ${fired.join(', ')}`,
+			);
+			// And nothing else: a chord that called two of the three would satisfy
+			// its own row above while quietly undoing another one.
+			for (const [, other] of operations) {
+				if (other === operation) continue;
+				assert.ok(!fired.includes(other), `${id} also runs ${other}() on ${platform.name}`);
+			}
+		}
 	}
 });
 
@@ -471,10 +486,16 @@ function commandOf(call: string): string {
 /**
  * Commands the document handler can reach that are deliberately not advertised.
  *
- * Empty today, and that is the point: everything the keyboard can reach is in
- * the panel. A new branch has to be listed here with a reason, or shown.
+ * One entry, and it is a second write inside a branch that IS advertised rather
+ * than a chord of its own: everything the keyboard can *reach* is in the panel.
+ * A new branch has to be listed here with a reason, or shown.
  */
-const DOCUMENT_NOT_ADVERTISED: Record<string, string> = {};
+const DOCUMENT_NOT_ADVERTISED: Record<string, string> = {
+	'settings.previewFullWidth=':
+		'The preview-width chords (view-preview-width) turn full-width off before they narrow or widen ' +
+		'the preview, so this write is half of that one shortcut. No chord toggles full width on its own; ' +
+		'the title bar button does.',
+};
 
 /** Native menu accelerators deliberately not advertised. Also empty today. */
 const NATIVE_NOT_ADVERTISED: Record<string, string> = {};

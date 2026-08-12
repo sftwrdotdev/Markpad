@@ -29,6 +29,7 @@ import {
 } from '../utils/titlebarToolbar.js';
 import {
 	DEFAULT_PREVIEW_MAX_WIDTH,
+	getStoredPreviewFullWidth,
 	normalizePreviewMaxWidth,
 } from '../utils/previewWidth.js';
 import { getSupportedLanguages, type LanguageCode } from '../utils/i18n.js';
@@ -36,6 +37,34 @@ import { getSupportedLanguages, type LanguageCode } from '../utils/i18n.js';
 export type OSType = 'macos' | 'windows' | 'linux' | 'unknown';
 
 export type { LanguageCode };
+
+/**
+ * Everything the appearance `<select>` can be set to: the three built-ins plus
+ * one entry per imported VS Code theme, whose names are user data and so cannot
+ * be enumerated here.
+ *
+ * A union rather than `string` for the same reason {@link LanguageCode} is one —
+ * `theme` crosses four modules (the viewer's effect, the title bar menu, the
+ * settings dialog and `save_theme`), and while it was a bare `string` the
+ * dialog needed two `as any` casts to hand a value back.
+ */
+export type ThemeSetting = 'system' | 'light' | 'dark' | `vscode:${string}`;
+
+export const DEFAULT_THEME: ThemeSetting = 'system';
+
+export function isThemeSetting(value: unknown): value is ThemeSetting {
+	if (value === 'system' || value === 'light' || value === 'dark') return true;
+	return typeof value === 'string' && value.startsWith('vscode:') && value.length > 'vscode:'.length;
+}
+
+/**
+ * Coerces a raw string — from localStorage, from a `<select>`, from a sibling
+ * window's `storage` event — to a theme. Anything unrecognised is the default
+ * rather than an error: a theme the app cannot apply must not stop it starting.
+ */
+export function resolveTheme(value: unknown): ThemeSetting {
+	return isThemeSetting(value) ? value : DEFAULT_THEME;
+}
 
 /**
  * The codes `isSupportedLanguage` will accept out of persisted storage, taken
@@ -174,6 +203,14 @@ export const PREVIEW_FONT_SIZE_RANGE: NumericSettingRange = { min: 12, max: 48, 
 export const CODE_FONT_SIZE_RANGE: NumericSettingRange = { min: 10, max: 48, step: 1, default: 14 };
 export const EDITOR_MAX_WIDTH_RANGE: NumericSettingRange = { min: 20, max: 500, step: 10, default: 80 };
 export const TOC_WIDTH_RANGE: NumericSettingRange = { min: 180, max: 420, step: 1, default: 240 };
+// The preview zoom factor, as a percentage. The 25/500 pair used to be written
+// out three times — the wheel handler and the keyboard chords in
+// MarkdownViewer.svelte and the editor's own wheel handler — beside a `100` in
+// three more places, and the stored value was read with a bare `parseInt` that
+// let a corrupt key through as NaN. `Math.min(NaN + 10, 500)` is NaN too, so
+// once that happened neither the wheel nor the chords could get back out; the
+// preview rendered `zoom: NaN` until the reset button was found.
+export const ZOOM_LEVEL_RANGE: NumericSettingRange = { min: 25, max: 500, step: 10, default: 100 };
 
 /** True when `value` is a finite number the user is allowed to commit as-is. */
 export function isWithinRange(value: unknown, range: NumericSettingRange): boolean {
@@ -206,6 +243,7 @@ export function stepWithinRange(current: unknown, delta: number, range: NumericS
 }
 
 const LEGACY_START_IN_EDITOR_KEY = 'editor.startInEditor';
+const LEGACY_PREVIEW_FULL_WIDTH_KEY = 'isFullWidth';
 const LEGACY_AUTO_SAVE_KEY = 'editor.autoSave';
 const LEGACY_CONFIRM_BEFORE_SAVE_KEY = 'editor.confirmBeforeSave';
 
@@ -356,6 +394,11 @@ export class SettingsStore {
 	showRecentFiles = $state(true);
 	editorMaxWidth = $state(80);
 	previewMaxWidth = $state(DEFAULT_PREVIEW_MAX_WIDTH);
+	// Preview ignores previewMaxWidth and fills the pane.
+	previewFullWidth = $state(false);
+	// Preview zoom, in percent. See ZOOM_LEVEL_RANGE.
+	zoomLevel = $state(ZOOM_LEVEL_RANGE.default);
+	theme = $state<ThemeSetting>(DEFAULT_THEME);
 	pinnedToc = $state(false);
 	tocSide = $state<'left' | 'right'>('left');
 	tocWidth = $state(240);
@@ -605,6 +648,27 @@ export class SettingsStore {
 		this.previewMaxWidth = DEFAULT_PREVIEW_MAX_WIDTH;
 	}
 
+	togglePreviewFullWidth() {
+		this.previewFullWidth = !this.previewFullWidth;
+	}
+
+	// The three zoom operations live here rather than at the four keyboard and
+	// wheel handlers that used to spell them out, so ZOOM_LEVEL_RANGE is the only
+	// place the bounds and the neutral factor exist. `stepWithinRange` also
+	// re-clamps the *current* value, which is what makes a corrupt zoomLevel
+	// recoverable by any of them instead of only by the reset button.
+	zoomIn() {
+		this.zoomLevel = stepWithinRange(this.zoomLevel, ZOOM_LEVEL_RANGE.step, ZOOM_LEVEL_RANGE);
+	}
+
+	zoomOut() {
+		this.zoomLevel = stepWithinRange(this.zoomLevel, -ZOOM_LEVEL_RANGE.step, ZOOM_LEVEL_RANGE);
+	}
+
+	resetZoom() {
+		this.zoomLevel = ZOOM_LEVEL_RANGE.default;
+	}
+
 	async initOSType() {
 		try {
 			const osType = await invoke<string>('get_os_type');
@@ -714,6 +778,21 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 			read: (s) => String(s.previewMaxWidth),
 			load: (s, savedPreviewMaxWidth) => { s.previewMaxWidth = normalizePreviewMaxWidth(savedPreviewMaxWidth); },
 		},
+		{
+			key: 'preview.fullWidth',
+			read: (s) => String(s.previewFullWidth),
+			// The second key is read, never written: it is the name this setting
+			// had before, and it is what an existing install still has on the
+			// first launch after the upgrade. The write effect seeds the new key
+			// immediately, and `??` prefers it, so the legacy one stops being
+			// consulted after that — the same treatment `editor.openFileMode` and
+			// `editor.autoSaveEdits` give theirs. It used to be deleted here
+			// instead, which a `read` that touches one field cannot do.
+			load: (s, raw) => {
+				s.previewFullWidth = getStoredPreviewFullWidth(raw, readStoredKey(LEGACY_PREVIEW_FULL_WIDTH_KEY));
+			},
+		},
+		numberSetting('zoomLevel', ZOOM_LEVEL_RANGE, (s) => s.zoomLevel, (s, v) => { s.zoomLevel = v; }),
 		booleanSetting('editor.pinnedToc', (s) => s.pinnedToc, (s, v) => { s.pinnedToc = v; }),
 		{
 			key: 'editor.tocSide',
@@ -735,6 +814,15 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 					s.language = raw;
 				}
 			},
+		},
+		{
+			// Unprefixed, because that is the key `src/app.html` reads in its
+			// first-paint script to pick a background colour before the bundle
+			// loads. Renaming it would reintroduce the white flash that script
+			// exists to prevent.
+			key: 'theme',
+			read: (s) => s.theme,
+			load: (s, raw) => { s.theme = resolveTheme(raw); },
 		},
 		booleanSetting('editor.showEditorToolbar', (s) => s.showEditorToolbar, (s, v) => { s.showEditorToolbar = v; }),
 		{
