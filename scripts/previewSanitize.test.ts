@@ -13,32 +13,25 @@ import { SANITIZER_FILES, callSiteOffsets, enclosingFunctionName, filesMatching,
 // allowlist with its CSS unfiltered.
 //
 // DOMPurify needs a real DOM, which the Node test runner does not have, so the
-// behavioural half was measured against the pinned build (dompurify 3.4.12,
-// `dist/purify.js`) in a real browser, with the payload below injected exactly
-// the way `{@html}` injects it, into a document that also contained a
-// `.titlebar` element:
+// behavioural half of this file was for a while a table of numbers measured by
+// hand in a browser and pasted into this comment — the payload injected the way
+// `{@html}` injects it, the `<style>` surviving the old config and hiding the
+// app's `.titlebar`, the beacon showing up in
+// `performance.getEntriesByType('resource')`. All true when it was written, and
+// unfalsifiable ever after: no change to `src/` could disagree with a comment.
 //
-//   config                                     output          .titlebar        body background-image
-//   {ALLOWED_URI_REGEXP}        (before)        <style> kept    display: none    url("https://attacker.example/beacon")
-//   MARKDOWN_SANITIZE_CONFIG    (after)         <style> gone    display: flex    none
+// It runs now. `previewSanitize.spec.ts` is the same payload against the same
+// two configs under jsdom, which has a real DOM and a real cascade, asserting
+// what `getComputedStyle` says about the application's own chrome afterwards.
+// (The one thing it cannot observe is the request for the beacon URL, which
+// jsdom does not issue; the computed value that names it is asserted instead.
+// In the app both halves are permitted by the shipped CSP — `style-src 'self'
+// 'unsafe-inline' …` and `img-src 'self' asset: https: …`, in
+// src-tauri/tauri.conf.json.)
 //
-// The beacon was not hypothetical: `performance.getEntriesByType('resource')`
-// listed `https://attacker.example/beacon` after the injection. In the app both
-// halves are permitted by the shipped CSP — `style-src 'self' 'unsafe-inline' …`
-// and `img-src 'self' asset: https: …` (src-tauri/tauri.conf.json).
-//
-// The payload was, verbatim:
-//
-//   <style>.titlebar{display:none} body{background-image:url("https://attacker.example/beacon")}</style>
-//
-// It used to be a `POC_STYLE` constant with an `assert.match(POC_STYLE,
-// /^<style>/)` under it. That assertion read as part of the chain below but had
-// no end in `src/`: both sides were this file, one line apart, so no change to
-// the application could ever fail it. The payload is documentation, so it is
-// documentation now.
-//
-// What is checkable here is the wiring that decides which config the preview
-// gets, and that is what these tests pin.
+// What is checkable HERE is the wiring that decides which config the preview
+// gets, and that is what these tests pin. It is the half a runtime test cannot
+// reach: which call sites exist, and which of them build a policy of their own.
 
 const SOURCES = readSourceFiles('src');
 const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
