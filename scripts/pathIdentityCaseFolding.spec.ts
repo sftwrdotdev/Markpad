@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 // On macOS and Windows the filesystem folds case: `/notes/A.md` and
 // `/notes/a.md` are ONE file. (APFS folds Unicode normalization too, so the
@@ -23,26 +24,9 @@ import test from 'node:test';
 // backend stubbed to behave like a case-insensitive volume. They assert
 // behaviour — buffers kept, files not written, tab counts — never wording.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and
+// jsdom supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 /** Files by their on-disk name, and whether each decoded lossily. */
 const disk = new Map<string, { body: string; lossy: boolean }>();
@@ -66,7 +50,7 @@ function lookup(path: string): string | null {
 /** What the dialog will return next. */
 let nextSaveTarget: string | null = null;
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		if (cmd === 'canonicalize_path') {
@@ -128,7 +112,7 @@ function makeSession() {
 function reset() {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 	disk.clear();
 	writes.length = 0;
 	errors.length = 0;

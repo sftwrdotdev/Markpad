@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 // The home screen sits in a tab, and that tab's path is the sentinel string
 // `'HOME'` rather than a file. `serializeState` filtered on `path !== ''`, so
@@ -15,27 +16,10 @@ import test from 'node:test';
 // the wording. The restore-loop half lives in sessionRestoreResilience.test.ts,
 // which already has the window-session harness.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
-g.window.__TAURI_INTERNALS__ = {
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store runs under real reactivity, and jsdom supplies
+// `window` and `localStorage`. Only the Tauri backend is stubbed.
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
@@ -44,7 +28,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 
 function reset() {
 	tabManager.closeAll();
-	localStore.clear();
+	localStorage.clear();
 }
 
 test('a session snapshot never carries the home tab', () => {

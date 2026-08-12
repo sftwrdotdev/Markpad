@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 // #436 closed one direction of the save race: `saveContent` now disarms the
 // auto-save debounce itself, so an *armed* timer can no longer fire during an
@@ -26,26 +27,9 @@ import test from 'node:test';
 // writes *after*, from a snapshot taken *after*, so the last rename is the
 // newest text.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and
+// jsdom supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 const disk = new Map<string, string>();
 /** Writes that have started but not yet reached their rename. */
@@ -66,7 +50,7 @@ let writeCount = 0;
 /** What the Save/Save As dialog returns next. `null` is the user cancelling. */
 let nextSaveTarget: string | null = null;
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
@@ -123,7 +107,7 @@ function makeSession() {
 function reset() {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 	disk.clear();
 	unsettledWrites = 0;
 	sawOverlap = false;

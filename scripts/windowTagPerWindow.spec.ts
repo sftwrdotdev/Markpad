@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 /*
  * A new window starts with no tag.
@@ -24,26 +25,9 @@ import test from 'node:test';
  * check read it, and nothing writes a registry `tag_name` back into a window.
  */
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and
+// jsdom supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 const WINDOW_STATE_KEY = 'savedTabsDataV2';
 const LEGACY_STATE_KEY = 'savedTabsData';
@@ -80,7 +64,7 @@ const TRANSFER_PAYLOAD = JSON.stringify({
 
 let invokeCalls: Array<{ cmd: string; args: any }> = [];
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
 	// A detached window, which is what `create_transfer_window` builds.
 	metadata: {
 		currentWindow: { label: 'window-abc' },
@@ -146,7 +130,7 @@ function makeSession(isMainWindow: boolean) {
 function reset() {
 	tabManager.closeAll();
 	tabManager.setWindowTag(null);
-	localStore.clear();
+	localStorage.clear();
 	invokeCalls = [];
 }
 

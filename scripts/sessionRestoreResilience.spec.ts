@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 // Startup restore is a data-safety path: the snapshot is the only record of
 // which documents the user had open. Two ways it used to destroy that record:
@@ -19,26 +20,9 @@ import test from 'node:test';
 // `launch()` harness at the bottom goes further and models the kill itself,
 // including what a kill takes with it.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and
+// jsdom supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 const WINDOW_STATE_KEY = 'savedTabsDataV2';
 const LEGACY_STATE_KEY = 'savedTabsData';
@@ -63,7 +47,7 @@ let onRead: (path: string) => void = () => {};
 let killsTheLaunch: (call: { cmd: string; args: any }) => boolean = () => false;
 let died = false;
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		invokeCalls.push({ cmd, args });
@@ -154,7 +138,7 @@ function snapshotOf(paths: string[]): string {
 function reset(paths: string[], contents: Record<string, string> = {}) {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 	invokeCalls = [];
 	warnings.length = 0;
 	errors.length = 0;
@@ -255,7 +239,7 @@ test('an interrupted restore names the document it was on', async () => {
 
 test('the launch after an interruption restores everything except the suspect', async () => {
 	reset(['/a.md', '/big.md', '/c.md']);
-	localStore.set(
+	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: '/big.md', deferred: [], interruptions: 0 }),
 	);
@@ -280,7 +264,7 @@ test('a breadcrumb from an older build no longer wipes the session', async () =>
 	reset(['/a.md', '/b.md']);
 	// Pre-fix builds wrote the string 'true' and the next launch deleted the
 	// entire snapshot on sight.
-	localStore.set(RESTORE_IN_PROGRESS_KEY, 'true');
+	localStorage.setItem(RESTORE_IN_PROGRESS_KEY, 'true');
 
 	await makeSession().restore();
 
@@ -306,7 +290,7 @@ test('a finished restore leaves no breadcrumb behind', async () => {
 
 test('deferrals accumulate one document per interruption instead of retrying forever', async () => {
 	reset(['/a.md', '/one.md', '/two.md']);
-	localStore.set(
+	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: '/one.md', deferred: [], interruptions: 0 }),
 	);
@@ -315,7 +299,7 @@ test('deferrals accumulate one document per interruption instead of retrying for
 
 	// The next launch dies on a different document.
 	reset(['/a.md', '/one.md', '/two.md']);
-	localStore.set(
+	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: '/two.md', deferred: ['/one.md'], interruptions: 1 }),
 	);
@@ -332,7 +316,7 @@ test('deferrals accumulate one document per interruption instead of retrying for
 
 test('after repeated interruptions startup stops reading but still hands back every tab', async () => {
 	reset(['/a.md', '/b.md', '/c.md']);
-	localStore.set(
+	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: null, deferred: [], interruptions: 2 }),
 	);
@@ -417,7 +401,7 @@ async function launch(dies: (call: { cmd: string; args: any }) => boolean = () =
 	// A new process: no tabs on screen, and nothing left of the store the last
 	// kill took down with it.
 	tabManager.closeAll();
-	localStore.clear();
+	localStorage.clear();
 	died = false;
 	killsTheLaunch = dies;
 
@@ -551,7 +535,7 @@ test('a launch that was not interrupted tells the user nothing', async () => {
 
 test('a deferred document is released once Markpad has read it', async () => {
 	reset(['/a.md', '/big.md']);
-	localStore.set(
+	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: '/big.md', deferred: [], interruptions: 0 }),
 	);

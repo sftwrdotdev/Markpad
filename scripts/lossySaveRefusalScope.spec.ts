@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 /*
  * `isLossySaveRefused` is read by the auto-save timer's FAILURE handler:
@@ -27,29 +28,16 @@ import test from 'node:test';
  * tab, not a memory of what was once said about it.
  */
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-Object.defineProperty(g, 'navigator', { value: { language: 'en-US' }, configurable: true });
-Object.defineProperty(g, 'localStorage', {
-	value: { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
-	configurable: true,
-});
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity. Only
+// the Tauri backend, which jsdom cannot provide, is stubbed.
 
 /** Whether `save_file_content` succeeds. Set per test. */
 let writeFails = false;
 const LOSSY = 'text with � in it';
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (command: string, args: Record<string, unknown>) => {
 		const cmd = command.replace(/^plugin:[^|]*\|/, '');
 		if (cmd === 'get_os_type') return Promise.resolve('macos');
