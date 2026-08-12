@@ -1388,6 +1388,63 @@
 				},
 			}),
 
+			// The rest of the table verbs, in the chord namespace `Mod+K` already
+			// opened for Insert Table. They are actions rather than bare commands
+			// because a user has to be able to FIND them — in the command palette,
+			// in the shortcuts panel — which a nameless `addCommand` cannot be.
+			//
+			// R and C for row and column; Shift for the destructive half of each
+			// pair, which is the pairing every table UI uses and the reason the
+			// four of them need no separate mnemonic. Only the second key of a
+			// chord is in question here, and `T` was the only one taken.
+			editor.addAction({
+				id: "table-insert-row",
+				label: t('menu.insertTableRow', lang),
+				keybindings: [
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyCode.KeyR,
+					),
+				],
+				run: () => editTable("insert-row"),
+			}),
+
+			editor.addAction({
+				id: "table-delete-row",
+				label: t('menu.deleteTableRow', lang),
+				keybindings: [
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyMod.Shift | monaco.KeyCode.KeyR,
+					),
+				],
+				run: () => editTable("delete-row"),
+			}),
+
+			editor.addAction({
+				id: "table-insert-column",
+				label: t('menu.insertTableColumn', lang),
+				keybindings: [
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyCode.KeyC,
+					),
+				],
+				run: () => editTable("insert-column"),
+			}),
+
+			editor.addAction({
+				id: "table-delete-column",
+				label: t('menu.deleteTableColumn', lang),
+				keybindings: [
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyMod.Shift | monaco.KeyCode.KeyC,
+					),
+				],
+				run: () => editTable("delete-column"),
+			}),
+
 			editor.addAction({
 				id: "file-new",
 				label: t('menu.newFile', lang),

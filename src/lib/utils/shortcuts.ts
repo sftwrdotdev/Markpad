@@ -181,6 +181,14 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		group: 'edit',
 		editorAction: true,
 	},
+	// The rest of the table verbs share Insert Table's `Mod+K` prefix, so they
+	// open no new chord namespace. Adding a ROW is not among them: Tab at the end
+	// of a table already does that, which is what every other editor's users
+	// expect.
+	{ id: 'table-insert-row', labelKey: 'menu.insertTableRow', chords: ['Mod+K R'], group: 'edit', editorAction: true },
+	{ id: 'table-delete-row', labelKey: 'menu.deleteTableRow', chords: ['Mod+K Shift+R'], group: 'edit', editorAction: true },
+	{ id: 'table-insert-column', labelKey: 'menu.insertTableColumn', chords: ['Mod+K C'], group: 'edit', editorAction: true },
+	{ id: 'table-delete-column', labelKey: 'menu.deleteTableColumn', chords: ['Mod+K Shift+C'], group: 'edit', editorAction: true },
 
 	// ---------------------------------------------------------------- view
 	{
