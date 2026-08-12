@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { functionSource, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
@@ -13,18 +14,9 @@ import { functionSource, readSource, sliceBetween, sliceFrom } from './sourceTre
 // These tests drive the real TabManager and the real document session with a
 // stubbed Tauri bridge, so they lock the behaviour, not the wording.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 const PREVIEW_BYTES = 50000;
 const FULL = `# big\n\n${'x'.repeat(PREVIEW_BYTES)}\n\ntail that must never be lost\n`;
@@ -36,7 +28,8 @@ let handleInvoke: (cmd: string, args: any) => unknown = () => {
 	throw new Error('unexpected invoke');
 };
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		invokeCalls.push({ cmd, args });
 		return Promise.resolve(handleInvoke(cmd, args)).then((value) => value);
@@ -46,7 +39,7 @@ g.window.__TAURI_INTERNALS__ = {
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
-const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 const errors: string[] = [];
 /** Non-failure notices the session raised, in order. */

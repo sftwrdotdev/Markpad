@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
@@ -25,25 +26,17 @@ import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 // passes `sourceLine: 1` — the one line number the bug cannot reach, since at
 // offset 0 there is no preceding terminator for `\s*` to eat.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 let invokeCalls: Array<{ cmd: string; args: any }> = [];
 let handleInvoke: (cmd: string, args: any) => unknown = () => {
 	throw new Error('unexpected invoke');
 };
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		invokeCalls.push({ cmd, args });
 		return Promise.resolve(handleInvoke(cmd, args)).then((value) => value);
@@ -248,7 +241,7 @@ test('LF: two blank lines above the list', async () => {
 // and rebuilding drops the reader's scroll position, which in a long document
 // throws the view somewhere else entirely.
 
-const sessionSource = readSource(new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url));
+const sessionSource = readSource('src/lib/sessions/documentSession.svelte.ts');
 
 test('a toggle tells the preview it is already up to date', async () => {
 	const doc = ['intro', '', '- [ ] one', '- [ ] two'].join('\n') + '\n';
