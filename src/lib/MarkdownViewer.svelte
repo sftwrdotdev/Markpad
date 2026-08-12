@@ -2826,7 +2826,41 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			e.preventDefault();
 			closeFile();
 		}
-		if (mod && code === 'F4') {
+		// Windows only, which is the scope this binding was written to and then
+		// exceeded. `docs/requirements/157-ctrl-f4-close-tab.md`, added by the
+		// same commit as the branch itself (4670743, "add Ctrl+F4 shortcut to
+		// close active tab on Windows"), puts "macOS / Linux (dort ist Ctrl+F4
+		// kein Standard)" under "Out of scope"; the handler bound all three
+		// anyway. So this is not a new product decision, it is the documented one
+		// finally being implemented. The doc went away with the rest of docs/ in
+		// d69c181, which is how the intent stopped being checkable —
+		// `shortcutRegistry.test.ts` now holds it instead.
+		//
+		// The convention argument is why the requirement says that: Ctrl+F4
+		// closes a document window on Windows, still live in Office and the IDEs.
+		// macOS has no equivalent — Cmd+F4 means nothing, and with "Use F1, F2,
+		// etc. as standard function keys" off, which is the default, F4 runs a
+		// system function and the app never receives the event at all
+		// (hand-tested on a Mac: it did nothing). A Mac was therefore offered a
+		// THIRD route to an irreversible action that was at once non-conventional
+		// and nearly unpressable.
+		//
+		// Not a rule about odd-looking chords: `Cmd+Shift+=` stays on every
+		// platform. That one is not a platform convention, it is how "Cmd plus"
+		// is typed — `+` is the shifted `=` on every layout — so Mac users press
+		// it as much as anyone. The question is "does anyone on this platform
+		// actually press this?", not "does it carry a Shift?".
+		//
+		// A bare `settings.osType` comparison next to #646's `platformOf` is
+		// deliberate, not an oversight. `platformOf` answers `'macos' | 'windows'`
+		// and folds Linux INTO `'windows'` — correct for the two questions it was
+		// built for (which modifier to print, which window chrome to draw) and
+		// unable to express this one, which needs all three apart. And the reason
+		// to avoid a bare comparison does not apply to this spelling: `osType` is
+		// `'unknown'` until the Rust command answers, and `=== 'windows'` resolves
+		// that window to DO NOT FIRE. It fails closed, which is the only
+		// acceptable direction for a branch that throws a document away.
+		if (settings.osType === 'windows' && mod && code === 'F4') {
 			e.preventDefault();
 			closeFile();
 		}
