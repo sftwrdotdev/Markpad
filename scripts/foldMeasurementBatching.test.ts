@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 // `--fold-content-height` is resolved into `height` by styles.css, so writing it
-// invalidates layout and any `scrollHeight` read that follows forces a
-// synchronous reflow. Measuring one wrapper at a time therefore costs one
+// invalidates layout and any measurement that follows forces a synchronous
+// reflow. Measuring one wrapper at a time therefore costs one
 // full-document reflow per foldable heading. There is no DOM here to time a
 // real reflow, so these tests drive the real `observeFoldLayout` through a
 // recording stand-in for the DOM and lock the structural property that makes
@@ -27,9 +27,9 @@ function createFoldRoot(specs: { id: string; height: number | null }[]) {
 			height === null
 				? null
 				: {
-						get scrollHeight() {
+						getBoundingClientRect() {
 							events.push({ type: 'read', id });
-							return height;
+							return { height };
 						},
 					};
 
@@ -130,7 +130,15 @@ test('each wrapper is measured at its natural height, not at its stale published
 	assert.deepEqual(cleared, ['outer:--fold-content-height', 'inner:--fold-content-height']);
 });
 
-test('measured heights are published rounded up, then committed by one reflow', async () => {
+// The published height used to be `Math.ceil(content.scrollHeight)`. Both
+// halves of that were wrong for maths: `scrollHeight` is the scrollable extent,
+// which KaTeX's negative margins push several pixels past the height `auto`
+// resolves to, and the rounding then threw away what precision survived. A
+// wrapper an integer taller than its content moves everything below it on every
+// keystroke, because `{@html}` rebuilds the wrapper unpublished each time.
+//
+// So a fractional measurement must reach the style property unrounded.
+test('measured heights are published at the precision they were measured', async () => {
 	const events = await runFoldLayout([
 		{ id: 'outer', height: 300 },
 		{ id: 'inner', height: 120.4 },
@@ -140,7 +148,7 @@ test('measured heights are published rounded up, then committed by one reflow', 
 		events.filter((event) => event.type === 'write'),
 		[
 			{ type: 'write', id: 'outer', value: '--fold-content-height:300px' },
-			{ type: 'write', id: 'inner', value: '--fold-content-height:121px' },
+			{ type: 'write', id: 'inner', value: '--fold-content-height:120.4px' },
 		],
 	);
 
