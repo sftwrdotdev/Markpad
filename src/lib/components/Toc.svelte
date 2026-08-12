@@ -46,7 +46,35 @@
 		line: RendererLine | null;
 	}
 
+	/**
+	 * Everything the outline can show, in the order the document holds it.
+	 *
+	 * One query rather than three. `querySelectorAll` returns document order,
+	 * so asking for the headings and the block anchors together IS the
+	 * interleaving — this used to ask for each separately and then sort the two
+	 * lists back together against a third walk (`[id]`, which matches every
+	 * element in the document carrying one) built into a position map.
+	 *
+	 * That cost is per render, and a render is a keystroke. #632 stopped the
+	 * preview rebuilding its article for one character; an outline that walks
+	 * the whole of it three times regardless spends a good part of that back,
+	 * and on the documents where the patch matters most — 7819 elements in
+	 * `samples/stress-test.md` — it is the largest remaining full-document pass
+	 * in the render.
+	 */
+	const ENTRY_SELECTOR = 'h1, h2, h3, h4, h5, h6, a[id].block-id-anchor, span[id].block-id-anchor';
+
 	let items = $state<TocItem[]>([]);
+	/**
+	 * What `items` currently holds, for deciding whether the scan changed
+	 * anything.
+	 *
+	 * Kept here rather than recomputed from `items` inside the effect, because
+	 * reading a `$state` there makes the effect depend on itself: assigning
+	 * `items` scheduled the effect again, and every render that changed the
+	 * outline scanned the whole document twice.
+	 */
+	let itemsFingerprint = '';
 	let activeId = $state<string | null>(null);
 	let tocContainer: HTMLElement | null = $state(null);
 	let activeTargetEl: HTMLElement | null = null;
@@ -61,8 +89,16 @@
 		if (htmlContent && markdownBody) {
 			const result: TocItem[] = [];
 
-			const hs = markdownBody.querySelectorAll('h1, h2, h3, h4, h5, h6') as NodeListOf<HTMLElement>;
-			for (const h of Array.from(hs)) {
+			const entries = markdownBody.querySelectorAll(ENTRY_SELECTOR) as NodeListOf<HTMLElement>;
+			for (const el of Array.from(entries)) {
+				if (el.classList.contains('block-id-anchor')) {
+					result.push({ id: el.id, text: el.getAttribute('data-label') || el.id, foldKey: '', level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
+					continue;
+				}
+
+				// Everything the selector matches that is not a block anchor is a
+				// heading, which is the only other thing it asks for.
+				const h = el;
 				let text = h.textContent || '';
 				text = text.replace(/\s*\^[a-zA-Z0-9_-]+$/, '');
 				const anchor = h.querySelector('a.anchor') as HTMLElement | null;
@@ -71,21 +107,6 @@
 					result.push({ id, text: text.trim(), foldKey: foldKeyOf(h), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
 				}
 			}
-
-			const blockAnchors = markdownBody.querySelectorAll('a[id].block-id-anchor, span[id].block-id-anchor') as NodeListOf<HTMLElement>;
-			for (const el of Array.from(blockAnchors)) {
-				const id = el.id;
-				const label = el.getAttribute('data-label') || id;
-				result.push({ id, text: label, foldKey: '', level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
-			}
-
-			const allIds = new Map<string, number>();
-			const allEls = markdownBody.querySelectorAll('[id]') as NodeListOf<HTMLElement>;
-			let order = 0;
-			for (const el of Array.from(allEls)) {
-				allIds.set(el.id, order++);
-			}
-			result.sort((a, b) => (allIds.get(a.id) ?? 999) - (allIds.get(b.id) ?? 999));
 
 			for (let i = 0; i < result.length; i++) {
 				const item = result[i];
@@ -100,14 +121,14 @@
 				}
 			}
 
-			const currentFingerprint = items.map(i => `${i.id}-${i.text}-${i.level}-${i.line}`).join('|');
 			const newFingerprint = result.map(i => `${i.id}-${i.text}-${i.level}-${i.line}`).join('|');
-			
-			if (currentFingerprint !== newFingerprint) {
+			if (newFingerprint !== itemsFingerprint) {
+				itemsFingerprint = newFingerprint;
 				items = result;
 			}
-		} else {
-			if (items.length > 0) items = [];
+		} else if (itemsFingerprint !== '') {
+			itemsFingerprint = '';
+			items = [];
 		}
 	});
 
