@@ -23,54 +23,59 @@
  *     rate: how often a line number carried over from document A resolves to
  *     some unrelated block of document B, so the cascade stops there and the
  *     later entries are never consulted.
+ *
+ * ---------------------------------------------------------------------------
+ * WHY THIS IS A `.spec.ts`
+ *
+ * It used to call `installShimDom()` from `renderProtocolDom.ts` and hand-write
+ * the runes onto `globalThis`. Both are stand-ins, and under vitest both are
+ * worse than what the environment already has: the shim ASSIGNS
+ * `globalThis.document`, so it would replace jsdom's, and a hand-written
+ * `$state` is not the compiler's — no deep proxying, and `$effect` never
+ * re-runs. Every one of them is gone. `TabManager` is built by the Svelte
+ * compiler and the document is jsdom's, so `DOMParser`, the HTML parser it
+ * feeds, and `processMarkdownHtml`'s own DOM surgery are all the real ones.
+ *
+ * WHAT THE REAL DOM DOES AND DOES NOT SETTLE
+ *
+ * `findAnchorElement` is a walk over `data-sourcepos` ranges, `classList` and
+ * `childNodes` — structure and attributes, every one of which jsdom answers
+ * for real. It never measures anything, so nothing below needs a layout.
+ *
+ * jsdom has no layout: `offsetTop`, `offsetHeight` and every rect are 0. So the
+ * question of WHERE a resolved anchor lands — `getAnchorScrollTop`, the
+ * offset->line mapping, a collapsed fold's zero height — cannot be asked here
+ * and is not asked here. Those tests supply their own geometry on purpose
+ * (`scrollSyncAcrossFolds.test.ts` lays the document out with folds in it,
+ * `anchorJumpUnderZoom.spec.ts` builds elements whose rects carry a zoom
+ * factor). "It resolves" is a real answer; "it lands at 1420px" would not be.
  */
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
 
-import { installShimDom, parseHtml, type ShimElement } from './renderProtocolDom.ts';
+import { test } from 'vitest';
 
-// ---------------------------------------------------------------- environment
-
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? {
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin. Only the Tauri backend, which jsdom cannot provide, is stubbed
+// — `get_os_type` because importing the store boots the settings singleton, and
+// a `null` answer to that one leaves the font defaults it indexes undefined.
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
 
-const localStore = new Map<string, string>();
-g.localStorage = g.localStorage ?? {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
-
-installShimDom();
-
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
-const { processMarkdownHtml } = await import('../src/lib/utils/markdown.ts');
-const { findAnchorElement } = await import('../src/lib/utils/previewAnchor.ts');
-const { asRendererLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.ts');
-const { snapshotTab, validateTransferPayload } = await import('../src/lib/utils/tabTransfer.ts');
+const { processMarkdownHtml } = await import('../src/lib/utils/markdown.js');
+const { findAnchorElement } = await import('../src/lib/utils/previewAnchor.js');
+const { asRendererLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.js');
+const { snapshotTab, validateTransferPayload } = await import('../src/lib/utils/tabTransfer.js');
 
 type Tab = (typeof tabManager.tabs)[number];
 
 function reset() {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 }
 
 /** A tab whose reader is a long way down a document, all four fields written. */
@@ -233,17 +238,34 @@ function buildDocument(name: string, sections: number, paragraphsPerSection: num
 const DOC_A = buildDocument('alpha', 60, 6);
 const DOC_B = buildDocument('beta', 40, 11);
 
-function render(doc: DocumentBuilder, path: string): ShimElement {
-	return parseHtml(processMarkdownHtml(doc.html(), path, new Set<string>())).body;
+/**
+ * The rendered article, in the element the restore actually walks: the preview
+ * hands `findAnchorElement` its `.markdown-body` container
+ * (`MarkdownViewer.svelte:1223`), which is the element the sanitized string was
+ * parsed into.
+ */
+function render(doc: DocumentBuilder, path: string): HTMLElement {
+	const body = document.createElement('div');
+	body.className = 'markdown-body';
+	body.innerHTML = processMarkdownHtml(doc.html(), path, new Set<string>());
+	return body;
 }
 
 const BODY_B = render(DOC_B, '/notes/b.md');
 
-function textOf(element: unknown): string {
-	return String((element as { textContent?: string }).textContent ?? '');
-}
+test('a line number carried over from the previous document resolves into this one', () => {
+	// The fixture is the real pipeline's output, so say what it produced: a
+	// document of nothing but headings and paragraphs is one where every block
+	// after the first heading is inside a `.foldable-content-wrapper` that
+	// carries no source range of its own, which is the shape the descent exists
+	// for.
+	const blocks = BODY_B.querySelectorAll('[data-sourcepos]').length;
+	assert.equal(blocks, 40 + 40 * 11, 'every block of document B is annotated');
+	assert.ok(
+		BODY_B.querySelectorAll('.foldable-content-wrapper:not([data-sourcepos])').length > 0,
+		'and the sections are wrapped in containers that are not',
+	);
 
-test('a line number carried over from the previous document resolves into this one', (t) => {
 	// Every source line the reader could have been parked on in document A.
 	const carried = DOC_A.lines;
 
@@ -253,26 +275,26 @@ test('a line number carried over from the previous document resolves into this o
 	}
 	const percent = Math.round((resolved / carried.length) * 1000) / 10;
 
-	t.diagnostic(`document A: ${carried.length} anchorable source lines`);
-	t.diagnostic(`document B: ${BODY_B.querySelectorAll('[data-sourcepos]').length} blocks with data-sourcepos`);
-	t.diagnostic(`carried anchors resolving inside document B: ${resolved}/${carried.length} (${percent}%)`);
-
 	// This is the mechanism, not a property of these two fixtures: while the
 	// carried line is inside the other document's range it resolves, the first
 	// cascade entry reports success, and `scrollPercentage` and `scrollTop` —
 	// the field the old `navigate()` reset — are never consulted.
 	assert.ok(
 		percent > 50,
-		`a stale anchor line is expected to resolve in a document of similar length, got ${percent}%`,
+		`a stale anchor line is expected to resolve in a document of similar length, ` +
+			`got ${resolved}/${carried.length} (${percent}%) over ${blocks} annotated blocks`,
 	);
 
 	// And it resolves to the wrong text: the block at that line in B, which
 	// says `beta`, has nothing to do with the block the reader left in A.
 	const sample = DOC_A.lines[Math.floor(DOC_A.lines.length / 2)];
-	const match = findAnchorElement(BODY_B, sample)!;
-	t.diagnostic(`line ${sample} of A resolves to B's ${textOf(match.element).trim().slice(0, 48)}`);
+	const match = findAnchorElement(BODY_B, sample);
 	assert.ok(match, `expected line ${sample} to resolve inside document B`);
-	assert.match(textOf(match.element), /beta/);
+	assert.match(
+		(match.element as Element).textContent ?? '',
+		/beta/,
+		`line ${sample} of document A resolves to a block of document B`,
+	);
 });
 
 test('a cleared reading position resolves to nothing, so the cascade falls through to the top', () => {
