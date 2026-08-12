@@ -111,6 +111,12 @@ jobs:
       - name: run frontend behavior tests
         run: npm test
 
+      # The `scripts/*.spec.ts` half of the suite: the tests whose subject is a
+      # runes module or needs a DOM, which `node --test` cannot load at all. Two
+      # non-overlapping globs, so a file is run by exactly one of these steps.
+      - name: run frontend behavior tests (vitest)
+        run: npm run test:vitest
+
       - name: run cargo test
         run: |
           cd src-tauri

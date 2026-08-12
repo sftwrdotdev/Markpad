@@ -9,6 +9,7 @@
 		"build": "vite build",
 		"preview": "vite preview",
 		"test": "node --test --import tsx 'scripts/*.test.ts'",
+		"test:vitest": "vitest run",
 		"test:frontmatter": "node --test --import tsx scripts/frontMatter.test.ts scripts/frontMatterProseBlock.test.ts",
 		"test:workflows": "node --test --import tsx scripts/exportHtml.test.ts scripts/exportOpenPrompt.test.ts scripts/editorToolbar.test.ts scripts/titlebarToolbar.test.ts",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -39,11 +40,13 @@
 		"@sveltejs/vite-plugin-svelte": "^5.1.1",
 		"@tauri-apps/cli": "^2.11.4",
 		"@types/node": "^26.2.0",
+		"jsdom": "^30.0.1",
 		"svelte": "^5.56.8",
 		"svelte-check": "^4.7.5",
 		"tsx": "^4.23.12",
 		"typescript": "^5.9.3",
-		"vite": "^6.4.3"
+		"vite": "^6.4.3",
+		"vitest": "^4.1.10"
 	},
 	"overrides": {
 		"cookie": "0.7.2",

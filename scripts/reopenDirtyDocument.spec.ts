@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 
 import { readSource, sliceBetween } from './sourceTree.js';
 
@@ -15,32 +15,15 @@ import { readSource, sliceBetween } from './sourceTree.js';
 // ("Reload from disk", the external-change "Reload"), never a side effect of
 // asking to see a file.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity. Only
+// the Tauri backend, which jsdom cannot provide, is stubbed.
 
 // What the file says right now, and every read the session performed.
 const disk = new Map<string, string>();
 const reads: string[] = [];
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => {
 		if (cmd === 'read_file_content_checked') {
@@ -59,7 +42,8 @@ g.window.__TAURI_INTERNALS__ = {
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
-const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+// Cwd-relative, not `import.meta.url`: see the note on `readSource`.
+const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 function makeSession() {
 	return createDocumentSession({
@@ -87,7 +71,7 @@ function makeSession() {
 function reset() {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 	disk.clear();
 	reads.length = 0;
 }

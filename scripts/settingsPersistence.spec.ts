@@ -1,87 +1,39 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
 
+import { flushSync } from 'svelte';
 import { parse } from 'svelte/compiler';
+import { test } from 'vitest';
 
 import { callbackBodies, readSource, sliceBetween } from './sourceTree.js';
 // Plain TypeScript, no runes: safe to import statically, unlike the store below.
 import { getSupportedLanguages, translations } from '../src/lib/utils/i18n.js';
 
 /*
- * `settings.svelte.ts` is a runes module, so it cannot be imported the way the
- * other suites import plain utils. Node's test runner gives every file its own
- * process, so shimming the runes and the browser globals here cannot leak into
- * any other suite.
+ * `settings.svelte.ts` is a runes module, and this file runs under vitest so
+ * that it is compiled by the Svelte plugin: `$state` is a real proxy, `$effect`
+ * really tracks what it reads, and `flushSync()` really runs the pending ones.
  *
- * The shims are deliberately dumb: `$state` is identity and `$effect` runs its
- * callback once and records it. That is enough to assert the *shape* of the
- * persistence layer (how many effects exist, which fields each one reads),
- * which is the property that actually decides the multi-window behaviour. No
- * assertion below depends on the shims re-running anything.
+ * That matters here more than anywhere else in the suite. The property this
+ * file exists to guard — "changing one setting rewrites one localStorage key" —
+ * IS Svelte's dependency tracking. Under a hand-written `$effect` shim that
+ * only records its callback, the assertions could describe the intended shape
+ * but never exercise the mechanism that delivers it.
+ *
+ * jsdom supplies `window`, `localStorage` and `navigator` for real; only the
+ * Tauri backend is stubbed.
  */
-type EffectFn = () => void | (() => void);
+(window as any).__TAURI_INTERNALS__ = { invoke: async () => 'macos' };
 
-const runes = globalThis as unknown as {
-	$state: unknown;
-	$derived: unknown;
-	$effect: unknown;
-};
+/** jsdom does not fire `storage` for writes made by this same document. */
+function dispatchStorage(key: string | null, newValue: string | null) {
+	window.dispatchEvent(new StorageEvent('storage', { key, newValue, storageArea: localStorage }));
+}
 
-const registeredEffects: EffectFn[] = [];
+function setNavigatorLanguage(language: string) {
+	Object.defineProperty(globalThis, 'navigator', { value: { language }, configurable: true });
+}
 
-const identity = (value: unknown) => value;
-const stateRune = Object.assign(identity, { raw: identity, snapshot: identity });
-const effectRune = Object.assign(
-	(fn: EffectFn) => {
-		registeredEffects.push(fn);
-		fn();
-	},
-	{
-		root: (fn: () => void) => {
-			fn();
-			return () => {};
-		},
-		pre: (fn: EffectFn) => {
-			registeredEffects.push(fn);
-			fn();
-		},
-		tracking: () => false,
-	},
-);
-
-runes.$state = stateRune;
-runes.$derived = Object.assign(identity, { by: (fn: () => unknown) => fn() });
-runes.$effect = effectRune;
-
-const storageBacking = new Map<string, string>();
-const storageListeners: ((event: unknown) => void)[] = [];
-
-const localStorageShim = {
-	getItem: (key: string) => (storageBacking.has(key) ? storageBacking.get(key)! : null),
-	setItem: (key: string, value: string) => {
-		storageBacking.set(key, String(value));
-	},
-	removeItem: (key: string) => {
-		storageBacking.delete(key);
-	},
-	clear: () => storageBacking.clear(),
-};
-
-const windowShim = {
-	__TAURI_INTERNALS__: { invoke: async () => 'macos' },
-	addEventListener: (type: string, fn: (event: unknown) => void) => {
-		if (type === 'storage') storageListeners.push(fn);
-	},
-	removeEventListener: (type: string, fn: (event: unknown) => void) => {
-		if (type !== 'storage') return;
-		const index = storageListeners.indexOf(fn);
-		if (index >= 0) storageListeners.splice(index, 1);
-	},
-};
-
-Object.defineProperty(globalThis, 'localStorage', { value: localStorageShim, configurable: true });
-Object.defineProperty(globalThis, 'window', { value: windowShim, configurable: true });
-Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });
+setNavigatorLanguage('en-US');
 
 const settingsModule = await import('../src/lib/stores/settings.svelte.js');
 const {
@@ -103,12 +55,13 @@ const {
 
 type PersistedEntry = ReturnType<typeof createSettingsPersistence>[number];
 
-const storeSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-const componentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
+// Cwd-relative, not `import.meta.url`: see the note on `readSource`.
+const storeSource = readSource('src/lib/stores/settings.svelte.ts');
+const componentSource = readSource('src/lib/components/Settings.svelte');
 
 function resetStorage(seed: Record<string, string> = {}) {
-	storageBacking.clear();
-	for (const [key, value] of Object.entries(seed)) storageBacking.set(key, value);
+	localStorage.clear();
+	for (const [key, value] of Object.entries(seed)) localStorage.setItem(key, value);
 }
 
 /**
@@ -121,9 +74,12 @@ function createRecordingStore(): { proxy: InstanceType<typeof SettingsStore>; re
 	resetStorage();
 	const real = new SettingsStore();
 	const proxy = new Proxy(real, {
-		get(target, property, receiver) {
+		get(target, property) {
 			if (typeof property === 'string') reads.add(property);
-			return Reflect.get(target, property, receiver);
+			// `target`, not the receiver: the compiler turns `x = $state(…)` into a
+			// getter over a `#x` private field, and a getter invoked with the proxy
+			// as `this` throws — private fields are keyed on the real instance.
+			return Reflect.get(target, property);
 		},
 	});
 	return { proxy, reads };
@@ -185,50 +141,62 @@ test('persisted keys are unique and cover the documented settings surface', () =
 	}
 });
 
-test('persistence installs one effect per key plus the storage listener', () => {
-	// The regression this guards: a single effect that read every field, so any
-	// one change rewrote all ~30 keys from a stale snapshot.
-	resetStorage();
-	storageListeners.length = 0;
-	registeredEffects.length = 0;
-
-	// Constructing the store is what installs the effects; the counts below are
-	// the assertion. `assert.ok(store instanceof SettingsStore)` stood here and
-	// could not fail — a constructor that throws fails the line above it, and
-	// one that returns fails nothing.
-	new SettingsStore();
-
-	const entryCount = createSettingsPersistence().length;
-	assert.equal(registeredEffects.length, entryCount + 1);
-	assert.equal(storageListeners.length, 1);
-});
+/** Every key currently in localStorage, with its value. */
+function storageSnapshot(): Map<string, string> {
+	const out = new Map<string, string>();
+	for (let i = 0; i < localStorage.length; i++) {
+		const key = localStorage.key(i)!;
+		out.set(key, localStorage.getItem(key)!);
+	}
+	return out;
+}
 
 test('changing one setting rewrites only that setting key', () => {
-	const entries = createSettingsPersistence();
+	// The regression this guards: a single effect that read every field, so any
+	// one change rewrote all ~30 keys from a stale snapshot.
+	//
+	// This runs the real effects. `new SettingsStore()` installs them inside an
+	// `$effect.root`, `flushSync()` runs the pending ones, and what lands in
+	// localStorage afterwards is decided by Svelte's dependency tracking — not
+	// by this file's idea of it. Under the hand-written `$effect` shim this
+	// suite used to install, the assertion below could not fail: nothing re-ran.
 	resetStorage();
 	const store = new SettingsStore();
+	flushSync(); // seeds every key from the store's current values
 
-	// Snapshot what each entry's effect last wrote, then re-run only the effects
-	// whose single dependency actually changed — which is what Svelte does.
-	const lastWritten = new Map(entries.map((entry) => [entry.key, entry.read(store)]));
-	const flush = () => {
-		const written: string[] = [];
-		for (const entry of entries) {
-			const next = entry.read(store);
-			if (lastWritten.get(entry.key) === next) continue;
-			lastWritten.set(entry.key, next);
-			if (writeStoredSetting(entry.key, next)) written.push(entry.key);
-		}
-		return written;
+	const written = (change: () => void) => {
+		const before = storageSnapshot();
+		change();
+		flushSync();
+		return [...storageSnapshot()]
+			.filter(([key, value]) => before.get(key) !== value)
+			.map(([key]) => key)
+			.sort();
 	};
 
-	flush();
-	store.minimap = !store.minimap;
-	assert.deepEqual(flush(), ['editor.minimap']);
+	assert.deepEqual(written(() => (store.minimap = !store.minimap)), ['editor.minimap']);
+	assert.deepEqual(
+		written(() => {
+			store.editorFontSize = 30;
+			store.language = 'ja';
+		}),
+		['editor.fontSize', 'editor.language'],
+	);
+	// A write with no state change is not a write at all.
+	assert.deepEqual(written(() => {}), []);
+});
 
-	store.editorFontSize = 30;
-	store.language = 'ja';
-	assert.deepEqual(flush().sort(), ['editor.fontSize', 'editor.language']);
+test('the store installs a storage listener that survives on the real window', () => {
+	// The other half of the multi-window fix, through jsdom's real event
+	// dispatch: `addEventListener('storage', …)` runs inside an `$effect`, so it
+	// is only wired up once the effects flush.
+	resetStorage();
+	const store = new SettingsStore();
+	flushSync();
+
+	localStorage.setItem('editor.fontSize', '30');
+	dispatchStorage('editor.fontSize', '30');
+	assert.equal(store.editorFontSize, 30);
 });
 
 test('a second window no longer clobbers what the first window just changed', () => {
@@ -250,8 +218,8 @@ test('a second window no longer clobbers what the first window just changed', ()
 	const minimapEntry = entries.find((entry) => entry.key === 'editor.minimap') as PersistedEntry;
 	writeStoredSetting(minimapEntry.key, minimapEntry.read(windowB));
 
-	assert.equal(localStorageShim.getItem('editor.fontSize'), '30');
-	assert.equal(localStorageShim.getItem('editor.language'), 'ja');
+	assert.equal(localStorage.getItem('editor.fontSize'), '30');
+	assert.equal(localStorage.getItem('editor.language'), 'ja');
 
 	// And a fresh window (a restart) sees A's changes intact.
 	const restarted = new SettingsStore();
@@ -261,19 +229,17 @@ test('a second window no longer clobbers what the first window just changed', ()
 
 test('storage events fold another window changes into this instance', () => {
 	resetStorage();
-	storageListeners.length = 0;
 	const store = new SettingsStore();
-	assert.equal(storageListeners.length, 1);
-	const onStorage = storageListeners[0];
+	flushSync();
 
 	// Another window wrote the value; localStorage already reflects it when the
 	// event is delivered here.
-	localStorageShim.setItem('editor.fontSize', '30');
-	onStorage({ key: 'editor.fontSize', newValue: '30', storageArea: localStorageShim });
+	localStorage.setItem('editor.fontSize', '30');
+	dispatchStorage('editor.fontSize', '30');
 	assert.equal(store.editorFontSize, 30);
 
-	localStorageShim.setItem('editor.language', 'ja');
-	onStorage({ key: 'editor.language', newValue: 'ja', storageArea: localStorageShim });
+	localStorage.setItem('editor.language', 'ja');
+	dispatchStorage('editor.language', 'ja');
 	assert.equal(store.language, 'ja');
 });
 
@@ -282,13 +248,12 @@ test('a value that arrived from localStorage is not written back', () => {
 	// because compare-and-set finds the value already stored.
 	const entries = createSettingsPersistence();
 	resetStorage();
-	storageListeners.length = 0;
 	const store = new SettingsStore();
-	const onStorage = storageListeners[0];
+	flushSync();
 	const entry = entries.find((item) => item.key === 'editor.fontSize') as PersistedEntry;
 
-	localStorageShim.setItem('editor.fontSize', '30');
-	onStorage({ key: 'editor.fontSize', newValue: '30', storageArea: localStorageShim });
+	localStorage.setItem('editor.fontSize', '30');
+	dispatchStorage('editor.fontSize', '30');
 
 	// This is the follow-up effect run that a naive implementation would use to
 	// echo the value straight back to the other window.
@@ -301,18 +266,18 @@ test('writeStoredSetting is compare-and-set and removes on null', () => {
 	assert.equal(writeStoredSetting('demo.key', 'a'), false);
 	assert.equal(writeStoredSetting('demo.key', 'b'), true);
 	assert.equal(writeStoredSetting('demo.key', null), true);
-	assert.equal(localStorageShim.getItem('demo.key'), null);
+	assert.equal(localStorage.getItem('demo.key'), null);
 	assert.equal(writeStoredSetting('demo.key', null), false);
 });
 
 test('a cleared localStorage is re-read rather than half-applied', () => {
 	resetStorage({ 'editor.fontSize': '30' });
-	storageListeners.length = 0;
 	const store = new SettingsStore();
+	flushSync();
 	assert.equal(store.editorFontSize, 30);
 
-	storageBacking.clear();
-	storageListeners[0]({ key: null, newValue: null, storageArea: localStorageShim });
+	localStorage.clear();
+	dispatchStorage(null, null);
 	assert.equal(store.editorFontSize, EDITOR_FONT_SIZE_RANGE.default);
 });
 
@@ -465,21 +430,21 @@ test('regional variants and unsupported tags resolve predictably', () => {
 });
 
 test('system detection falls back to English for unsupported locales', () => {
-	Object.defineProperty(globalThis, 'navigator', { value: { language: 'ar-EG' }, configurable: true });
+	setNavigatorLanguage('ar-EG');
 	assert.equal(detectSystemLanguage(), 'en');
-	Object.defineProperty(globalThis, 'navigator', { value: { language: 'nb-NO' }, configurable: true });
+	setNavigatorLanguage('nb-NO');
 	assert.equal(detectSystemLanguage(), 'no');
-	Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });
+	setNavigatorLanguage('en-US');
 });
 
 test('a stored language is validated against the catalogue', () => {
 	resetStorage({ 'editor.language': 'klingon' });
-	Object.defineProperty(globalThis, 'navigator', { value: { language: 'ja-JP' }, configurable: true });
+	setNavigatorLanguage('ja-JP');
 	assert.equal(new SettingsStore().language, 'en'); // unchanged default, not the bogus code
 
 	resetStorage();
 	assert.equal(new SettingsStore().language, 'ja'); // nothing stored -> detect
-	Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });
+	setNavigatorLanguage('en-US');
 });
 
 test('the validator accepts exactly the languages the dialog offers', () => {
