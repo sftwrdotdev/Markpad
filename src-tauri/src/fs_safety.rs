@@ -66,7 +66,10 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     // below swaps the inode, which the target's own mode bits do not guard —
     // only the parent directory's do — so a `chmod 444` file would otherwise
     // be rewritten on Unix while the identical operation fails on Windows.
-    if existing_perms.as_ref().is_some_and(|perms| perms.readonly()) {
+    if existing_perms
+        .as_ref()
+        .is_some_and(|perms| perms.readonly())
+    {
         return Err(std::io::Error::new(
             std::io::ErrorKind::PermissionDenied,
             format!("{} is read-only", target.display()),
@@ -459,7 +462,10 @@ pub(crate) fn safe_path_component<'a>(value: &'a str, label: &str) -> Result<&'a
     Ok(value)
 }
 
-pub(crate) fn resolve_image_directory(parent_dir: &str, image_directory: &str) -> Result<(PathBuf, PathBuf), String> {
+pub(crate) fn resolve_image_directory(
+    parent_dir: &str,
+    image_directory: &str,
+) -> Result<(PathBuf, PathBuf), String> {
     let root = Path::new(parent_dir)
         .canonicalize()
         .map_err(|e| format!("Invalid image parent directory: {}", e))?;
@@ -479,7 +485,9 @@ pub(crate) fn resolve_image_directory(parent_dir: &str, image_directory: &str) -
 
 pub(crate) fn ensure_path_within_root(root: &Path, path: &Path) -> Result<(), String> {
     let resolved = match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_symlink() => path.canonicalize().map_err(|e| e.to_string())?,
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            path.canonicalize().map_err(|e| e.to_string())?
+        }
         _ => path.to_path_buf(),
     };
     if resolved.starts_with(root) {
@@ -743,7 +751,10 @@ pub(crate) mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| name.contains("markpad-tmp"))
             .collect();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
 
         fs::remove_dir_all(dir).unwrap();
     }
@@ -799,7 +810,10 @@ pub(crate) mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| name.contains("markpad-tmp"))
             .collect();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
 
         fs::remove_dir_all(dir).unwrap();
     }
@@ -825,7 +839,7 @@ pub(crate) mod tests {
 
     /// One realistic document per legacy encoding Markpad is likely to meet.
     /// Each is text that encoding can represent and UTF-8 disagrees with.
-    const LEGACY_SAMPLES: [(&'static encoding_rs::Encoding, &str); 4] = [
+    const LEGACY_SAMPLES: [(&encoding_rs::Encoding, &str); 4] = [
         (encoding_rs::GBK, CHINESE_SAMPLE),
         (
             encoding_rs::BIG5,
@@ -1053,10 +1067,21 @@ pub(crate) mod tests {
 
     #[test]
     fn path_components_reject_traversal_separators_and_absolute_paths() {
-        for invalid in ["", ".", "..", "../theme", "folder/theme", "folder\\theme", "/tmp/theme"] {
+        for invalid in [
+            "",
+            ".",
+            "..",
+            "../theme",
+            "folder/theme",
+            "folder\\theme",
+            "/tmp/theme",
+        ] {
             assert!(safe_path_component(invalid, "test").is_err(), "{invalid}");
         }
-        assert_eq!(safe_path_component("SynthWave '84", "test").unwrap(), "SynthWave '84");
+        assert_eq!(
+            safe_path_component("SynthWave '84", "test").unwrap(),
+            "SynthWave '84"
+        );
     }
 
     #[cfg(unix)]

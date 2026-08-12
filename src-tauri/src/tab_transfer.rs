@@ -194,7 +194,10 @@ impl TabTransferBroker {
     }
 
     fn peek(&self, token: &str) -> Option<PendingTransfer> {
-        crate::window_runtime::lock_recover(&self.inner).entries.get(token).cloned()
+        crate::window_runtime::lock_recover(&self.inner)
+            .entries
+            .get(token)
+            .cloned()
     }
 
     fn take(&self, token: &str) -> Option<PendingTransfer> {
@@ -339,8 +342,12 @@ pub fn complete_detached_tab(
     token: String,
 ) -> Result<(), String> {
     let transfer = state.complete_as(window.label(), &token)?;
-    app.emit_to(transfer.source_label.as_str(), "tab-transfer-claimed", token)
-        .map_err(|e| format!("TRANSFER_HANDOFF_FAILED: {e}"))
+    app.emit_to(
+        transfer.source_label.as_str(),
+        "tab-transfer-claimed",
+        token,
+    )
+    .map_err(|e| format!("TRANSFER_HANDOFF_FAILED: {e}"))
 }
 
 #[tauri::command]

@@ -114,7 +114,9 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
-                use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+                use tauri::menu::{
+                    MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
+                };
 
                 let app_name = app.package_info().name.clone();
 
@@ -139,12 +141,9 @@ pub fn run() {
                     .item(&PredefinedMenuItem::hide(app, None)?)
                     .separator()
                     .item(
-                        &MenuItemBuilder::with_id(
-                            "menu-app-quit",
-                            format!("Quit {}", app_name),
-                        )
-                        .accelerator("CmdOrCtrl+Q")
-                        .build(app)?,
+                        &MenuItemBuilder::with_id("menu-app-quit", format!("Quit {}", app_name))
+                            .accelerator("CmdOrCtrl+Q")
+                            .build(app)?,
                     )
                     .build()?;
 
@@ -300,8 +299,7 @@ pub fn run() {
                         let path_str = path_buf.to_string_lossy().to_string();
 
                         let state = _app_handle.state::<AppState>();
-                        window_runtime::lock_recover(&state.startup_files)
-                            .push(path_str.clone());
+                        window_runtime::lock_recover(&state.startup_files).push(path_str.clone());
 
                         if let Some(window) = pick_delivery_window(_app_handle) {
                             let _ = _app_handle.emit_to(window.label(), "file-path", path_str);
