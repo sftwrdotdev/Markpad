@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 
 // A file path identifies a tab. Two tabs on one file are two buffers with two
 // dirty flags and two auto-save timers writing the same file in turn, so
@@ -10,27 +10,10 @@ import test from 'node:test';
 //
 // These tests drive the real TabManager: they assert behaviour, not wording.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-
-const localStore = new Map<string, string>();
-g.localStorage = {
-	getItem: (key: string) => (localStore.has(key) ? localStore.get(key)! : null),
-	setItem: (key: string, value: string) => void localStore.set(key, String(value)),
-	removeItem: (key: string) => void localStore.delete(key),
-	clear: () => localStore.clear(),
-};
-g.window.__TAURI_INTERNALS__ = {
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so `$state`/`$derived`/`$effect` behave here exactly as they do
+// in the app. Only the things jsdom genuinely does not have are stubbed.
+(window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
@@ -40,7 +23,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 function reset() {
 	tabManager.closeAll();
 	tabManager.recentlyClosed.length = 0;
-	localStore.clear();
+	localStorage.clear();
 }
 
 function tabsFor(path: string) {

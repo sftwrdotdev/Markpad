@@ -155,13 +155,60 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 ## Testing
 
 - **Rust**: `cargo test` in `src-tauri/` directory
-- **Frontend**: `npm test` runs `scripts/*.test.ts` (`node --test --import tsx`). Two kinds
-  live there: behavior tests, which import and run the real modules, and source-shape
-  assertions, which match the source text for a contract the compiler cannot check — a Tauri
-  command name, an i18n key, a second copy of a fixed behavior. A green run is not a claim
-  that every behavior is covered; a source-shape assertion passes as long as the line it
-  matches is still spelled that way.
-- **CI**: Runs `npm audit`, `npm run check`, `npm test` and `cargo test` on PRs
+- **Frontend**: two runners, split by glob so a file belongs to exactly one.
+  - `npm test` runs `scripts/*.test.ts` (`node --test --import tsx`).
+  - `npm run test:vitest` runs `scripts/*.spec.ts` (vitest, jsdom, Svelte plugin).
+- **CI**: Runs `npm audit`, `npm run check`, `npm test`, `npm run test:vitest` and
+  `cargo test` on PRs
+
+Two kinds of assertion live in this suite: behavior tests, which import and run the real
+modules, and source-shape assertions, which match the source text for a contract the
+compiler cannot check — a Tauri command name, an i18n key, a second copy of a fixed
+behavior. A green run is not a claim that every behavior is covered; a source-shape
+assertion passes as long as the line it matches is still spelled that way.
+
+### Which runner a test belongs to
+
+**Write it as `*.spec.ts` (vitest) when the subject is a `.svelte.ts` runes module, or when
+it needs a real DOM.** `node --test` cannot load either. A runes module reached from
+`node --test` only runs because the test installs `$state`/`$derived`/`$effect` onto
+`globalThis` itself, and a hand-written rune is not the compiler's: it misses `$derived`'s
+laziness, `$state`'s deep proxying, the private-field backing the compiler generates for
+each `$state`, and — the expensive one — `$effect` never re-runs, so an assertion about
+what an effect writes cannot fail. Under vitest the module is compiled for real and
+`flushSync()` from `svelte` runs the pending effects.
+
+**Leave it as `*.test.ts` (`node --test`) otherwise.** Plain TypeScript modules run fine
+there, the runner is already configured, and moving a passing file buys nothing.
+
+**Do not migrate `.svelte` component tests.** Mounting a component here means jsdom
+standing in for Monaco, mermaid and KaTeX, and the assertion it earns — "the handler is
+wired up" — is weaker than the source-shape assertion it replaced, not stronger.
+
+### What must never be migrated
+
+Two categories are correct *because* they are text assertions, and a runtime test cannot
+express them at all:
+
+- **Cross-language contracts.** A `#[tauri::command]` name, an event name, a config key: one
+  side is Rust and the other is TypeScript, and nothing but the spelling connects them.
+  Running the TypeScript proves the TypeScript.
+- **Single-implementation conventions.** "There is exactly one copy of this behavior", "no
+  other caller passes this flag", "this constant is not hard-coded a second time". These are
+  claims about the *absence* of a second implementation. Executing the one implementation
+  that exists cannot observe a second one; only reading the source can.
+
+### Migrating a file
+
+Rename `*.test.ts` to `*.spec.ts`, change `import test from 'node:test'` to
+`import { test } from 'vitest'`, and delete the rune shim. `node:assert/strict` works
+unchanged. Two things bite:
+
+- `resolve.conditions: ['browser']` in `vitest.config.ts` is load-bearing. Without it Svelte
+  resolves to its SSR build and `$effect` never flushes — the runes go quietly back to
+  behaving like the shims.
+- `readSource(new URL('…', import.meta.url))` throws under vitest, which serves test files
+  over `http://`. Use the cwd-relative string form.
 
 ## Notes
 

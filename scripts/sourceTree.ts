@@ -55,6 +55,11 @@ export type SourceFile = { path: string; text: string };
  * `new URL('../src/…', import.meta.url)`, which resolves against the test file
  * rather than the cwd. `readFileSync` takes either, so no call site has to
  * change shape to get normalized.
+ *
+ * The `import.meta.url` spelling only works under `node --test`. Vitest serves
+ * test files through Vite, so `import.meta.url` is an `http://` URL there and
+ * `readFileSync` rejects it with "The URL must be of scheme file". A `*.spec.ts`
+ * file must use the cwd-relative string form.
  */
 export function readSource(path: string | URL): string {
 	return readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
