@@ -2636,11 +2636,28 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// dropped by the revision check below, several ran at once and all of
 			// the work was done regardless.
 			//
-			// 120ms sits above the burst interval, so a word typed at speed costs
-			// one render rather than five, and below the pause someone takes to
-			// look at what they wrote — the preview catches up about an eighth of a
-			// second after the last key. Much larger reads as the preview lagging
-			// the cursor; much smaller is the 16ms case again.
+			// 500ms, and the reason is not throughput — it is that a rebuilt
+			// preview is not pixel-identical to the one it replaces.
+			//
+			// `{@html}` destroys and recreates the whole article. Everything that
+			// settles afterwards — inline maths through KaTeX's auto-renderer,
+			// font metrics, the ResizeObserver remeasuring every fold — settles a
+			// frame or two later, and any of them can leave the text a pixel or
+			// two from where it was. Cacheing the expensive renderers and fixing
+			// the fold measurement each removed one source; neither could remove
+			// the last one, because the source is the rebuild itself.
+			//
+			// So the debounce is chosen against a *pause*, not against the gap
+			// between two keystrokes. At 120ms the preview rebuilt several times
+			// inside one sentence and the reader watched it resettle each time.
+			// At 500ms a sentence typed without stopping is one rebuild, and it
+			// lands when they have already stopped to read it.
+			//
+			// This is a mitigation and should be read as one: it makes the
+			// rebuild rare rather than making it stable. The fix that removes it
+			// is block-level patching — reusing the DOM of blocks whose rendered
+			// HTML did not change — at which point this number can come back
+			// down.
 			const timer = setTimeout(() => {
 				renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides)
 					.then((processed) => {
@@ -2655,7 +2672,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						tick().then(renderRichContent);
 					})
 					.catch(console.error);
-			}, 120);
+			}, 500);
 
 			return () => clearTimeout(timer);
 		}
