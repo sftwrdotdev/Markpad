@@ -25,6 +25,7 @@ const BASE_TOOLBAR_TOOLS: ReadonlyArray<Omit<EditorToolbarTool, 'shortcut'>> = [
 	{ id: 'fmt-bold', label: 'B', name: 'Bold', group: 'inline' },
 	{ id: 'fmt-italic', label: 'I', name: 'Italic', group: 'inline' },
 	{ id: 'fmt-underline', label: 'U', name: 'Underline', group: 'inline' },
+	{ id: 'fmt-strikethrough', label: 'S', name: 'Strikethrough', group: 'inline' },
 	{ id: 'fmt-inline-code', label: '`', name: 'Inline Code', group: 'inline' },
 	{ id: 'fmt-code-block', label: '{}', name: 'Code Block', group: 'block' },
 	{ id: 'fmt-quote', label: '>', name: 'Quote', group: 'block' },
@@ -131,6 +132,97 @@ export function toggleLineMarker(id: LineMarkerToolId, lines: readonly string[])
 		const body = marker.competing ? line.replace(marker.competing, '') : line;
 		return `${marker.render(itemIndex++)}${body}`;
 	});
+}
+
+type InlineWrap = {
+	/** The one spelling the button writes. */
+	readonly write: string;
+	/**
+	 * The spellings it takes back off, LONGEST FIRST. Order is load-bearing:
+	 * with `~` tried first, `~~gone~~` would lose one tilde per end and come back
+	 * as `~gone~`, which is still struck through.
+	 */
+	readonly strip: readonly string[];
+};
+
+/**
+ * What each wrapping tool writes, and what it recognises as its own.
+ *
+ * Two fields rather than one marker because Markdown spells most of these twice.
+ * `**bold**` and `__bold__` are the same span, and a toolbar that knew only the
+ * asterisk spelling answered a click on `__bold__` by wrapping a second pair
+ * around it. So: write the portable spelling, accept both.
+ *
+ * That is also why Strikethrough writes `~~` and not `~`. GFM reads one or two
+ * tildes, and so does this app's renderer — deliberately, which is why
+ * `markdown_options` in src-tauri/src/markdown.rs refuses the `subscript`
+ * extension: taking `~x~` for a subscript would make a valid GFM document
+ * render differently here. The same reasoning applies one step further out. The
+ * app can *accept* a single tilde without hurting anyone; writing one would make
+ * it the source of text that other renderers read differently.
+ */
+const INLINE_WRAPS = {
+	'fmt-bold': { write: '**', strip: ['**', '__'] },
+	'fmt-italic': { write: '*', strip: ['*', '_'] },
+	'fmt-strikethrough': { write: '~~', strip: ['~~', '~'] },
+	'fmt-inline-code': { write: '`', strip: ['`'] },
+} satisfies Record<string, InlineWrap>;
+
+export type InlineWrapToolId = keyof typeof INLINE_WRAPS;
+
+export const INLINE_WRAP_TOOL_IDS = Object.keys(INLINE_WRAPS) as InlineWrapToolId[];
+
+/** Every marker any wrapping tool owns — what the rule below measures against. */
+const ALL_WRAP_MARKERS = [...new Set(Object.values(INLINE_WRAPS).flatMap((wrap) => wrap.strip))];
+
+/**
+ * Is `text` `marker`…`marker`? The length guard is what stops a selection of
+ * exactly `**` from being read as an empty bold span whose two ends are the
+ * same two characters, and sliced into nothing.
+ */
+function wrappedIn(text: string, marker: string): boolean {
+	return text.length >= marker.length * 2 && text.startsWith(marker) && text.endsWith(marker);
+}
+
+/**
+ * Applies (or removes) one toolbar inline format around the selected text.
+ *
+ * THE RULE THAT KEEPS ITALIC OFF BOLD'S MARKER
+ *
+ * `*` is a prefix of `**`, so "the selection starts and ends with my marker"
+ * said yes for Italic on `**bold**`: it took one asterisk off each end and
+ * turned bold text into italic text. Trying the longer markers first does not
+ * fix that on its own, because `**` is not in Italic's list at all — Italic
+ * never considers it.
+ *
+ * So a marker counts as this tool's own only when no LONGER marker belonging to
+ * another tool is standing in the same place. Italic looking at `**bold**` sees
+ * bold's `**` wrapped around the `*` it was about to take, leaves it alone, and
+ * falls through to wrapping — which is the other half of the answer: asking for
+ * italic on bold text means both, `***bold***`.
+ *
+ * Unless BOTH are there, which is what `***bold***` itself is: the two markers
+ * side by side, not one of them. Taking italic's asterisk off that leaves bold's
+ * pair whole, so there is nothing to protect and the toggle does what it was
+ * asked — un-italicise text that really was italic.
+ */
+export function toggleInlineWrap(id: InlineWrapToolId, text: string): string {
+	const { write, strip } = INLINE_WRAPS[id];
+
+	for (const marker of strip) {
+		if (!wrappedIn(text, marker)) continue;
+		const belongsToAnotherTool = ALL_WRAP_MARKERS.some(
+			(other) =>
+				other.length > marker.length &&
+				!strip.includes(other) &&
+				wrappedIn(text, other) &&
+				!wrappedIn(text, other + marker),
+		);
+		if (belongsToAnotherTool) continue;
+		return text.slice(marker.length, -marker.length);
+	}
+
+	return `${write}${text}${write}`;
 }
 
 const knownToolbarIds = new Set(DEFAULT_EDITOR_TOOLBAR_ORDER);

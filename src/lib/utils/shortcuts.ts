@@ -166,6 +166,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{ id: 'fmt-bold', labelKey: 'menu.bold', chords: ['Mod+B'], group: 'edit', editorAction: true },
 	{ id: 'fmt-italic', labelKey: 'menu.italic', chords: ['Mod+I'], group: 'edit', editorAction: true },
 	{ id: 'fmt-underline', labelKey: 'menu.underline', chords: ['Mod+U'], group: 'edit', editorAction: true },
+	{ id: 'fmt-strikethrough', labelKey: 'menu.strikethrough', chords: ['Mod+Shift+X'], group: 'edit', editorAction: true },
 	{ id: 'fmt-inline-code', labelKey: 'menu.inlineCode', chords: ['Mod+Shift+E'], group: 'edit', editorAction: true },
 	{ id: 'fmt-code-block', labelKey: 'menu.codeBlock', chords: ['Mod+Shift+F'], group: 'edit', editorAction: true },
 	{ id: 'fmt-quote', labelKey: 'menu.quote', chords: ['Mod+Shift+.'], group: 'edit', editorAction: true },

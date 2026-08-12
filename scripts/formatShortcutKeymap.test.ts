@@ -62,7 +62,7 @@ test('each new shortcut runs the command it is labelled with', () => {
 		'fmt-heading-2': 'toggleLineMarkerTool("fmt-heading-2")',
 		'fmt-heading-3': 'toggleLineMarkerTool("fmt-heading-3")',
 		'fmt-quote': 'toggleLineMarkerTool("fmt-quote")',
-		'fmt-inline-code': 'toggleFormat("`")',
+		'fmt-inline-code': 'toggleInlineWrapTool("fmt-inline-code")',
 		'fmt-code-block': 'wrapAsCodeBlock',
 	};
 

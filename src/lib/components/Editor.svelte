@@ -4,7 +4,12 @@
 	import { settings } from "../stores/settings.svelte.js";
 	import { t, type LanguageCode } from '../utils/i18n.js';
 	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
-	import { toggleLineMarker, type LineMarkerToolId } from '../utils/editorToolbar.js';
+	import {
+		toggleInlineWrap,
+		toggleLineMarker,
+		type InlineWrapToolId,
+		type LineMarkerToolId,
+	} from '../utils/editorToolbar.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
@@ -755,10 +760,26 @@
 		editor.executeEdits("my-source", [op]);
 	};
 
-	const toggleFormat = (
-		marker: string,
-		type: "wrap" | "block" | "tag" = "wrap",
-	) => {
+	// Which markers each of these tools writes and which it accepts back lives in
+	// `utils/editorToolbar.ts`, beside the line-marker table and keyed by the same
+	// ids — so the button, the shortcut and the context-menu entry cannot disagree
+	// about what Bold means, and neither can two markers that share a prefix.
+	const toggleInlineWrapTool = (id: InlineWrapToolId) => {
+		const selection = editor.getSelection();
+		const model = editor.getModel();
+		if (!selection || !model) return;
+
+		editor.executeEdits("toggle-format", [
+			{
+				range: selection,
+				text: toggleInlineWrap(id, model.getValueInRange(selection)),
+			},
+		]);
+	};
+
+	// Underline is an HTML tag rather than a Markdown marker, and its two ends
+	// are different strings, so none of the prefix reasoning above applies to it.
+	const toggleTagFormat = (marker: string) => {
 		const selection = editor.getSelection();
 		if (!selection) return;
 
@@ -766,31 +787,13 @@
 		if (!model) return;
 
 		const text = model.getValueInRange(selection);
+		const [startTag, endTag] = marker.split("|");
+		const newText =
+			text.startsWith(startTag) && text.endsWith(endTag)
+				? text.slice(startTag.length, -endTag.length)
+				: `${startTag}${text}${endTag}`;
 
-		if (type === "wrap") {
-			if (text.startsWith(marker) && text.endsWith(marker)) {
-				const newText = text.slice(marker.length, -marker.length);
-				editor.executeEdits("toggle-format", [
-					{ range: selection, text: newText },
-				]);
-			} else {
-				editor.executeEdits("toggle-format", [
-					{ range: selection, text: `${marker}${text}${marker}` },
-				]);
-			}
-		} else if (type === "tag") {
-			const [startTag, endTag] = marker.split("|");
-			if (text.startsWith(startTag) && text.endsWith(endTag)) {
-				const newText = text.slice(startTag.length, -endTag.length);
-				editor.executeEdits("toggle-format", [
-					{ range: selection, text: newText },
-				]);
-			} else {
-				editor.executeEdits("toggle-format", [
-					{ range: selection, text: `${startTag}${text}${endTag}` },
-				]);
-			}
-		}
+		editor.executeEdits("toggle-format", [{ range: selection, text: newText }]);
 	};
 
 	const transformSelectedLines = (
@@ -1010,21 +1013,34 @@
 				id: "fmt-bold",
 				label: t('menu.bold', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyB],
-				run: () => toggleFormat("**"),
+				run: () => toggleInlineWrapTool("fmt-bold"),
 			}),
 
 			editor.addAction({
 				id: "fmt-italic",
 				label: t('menu.italic', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyI],
-				run: () => toggleFormat("*"),
+				run: () => toggleInlineWrapTool("fmt-italic"),
 			}),
 
 			editor.addAction({
 				id: "fmt-underline",
 				label: t('menu.underline', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyU],
-				run: () => toggleFormat("<u>|</u>", "tag"),
+				run: () => toggleTagFormat("<u>|</u>"),
+			}),
+
+			editor.addAction({
+				id: "fmt-strikethrough",
+				label: t('menu.strikethrough', lang),
+				// GitHub's chord for this button, and free here: the Ctrl/Cmd+Shift
+				// row is otherwise B, E, F, M, R, S, T and Z. Chosen against the whole
+				// keymap for the reasons the block below sets out, and checked by the
+				// same test.
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyX,
+				],
+				run: () => toggleInlineWrapTool("fmt-strikethrough"),
 			}),
 
 			// The six bindings below were chosen against the whole keymap, not
@@ -1049,7 +1065,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyE,
 				],
-				run: () => toggleFormat("`"),
+				run: () => toggleInlineWrapTool("fmt-inline-code"),
 			}),
 
 			editor.addAction({
