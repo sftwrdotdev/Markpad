@@ -473,6 +473,9 @@ export class SettingsStore {
 	// replaced and why the two of them were never independent.
 	autoSave = $state(DEFAULT_AUTO_SAVE);
 
+	/** The `$effect.root` disposer from the constructor. See {@link dispose}. */
+	#disposeEffects: (() => void) | null = null;
+
 	constructor() {
 		if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') return;
 
@@ -498,9 +501,31 @@ export class SettingsStore {
 			if (!hasStoredFontFamily.codeFont) this.codeFont = defaults.codeFont;
 		});
 
-		$effect.root(() => {
+		this.#disposeEffects = $effect.root(() => {
 			installPersistedSettings(this, entries);
 		});
+	}
+
+	/**
+	 * Stops this store persisting, the way `observeFoldLayout`'s stop function
+	 * stops it observing. Held on the instance rather than returned, because the
+	 * one thing a constructor cannot hand back is a second value.
+	 *
+	 * The app never calls it: `settings` below is a singleton that lives as long
+	 * as its window, and that is the behaviour the whole file is written for. A
+	 * *test* constructs stores by the dozen into one shared jsdom, and each
+	 * construction installs ~30 write effects plus a `storage` listener that
+	 * outlive the test that made them — so a later `flushSync()` runs an
+	 * abandoned store's effects too, and they rewrite its keys from its own
+	 * construction-time values.
+	 *
+	 * Disposing the root destroys those effects *and* runs their teardowns, so
+	 * the `window` listener comes off with them; nothing here is registered
+	 * outside the root.
+	 */
+	dispose(): void {
+		this.#disposeEffects?.();
+		this.#disposeEffects = null;
 	}
 
 	toggleMinimap() {
