@@ -35,12 +35,30 @@ import { carrySourcepos } from './richContent.js';
  * before, not a copy of it: a fixed reference block sampled at frames 0, 1, 2, 5
  * and 11 after the edit is at +0.000px in every case.
  *
- * Renaming a heading is the one edit that does not collapse to a block or two:
+ * Renaming a heading is the one edit that does not collapse to a block or two.
  * comrak deduplicates heading ids (`objectives-24`, `objectives-25`, …), so
- * renaming one renumbers every later duplicate and those blocks really are
- * different markup. On stress-test.md that is 71 blocks instead of 1 — still a
- * third of the document rather than all of it, and the id is in the markup, so
- * no key can call them unchanged without lying.
+ * renaming one renumbers every later duplicate, and those headings really are
+ * different markup: the id is what an `#anchor` link, the outline and
+ * `data-fold-key` name the heading by, so no key can call them unchanged
+ * without lying. What is not forced is the content BETWEEN them, and that was
+ * where the cost sat — the changed run at that level of the document is
+ * `h2, wrapper, h2, wrapper, …`, the wrappers hold the body of the file, and
+ * the run was swapped whole. On stress-test.md that was 71 blocks, a third of
+ * the document, for one renamed heading. The run is now walked pairwise when
+ * both sides have the same length, so the headings are replaced and the
+ * wrappers are descended into.
+ *
+ * Keeping the heading nodes as well and rewriting their ids — the trick
+ * `refreshSourcepos` plays with source ranges — is the tempting next step, and
+ * it does not work. That trick is sound only because every node
+ * `renderRichContent` replaces it replaces singly, so the annotated nodes line
+ * up one for one on both sides after enrichment. Ids have no such property:
+ * enrichment INVENTS them, a Mermaid SVG carrying dozens where the `<pre>` it
+ * replaced had none, so the two `[id]` lists do not correspond and the
+ * length-mismatch bail leaves a kept block wearing an id nothing links to any
+ * more. A stale anchor target is a wrong answer; replacing a heading is only
+ * work. Dropping ids from the key without rewriting them at all is the same
+ * defect with none of the machinery.
  *
  * ## The key is the markup, not the source position
  *
@@ -218,19 +236,46 @@ function patchContainer(live: HTMLElement, next: ParentNode, patch: BlockPatch):
 		newTo -= 1;
 	}
 
-	// Read before anything is removed: still a live node, and still in place
-	// afterwards, because everything removed sits before it.
-	const before = liveElements[oldTo] ?? null;
-	for (let index = oldFrom; index < oldTo; index += 1) liveElements[index].remove();
+	// What is left is the run that really changed. When both sides have the same
+	// number of blocks in it, the two line up pair for pair, and each pair can
+	// be asked the question the ends were asked instead of the run being swapped
+	// wholesale. That is the difference between "a heading changed" and "a third
+	// of the document changed": renumbering `objectives-24` renames every later
+	// duplicate, and the run that spans them is `h2, wrapper, h2, wrapper, …`
+	// where only the headings differ. The wrappers hold the body of the file.
+	//
+	// Same length is the whole condition, and it is not a heuristic: it is what
+	// says the blocks correspond. An edit that adds or removes one shifts
+	// everything after it, there is no pairing to be had, and the run is swapped
+	// as before — which is also the case the prefix/suffix diff was chosen for.
+	if (oldTo - oldFrom === newTo - newFrom) {
+		for (let index = 0; index < oldTo - oldFrom; index += 1) {
+			const liveElement = liveElements[oldFrom + index];
+			const nextElement = nextElements[newFrom + index];
+			if (canDescend(liveElement, nextElement)) {
+				descend(liveElement, nextElement, patch);
+				continue;
+			}
+			liveElement.replaceWith(nextElement);
+			rememberSubtree(nextElement);
+			patch.inserted.push(nextElement);
+			patch.replaced += 1;
+		}
+	} else {
+		// Read before anything is removed: still a live node, and still in place
+		// afterwards, because everything removed sits before it.
+		const before = liveElements[oldTo] ?? null;
+		for (let index = oldFrom; index < oldTo; index += 1) liveElements[index].remove();
 
-	const incoming = nextElements.slice(newFrom, newTo);
-	if (incoming.length > 0) {
-		const fragment = live.ownerDocument.createDocumentFragment();
-		for (const element of incoming) fragment.appendChild(element);
-		live.insertBefore(fragment, before);
-		for (const element of incoming) rememberSubtree(element);
-		patch.inserted.push(...incoming);
-		patch.replaced += incoming.length;
+		const incoming = nextElements.slice(newFrom, newTo);
+		if (incoming.length > 0) {
+			const fragment = live.ownerDocument.createDocumentFragment();
+			for (const element of incoming) fragment.appendChild(element);
+			live.insertBefore(fragment, before);
+			for (const element of incoming) rememberSubtree(element);
+			patch.inserted.push(...incoming);
+			patch.replaced += incoming.length;
+		}
 	}
 
 	// Kept blocks moved in the source even when they did not move on screen, and
