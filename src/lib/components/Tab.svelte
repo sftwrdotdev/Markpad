@@ -8,6 +8,7 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { getTabFileActions, hasRealFilePath } from '../utils/tabFileActions.js';
 	import { isHomePath } from '../utils/homeTab.js';
+	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 
 	let { tab, isActive, isLast, onclick, onclose } = $props<{
 		tab: Tab;
@@ -86,6 +87,10 @@
 		e.stopPropagation();
 
 		const currentLang = settings.language;
+		// ContextMenu prints `shortcut` into the same `<span class="menu-shortcut">`
+		// the app menu uses, so a literal here sits a keystroke away from the app
+		// menu's registry-derived chord and disagrees with it on macOS.
+		const modifier = modifierFor(settings.osType);
 		const fileActionItems: ContextMenuItem[] = getTabFileActions(tab.path).map((action) => ({
 			label: t(action.labelKey, currentLang),
 			disabled: action.disabled,
@@ -112,8 +117,8 @@
 			x: e.clientX,
 			y: e.clientY,
 			items: [
-				{ label: t('menu.newFile', currentLang), shortcut: 'Ctrl+T', onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
-				{ label: t('menu.undoCloseTab', currentLang), shortcut: 'Ctrl+Shift+T', onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
+				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
+				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
 				{
 					label: t('menu.rename', currentLang),
 					// Rename renames the file on disk; untitled and home tabs have
@@ -133,7 +138,7 @@
 				},
 				...moveToWindowItems,
 				{ separator: true },
-				{ label: t('menu.closeFile', currentLang), shortcut: 'Ctrl+W', onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close', tab.id) },
+				{ label: t('menu.closeFile', currentLang), shortcut: shortcutLabel('file-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close', tab.id) },
 				{ label: t('menu.closeOtherTabs', currentLang), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close-others', tab.id) },
 				{ label: t('menu.closeTabsToRight', currentLang), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close-right', tab.id) },
 			],
@@ -186,7 +191,7 @@
 		<button class="tab-close" class:dirty={tab.isDirty} onclick={handleClose} onmousedown={(e) => {
 			e.stopPropagation();
 			e.preventDefault();
-		}} title={`${t('tooltip.close', settings.language)} (Ctrl+W)`}>
+		}} title={`${t('tooltip.close', settings.language)} (${shortcutLabel('file-close', modifierFor(settings.osType))})`}>
 			{#if tab.isDirty}
 				<span class="dirty-dot"></span>
 			{/if}
