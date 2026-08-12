@@ -26,6 +26,11 @@
 		type ScrollSyncPosition,
 	} from '../utils/scrollSync.js';
 	import { asBufferLine, type BufferLine } from '../utils/lineCoordinates.js';
+	import {
+		DEFAULT_IMAGE_DIRECTORY,
+		documentParentDir,
+		imageEmbed,
+	} from '../utils/imageEmbed.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
 	// parse+eval, paid once per window because every window is its own webview)
@@ -649,7 +654,8 @@
 						tab.path.lastIndexOf("/"),
 					);
 					const parentDir = tab.path.substring(0, lastSlash);
-					const imgDirName = settings.imageDirectory || "img";
+					const imgDirName =
+						settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
 
 					try {
 						const [currentEntries, imgEntries] = await Promise.all([
@@ -1421,19 +1427,17 @@
 					const filename = `paste_${Date.now()}.${ext}`;
 
 					const tabPath = tabManager.activeTab.path;
-					const dirMatch = tabPath.match(/^(.*)[/\\][^/\\]+$/);
-					if (dirMatch) {
-						const parentDir = dirMatch[1];
-						const imgDirName = settings.imageDirectory || "img";
+					const parentDir = documentParentDir(tabPath);
+					if (parentDir !== null) {
+						const imgDirName =
+							settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
 						const relPath = (await invoke("save_image", {
 							parentDir,
 							filename,
 							base64Data: base64Image,
 							imageDirectory: imgDirName,
 						})) as string;
-						// Remove leading slash if imageDirectory was empty, to ensure relative path
-						const escapedPath = relPath.replace(/ /g, "%20").replace(/^\//, "");
-						const embed = `![alt](${escapedPath})`;
+						const embed = imageEmbed(relPath);
 
 						const position = editor.getPosition();
 						if (position) {
@@ -1744,20 +1748,17 @@
 		if (!position) return;
 
 		const tabPath = tabManager.activeTab.path;
-		const match = tabPath.match(/^(.*)[/\\][^/\\]+$/);
-		if (!match) return;
-		const parentDir = match[1];
+		const parentDir = documentParentDir(tabPath);
+		if (parentDir === null) return;
 
 		try {
-			const imgDirName = settings.imageDirectory || "img";
+			const imgDirName = settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
 			const relPath = (await invoke("copy_file_to_img", {
 				srcPath: path,
 				parentDir,
 				imageDirectory: imgDirName,
 			})) as string;
-			// Remove leading slash if imageDirectory was empty
-			const escapedPath = relPath.replace(/ /g, "%20").replace(/^\//, "");
-			const embed = `![alt](${escapedPath})`;
+			const embed = imageEmbed(relPath);
 
 			editor.executeEdits(
 				"drop-image",
