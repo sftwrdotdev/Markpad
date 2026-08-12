@@ -200,13 +200,57 @@ type Override = {
 	/** The app registration: a Monaco action id, or `addCommand(fn)` for a bare command. */
 	action: string;
 	chords: PerPlatform;
-	/** The Monaco command that loses the key. */
+	/**
+	 * The Monaco command that loses the key. For a `namespace` row it is one
+	 * command from BEHIND the prefix, named so the row fails if the prefix stops
+	 * meaning what the argument says it means.
+	 */
 	monaco: string;
+	/**
+	 * The chord is a PREFIX of Monaco chord sequences rather than a chord Monaco
+	 * binds outright, so what the app takes is a whole namespace.
+	 *
+	 * This exists because the first rule below could not see that case at all.
+	 * `Mod+K` is not a key in Monaco's map — every `Mod+K …` entry is keyed by the
+	 * full two-part chord — so an app action claiming plain `Mod+K` matched
+	 * nothing, and the rule waved through the single largest keymap change this
+	 * app has ever made. A guard that only notices exact collisions is blind
+	 * exactly where the loss is biggest.
+	 */
+	namespace?: true;
 	/** Why losing it is acceptable. */
 	why: string;
 };
 
 const DELIBERATE_OVERRIDES: readonly Override[] = [
+	{
+		action: 'fmt-link',
+		chords: { macOS: 'Meta+K', Windows: 'Ctrl+K', Linux: 'Ctrl+K' },
+		namespace: true,
+		monaco: 'editor.foldAll',
+		why:
+			"THE LARGEST THING THIS APP TAKES OFF MONACO, and the cost is enumerated rather than " +
+			'summarised because a reader arriving later deserves the actual bill. Monaco binds no complete ' +
+			'keybinding on Ctrl/Cmd+K; it binds 31 chord SEQUENCES behind it, carrying 30 commands, ' +
+			'identically on all three platforms. Twenty are folding (foldAll, unfoldAll, foldLevel1-7, ' +
+			'foldRecursively, unfoldRecursively, foldAllExcept, unfoldAllExcept, toggleFold, ' +
+			'toggleFoldRecursively, foldAllBlockComments, foldAllMarkerRegions, unfoldAllMarkerRegions, ' +
+			'createFoldingRangeFromSelection, removeManualFoldingRanges). The other ten are addCommentLine, ' +
+			'removeCommentLine, formatSelection, revealDefinitionAside, togglePeekWidgetFocus, ' +
+			'setSelectionAnchor, selectFromAnchorToCursor, moveSelectionToNextFindMatch, showHover and ' +
+			'trimTrailingWhitespace. All 30 remain in the command palette (Mod+P); what goes is the key. ' +
+			'WHY THE FOLDING BULK IS NOT THE LOSS IT LOOKS LIKE: editor folding barely works in this app to ' +
+			'begin with. Nothing in src/ registers a folding-range provider — grep registerFoldingRangeProvider ' +
+			"— and Monaco's own basic-languages/markdown/markdown.js declares folding only through region " +
+			'markers (<!-- #region --> / <!-- #endregion -->), which nobody writes in Markdown. What those ' +
+			"twenty commands actually operate on is indentation folding. The folding a user of this app has " +
+			'and wants is the preview-side system in src/lib/utils/foldState.ts, which is click-driven and ' +
+			'untouched by any of this. No replacement fold chords are added, deliberately. ' +
+			'WHAT IS BOUGHT: Ctrl/Cmd+K is Insert Link in Typora, Bear, iA Writer and GitHub — the only ' +
+			'command in the whole survey where four independent sources agree exactly — and the link button ' +
+			'had no keyboard shortcut at all. A prose editor spending its single most agreed-on chord on a ' +
+			'code-folding namespace nobody can reach was the trade being made silently in the other direction.',
+	},
 	{
 		action: 'fmt-italic',
 		chords: { macOS: 'Meta+I', Windows: 'Ctrl+I', Linux: 'Ctrl+I' },
@@ -379,6 +423,54 @@ test('every chord the app takes off Monaco is one it says out loud it is taking'
 	);
 });
 
+/** The Monaco chord SEQUENCES that begin with `chord`, on one platform. */
+function sequencesUnder(monaco: MonacoKeymap, chord: Chord): Array<[Chord, string[]]> {
+	return [...monaco].filter(([candidate]) => candidate.startsWith(`${chord} `));
+}
+
+test('a chord taken off a Monaco chord NAMESPACE is one the app says out loud it is taking', () => {
+	// The blind spot in the rule above, and the reason this file grew a second
+	// one. Monaco keys its map by the FULL chord, so `Meta+K` — the prefix of 31
+	// sequences — is not in it, and `monaco.get('Meta+K')` is undefined. An app
+	// action registering plain `Mod+K` therefore reported no conflict at all,
+	// while ending every `Mod+K …` command in the editor: once the first key
+	// resolves to a complete keybinding there is no second key to press.
+	//
+	// Losing a namespace is a bigger decision than losing one command, so it needs
+	// a louder rule rather than a quieter one.
+	const unexplained: string[] = [];
+
+	for (const platform of PLATFORMS) {
+		const monaco = defaultsFor(platform.name);
+		for (const [chord, owners] of appEditorChords(platform.mac, platform.os)) {
+			if (chord.includes(' ')) continue; // a sequence shadows no prefix
+			const shadowed = sequencesUnder(monaco, chord);
+			if (!shadowed.length) continue;
+
+			const allowed = DELIBERATE_OVERRIDES.some(
+				(o) => o.namespace && o.chords[platform.name] === chord && owners.includes(o.action),
+			);
+			if (allowed) continue;
+
+			const commands = new Set(shadowed.flatMap(([, ids]) => ids));
+			unexplained.push(
+				`${platform.name}: ${owners.join('/')} takes ${chord} as a whole key, ending ` +
+					`${shadowed.length} Monaco chord sequences behind it (${commands.size} commands)`,
+			);
+		}
+	}
+
+	assert.deepEqual(
+		unexplained,
+		[],
+		'Claiming a chord that Monaco uses as a chord PREFIX does not collide with one command, it\n' +
+			'ends a namespace: the first key now resolves and there is no second key to press.\n' +
+			'Move the binding, or add a DELIBERATE_OVERRIDES row with `namespace: true` whose `why`\n' +
+			'enumerates what is behind the prefix rather than eliding it:\n  ' +
+			unexplained.join('\n  '),
+	);
+});
+
 test('no row in the allow-list has gone stale', async () => {
 	// Without this the table only ever grows: a row left behind after its binding
 	// moved reads as a live justification for a conflict that no longer exists,
@@ -388,9 +480,15 @@ test('no row in the allow-list has gone stale', async () => {
 		const owners = appEditorChords(platform.mac, platform.os).get(chord);
 
 		assert.ok(owners?.includes(row.action), `${platform.name}: ${row.action} no longer binds ${chord}`);
+
+		// A namespace row's Monaco side is behind the prefix, not on it — looking the
+		// chord up directly would find nothing and delete a live justification.
+		const claimants = row.namespace
+			? sequencesUnder(monaco, chord).flatMap(([, ids]) => ids)
+			: (monaco.get(chord) ?? []);
 		assert.ok(
-			monaco.get(chord)?.includes(row.monaco),
-			`${platform.name}: Monaco no longer binds ${chord} to ${row.monaco}; delete the override`,
+			claimants.includes(row.monaco),
+			`${platform.name}: Monaco no longer binds ${row.monaco} ${row.namespace ? 'behind' : 'to'} ${chord}; delete the override`,
 		);
 		assert.ok(row.why.length > 80, `${row.action} on ${chord} carries no real justification`);
 	}
@@ -438,7 +536,7 @@ test('zen mode is off redo, and on a chord nothing else wants', async () => {
 	// left implicit in the rules above. Confirmed by hand on a debug build
 	// first: Cmd+Shift+Z entered zen mode and nothing redid.
 	for (const platform of PLATFORMS) {
-		const chord = platform.mac ? 'Shift+Meta+D' : 'Ctrl+Shift+D';
+		const chord = platform.mac ? 'Alt+Meta+Z' : 'Ctrl+Alt+Z';
 		expect(editorKeymap(platform.mac, platform.os).get('toggle-zen-mode'), platform.name).toEqual([chord]);
 		expect(defaultsFor(platform.name).get(chord), platform.name).toBeUndefined();
 	}

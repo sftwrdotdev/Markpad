@@ -113,9 +113,11 @@ test('the chord translator agrees with the harness on chords both already know',
 	assert.equal(toMonacoLabel('Alt+Left', false), 'Alt+LeftArrow');
 
 	assert.deepEqual(mac.get('fmt-inline-code'), ['Shift+Meta+E']);
-	// Two keybindings, one action: the second is the same chord with the modifier
-	// still held for the second key. See the modifier-held test further down.
-	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+K T', 'Ctrl+K Ctrl+T']);
+	// `Mod+K T` above is still translated correctly; nothing BINDS a sequence any
+	// more, which is the rule asserted further down. Insert Table is the action
+	// that used to hold the two-part chord and is the single stroke `Mod+Alt+T`
+	// now, so this is the row that would have to change if the sequence came back.
+	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+Alt+T']);
 });
 
 // ------------------------------------------------------------- sanity guards
@@ -662,55 +664,65 @@ test('every keybinding the editor registers is either advertised or consciously 
 	}
 });
 
-// ---------------------------------------- the Mod+K chords, with Mod held down
+// ------------------------------------------- every chord is one keystroke
+//
+// The rule that replaced the `Mod+K` namespace. Insert Table and Insert Column
+// used to be `Mod+K T` and `Mod+K C`, and Insert Table had to be registered
+// TWICE — once released, once with the modifier still held — because "Cmd+K T"
+// reads as one gesture and `Cmd+K` then `Cmd+T` otherwise fell through to
+// `file-new`: asking for a table opened a tab. That was the cheaper half of the
+// problem. The expensive half was that people found the two-key gesture awkward
+// enough to stop using it, which is what this whole rework came out of.
+//
+// So there is no namespace to keep consistent any more, and the invariant worth
+// holding is the stronger one: nothing the app binds is a sequence at all.
 
-/**
- * `Mod+K <key>` chords that deliberately do NOT also take `Mod+K Mod+<key>`.
- *
- * The exemption is a collision, not a preference: `addAction` registers at
- * weight 1000, above every Monaco default, so taking one of these would not fill
- * an empty slot — it would silently delete a command that works today.
- */
-const MODIFIER_HELD_EXEMPT: Record<string, string> = {
-	'table-insert-column':
-		"Mod+K Mod+C is Monaco's own editor.action.addCommentLine " +
-		'(contrib/comment/browser/comment.js), and it is not a dead binding in Markdown: with no ' +
-		'line-comment token the command falls back to wrapping the line in <!-- -->. Mod+K C, ' +
-		'released, is unclaimed and stays the chord for Insert Column.',
-};
-
-test('every Mod+K chord also answers with the modifier still held', () => {
-	// HOW PEOPLE ACTUALLY PRESS THESE. "Cmd+K T" reads as one gesture, so the Cmd
-	// stays down for the T — and `Cmd+K` then `Cmd+T` matched nothing here, fell
-	// through, and reached the app's own new-tab chord: asking for Insert Table
-	// opened a tab. VS Code registers both forms of every Mod+K chord it ships for
-	// exactly this reason.
+test('the app binds no chord sequence anywhere, in either keyboard layer', () => {
+	// `Mod+K` is Insert Link now, so a sequence beginning with it could not be
+	// typed even if something declared one — the first key would fire the link.
+	// This is the rule that would catch a new sequence being introduced on some
+	// other prefix, which is the shape the ergonomics complaint was about rather
+	// than anything specific to K.
 	let checked = 0;
 	for (const platform of PLATFORMS) {
-		const modifier = platform.mac ? 'Meta' : 'Ctrl';
 		for (const [id, chords] of editorKeymap(platform.mac, platform.os)) {
-			if (id in MODIFIER_HELD_EXEMPT) continue;
 			for (const chord of chords) {
-				const [first, second] = chord.split(' ');
-				if (!second || first !== `${modifier}+K` || second.startsWith(`${modifier}+`)) continue;
 				assert.ok(
-					chords.includes(`${first} ${modifier}+${second}`),
-					`${platform.name}: ${id} answers ${chord}, but not the same chord with ${modifier} ` +
-						'still held for the second key — which is how the chord is pressed',
+					!chord.includes(' '),
+					`${platform.name}: ${id} is bound to the sequence ${chord}; every binding here is one keystroke`,
 				);
 				checked++;
 			}
 		}
+		for (const command of bareCommands()) {
+			const chord = chordOf(command.binding, platform.os);
+			assert.ok(!chord.includes(' '), `${platform.name}: ${command.handler} is bound to the sequence ${chord}`);
+			checked++;
+		}
 	}
-	assert.ok(checked >= 3, `only ${checked} Mod+K chords were checked`);
+	assert.ok(checked > 90, `only ${checked} bindings were checked`);
 
-	// The exemption list must not rot either: an id that stopped binding a Mod+K
-	// chord has no collision left to be excused from.
-	const bound = editorKeymap(false, OperatingSystem.Windows);
-	for (const id of Object.keys(MODIFIER_HELD_EXEMPT)) {
-		assert.ok(
-			bound.get(id)?.some((chord) => chord.startsWith('Ctrl+K ')),
-			`${id} no longer binds a Mod+K chord — drop it from MODIFIER_HELD_EXEMPT`,
+	// And the registry says the same thing, which is the half a user sees: the
+	// panel cannot advertise a gesture the editor no longer answers.
+	for (const entry of SHORTCUTS) {
+		for (const chord of entry.chords) {
+			assert.ok(!chord.includes(' '), `${entry.id} advertises the sequence ${chord}`);
+		}
+	}
+});
+
+test('Mod+K belongs to Insert Link, on every platform', () => {
+	// The decision itself, asserted where a reader will look for it. Typora, Bear,
+	// iA Writer and GitHub all document this chord for Insert Link — four
+	// independent sources agreeing exactly, which no other command in the survey
+	// managed — and the link button carried no shortcut at all before this.
+	for (const platform of PLATFORMS) {
+		const chord = platform.mac ? 'Meta+K' : 'Ctrl+K';
+		assert.deepEqual(editorKeymap(platform.mac, platform.os).get('fmt-link'), [chord], platform.name);
+		assert.equal(
+			SHORTCUTS.find((entry) => entry.id === 'fmt-link')?.chords[0],
+			'Mod+K',
+			'the panel advertises it too',
 		);
 	}
 });
@@ -730,6 +742,12 @@ const TABLE_VERBS_WITHOUT_A_CHORD: Record<string, string> = {
 		'Mod+K Shift+R sat one slip from what was then Monaco\'s Mod+Shift+K (delete line, unbound ' +
 		'here now), and a mis-fired destructive table edit is much worse than a mis-fired insert',
 	'table-delete-column': 'the same, one key over',
+	'table-insert-column':
+		'it was on Mod+K C, and Mod+K is Insert Link now, so the sequence cannot be typed. Mod+Alt+C ' +
+		"was the intended replacement and is not available: on macOS it is Monaco's toggleFindCaseSensitive, " +
+		'live whenever the editor has focus and registered with registerEditorCommand rather than ' +
+		'registerEditorAction — so it has no command palette entry to fall back on, and taking it would ' +
+		'leave find-case-sensitivity reachable only by mouse. Palette-only until a chord is chosen',
 };
 
 test('the table verbs with no chord are still commands, and advertise nothing', () => {

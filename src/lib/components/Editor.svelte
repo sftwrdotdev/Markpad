@@ -1280,18 +1280,23 @@
 			editor.addAction({
 				id: "toggle-zen-mode",
 				label: t('settings.zenMode', lang),
-				// NOT Ctrl/Cmd+Shift+Z, which this used to be. That chord is REDO,
-				// and on macOS it is redo's only one: Monaco's mac override replaces
-				// the default rule rather than adding to it, so Cmd+Y — the escape
-				// hatch Windows and Linux keep — does not exist there. `addAction`
-				// registers at weight 1000, so zen mode did not share the key, it
-				// took it, and a mac user had no way to redo from the keyboard at
-				// all. D is for distraction-free; it is unclaimed in Monaco on all
-				// three platforms and joins the app's own Ctrl/Cmd+Shift row
-				// (B, E, F, M, R, S, T, X). `monacoChordOwnership.spec.ts` reads
-				// Monaco's real keymap and is what refuses the next such landing.
+				// THE THIRD ADDRESS THIS COMMAND HAS HAD, and the first two are why
+				// the note is this long. It was Ctrl/Cmd+Shift+Z, which is REDO — on
+				// macOS redo's ONLY key, because Monaco's mac override replaces the
+				// default rule rather than adding to it, so Cmd+Y (the escape hatch
+				// Windows and Linux keep) does not exist there. `addAction` registers
+				// at weight 1000, so zen mode did not share that key, it took it, and
+				// a mac user had no way to redo from the keyboard at all.
+				//
+				// Then Ctrl/Cmd+Shift+D, which was free — but the Ctrl/Cmd+Shift row
+				// is where the formatting verbs live (B, E, F, X and now the digits),
+				// and a view mode is not one of them. Ctrl/Cmd+Alt+Z is unclaimed in
+				// Monaco on all three platforms, Z is for zen, and it sits with the
+				// other Alt-modified commands rather than among the formatters.
+				// `monacoChordOwnership.spec.ts` reads Monaco's real keymap and is
+				// what refuses the next such landing.
 				keybindings: [
-					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyD,
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyZ,
 				],
 				run: () => {
 					settings.toggleZenMode();
@@ -1412,47 +1417,72 @@
 				run: () => toggleLineMarkerTool("fmt-heading-3"),
 			}),
 
+			// The three list buttons, which had actions and no keys at all.
+			// Ctrl/Cmd+Shift+7 and +8 are GitHub's documented chords, the same on
+			// both its platforms, and Monaco leaves the whole Ctrl/Cmd+Shift digit
+			// row alone except for `1` (replaceOne). Numbered is 7 and bulleted is
+			// 8 because that is the way round GitHub has them.
 			editor.addAction({
 				id: "fmt-bullet-list",
 				label: t('menu.bulletList', lang),
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Digit8,
+				],
 				run: () => toggleLineMarkerTool("fmt-bullet-list"),
 			}),
 
 			editor.addAction({
 				id: "fmt-numbered-list",
 				label: t('menu.numberedList', lang),
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Digit7,
+				],
 				run: () => toggleLineMarkerTool("fmt-numbered-list"),
 			}),
 
+			// 9 HAS NO PRECEDENT, and this says so rather than implying one:
+			// GitHub documents no task-list chord, nor do Typora and Obsidian, and
+			// the two editors that do bind one disagree and are both occupied here
+			// (Bear's Cmd+T is New File; iA Writer's Opt+Cmd+L is Monaco's
+			// `toggleFindInSelection` on macOS). So the third list button takes the
+			// digit next to the two above it.
 			editor.addAction({
 				id: "fmt-checklist",
 				label: t('menu.checklist', lang),
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Digit9,
+				],
 				run: () => toggleLineMarkerTool("fmt-checklist"),
 			}),
 
 			editor.addAction({
 				id: "fmt-link",
 				label: t('menu.link', lang),
+				// ⌘K / Ctrl+K. Typora, Bear, iA Writer and GitHub all document this
+				// for Insert Link — the only command in the survey where four
+				// independent sources agree exactly — and the button had no key at
+				// all.
+				//
+				// Monaco binds no COMPLETE keybinding on Ctrl/Cmd+K; what it binds is
+				// 31 chord SEQUENCES behind it. Claiming the key as a whole chord
+				// ends that namespace, which is deliberate and argued in
+				// monacoChordOwnership.spec.ts rather than here, because the loss is
+				// keymap-wide rather than one command's.
+				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
 				run: () => insertLink(),
 			}),
 
 			editor.addAction({
 				id: "insert-table-simple",
 				label: t('menu.insertTable', lang),
-				// BOTH FORMS OF THE CHORD, which is what VS Code registers for every
-				// one of its own `Mod+K` chords and for the same reason: "Cmd+K T"
-				// reads as one gesture, so the Cmd stays down for the T. Without the
-				// second entry `Cmd+K` then `Cmd+T` matched nothing, fell through, and
-				// reached `file-new` — asking for a table opened a tab.
+				// ONE STROKE, not a sequence. This was `Mod+K T` (in both its
+				// released and modifier-held forms, the way VS Code registers its own
+				// Mod+K chords); Mod+K is Insert Link now, and a two-key gesture was
+				// awkward enough to press that it is what started this rework.
+				// Ctrl+Alt+T / ⌥⌘T is Typora's and Bear's chord for the same command,
+				// and Monaco binds nothing on it on any of the three platforms.
 				keybindings: [
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyCode.KeyT,
-					),
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT,
-					),
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyT,
 				],
 				run: () => {
 					const selection = editor.getSelection();
@@ -1481,9 +1511,9 @@
 			// The rest of the table verbs. They are actions rather than bare
 			// commands because a user has to be able to FIND them — in the command
 			// palette, in the shortcuts panel — which a nameless `addCommand`
-			// cannot be. Three of the four carry no keybinding at all, and an
-			// action with no keybinding is still a command palette entry, which is
-			// where a verb you reach for twice a year belongs.
+			// cannot be. NONE of the four carries a keybinding now, and an action
+			// with no keybinding is still a command palette entry, which is where a
+			// verb you reach for twice a year belongs.
 			//
 			// WHY THE DESTRUCTIVE PAIR HAS NO CHORD. They were on `Mod+K Shift+R`
 			// and `Mod+K Shift+C`, one slip from what was then Monaco's own
@@ -1511,22 +1541,18 @@
 				},
 			}),
 
-			// The one table verb still on the chord, in the namespace `Mod+K`
-			// already opened for Insert Table. `C` for column, and only the
-			// released form: `Mod+K Mod+C` is Monaco's own
-			// `editor.action.addCommentLine`, which is live in Markdown — with no
-			// line-comment token it falls back to wrapping the line in `<!-- -->`.
-			// `addAction` registers at weight 1000 and would win, so claiming it
-			// would delete a working command rather than fill an empty slot.
 			editor.addAction({
 				id: "table-insert-column",
 				label: t('menu.insertTableColumn', lang),
-				keybindings: [
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyCode.KeyC,
-					),
-				],
+				// NO CHORD, for now. It was on `Mod+K C`, which cannot be typed any
+				// more: `Mod+K` is Insert Link and is no longer a prefix. The intended
+				// replacement, `Mod+Alt+C`, is not available — on macOS that is
+				// Monaco's `toggleFindCaseSensitive`, live whenever the editor has
+				// focus, and registered with `registerEditorCommand` rather than
+				// `registerEditorAction`, so it has no command palette entry to fall
+				// back on. Taking it would leave a user no way to toggle case in find
+				// except the mouse, which is the one thing no override in
+				// monacoChordOwnership.spec.ts is allowed to do.
 				run: () => {
 					editTable("insert-column");
 				},
