@@ -1,9 +1,9 @@
 /**
  * #153: "While in Preview Mode - Ctrl+O doesn't work on windows."
  *
- * It works now — the branch is in `handleKeyDown`, which is attached to
- * `<svelte:document>` rather than to the editor, and it carries no mode
- * condition. What it never had is anything holding it there. The comment on
+ * It works now — the branch is in the document-level dispatcher, which is
+ * attached to `<svelte:document>` rather than to the editor, and it carries no
+ * editing condition. What it never had is anything holding it there. The comment on
  * the fix cited a test file that does not exist, and grepping the suite for
  * `selectFile` returned nothing, so the report's own scenario was resting on
  * the absence of a guard nobody had written down.
@@ -15,8 +15,9 @@
  * makes it correct rather than a second #392 is that both call the same
  * function, and that is what the second test holds.
  *
- * `documentKeymap` fires real chords at the real transpiled handler with
- * `isEditing: false` — the reporter's preview mode — and reports what ran.
+ * `documentKeymap` fires real chords at the real imported dispatcher with
+ * `isEditing: false` — the reporter's preview mode — and reports what each one
+ * means.
  */
 
 import assert from 'node:assert/strict';
@@ -31,9 +32,9 @@ const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', impo
 test('Ctrl/Cmd+O opens the file dialog while reading, on every platform', () => {
 	for (const platform of PLATFORMS) {
 		const chord = platform.mac ? 'Meta+O' : 'Ctrl+O';
-		assert.deepEqual(
+		assert.equal(
 			documentKeymap(platform.osType).get(chord),
-			['selectFile'],
+			'open-file',
 			`${platform.name}: ${chord} must open a file from preview mode`,
 		);
 	}

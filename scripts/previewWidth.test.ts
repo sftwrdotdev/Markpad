@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
+import { viewerCommandTable } from './keymapHarness.js';
 import { readSource } from './sourceTree.js';
 
 import {
@@ -85,14 +87,50 @@ test('Settings exposes a bounded preview-width input and reset action', () => {
 });
 
 test('preview width keyboard shortcuts avoid editable controls and app modals', () => {
-	assert.match(viewerSource, /function canUsePreviewWidthShortcut\(target: EventTarget \| null, isSplit: boolean\)/);
-	assert.match(viewerSource, /showSettings \|\| modalState\.show \|\| promptModal\.show \|\| showHome/);
-	assert.match(viewerSource, /closest\('input, textarea, select, \[contenteditable="true"\], \[role="textbox"\]'\)/);
-	// `modAlt` is the handler's name for "the platform modifier and Alt, and
-	// nothing else" — the chord these two keys are advertised under.
-	assert.match(viewerSource, /modAlt && \(code === 'BracketLeft' \|\| code === 'BracketRight'\)/);
-	assert.match(viewerSource, /settings\.previewFullWidth = false/);
-	assert.match(viewerSource, /settings\.previewMaxWidth = adjustPreviewMaxWidth\(settings\.previewMaxWidth, code === 'BracketLeft' \? -40 : 40\)/);
+	// Six source-shape assertions until the dispatcher got its own module: two
+	// about a chord condition, three about a function signature and its body,
+	// one about the width arithmetic. Four of them are questions the imported
+	// functions can be asked directly.
+	const reading: KeyContext = {
+		mode: 'app',
+		osType: 'windows',
+		isSplit: false,
+		overlayOpen: false,
+		isEditing: false,
+		editorHasFocus: false,
+	};
+	const chord = (code: string) => ({ key: code === 'BracketLeft' ? '[' : ']', code, ctrlKey: true, metaKey: false, shiftKey: false, altKey: true });
+
+	// The chord, and which way round the two keys go — never checked before,
+	// because both keys matched the same line of text.
+	assert.equal(viewerCommandFor(chord('BracketLeft'), reading), 'preview-width-narrower');
+	assert.equal(viewerCommandFor(chord('BracketRight'), reading), 'preview-width-wider');
+	// And nothing else on that chord: no Alt, or an extra Shift, is a different
+	// gesture and must not resize the preview.
+	assert.equal(viewerCommandFor({ ...chord('BracketLeft'), altKey: false }, reading), null);
+	assert.equal(viewerCommandFor({ ...chord('BracketLeft'), shiftKey: true }, reading), null);
+
+	// An overlay in front, or the editor alone on screen, and the chord is not
+	// the preview's to answer.
+	assert.equal(viewerCommandFor(chord('BracketLeft'), { ...reading, overlayOpen: true }), null);
+	assert.equal(viewerCommandFor(chord('BracketLeft'), { ...reading, isEditing: true }), null);
+	// …but split view puts the preview back on screen, so it applies again.
+	assert.equal(
+		viewerCommandFor(chord('BracketLeft'), { ...reading, isEditing: true, isSplit: true }),
+		'preview-width-narrower',
+	);
+
+	// The text-field carve-out needs a real DOM and a real selector match, so it
+	// is asserted in `viewerKeymap.spec.ts` under jsdom rather than faked here.
+
+	// What the command DOES stays in the component — the seam ends at the name.
+	// See the note on `viewerCommandTable` in `keymapHarness.ts`.
+	const narrower = viewerCommandTable()['preview-width-narrower'];
+	assert.match(narrower, /settings\.previewFullWidth = false/);
+	assert.match(
+		narrower,
+		/settings\.previewMaxWidth = adjustPreviewMaxWidth\(\s*settings\.previewMaxWidth,\s*command === 'preview-width-narrower' \? -40 : 40,?\s*\)/,
+	);
 });
 
 test('preview full-width state migrates from the legacy localStorage key', () => {

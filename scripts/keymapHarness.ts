@@ -8,6 +8,7 @@ import ts from 'typescript';
 
 import { listEnter, parseListItem } from '../src/lib/utils/listEditing.js';
 import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
+import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { readSource, functionSource } from './sourceTree.js';
 
 /*
@@ -19,12 +20,13 @@ import { readSource, functionSource } from './sourceTree.js';
  * same extraction, so there is no way for one of them to be checked against a
  * more forgiving model of the app than the other.
  *
- * `registerLocalizedActions` and `handleKeyDown` are lifted out of their Svelte
- * components and RUN. Keybinding numbers come from Monaco's real `KeyMod` and
- * `KeyCode` and are turned back into chords by Monaco's real `decodeKeybinding`,
- * once per operating system. Nothing here matches the components as text, so
- * renaming a local, reordering the actions or rewriting the branch structure
- * changes nothing; changing a KEY does.
+ * `registerLocalizedActions` is lifted out of Editor.svelte and RUN; the
+ * document-level dispatcher is simply imported, having been moved to
+ * `src/lib/utils/viewerKeymap.ts` for that reason. Keybinding numbers come from
+ * Monaco's real `KeyMod` and `KeyCode` and are turned back into chords by
+ * Monaco's real `decodeKeybinding`, once per operating system. Nothing here
+ * matches the components as text, so renaming a local, reordering the actions or
+ * rewriting the branch structure changes nothing; changing a KEY does.
  *
  * WHAT IT DOES NOT ESTABLISH
  *
@@ -211,110 +213,50 @@ const FUZZ_KEYS: Array<{ keyCode: number; key: string; code: string }> = [
 ];
 
 /**
- * Which app functions the document-level handler runs for each chord.
+ * Reading the document, not editing it, with nothing in front of it — the state
+ * every caller of `documentKeymap` is asking about.
  *
- * The handler is extracted and evaluated the same way as the editor's action
- * list, then fired once per chord. Everything it can reach — `tabManager`,
- * `saveContent`, `handleNewFile` — is a recording stub, so what comes back is
- * the handler's real branch structure rather than a description of it.
- *
- * ASSIGNMENTS ARE RECORDED TOO, as `name=value`. Several branches do their work
- * by writing a variable rather than by calling anything — `showSettings = true`
- * for Mod+`,` and `settings.previewFullWidth = false` for the preview-width
- * chords — and a call-only recorder reported those chords as dead. They were
- * not; the harness simply could not see them, which is the empty-iteration
- * failure mode one level down. `set` on the scope proxy used to return `true`
- * and discard the write.
+ * `editorHasFocus: false` is the reporter's scenario in #153 (preview mode) and
+ * the one in which the app's own chords, rather than Monaco's, are supposed to
+ * answer.
  */
-export function documentKeymap(osType: string): Map<Chord, string[]> {
-	const source = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'handleKeyDown');
-	const js = ts.transpileModule(source, {
-		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-	}).outputText;
-
-	let fired: string[] = [];
-	/**
-	 * A stub that is callable, indexable and self-similar, so
-	 * `getCurrentWindow().close()` and `tabManager.cycleTab('next')` both work
-	 * without the harness having to know they exist. Every call is recorded under
-	 * its full path, which is what the assertions read.
-	 */
-	const record = (name: string): never => {
-		const fn = (...args: unknown[]) => {
-			fired.push(args.length && typeof args[0] === 'string' ? `${name}:${args[0]}` : name);
-			return record(`${name}()`);
-		};
-		return new Proxy(fn, {
-			get: (target, key) =>
-				typeof key === 'string' && !(key in target) ? record(`${name}.${key}`) : (target as never)[key as never],
-		}) as never;
-	};
-
-	const known: Record<string, unknown> = {
-		// `has: () => true` below means the scope claims EVERY identifier, globals
-		// included, so `Math` has to be handed back deliberately rather than
-		// answered with a recording stub.
-		Math,
+function readingContext(osType: string): KeyContext {
+	return {
 		mode: 'app',
-		// Writes to the store are recorded as well as calls: several branches do
-		// their work by assigning a settings field (`settings.previewFullWidth =
-		// false` for the preview-width chords), and without the `set` trap those
-		// chords come back as firing nothing at all — the same blind spot the
-		// scope proxy's own `set` trap fixed one level up. The trap does not write
-		// through: `get` keeps answering with a fresh stub, so nothing a chord
-		// assigns can leak into the next chord's starting state.
-		settings: new Proxy(
-			{ osType },
-			{
-				get: (t, k) => (k === 'osType' ? osType : record(`settings.${String(k)}`)),
-				set: (t, k, value) => {
-					fired.push(`settings.${String(k)}=${typeof value === 'object' ? '{…}' : String(value)}`);
-					return true;
-				},
-			},
-		),
-		showSettings: false,
-		showHome: false,
+		osType: osType as KeyContext['osType'],
+		isSplit: false,
+		overlayOpen: false,
 		isEditing: false,
-		modalState: { show: false },
-		promptModal: { show: false },
-		editorPaneEl: null,
-		document: { activeElement: null },
-		tabManager: new Proxy(
-			{ activeTab: { isSplit: false, isDirty: true, path: '/x.md' }, activeTabId: 'tab-1' },
-			{ get: (t, k) => (k in t ? (t as Record<string, unknown>)[k as string] : record(`tabManager.${String(k)}`)) },
-		),
-		canUsePreviewWidthShortcut: () => true,
-		adjustPreviewMaxWidth: () => 800,
+		editorHasFocus: false,
 	};
+}
 
-	// Written per fire so an assignment made by one chord cannot leak into the
-	// next one's starting state — `zoomLevel` in particular is read as well as
-	// written, and a leaked 110 would make the next zoom-in look like a no-op.
-	const initial = { ...known };
+/**
+ * Which command the document-level dispatcher means by each chord.
+ *
+ * The dispatcher is IMPORTED and called — `viewerCommandFor` is a plain
+ * function of the keystroke and a six-field context, so there is nothing to
+ * extract, transpile or stand in for. It used to be the body of
+ * `handleKeyDown` inside MarkdownViewer.svelte, and getting at it meant slicing
+ * the function out of the component by name, running it through
+ * `ts.transpileModule`, and evaluating it inside a `with` block whose scope
+ * object answered EVERY free identifier with a recording stub.
+ *
+ * That last part is why the extraction was worth doing. A stub is indexable,
+ * callable and self-similar, which makes it a plausible answer to a question the
+ * harness has never heard of — and its result compares false to everything. #649
+ * hit exactly that: `platformOf(...)` inside the handler resolved to a stub,
+ * every `=== 'macos'` test against it was false, and the harness cheerfully
+ * reported 610 answered chords where the app answers 51. The failure was silent
+ * in both directions, because a stub neither throws nor refuses.
+ *
+ * Nothing here can go that way again. `viewerCommandFor` closes over nothing, so
+ * a dependency it grows is a compile error at this call site rather than a stub.
+ */
+export function documentKeymap(osType: string): Map<Chord, ViewerCommand> {
+	const context = readingContext(osType);
+	const map = new Map<Chord, ViewerCommand>();
 
-	const scope = new Proxy(known, {
-		has: () => true,
-		get: (target, property) => {
-			if (typeof property !== 'string') return undefined;
-			if (property in target) return target[property];
-			return record(property);
-		},
-		set: (target, property, value) => {
-			if (typeof property === 'string') {
-				fired.push(`${property}=${typeof value === 'object' ? '{…}' : String(value)}`);
-				target[property] = value;
-			}
-			return true;
-		},
-	});
-
-	const build = new Function('scope', `with (scope) { ${js}\nreturn handleKeyDown; }`) as (
-		s: unknown,
-	) => (e: unknown) => void;
-	const handler = build(scope);
-
-	const map = new Map<Chord, string[]>();
 	for (const primary of [
 		{ ctrlKey: false, metaKey: false },
 		{ ctrlKey: true, metaKey: false },
@@ -323,28 +265,75 @@ export function documentKeymap(osType: string): Map<Chord, string[]> {
 		for (const shiftKey of [false, true]) {
 			for (const altKey of [false, true]) {
 				for (const entry of FUZZ_KEYS) {
-					fired = [];
-					Object.assign(known, initial);
-					handler({
-						...primary,
-						shiftKey,
-						altKey,
-						key: entry.key,
-						code: entry.code,
-						target: null,
-						preventDefault: () => {},
-					});
-					if (fired.length === 0) continue;
-					map.set(label({ ...primary, shiftKey, altKey, keyCode: entry.keyCode }), [...new Set(fired)]);
+					const command = viewerCommandFor(
+						{ ...primary, shiftKey, altKey, key: entry.key, code: entry.code, target: null },
+						context,
+					);
+					if (command) map.set(label({ ...primary, shiftKey, altKey, keyCode: entry.keyCode }), command);
 				}
 			}
 		}
 	}
 	assert.ok(
 		map.size > 15,
-		`the document handler answered ${map.size} chords; the harness is not running the real function`,
+		`the document dispatcher answered ${map.size} chords; the harness is not running the real function`,
 	);
 	return map;
+}
+
+/**
+ * The component's command table: each `ViewerCommand`, and the code
+ * `MarkdownViewer.svelte` runs for it.
+ *
+ * THE ONE THING THE SEAM COULD NOT MOVE, and the only text-matching in this
+ * file. Deciding WHICH command a chord means is now a pure function that tests
+ * import; deciding what `'new-file'` DOES is a switch over the component's own
+ * closures — `handleNewFile`, `saveContent`, `getCurrentWindow().close()` — and
+ * a closure over component state is the thing that cannot leave a component.
+ *
+ * The alternative was to pass those eleven functions in as a host object, so
+ * that a test could hand over eleven spies. That is the shape #644 rejected for
+ * three members and it does not improve at eleven: every caller has to build
+ * one, and the test that builds one is describing the component rather than
+ * running it. So the seam stops at the command name, and this reads the last
+ * inch as text — deliberately, and in one place instead of thirty.
+ *
+ * What it is NOT is the old `handleKeyDown` extraction. There is no
+ * `transpileModule`, no `with`, no scope proxy and therefore no stub that can
+ * answer a question nobody asked: the parse yields case labels and body text,
+ * every command the dispatcher can reach must have exactly one case, and a
+ * command that lost its case is a missing key rather than a silent no-op.
+ */
+export function viewerCommandTable(): Record<ViewerCommand, string> {
+	const source = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'runViewerCommand');
+	const table: Record<string, string> = {};
+
+	// `case 'a':` runs of one or more labels, then everything up to the next
+	// `case` or the end of the switch. Stacked labels fall through to one body —
+	// that is how `preview-width-narrower` and `preview-width-wider` share theirs
+	// — so a label with nothing of its own is given the next label's, walking
+	// backwards. Without that the first of a pair maps to the empty string, which
+	// any `doesNotMatch` would pass against.
+	const labels = [...source.matchAll(/\n\t*case '([a-z-]+)':/g)];
+	let shared = '';
+	for (let index = labels.length - 1; index >= 0; index--) {
+		const match = labels[index];
+		const body = source.slice(match.index + match[0].length, labels[index + 1]?.index ?? source.length);
+		shared = body.trim() ? body : shared;
+		table[match[1]] = shared;
+	}
+
+	const reachable = new Set<ViewerCommand>();
+	for (const platform of PLATFORMS) for (const command of documentKeymap(platform.osType).values()) reachable.add(command);
+	for (const command of reachable) {
+		assert.ok(command in table, `runViewerCommand has no case for ${command}, which the keyboard reaches`);
+	}
+	assert.equal(
+		Object.keys(table).length,
+		reachable.size,
+		`runViewerCommand handles ${Object.keys(table).length} commands, ${reachable.size} are reachable`,
+	);
+	return table as Record<ViewerCommand, string>;
 }
 
 // ------------------------------------- the nameless commands, and their handlers

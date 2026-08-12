@@ -49,6 +49,8 @@ import {
 	type ShimElement,
 	type ShimNode,
 } from './renderProtocolDom.ts';
+import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
+import { viewerCommandTable } from './keymapHarness.js';
 import { functionSource, readSource, sliceFrom } from './sourceTree.js';
 
 installShimDom();
@@ -440,7 +442,17 @@ test('one function owns what ⌘E means, and every entry point uses it', () => {
 	// here, so the chord cannot mean one thing with the caret in the editor and
 	// another with it in the preview — which is what
 	// `formatShortcutKeymap.test.ts` pins from the other side.
-	assert.match(viewerSource, /if \(mod && key === 'e'\) \{[\s\S]{0,600}?toggleEditView\(\)/);
+	// The chord is a call now, not a pattern: the branch structure moved to
+	// `viewerKeymap.ts` and #647 had already shown what the old spelling cost —
+	// five assertions of this shape went red for a renamed local.
+	assert.equal(
+		viewerCommandFor(
+			{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },
+			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, isEditing: false, editorHasFocus: false },
+		),
+		'toggle-edit-view',
+	);
+	assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
 	assert.equal(
 		(viewerSource.match(/ontoggleEdit=\{\(\) => toggleEditView\(\)\}/g) ?? []).length,
 		3,

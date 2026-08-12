@@ -13,8 +13,10 @@ import {
 	documentKeymap,
 	editorKeymap,
 	registeredActions,
+	viewerCommandTable,
 	type Chord,
 } from './keymapHarness.js';
+import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 /*
@@ -158,9 +160,9 @@ test('Ctrl/Cmd+T means new file outside the editor too, on every platform', () =
 	for (const platform of PLATFORMS) {
 		const keymap = documentKeymap(platform.osType);
 		for (const chord of platform.mac ? ['Meta+T', 'Meta+N'] : ['Ctrl+T', 'Ctrl+N']) {
-			assert.deepEqual(
+			assert.equal(
 				keymap.get(chord),
-				['handleNewFile'],
+				'new-file',
 				`${chord} on ${platform.name} opens a new file and nothing else`,
 			);
 		}
@@ -168,14 +170,13 @@ test('Ctrl/Cmd+T means new file outside the editor too, on every platform', () =
 });
 
 test('no path anywhere still opens a Home tab from a keystroke', () => {
-	for (const platform of PLATFORMS) {
-		for (const [chord, fired] of documentKeymap(platform.osType)) {
-			assert.ok(
-				!fired.some((call) => call.includes('addHomeTab')),
-				`${chord} on ${platform.name} still reaches addHomeTab`,
-			);
-		}
-	}
+	// The #392 defect in its original spelling: the document branch for Ctrl+T
+	// called `tabManager.addHomeTab`. There is no `ViewerCommand` for that any
+	// more, so the checkable end is the other one — the component's command table
+	// has no route to `addHomeTab`, from any chord. `viewerCommandTable()` reads
+	// that table out of the component; see its note in `keymapHarness.ts`.
+	const routes = Object.entries(viewerCommandTable()).filter(([, body]) => body.includes('addHomeTab'));
+	assert.deepEqual(routes.map(([command]) => command), [], 'a keyboard command still reaches addHomeTab');
 });
 
 test('the native macOS menu claims exactly two accelerators, and T is not one', () => {
@@ -223,30 +224,30 @@ const KNOWN_LAYER_DIVERGENCES: Record<Chord, string> = {
 test('a chord that both layers answer means the same thing in both', () => {
 	// The pairs the app deliberately mirrors: the editor action and the
 	// window-level branch that stands in for it when the caret is elsewhere.
-	const MIRROR: Record<string, string> = {
-		'file-new': 'handleNewFile',
-		'file-open': 'selectFile',
-		'file-save': 'saveContent',
-		'file-close': 'closeFile',
-		'view-toggle-edit': 'toggleEditView',
-		'view-toggle-split': 'toggleSplitView',
-		'tab-undo-close': 'handleUndoCloseTab',
+	const MIRROR: Record<string, ViewerCommand> = {
+		'file-new': 'new-file',
+		'file-open': 'open-file',
+		'file-save': 'save',
+		'file-close': 'close-file',
+		'view-toggle-edit': 'toggle-edit-view',
+		'view-toggle-split': 'toggle-split-view',
+		'tab-undo-close': 'undo-close-tab',
 	};
 
 	for (const platform of PLATFORMS) {
 		const editorSide = editorKeymap(platform.mac, platform.os);
 		const documentSide = documentKeymap(platform.osType);
 
-		for (const [id, expectedCall] of Object.entries(MIRROR)) {
+		for (const [id, expectedCommand] of Object.entries(MIRROR)) {
 			const chords = editorSide.get(id);
 			assert.ok(chords?.length, `${id} is bound in the editor on ${platform.name}`);
 			for (const chord of chords) {
 				if (chord in KNOWN_LAYER_DIVERGENCES) continue;
-				const fired = documentSide.get(chord);
-				assert.ok(fired, `${platform.name}: ${chord} runs ${id} in the editor but nothing outside it`);
-				assert.ok(
-					fired.some((call) => call.startsWith(expectedCall)),
-					`${platform.name}: ${chord} runs ${id} in the editor but ${fired.join(', ')} outside it`,
+				assert.ok(documentSide.has(chord), `${platform.name}: ${chord} runs ${id} in the editor but nothing outside it`);
+				assert.equal(
+					documentSide.get(chord),
+					expectedCommand,
+					`${platform.name}: ${chord} runs ${id} in the editor but ${documentSide.get(chord)} outside it`,
 				);
 			}
 		}
