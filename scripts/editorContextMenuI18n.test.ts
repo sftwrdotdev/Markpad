@@ -53,6 +53,7 @@ function defines(lang: LanguageCode, key: string): boolean {
 
 // The markdown formatting entries that used to be English string literals.
 const FORMATTING_ACTIONS: ReadonlyArray<[actionId: string, key: string, englishLabel: string]> = [
+	['fmt-strikethrough', 'menu.strikethrough', 'Strikethrough'],
 	['fmt-inline-code', 'menu.inlineCode', 'Inline Code'],
 	['fmt-code-block', 'menu.codeBlock', 'Code Block'],
 	['fmt-quote', 'menu.quote', 'Quote'],

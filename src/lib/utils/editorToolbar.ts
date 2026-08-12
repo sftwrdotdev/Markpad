@@ -25,6 +25,7 @@ const BASE_TOOLBAR_TOOLS: ReadonlyArray<Omit<EditorToolbarTool, 'shortcut'>> = [
 	{ id: 'fmt-bold', label: 'B', name: 'Bold', group: 'inline' },
 	{ id: 'fmt-italic', label: 'I', name: 'Italic', group: 'inline' },
 	{ id: 'fmt-underline', label: 'U', name: 'Underline', group: 'inline' },
+	{ id: 'fmt-strikethrough', label: 'S', name: 'Strikethrough', group: 'inline' },
 	{ id: 'fmt-inline-code', label: '`', name: 'Inline Code', group: 'inline' },
 	{ id: 'fmt-code-block', label: '{}', name: 'Code Block', group: 'block' },
 	{ id: 'fmt-quote', label: '>', name: 'Quote', group: 'block' },
@@ -163,6 +164,7 @@ type InlineWrap = {
 const INLINE_WRAPS = {
 	'fmt-bold': { write: '**', strip: ['**', '__'] },
 	'fmt-italic': { write: '*', strip: ['*', '_'] },
+	'fmt-strikethrough': { write: '~~', strip: ['~~', '~'] },
 	'fmt-inline-code': { write: '`', strip: ['`'] },
 } satisfies Record<string, InlineWrap>;
 

@@ -31,6 +31,7 @@ test('the default order is the whole tool catalogue, in the order the toolbar re
 		'fmt-bold',
 		'fmt-italic',
 		'fmt-underline',
+		'fmt-strikethrough',
 		'fmt-inline-code',
 		'fmt-code-block',
 		'fmt-quote',
@@ -52,16 +53,19 @@ test('each tool carries the label, name and shortcut the toolbar renders', () =>
 		getEditorToolbarTools(null)
 			.filter((tool) => tool.group === 'inline')
 			.map((tool) => tool.id),
-		['fmt-bold', 'fmt-italic', 'fmt-underline', 'fmt-inline-code'],
+		['fmt-bold', 'fmt-italic', 'fmt-underline', 'fmt-strikethrough', 'fmt-inline-code'],
 	);
 
-	// The three tools whose accelerator the editor also binds; a tool that
+	// The inline tools whose accelerator the editor also binds; a tool that
 	// loses its shortcut still renders, so nothing else would notice.
 	assert.equal(byId.get('fmt-bold')?.shortcut?.('Ctrl'), 'Ctrl+B');
 	assert.equal(byId.get('fmt-italic')?.shortcut?.('Cmd'), 'Cmd+I');
 	assert.equal(byId.get('fmt-underline')?.shortcut?.('Ctrl'), 'Ctrl+U');
 	assert.equal(byId.get('fmt-underline')?.label, 'U');
 	assert.equal(byId.get('fmt-underline')?.name, 'Underline');
+	assert.equal(byId.get('fmt-strikethrough')?.shortcut?.('Cmd'), 'Cmd+Shift+X');
+	assert.equal(byId.get('fmt-strikethrough')?.label, 'S');
+	assert.equal(byId.get('fmt-strikethrough')?.name, 'Strikethrough');
 	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+K T');
 });
 
@@ -93,10 +97,10 @@ test('getVisibleEditorToolbarTools applies saved order and hidden ids', () => {
 
 	assert.equal(tools[0]?.id, 'fmt-italic');
 	assert.equal(tools.some((tool) => tool.id === 'fmt-bold'), false);
-	// 14 tools in the catalogue, one hidden. Counted rather than derived from
+	// 15 tools in the catalogue, one hidden. Counted rather than derived from
 	// the default order: `DEFAULT_EDITOR_TOOLBAR_ORDER.length - 1` shrinks with
 	// the catalogue and stays true.
-	assert.equal(tools.length, 13);
+	assert.equal(tools.length, 14);
 });
 
 test('toolbar reorder helpers resolve drag and keyboard moves', () => {
@@ -224,7 +228,12 @@ test('a bracketed link at the head of a list item is not read as a task box', ()
 // --------------------------------------------------------- inline wrap markers
 
 test('every tool with an inline wrap is a tool the toolbar renders', () => {
-	assert.deepEqual(INLINE_WRAP_TOOL_IDS, ['fmt-bold', 'fmt-italic', 'fmt-inline-code']);
+	assert.deepEqual(INLINE_WRAP_TOOL_IDS, [
+		'fmt-bold',
+		'fmt-italic',
+		'fmt-strikethrough',
+		'fmt-inline-code',
+	]);
 
 	for (const id of INLINE_WRAP_TOOL_IDS) {
 		assert.ok(
@@ -253,6 +262,15 @@ const INLINE_WRAP_MATRIX: Array<[InlineWrapToolId, string, string]> = [
 	['fmt-inline-code', 'x', '`x`'],
 	['fmt-inline-code', '`x`', 'x'],
 
+	// Strikethrough writes two tildes and takes back one or two. Both are
+	// strikethrough in GFM and in this app's renderer, so a document written
+	// anywhere else toggles off cleanly — and the button never produces the
+	// `~~~gone~~~` that answering `~gone~` with a second pair would, which is
+	// three tildes and not strikethrough anywhere.
+	['fmt-strikethrough', 'gone', '~~gone~~'],
+	['fmt-strikethrough', '~~gone~~', 'gone'],
+	['fmt-strikethrough', '~gone~', 'gone'],
+
 	// Italic must not take an asterisk that belongs to bold — in either
 	// spelling. Wrapping is the right answer here: italic on bold means both.
 	['fmt-italic', '**bold**', '***bold***'],
@@ -273,6 +291,8 @@ const INLINE_WRAP_MATRIX: Array<[InlineWrapToolId, string, string]> = [
 	// A marker of one tool is nobody else's business.
 	['fmt-inline-code', '**x**', '`**x**`'],
 	['fmt-bold', '`x`', '**`x`**'],
+	['fmt-italic', '~~x~~', '*~~x~~*'],
+	['fmt-strikethrough', '**x**', '~~**x**~~'],
 
 	// A selection whose two ends would have to overlap to match is not a wrapped
 	// span: `**` is one marker, not an empty bold one, and slicing it as if it
@@ -287,6 +307,16 @@ for (const [id, from, to] of INLINE_WRAP_MATRIX) {
 		assert.equal(toggleInlineWrap(id, from), to);
 	});
 }
+
+test('the strikethrough button never leaves text that is not struck through', () => {
+	// The failure the two-marker strip list exists for: `~gone~` is legal
+	// strikethrough, so answering it with a second pair gives `~~~gone~~~` — a
+	// user who asked to un-strike struck text ends up with three tildes, which
+	// GFM renders as literal characters.
+	for (const struck of ['~gone~', '~~gone~~']) {
+		assert.equal(toggleInlineWrap('fmt-strikethrough', struck), 'gone');
+	}
+});
 
 test('the italic button never turns bold text into italic text', () => {
 	// The defect this rule exists for, stated as the user saw it: select

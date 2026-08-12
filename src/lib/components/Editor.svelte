@@ -1030,6 +1030,19 @@
 				run: () => toggleTagFormat("<u>|</u>"),
 			}),
 
+			editor.addAction({
+				id: "fmt-strikethrough",
+				label: t('menu.strikethrough', lang),
+				// GitHub's chord for this button, and free here: the Ctrl/Cmd+Shift
+				// row is otherwise B, E, F, M, R, S, T and Z. Chosen against the whole
+				// keymap for the reasons the block below sets out, and checked by the
+				// same test.
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyX,
+				],
+				run: () => toggleInlineWrapTool("fmt-strikethrough"),
+			}),
+
 			// The six bindings below were chosen against the whole keymap, not
 			// against VS Code's: standalone Monaco and VS Code do not ship the
 			// same defaults, and the chords the mainstream Markdown editors use
