@@ -879,7 +879,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		};
 	}
 
-	function clearFrontMatterEditError(key: string) {
+	function clearFrontMatterEditError(field: FrontMatterField) {
+		const key = frontMatterFieldStateKey(field);
 		if (!frontMatterEditErrors[key]) return;
 		const next = { ...frontMatterEditErrors };
 		delete next[key];
@@ -901,12 +902,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const nextValue = parseFrontMatterEditableValue(field, value);
 			const nextRaw = updateFrontMatterField(tab.rawContent, field.key, nextValue);
 			tabManager.updateTabRawContent(tab.id, nextRaw);
-			clearFrontMatterEditError(field.key);
+			clearFrontMatterEditError(field);
 			await renderTabPreviewFromRaw(tab);
 		} catch (error) {
 			frontMatterEditErrors = {
 				...frontMatterEditErrors,
-				[field.key]: String(error),
+				[frontMatterFieldStateKey(field)]: String(error),
 			};
 		}
 	}
@@ -920,7 +921,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			...frontMatterTagDrafts,
 			[frontMatterFieldStateKey(field)]: value,
 		};
-		clearFrontMatterEditError(field.key);
+		clearFrontMatterEditError(field);
 	}
 
 	function clearFrontMatterTagDraft(field: FrontMatterField) {
@@ -945,7 +946,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			...frontMatterTagEditDrafts,
 			[frontMatterFieldStateKey(field)]: value,
 		};
-		clearFrontMatterEditError(field.key);
+		clearFrontMatterEditError(field);
 	}
 
 	function startFrontMatterTagEdit(field: FrontMatterField, index: number, value: string) {
@@ -958,7 +959,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			...frontMatterTagEditDrafts,
 			[key]: value,
 		};
-		clearFrontMatterEditError(field.key);
+		clearFrontMatterEditError(field);
 	}
 
 	function clearFrontMatterTagEdit(field: FrontMatterField) {
@@ -983,12 +984,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		try {
 			const nextRaw = updateFrontMatterField(tab.rawContent, field.key, nextItems);
 			tabManager.updateTabRawContent(tab.id, nextRaw);
-			clearFrontMatterEditError(field.key);
+			clearFrontMatterEditError(field);
 			await renderTabPreviewFromRaw(tab);
 		} catch (error) {
 			frontMatterEditErrors = {
 				...frontMatterEditErrors,
-				[field.key]: String(error),
+				[frontMatterFieldStateKey(field)]: String(error),
 			};
 		}
 	}
@@ -3704,8 +3705,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 															{:else}
 																<code>{field.displayValue}</code>
 															{/if}
-															{#if frontMatterEditErrors[field.key]}
-																<div class="frontmatter-field-error" role="status">{frontMatterEditErrors[field.key]}</div>
+															{#if frontMatterEditErrors[frontMatterFieldStateKey(field)]}
+																<div class="frontmatter-field-error" role="status">{frontMatterEditErrors[frontMatterFieldStateKey(field)]}</div>
 															{/if}
 														</div>
 													{/each}
