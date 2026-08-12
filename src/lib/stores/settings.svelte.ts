@@ -273,6 +273,60 @@ function parseStoredRecord(value: string | null): Record<string, unknown> | null
 }
 
 /**
+ * The six settings zen mode flattens, as they were the moment it was entered.
+ * `null` means "no snapshot": either zen mode is off, or the stored one could
+ * not be trusted.
+ */
+export interface PreZenState {
+	renderLineHighlight: string;
+	showTabs: boolean;
+	statusBar: boolean;
+	minimap: boolean;
+	lineNumbers: string;
+	showToc: boolean;
+}
+
+/**
+ * What leaving zen mode restores when there is no snapshot to restore from.
+ *
+ * These are the same six values the store's own field initializers use — pinned
+ * against drift by a test — because "the setting's own default" is the only
+ * answer available once the record of what the user had is gone.
+ */
+export const DEFAULT_PRE_ZEN_STATE: PreZenState = {
+	renderLineHighlight: 'line',
+	showTabs: true,
+	statusBar: true,
+	minimap: false,
+	lineNumbers: 'on',
+	showToc: false,
+};
+
+/**
+ * Validates a parsed `editor.preZenState`, the way every other entry in
+ * {@link createSettingsPersistence} validates its own raw value.
+ *
+ * All six fields or none. A snapshot missing a field, or carrying one of the
+ * wrong type, comes from a version of Markpad this one cannot interpret, and
+ * half-applying it produces a state the user never had — so it is rejected
+ * whole and zen mode leaves through {@link DEFAULT_PRE_ZEN_STATE} instead.
+ *
+ * The unvalidated `JSON.parse` this replaces is how the tab bar could vanish
+ * for good: a snapshot with no `showTabs` restored `showTabs = undefined`, the
+ * write effect stored the string `"undefined"`, and every later launch read
+ * that back as `false` with no way out but the settings dialog.
+ */
+export function normalizePreZenState(value: unknown): PreZenState | null {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+	const record = value as Record<string, unknown>;
+	const { renderLineHighlight, showTabs, statusBar, minimap, lineNumbers, showToc } = record;
+	if (typeof renderLineHighlight !== 'string' || typeof lineNumbers !== 'string') return null;
+	if (typeof showTabs !== 'boolean' || typeof statusBar !== 'boolean') return null;
+	if (typeof minimap !== 'boolean' || typeof showToc !== 'boolean') return null;
+	return { renderLineHighlight, showTabs, statusBar, minimap, lineNumbers, showToc };
+}
+
+/**
  * One persisted localStorage entry.
  *
  * `read` must touch **exactly one** field of the target. That is not a style
@@ -378,14 +432,7 @@ export class SettingsStore {
 	restoreStateOnReopen = $state(true);
 	zenMode = $state(false);
 	showToc = $state(false);
-	preZenState = $state<{
-		renderLineHighlight: string;
-		showTabs: boolean;
-		statusBar: boolean;
-		minimap: boolean;
-		lineNumbers: string;
-		showToc: boolean;
-	} | null>(null);
+	preZenState = $state<PreZenState | null>(null);
 	occurrencesHighlight = $state(false);
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
@@ -520,15 +567,19 @@ export class SettingsStore {
 			this.lineNumbers = 'off';
 			this.showToc = false;
 		} else {
-			if (this.preZenState) {
-				this.renderLineHighlight = this.preZenState.renderLineHighlight;
-				this.showTabs = this.preZenState.showTabs;
-				this.statusBar = this.preZenState.statusBar;
-				this.minimap = this.preZenState.minimap;
-				this.lineNumbers = this.preZenState.lineNumbers;
-				this.showToc = this.preZenState.showToc;
-				this.preZenState = null;
-			}
+			// Leaving zen mode always un-hides the six things entering it hid,
+			// snapshot or no snapshot. The old `if (this.preZenState)` made "no
+			// snapshot" mean "stay flattened", which is the state a rejected or
+			// missing record leaves behind — tab bar, status bar and line numbers
+			// gone with nothing in the UI saying zen mode was ever involved.
+			const restored = this.preZenState ?? DEFAULT_PRE_ZEN_STATE;
+			this.renderLineHighlight = restored.renderLineHighlight;
+			this.showTabs = restored.showTabs;
+			this.statusBar = restored.statusBar;
+			this.minimap = restored.minimap;
+			this.lineNumbers = restored.lineNumbers;
+			this.showToc = restored.showToc;
+			this.preZenState = null;
 		}
 	}
 
@@ -873,17 +924,11 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		{
 			key: 'editor.preZenState',
 			read: (s) => (s.preZenState ? JSON.stringify(s.preZenState) : null),
-			load: (s, raw) => {
-				if (raw === null) {
-					s.preZenState = null;
-					return;
-				}
-				try {
-					s.preZenState = JSON.parse(raw);
-				} catch (e) {
-					console.error('Failed to parse preZenState', e);
-				}
-			},
+			// Same two steps as `titlebar.toolbarPlacement`: parse to a record
+			// (unparseable, non-object and array all become `null` there), then
+			// validate the shape. Nothing here can throw, and nothing reaches the
+			// field that the field's type does not describe.
+			load: (s, raw) => { s.preZenState = normalizePreZenState(parseStoredRecord(raw)); },
 		},
 	];
 }
