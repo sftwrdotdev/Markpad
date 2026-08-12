@@ -188,8 +188,14 @@ export function createWindowSession(options: WindowSessionOptions) {
 	async function restore() {
 		if (!options.isMainWindow || options.isDisposed()) return;
 		if (!options.shouldRestoreState()) {
-			localStorage.removeItem(options.windowStateKey);
-			localStorage.removeItem(options.legacyStateKey);
+			// Through `discardPersistedState`, because the snapshot is a file on
+			// the Rust side now. This branch is what makes turning the setting off
+			// end the session, and while the snapshot lived in localStorage the two
+			// `removeItem` calls did exactly that. Once it moved they went on
+			// clearing keys nothing writes any more, and the list of every document
+			// the user had open stayed on disk — for the user who switched the
+			// setting off to stop it being kept.
+			await discardPersistedState();
 			// Nothing will be restored, so there is nothing for a breadcrumb to
 			// say about the next launch.
 			await writeProgress({ running: false, pending: null, deferred: [], interruptions: 0 });
