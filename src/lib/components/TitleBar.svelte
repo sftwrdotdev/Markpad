@@ -11,6 +11,7 @@
 	import { t } from '../utils/i18n.js';
 	import { getConfiguredTitlebarToolbarIds } from '../utils/titlebarToolbar.js';
 	import { shortcutLabel } from '../utils/shortcuts.js';
+	import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
 	import { hasRealFilePath } from '../utils/tabFileActions.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
@@ -319,8 +320,10 @@
 			list.push('forward');
 			if (currentFile) list.push('reload');
 
-			const ext = currentFile ? currentFile.split('.').pop()?.toLowerCase() || '' : 'md';
-			const isMarkdown = ['md', 'markdown', 'mdown', 'mkd', 'txt'].includes(ext);
+			// An unsaved buffer has no name to read an extension off, and is
+			// treated as Markdown — which is what the old inline default of `'md'`
+			// said, spelled as the condition it actually is.
+			const isMarkdown = currentFile ? hasMarkdownLinkExtension(currentFile) : true;
 
 			if (isMarkdown) {
 				list.push('toc');
