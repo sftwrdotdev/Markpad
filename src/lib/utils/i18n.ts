@@ -148,6 +148,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Green'
         },
+        keys: {
+            group: 'Editing Keys',
+            enter: 'In a list: continue it; on an empty item, end it',
+            tab: 'In a table: next cell (new row at the end); in a list: indent',
+            shiftTab: 'In a table: previous cell; elsewhere: outdent'
+        },
         menu: {
             file: 'File',
             edit: 'Edit',
@@ -495,6 +501,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: '青色',
             green: '绿色'
         },
+        keys: {
+            group: '编辑按键',
+            enter: '在列表中：续写下一项；空项则结束列表',
+            tab: '在表格中：跳到下一格（在末尾则新增一行）；在列表中：增加层级',
+            shiftTab: '在表格中：跳到上一格；其他位置：减少缩进'
+        },
         menu: {
             file: '文件',
             edit: '编辑',
@@ -826,6 +838,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'シアン',
             green: '緑'
         },
+        keys: {
+            group: '編集キー',
+            enter: 'リスト内: 次の項目を続ける。空の項目なら終了',
+            tab: '表内: 次のセル（末尾なら行を追加）。リスト内: レベルを上げる',
+            shiftTab: '表内: 前のセル。その他: インデントを減らす'
+        },
         menu: {
             file: 'ファイル',
             edit: '編集',
@@ -1101,6 +1119,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: '藍色',
             cyan: '青色',
             green: '綠色'
+        },
+        keys: {
+            group: '編輯按鍵',
+            enter: '在清單中：接續下一項；空項目則結束清單',
+            tab: '在表格中：跳到下一格（在結尾則新增一列）；在清單中：增加層級',
+            shiftTab: '在表格中：跳到上一格；其他位置：減少縮排'
         },
         menu: {
             file: '檔案',
@@ -1445,6 +1469,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: '청록색',
             green: '초록색'
         },
+        keys: {
+            group: '편집 키',
+            enter: '목록에서: 다음 항목 계속. 빈 항목이면 목록 종료',
+            tab: '표에서: 다음 셀(끝에서는 행 추가). 목록에서: 수준 올리기',
+            shiftTab: '표에서: 이전 셀. 그 외: 들여쓰기 줄이기'
+        },
         menu: {
             file: '파일',
             edit: '편집',
@@ -1759,6 +1789,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Голубой',
             green: 'Зелёный'
         },
+        keys: {
+            group: 'Клавиши редактирования',
+            enter: 'В списке: продолжить его; на пустом пункте — завершить',
+            tab: 'В таблице: следующая ячейка (в конце — новая строка); в списке: увеличить уровень',
+            shiftTab: 'В таблице: предыдущая ячейка; в остальных случаях: уменьшить отступ'
+        },
         menu: {
             file: 'Файл',
             edit: 'Редактирование',
@@ -1994,6 +2030,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cian',
             green: 'Verde'
         },
+        keys: {
+            group: 'Teclas de edición',
+            enter: 'En una lista: continuarla; en un elemento vacío, terminarla',
+            tab: 'En una tabla: celda siguiente (al final, nueva fila); en una lista: aumentar nivel',
+            shiftTab: 'En una tabla: celda anterior; en otro caso: reducir sangría'
+        },
         menu: {
             file: 'Archivo',
             edit: 'Editar',
@@ -2224,6 +2266,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Bleu',
             cyan: 'Cyan',
             green: 'Vert'
+        },
+        keys: {
+            group: 'Touches d\'édition',
+            enter: 'Dans une liste : la poursuivre ; sur un élément vide, la terminer',
+            tab: 'Dans un tableau : cellule suivante (nouvelle ligne à la fin) ; dans une liste : augmenter le niveau',
+            shiftTab: 'Dans un tableau : cellule précédente ; ailleurs : réduire le retrait'
         },
         menu: {
             file: 'Fichier',
@@ -2456,6 +2504,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grün'
         },
+        keys: {
+            group: 'Bearbeitungstasten',
+            enter: 'In einer Liste: fortsetzen; bei leerem Eintrag beenden',
+            tab: 'In einer Tabelle: nächste Zelle (am Ende neue Zeile); in einer Liste: Ebene erhöhen',
+            shiftTab: 'In einer Tabelle: vorherige Zelle; sonst: Einzug verringern'
+        },
         menu: {
             file: 'Datei',
             edit: 'Bearbeiten',
@@ -2687,6 +2741,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Ciano',
             green: 'Verde'
         },
+        keys: {
+            group: 'Teclas de edição',
+            enter: 'Em uma lista: continuá-la; em um item vazio, terminá-la',
+            tab: 'Em uma tabela: próxima célula (no fim, nova linha); em uma lista: aumentar nível',
+            shiftTab: 'Em uma tabela: célula anterior; caso contrário: reduzir indentação'
+        },
         menu: {
             file: 'Arquivo',
             edit: 'Editar',
@@ -2917,6 +2977,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Blu',
             cyan: 'Ciano',
             green: 'Verde'
+        },
+        keys: {
+            group: 'Tasti di modifica',
+            enter: 'In un elenco: continuarlo; su una voce vuota, terminarlo',
+            tab: 'In una tabella: cella successiva (alla fine, nuova riga); in un elenco: aumentare il livello',
+            shiftTab: 'In una tabella: cella precedente; altrove: ridurre il rientro'
         },
         menu: {
             file: 'File',
@@ -3161,6 +3227,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyjan',
             green: 'Zielony'
         },
+        keys: {
+            group: 'Klawisze edycji',
+            enter: 'Na liście: kontynuuj ją; na pustym elemencie zakończ',
+            tab: 'W tabeli: następna komórka (na końcu nowy wiersz); na liście: zwiększ poziom',
+            shiftTab: 'W tabeli: poprzednia komórka; poza nią: zmniejsz wcięcie'
+        },
         menu: {
             file: 'Plik',
             edit: 'Edycja',
@@ -3402,6 +3474,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyaan',
             green: 'Groen'
         },
+        keys: {
+            group: 'Bewerkingstoetsen',
+            enter: 'In een lijst: doorgaan; bij een leeg item beëindigen',
+            tab: 'In een tabel: volgende cel (aan het eind een nieuwe rij); in een lijst: niveau verhogen',
+            shiftTab: 'In een tabel: vorige cel; elders: inspringing verkleinen'
+        },
         menu: {
             file: 'Bestand',
             edit: 'Bewerken',
@@ -3632,6 +3710,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Blå',
             cyan: 'Cyan',
             green: 'Grön'
+        },
+        keys: {
+            group: 'Redigeringstangenter',
+            enter: 'I en lista: fortsätt den; på ett tomt objekt avsluta den',
+            tab: 'I en tabell: nästa cell (ny rad i slutet); i en lista: öka nivån',
+            shiftTab: 'I en tabell: föregående cell; annars: minska indraget'
         },
         menu: {
             file: 'Arkiv',
@@ -3864,6 +3948,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Xanh lam',
             green: 'Xanh lá'
         },
+        keys: {
+            group: 'Phím chỉnh sửa',
+            enter: 'Trong danh sách: tiếp tục; ở mục trống thì kết thúc',
+            tab: 'Trong bảng: ô kế tiếp (ở cuối thì thêm hàng); trong danh sách: tăng cấp',
+            shiftTab: 'Trong bảng: ô trước đó; nơi khác: giảm thụt lề'
+        },
         menu: {
             file: 'Tệp',
             edit: 'Chỉnh sửa',
@@ -4094,6 +4184,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Azul',
             cyan: 'Ciano',
             green: 'Verde'
+        },
+        keys: {
+            group: 'Teclas de edição',
+            enter: 'Numa lista: continuá-la; num item vazio, terminá-la',
+            tab: 'Numa tabela: célula seguinte (no fim, nova linha); numa lista: aumentar nível',
+            shiftTab: 'Numa tabela: célula anterior; caso contrário: reduzir indentação'
         },
         menu: {
             file: 'Ficheiro',
@@ -4326,6 +4422,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Verde'
         },
+        keys: {
+            group: 'Taste de editare',
+            enter: 'Într-o listă: continuă lista; pe un element gol, o încheie',
+            tab: 'Într-un tabel: celula următoare (la final, rând nou); într-o listă: crește nivelul',
+            shiftTab: 'Într-un tabel: celula anterioară; în rest: reduce indentarea'
+        },
         menu: {
             file: 'Fișier',
             edit: 'Editare',
@@ -4557,6 +4659,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cián',
             green: 'Zöld'
         },
+        keys: {
+            group: 'Szerkesztőbillentyűk',
+            enter: 'Listában: folytatás; üres elemnél befejezés',
+            tab: 'Táblázatban: következő cella (a végén új sor); listában: szint növelése',
+            shiftTab: 'Táblázatban: előző cella; egyébként: behúzás csökkentése'
+        },
         menu: {
             file: 'Fájl',
             edit: 'Szerkesztés',
@@ -4787,6 +4895,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Modrá',
             cyan: 'Azurová',
             green: 'Zelená'
+        },
+        keys: {
+            group: 'Klávesy pro úpravy',
+            enter: 'V seznamu: pokračovat; u prázdné položky ukončit',
+            tab: 'V tabulce: další buňka (na konci nový řádek); v seznamu: zvýšit úroveň',
+            shiftTab: 'V tabulce: předchozí buňka; jinde: zmenšit odsazení'
         },
         menu: {
             file: 'Soubor',
@@ -5025,6 +5139,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Azúrová',
             green: 'Zelená'
         },
+        keys: {
+            group: 'Klávesy na úpravy',
+            enter: 'V zozname: pokračovať; pri prázdnej položke ukončiť',
+            tab: 'V tabuľke: ďalšia bunka (na konci nový riadok); v zozname: zvýšiť úroveň',
+            shiftTab: 'V tabuľke: predchádzajúca bunka; inde: zmenšiť odsadenie'
+        },
         menu: {
             file: 'Súbor',
             edit: 'Upraviť',
@@ -5255,6 +5375,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Μπλε',
             cyan: 'Κυανό',
             green: 'Πράσινο'
+        },
+        keys: {
+            group: 'Πλήκτρα επεξεργασίας',
+            enter: 'Σε λίστα: συνέχισέ την· σε κενό στοιχείο, τερμάτισέ την',
+            tab: 'Σε πίνακα: επόμενο κελί (στο τέλος, νέα γραμμή)· σε λίστα: αύξηση επιπέδου',
+            shiftTab: 'Σε πίνακα: προηγούμενο κελί· αλλού: μείωση εσοχής'
         },
         menu: {
             file: 'Αρχείο',
@@ -5487,6 +5613,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Syaani',
             green: 'Vihreä'
         },
+        keys: {
+            group: 'Muokkausnäppäimet',
+            enter: 'Luettelossa: jatka sitä; tyhjässä kohdassa lopeta se',
+            tab: 'Taulukossa: seuraava solu (lopussa uusi rivi); luettelossa: kasvata tasoa',
+            shiftTab: 'Taulukossa: edellinen solu; muualla: pienennä sisennystä'
+        },
         menu: {
             file: 'Tiedosto',
             edit: 'Muokkaa',
@@ -5717,6 +5849,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Blå',
             cyan: 'Cyan',
             green: 'Grøn'
+        },
+        keys: {
+            group: 'Redigeringstaster',
+            enter: 'I en liste: fortsæt den; ved et tomt punkt afsluttes den',
+            tab: 'I en tabel: næste celle (til sidst en ny række); i en liste: øg niveauet',
+            shiftTab: 'I en tabel: forrige celle; ellers: formindsk indrykningen'
         },
         menu: {
             file: 'Fil',
@@ -5949,6 +6087,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grønn'
         },
+        keys: {
+            group: 'Redigeringstaster',
+            enter: 'I en liste: fortsett den; på et tomt punkt avsluttes den',
+            tab: 'I en tabell: neste celle (til slutt en ny rad); i en liste: øk nivået',
+            shiftTab: 'I en tabell: forrige celle; ellers: reduser innrykket'
+        },
         menu: {
             file: 'Fil',
             edit: 'Rediger',
@@ -6180,6 +6324,12 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Sian',
             green: 'Hijau'
         },
+        keys: {
+            group: 'Tombol pengeditan',
+            enter: 'Dalam daftar: lanjutkan; pada item kosong, akhiri',
+            tab: 'Dalam tabel: sel berikutnya (di akhir, baris baru); dalam daftar: naikkan tingkat',
+            shiftTab: 'Dalam tabel: sel sebelumnya; selain itu: kurangi indentasi'
+        },
         menu: {
             file: 'Berkas',
             edit: 'Edit',
@@ -6410,6 +6560,12 @@ export const translations: Record<LanguageCode, Translation> = {
             blue: 'Mavi',
             cyan: 'Camgöbeği',
             green: 'Yeşil'
+        },
+        keys: {
+            group: 'Düzenleme tuşları',
+            enter: 'Listede: listeye devam et; boş öğede listeyi bitir',
+            tab: 'Tabloda: sonraki hücre (sonda yeni satır); listede: seviyeyi artır',
+            shiftTab: 'Tabloda: önceki hücre; başka yerde: girintiyi azalt'
         },
         menu: {
             file: 'Dosya',

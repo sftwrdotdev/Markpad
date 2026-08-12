@@ -16,7 +16,15 @@ import {
 	type ShortcutEntry,
 } from '../src/lib/utils/shortcuts.js';
 import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
-import { OperatingSystem, PLATFORMS, documentKeymap, editorKeymap, type Chord } from './keymapHarness.js';
+import {
+	OperatingSystem,
+	PLATFORMS,
+	bareCommands,
+	chordOf,
+	documentKeymap,
+	editorKeymap,
+	type Chord,
+} from './keymapHarness.js';
 import { functionSource, readRustBackend, readSource, readSourceFiles } from './sourceTree.js';
 
 /*
@@ -129,7 +137,7 @@ test('no registry entry is unverifiable', () => {
 	// that implements it, or it cannot be checked and must not be advertised.
 	for (const entry of SHORTCUTS) {
 		assert.ok(
-			entry.editorAction || entry.documentCall || entry.nativeMenuAccelerator,
+			entry.editorAction || entry.editorCommand || entry.documentCall || entry.nativeMenuAccelerator,
 			`${entry.id} names no implementation, so nothing here can confirm its chord fires`,
 		);
 	}
@@ -563,6 +571,83 @@ test('every keybinding the editor registers is either advertised or consciously 
 	for (const id of Object.keys(NOT_ADVERTISED)) {
 		assert.ok(bound.includes(id), `${id} no longer has a keybinding — drop it from NOT_ADVERTISED`);
 	}
+});
+
+// ------------------------------------- the contextual keys (the `keys` group)
+//
+// Enter, Tab and Shift+Tab are bound with a bare `editor.addCommand`: no action
+// id, no label, no menu entry. That is right — they are not commands a user
+// invokes, they are what those keys already mean one Markdown rule further on —
+// but it also made them INVISIBLE. #636 shipped Enter continuing a list and
+// nothing in the app said so anywhere; the `keys` group in the registry is that
+// omission being fixed, and this section is what keeps the fix honest.
+//
+// `editorAction` cannot carry these rows, because `editorKeymap` is built from
+// `addAction` descriptors and a nameless command has none. So the row names the
+// HANDLER instead, and the handler is looked up in the component's real
+// `addCommand` calls with the keybinding evaluated by Monaco's own `KeyMod`.
+
+/**
+ * Nameless commands the editor binds that are deliberately not advertised.
+ *
+ * The two clipboard chords, for the reason `NOT_ADVERTISED` already gives for
+ * their `custom-copy` twin: they are OS conventions rather than app shortcuts.
+ * Everything else the editor binds without a name has to be in the panel.
+ */
+const BARE_NOT_ADVERTISED: Record<string, string> = {
+	cutToClipboard:
+		'the OS clipboard convention, not an app shortcut; bound only because Monaco leaves cut/paste unbound in a browser',
+	pasteFromClipboard: 'the same, one key over',
+};
+
+test('every contextual key the registry advertises is bound to the handler it names', () => {
+	const advertised = SHORTCUTS.filter((entry) => entry.editorCommand);
+	assert.ok(advertised.length >= 3, `${advertised.length} rows name a bare command`);
+
+	for (const platform of PLATFORMS) {
+		const bound = new Map(bareCommands().map((call) => [chordOf(call.binding, platform.os), call.handler]));
+		for (const entry of advertised) {
+			for (const chord of entry.chords) {
+				const want = toMonacoLabel(chord, platform.mac);
+				assert.equal(
+					bound.get(want),
+					entry.editorCommand,
+					`${platform.name}: the panel would show ${formatChord(chord, platform.mac ? 'Cmd' : 'Ctrl')} ` +
+						`for ${entry.id} (${entry.editorCommand}), but that chord is bound to ${bound.get(want) ?? 'nothing'}`,
+				);
+			}
+		}
+	}
+});
+
+test('every nameless command the editor binds is advertised, or consciously not', () => {
+	// The completeness direction, which is the one that would have caught #636
+	// shipping unannounced: a new bare binding has to be shown or explained.
+	const advertised = new Set(SHORTCUTS.map((entry) => entry.editorCommand).filter(Boolean));
+	const bound = bareCommands().map((call) => call.handler);
+
+	const unexplained = bound.filter((handler) => !advertised.has(handler) && !(handler in BARE_NOT_ADVERTISED));
+	assert.deepEqual(
+		unexplained,
+		[],
+		'these keys do something extra in the editor and the shortcuts panel never mentions it; ' +
+			'add a row to SHORTCUTS (group `keys`) or a reason to BARE_NOT_ADVERTISED',
+	);
+
+	for (const handler of Object.keys(BARE_NOT_ADVERTISED)) {
+		assert.ok(bound.includes(handler), `${handler} is no longer bound — drop it from BARE_NOT_ADVERTISED`);
+	}
+});
+
+test('the contextual keys are shown as the bare keys they are, with no modifier', () => {
+	// A row in this group that grew a `Mod+` would be a chord, and would belong in
+	// one of the four menu groups instead — the distinction the group exists for.
+	const shown = shortcutSections('macos').find((section) => section.group === 'keys');
+	assert.ok(shown, 'the panel renders the keys group');
+	assert.deepEqual(
+		shown.entries.flatMap((entry) => entry.chords),
+		['Enter', 'Tab', 'Shift+Tab'],
+	);
 });
 
 // ------------------------------------------------------------------- i18n

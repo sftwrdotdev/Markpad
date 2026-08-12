@@ -25,15 +25,23 @@
  */
 
 /**
- * Which menu the command would live under. The four labels are the existing
- * menu-bar categories, so grouping the panel costs no new translations.
+ * Which menu the command would live under. Four of the five labels are the
+ * existing menu-bar categories, so grouping the panel cost no new translations.
+ *
+ * `keys` is the fifth and is not a menu. Enter, Tab and Shift+Tab do different
+ * things depending on what the caret is sitting on — continue a list, move to
+ * the next table cell — and a behaviour attached to a CONTEXT rather than to a
+ * command has no menu entry to live under and no command name to be listed as.
+ * It was invisible in the app until this group existed: #636 shipped list
+ * continuation and nothing anywhere told a user it was there.
  */
-type ShortcutGroup = 'file' | 'edit' | 'view' | 'window';
+type ShortcutGroup = 'file' | 'edit' | 'keys' | 'view' | 'window';
 
 /** Display order of the groups, and the i18n key that titles each one. */
 export const SHORTCUT_GROUPS: ReadonlyArray<{ group: ShortcutGroup; labelKey: string }> = [
 	{ group: 'file', labelKey: 'menu.file' },
 	{ group: 'edit', labelKey: 'menu.edit' },
+	{ group: 'keys', labelKey: 'keys.group' },
 	{ group: 'view', labelKey: 'menu.view' },
 	{ group: 'window', labelKey: 'menu.window' },
 ];
@@ -67,6 +75,18 @@ export type ShortcutEntry = {
 	readonly group: ShortcutGroup;
 	/** `Editor.svelte` registers this chord on a Monaco action whose id is `id`. */
 	readonly editorAction?: true;
+	/**
+	 * The name of the handler `Editor.svelte` binds this chord to with a bare
+	 * `editor.addCommand` — no action id, no label, no menu entry.
+	 *
+	 * The `keys` group needs this because there is no action id to check against:
+	 * a contextual key IS a nameless command. Recording the handler's name keeps
+	 * the row as verifiable as every other one — `shortcutRegistry.test.ts` reads
+	 * the component's `addCommand` calls, evaluates the keybinding with Monaco's
+	 * own `KeyMod`/`KeyCode`, and requires that this chord be bound to this
+	 * function.
+	 */
+	readonly editorCommand?: string;
 	/**
 	 * The app function `MarkdownViewer.svelte`'s document-level handler runs for
 	 * this chord when the editor does not have focus. Recorded as a call path, so
@@ -184,11 +204,40 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	// The rest of the table verbs share Insert Table's `Mod+K` prefix, so they
 	// open no new chord namespace. Adding a ROW is not among them: Tab at the end
 	// of a table already does that, which is what every other editor's users
-	// expect.
+	// expect and what the `keys` group below advertises.
 	{ id: 'table-insert-row', labelKey: 'menu.insertTableRow', chords: ['Mod+K R'], group: 'edit', editorAction: true },
 	{ id: 'table-delete-row', labelKey: 'menu.deleteTableRow', chords: ['Mod+K Shift+R'], group: 'edit', editorAction: true },
 	{ id: 'table-insert-column', labelKey: 'menu.insertTableColumn', chords: ['Mod+K C'], group: 'edit', editorAction: true },
 	{ id: 'table-delete-column', labelKey: 'menu.deleteTableColumn', chords: ['Mod+K Shift+C'], group: 'edit', editorAction: true },
+
+	// ---------------------------------------------------------------- keys
+	//
+	// What Enter, Tab and Shift+Tab do when the caret is somewhere they mean
+	// something extra. One row per KEY, not per behaviour: each of these keys is a
+	// single binding that dispatches on what the caret is sitting on, and two rows
+	// advertising `Enter` would be the panel claiming two shortcuts where the app
+	// has one.
+	{
+		id: 'key-enter',
+		labelKey: 'keys.enter',
+		chords: ['Enter'],
+		group: 'keys',
+		editorCommand: 'continueListOnEnter',
+	},
+	{
+		id: 'key-tab',
+		labelKey: 'keys.tab',
+		chords: ['Tab'],
+		group: 'keys',
+		editorCommand: 'handleTabKey',
+	},
+	{
+		id: 'key-shift-tab',
+		labelKey: 'keys.shiftTab',
+		chords: ['Shift+Tab'],
+		group: 'keys',
+		editorCommand: 'handleShiftTabKey',
+	},
 
 	// ---------------------------------------------------------------- view
 	{
