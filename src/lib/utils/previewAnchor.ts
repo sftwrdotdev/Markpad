@@ -280,16 +280,48 @@ function elementChildren(node: AnchorNode): AnchorNode[] {
  * every candidate sibling on every call, and on a 13,000-line document that is
  * ~6ms per mapping — measured, in Chrome, over this pipeline's own output.
  *
- * WHAT INVALIDATES THEM: nothing, explicitly. The answer for a node is a
- * function of that node's own attribute and of its subtree's annotated blocks,
- * neither of which is edited in place — the preview is rebuilt wholesale by
- * `bind:innerHTML` on every render pass, so a changed document is a new set of
- * nodes, and the entries describing the old ones are collected with them.
- * Folding, task checkboxes and rich-content rendering all leave the annotated
+ * WHAT INVALIDATES THEM: `invalidateAnchorMemos`, which `patchPreviewBlocks`
+ * calls before it touches the tree. It has to, because these answers are no
+ * longer a function of a node's identity.
+ *
+ * They used to be, and this comment used to say so: the preview was rebuilt
+ * wholesale by `bind:innerHTML` on every render pass, so a changed document was
+ * a new set of nodes and the entries describing the old ones were collected
+ * with them. Nothing invalidated these memos because nothing could.
+ * `blockPatch.ts` breaks that premise on purpose — it keeps the nodes whose
+ * rendering did not change, and rewrites `data-sourcepos` ON THOSE KEPT NODES
+ * from the new tree (`refreshSourcepos`, `carrySourcepos`). A kept node is the
+ * same key, so its entry survives the edit that changed its range, and the memo
+ * keeps answering with the lines the block used to be on — permanently, because
+ * nothing is ever going to replace that node either. Every edit that shifts a
+ * line number widens the error, and scroll sync, the tab reading position and
+ * the outline's current heading all resolve through here.
+ *
+ * Both maps are dropped whole rather than entry by entry, because `spanCache`
+ * cannot be invalidated per node. A span is a property of the subtree, not of
+ * the element: the patch keeps a `.foldable-content-wrapper` and replaces a
+ * paragraph inside it, and the wrapper's cached span is stale without the
+ * wrapper itself having been touched. Per-node invalidation would have to walk
+ * to the root from every change and would silently under-invalidate the first
+ * time somebody added a case that skipped the walk; two assignments cannot miss
+ * an ancestor. The cost is one cold lookup per render pass — renders are
+ * debounced against a pause in typing, scroll events are not — and that lookup
+ * refills the memo for every event after it.
+ *
+ * Folding, task checkboxes and rich-content rendering still leave the annotated
  * blocks and their ranges exactly where they were.
  */
-const ownRangeCache = new WeakMap<object, LineRange | null>();
-const spanCache = new WeakMap<object, LineRange | null>();
+let ownRangeCache = new WeakMap<object, LineRange | null>();
+let spanCache = new WeakMap<object, LineRange | null>();
+
+/**
+ * Forget every memoised range. Whoever rewrites a `data-sourcepos` in place, or
+ * changes what is inside a node that is being kept, owes this call.
+ */
+export function invalidateAnchorMemos(): void {
+	ownRangeCache = new WeakMap<object, LineRange | null>();
+	spanCache = new WeakMap<object, LineRange | null>();
+}
 
 function ownRange(node: AnchorNode): LineRange | null {
 	const cached = ownRangeCache.get(node as object);

@@ -1,3 +1,4 @@
+import { invalidateAnchorMemos } from './previewAnchor.js';
 import { carrySourcepos } from './richContent.js';
 
 /**
@@ -58,6 +59,15 @@ import { carrySourcepos } from './richContent.js';
  * ranges are refreshed onto kept nodes from the new tree (`refreshSourcepos`).
  * That is an attribute write no CSS rule reads: no style invalidation, no
  * layout, no paint — the class of work this module exists to preserve.
+ *
+ * It is not, however, a write nothing reads. `previewAnchor.ts` memoises the
+ * range it parses off a node and the span it derives from a node's subtree, and
+ * both memos were built on the guarantee this module removes: that a node whose
+ * source lines changed is a *new* node, so a stale entry is unreachable. Keeping
+ * the node keeps the entry, and the memo goes on answering with the lines the
+ * block was on before the edit, for as long as the node lives. So the patch owes
+ * `invalidateAnchorMemos` a call — the whole of it, not per node, for the reason
+ * spelled out where those memos are declared.
  *
  * ## Keys are remembered, never read back off the live tree
  *
@@ -139,6 +149,11 @@ function childKeys(container: ParentNode): string[] {
 export function patchPreviewBlocks(host: HTMLElement, sanitizedHtml: string): BlockPatch {
 	const template = host.ownerDocument.createElement('template');
 	template.innerHTML = sanitizedHtml;
+
+	// Before the tree moves, not after: a patch that throws half-way through has
+	// still changed some of it, and an empty memo is only ever a slow answer
+	// where a stale one is a wrong one.
+	invalidateAnchorMemos();
 
 	const patch: BlockPatch = { inserted: [], replaced: 0, kept: 0 };
 	patchContainer(host, template.content, patch);
