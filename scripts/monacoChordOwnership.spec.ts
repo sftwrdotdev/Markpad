@@ -250,10 +250,28 @@ const DELIBERATE_OVERRIDES: readonly Override[] = [
 		why: 'List continuation (#604). The only conditional row in this table: its `when` clause excludes editorTextFocus=false, readonly, suggestWidgetVisible and inSnippetMode, so every Monaco command sharing Enter still gets the key in the state it cares about, and off a list item the handler re-triggers a plain Enter. See the block above the binding in Editor.svelte.',
 	},
 	{
-		action: 'addCommand(indentListItemOnTab)',
+		action: 'addCommand(handleTabKey)',
 		chords: { macOS: 'Tab', Windows: 'Tab', Linux: 'Tab' },
 		monaco: 'tab',
-		why: 'List indentation (#604), same clause as Enter plus `!editorTabMovesFocus` so the accessibility toggle still wins. Off a list item it re-triggers the ordinary Tab.',
+		why: 'Table cell / list indentation (#604), same clause as Enter plus `!editorTabMovesFocus` so the accessibility toggle still wins. Was `indentListItemOnTab` until the table keys landed and the dispatch grew a table branch in front of the list one. Outside both it re-triggers the ordinary Tab.',
+	},
+	{
+		action: 'addCommand(handleShiftTabKey)',
+		chords: { macOS: 'Shift+Tab', Windows: 'Shift+Tab', Linux: 'Shift+Tab' },
+		monaco: 'outdent',
+		why: '#636 deliberately left Shift+Tab alone, on the grounds that core `outdent` already owned it and did it right. Tables broke the tie: a table has a PREVIOUS CELL and core has no command for it — the exception #636\'s own failure message named. The handler hands the chord straight back (`editor.trigger("keyboard", "outdent", null)`) everywhere the table branch declines, so outside a table the behaviour is byte-for-byte Monaco\'s.',
+	},
+	{
+		action: 'addCommand(handleModEnterKey)',
+		chords: { macOS: 'Meta+Enter', Windows: 'Ctrl+Enter', Linux: 'Ctrl+Enter' },
+		monaco: 'editor.action.insertLineAfter',
+		why: 'THE KEY IS SPECIALISED, NOT TAKEN. Inside a table "insert the line below" IS "insert the row below", so the meaning is unchanged; everywhere else the handler re-triggers `insertLineAfter` itself. The other claimants on this chord (replaceAll, the references peek, quickInput.accept, previewSelectedCodeAction) are all gated on contexts where `editorTextFocus` is false, which the shared clause requires.',
+	},
+	{
+		action: 'addCommand(handleModShiftEnterKey)',
+		chords: { macOS: 'Shift+Meta+Enter', Windows: 'Ctrl+Shift+Enter', Linux: 'Ctrl+Shift+Enter' },
+		monaco: 'editor.action.insertLineBefore',
+		why: 'The mirror of Mod+Enter above, and the same argument: a row above rather than a line above, and a straight re-trigger of `insertLineBefore` outside a table. `insertLineBefore` is the only Monaco claimant on this chord.',
 	},
 ];
 
