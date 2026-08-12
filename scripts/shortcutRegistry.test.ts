@@ -727,8 +727,8 @@ const TABLE_VERBS_WITHOUT_A_CHORD: Record<string, string> = {
 	'table-insert-row':
 		'Mod+Enter owns it now — inside a table, "insert a line below" already means "insert a row below"',
 	'table-delete-row':
-		"Mod+K Shift+R sat one slip from Monaco's own Mod+Shift+K (delete line), and a mis-fired " +
-		'destructive table edit is much worse than a mis-fired insert',
+		'Mod+K Shift+R sat one slip from what was then Monaco\'s Mod+Shift+K (delete line, unbound ' +
+		'here now), and a mis-fired destructive table edit is much worse than a mis-fired insert',
 	'table-delete-column': 'the same, one key over',
 };
 

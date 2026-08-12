@@ -784,6 +784,28 @@
 			EDITING_KEY_CONTEXT,
 		);
 
+		// ⌘⇧K / Ctrl+Shift+K, TAKEN BACK. It is `editor.action.deleteLines`, VS
+		// Code's convention inherited by standalone Monaco and inherited again by
+		// this app — a chord that silently destroys the line the caret is on. This
+		// is a Markdown editor: Typora, Obsidian, iA Writer and Bear all leave that
+		// chord alone, and it was being mis-fired here.
+		//
+		// A REMOVAL RULE, not a no-op command on the same chord. A `-`-prefixed
+		// command id is what Monaco's own resolver reads as "drop this default"
+		// (`KeybindingResolver.handleRemovals`); binding a do-nothing command
+		// instead would leave the key dead AND leave a fake command sitting in
+		// front of Monaco's, which is worse than either.
+		//
+		// The COMMAND stays: an action with no key is still a command palette
+		// entry (`Mod+P`), which is where the table delete verbs live for exactly
+		// the same reason. The key goes, the verb does not.
+		const removedKeybindings = monaco.editor.addKeybindingRules([
+			{
+				keybinding: monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyK,
+				command: "-editor.action.deleteLines",
+			},
+		]);
+
 		editorReady = true;
 
 		// After the view-state / anchor-line restore above, deliberately: an
@@ -800,6 +822,11 @@
 			mediaQuery.removeEventListener("change", updateTheme);
 			container.removeEventListener("wheel", wheelListener, { capture: true });
 			completionProvider.dispose();
+			// The keybinding rules are global to the Monaco module, not to this
+			// editor, so they are disposed with it rather than left to pile up one
+			// copy per mount — this component is rebuilt every time a tab goes to
+			// reading mode and back.
+			removedKeybindings.dispose();
 
 			if (editor && currentTabId) {
 				const state = editor.saveViewState();
@@ -1459,10 +1486,12 @@
 			// where a verb you reach for twice a year belongs.
 			//
 			// WHY THE DESTRUCTIVE PAIR HAS NO CHORD. They were on `Mod+K Shift+R`
-			// and `Mod+K Shift+C`, one slip from Monaco's own `Mod+Shift+K` —
-			// delete line. A mis-fired insert is an undo; a mis-fired delete of the
-			// row you were reading is the kind of thing that gets noticed three
-			// edits later. Insert keeps a chord; delete does not get one.
+			// and `Mod+K Shift+C`, one slip from what was then Monaco's own
+			// `Mod+Shift+K` — delete line. That neighbour is unbound now (see the
+			// removal rule in `createEditor`), and the verbs still get no chord: the
+			// hazard was never only the neighbour. A mis-fired insert is an undo; a
+			// mis-fired delete of the row you were reading is the kind of thing that
+			// gets noticed three edits later.
 			//
 			// WHY INSERT ROW HAS NO CHORD EITHER: `Mod+Enter` owns it now, one
 			// keystroke instead of two, and Tab at the end of the table appends one.
