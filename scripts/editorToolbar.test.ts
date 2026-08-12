@@ -66,7 +66,15 @@ test('each tool carries the label, name and shortcut the toolbar renders', () =>
 	assert.equal(byId.get('fmt-strikethrough')?.shortcut?.('Cmd'), 'Cmd+Shift+X');
 	assert.equal(byId.get('fmt-strikethrough')?.label, 'S');
 	assert.equal(byId.get('fmt-strikethrough')?.name, 'Strikethrough');
-	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+K T');
+	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+Opt+T');
+
+	// The four buttons that gained a hint when the keymap was reworked. Three list
+	// buttons had actions and no key at all, and Link — the chord four independent
+	// editors agree on — had none either, so the tooltip had nothing to print.
+	assert.equal(byId.get('fmt-link')?.shortcut?.('Cmd'), 'Cmd+K');
+	assert.equal(byId.get('fmt-numbered-list')?.shortcut?.('Ctrl'), 'Ctrl+Shift+7');
+	assert.equal(byId.get('fmt-bullet-list')?.shortcut?.('Ctrl'), 'Ctrl+Shift+8');
+	assert.equal(byId.get('fmt-checklist')?.shortcut?.('Cmd'), 'Cmd+Shift+9');
 });
 
 test('normalizeEditorToolbarOrder drops unknown ids, deduplicates, and appends new defaults', () => {

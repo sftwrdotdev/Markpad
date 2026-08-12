@@ -196,20 +196,53 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{ id: 'fmt-heading-1', labelKey: 'menu.heading1', chords: ['Mod+1'], group: 'edit', editorAction: true },
 	{ id: 'fmt-heading-2', labelKey: 'menu.heading2', chords: ['Mod+2'], group: 'edit', editorAction: true },
 	{ id: 'fmt-heading-3', labelKey: 'menu.heading3', chords: ['Mod+3'], group: 'edit', editorAction: true },
+	// GitHub's documented ordered/unordered list chords, identical on both
+	// platforms ("Inserts Markdown formatting for an ordered list" / "…an
+	// unordered list"). Numbered is 7 and bulleted is 8 because that is the way
+	// round GitHub has them, not because either digit resembles a list.
+	{ id: 'fmt-numbered-list', labelKey: 'menu.numberedList', chords: ['Mod+Shift+7'], group: 'edit', editorAction: true },
+	{ id: 'fmt-bullet-list', labelKey: 'menu.bulletList', chords: ['Mod+Shift+8'], group: 'edit', editorAction: true },
+	// 9 IS ARBITRARY, and deliberately not dressed up as a convention: GitHub
+	// documents no task-list chord at all, and neither does Typora or Obsidian.
+	// The two that do disagree and are both taken here — Bear's `Cmd+T` is New
+	// File, iA Writer's `Opt+Cmd+L` is Monaco's `toggleFindInSelection` on macOS
+	// — so the tie-break is adjacency: the third list button gets the digit next
+	// to the two the first two took.
+	{ id: 'fmt-checklist', labelKey: 'menu.checklist', chords: ['Mod+Shift+9'], group: 'edit', editorAction: true },
 	{
-		id: 'insert-table-simple',
-		labelKey: 'menu.insertTable',
-		// A chord SEQUENCE, not a combination: Mod+K, release, then T.
-		chords: ['Mod+K T'],
+		id: 'fmt-link',
+		labelKey: 'menu.link',
+		// The strongest competitor signal in the whole keymap: Typora, Bear, iA
+		// Writer and GitHub all document Mod+K for Insert Link, and it is the only
+		// command where four independent sources agree exactly. The link button had
+		// no shortcut at all until now.
+		//
+		// Taking it means Mod+K stops being a chord PREFIX, which is what
+		// `insert-table-simple` and `table-insert-column` used to hang off. What
+		// that costs on Monaco's side is argued in monacoChordOwnership.spec.ts.
+		chords: ['Mod+K'],
 		group: 'edit',
 		editorAction: true,
 	},
-	// Columns are the one table verb still on a chord: rarer than rows, and no
-	// unmodified key means "insert a column" anywhere. Rows are on `Mod+Enter` and
-	// on Tab at the end of the table, both in the `keys` group below, and the two
-	// DELETE verbs have no chord at all — they are palette-only, because
-	// `Mod+K Shift+R` sat one slip from Monaco's `Mod+Shift+K` (delete line).
-	{ id: 'table-insert-column', labelKey: 'menu.insertTableColumn', chords: ['Mod+K C'], group: 'edit', editorAction: true },
+	{
+		id: 'insert-table-simple',
+		labelKey: 'menu.insertTable',
+		// Typora's and Bear's macOS chord for the same command, and a single stroke
+		// rather than the `Mod+K T` sequence it replaces: the sequence was awkward
+		// enough to press that it is what started this rework.
+		chords: ['Mod+Alt+T'],
+		group: 'edit',
+		editorAction: true,
+	},
+	// INSERT COLUMN IS NOT HERE ANY MORE. It was on `Mod+K C`, and `Mod+K` is
+	// Insert Link now, so the sequence cannot be typed. `Mod+Alt+C` was the
+	// intended replacement and is not available: on macOS it is Monaco's
+	// `toggleFindCaseSensitive`, bound whenever the editor has focus, and
+	// registered as an editor COMMAND rather than an action — so it has no
+	// command palette entry to fall back on, which is the one thing every
+	// override in monacoChordOwnership.spec.ts requires. Insert Column is
+	// palette-only until a chord is chosen for it; see
+	// TABLE_VERBS_WITHOUT_A_CHORD in shortcutRegistry.test.ts.
 
 	// ---------------------------------------------------------------- keys
 	//
@@ -287,10 +320,12 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{
 		id: 'toggle-zen-mode',
 		labelKey: 'menu.zenMode',
-		// D for distraction-free. This was Mod+Shift+Z until it turned out that
-		// chord is redo's only binding on macOS — see the note at the keybinding
+		// Z for zen, at the third address this command has had. Mod+Shift+Z was
+		// redo's only binding on macOS; Mod+Shift+D was free but sat in the same
+		// Mod+Shift row the six formatting commands live in, and moving it out
+		// leaves that row to the formatting verbs. See the note at the keybinding
 		// in Editor.svelte.
-		chords: ['Mod+Shift+D'],
+		chords: ['Mod+Alt+Z'],
 		group: 'view',
 		editorAction: true,
 	},
