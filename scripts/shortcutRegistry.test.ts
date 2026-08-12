@@ -732,22 +732,40 @@ test('Mod+K belongs to Insert Link, on every platform', () => {
  *
  * Dropping a CHORD is not dropping a command: `addAction` without `keybindings`
  * still puts the verb in the command palette (`Mod+P`, which runs Monaco's
- * `editor.action.quickCommand`), which is where a rarely-used destructive edit
- * belongs.
+ * `editor.action.quickCommand`).
+ *
+ * WHAT DECIDES IT IS HOW HARD THE EDIT IS BY HAND, not whether it destroys
+ * anything. This table used to say the opposite — that destructive table verbs
+ * get no keys because a mis-fire costs too much — and that rule is gone rather
+ * than sitting here next to the one the code follows: Delete Column destroys
+ * more than Delete Row does and has a chord (`Mod+Shift+Backspace`), so the old
+ * rationale could not have been what was being applied. The hazard it named is
+ * also gone in fact: `Mod+Shift+K` is unbound on this branch and the `Mod+K`
+ * namespace no longer exists, so the near-neighbour that started all this is not
+ * there to slip onto.
+ *
+ * The four verbs, and what each one is worth a key for:
+ *
+ *   Insert Row      Mod+Enter / Mod+Shift+Enter, and Tab at the last cell
+ *                   — the frequent one, so it gets the cheapest keys there are
+ *   Insert Column   Mod+Shift+C — mid-frequency, and fiddly by hand
+ *   Delete Column   Mod+Shift+Backspace — NO manual fallback: it means editing
+ *                   the pipes on every row without slipping once
+ *   Delete Row      palette only — trivial by hand. Put the caret on the line,
+ *                   select it, delete. A chord buys nothing the keyboard does
+ *                   not already do, and an unearned chord is one more key to
+ *                   mis-fire.
+ *
+ * So the test of a new row here is not "is it dangerous" but "can the user
+ * already do this without us".
  */
 const TABLE_VERBS_WITHOUT_A_CHORD: Record<string, string> = {
 	'table-insert-row':
 		'Mod+Enter owns it now — inside a table, "insert a line below" already means "insert a row below"',
 	'table-delete-row':
-		'Mod+K Shift+R sat one slip from what was then Monaco\'s Mod+Shift+K (delete line, unbound ' +
-		'here now), and a mis-fired destructive table edit is much worse than a mis-fired insert',
-	'table-delete-column': 'the same, one key over',
-	'table-insert-column':
-		'it was on Mod+K C, and Mod+K is Insert Link now, so the sequence cannot be typed. Mod+Alt+C ' +
-		"was the intended replacement and is not available: on macOS it is Monaco's toggleFindCaseSensitive, " +
-		'live whenever the editor has focus and registered with registerEditorCommand rather than ' +
-		'registerEditorAction — so it has no command palette entry to fall back on, and taking it would ' +
-		'leave find-case-sensitivity reachable only by mouse. Palette-only until a chord is chosen',
+		'trivial by hand — put the caret on the line, select it, delete — so a chord buys nothing the ' +
+		'keyboard already does. This is the only one of the four with a manual fallback that good, ' +
+		'which is why it is the only one left without a key',
 };
 
 test('the table verbs with no chord are still commands, and advertise nothing', () => {

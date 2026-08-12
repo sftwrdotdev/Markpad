@@ -1511,20 +1511,19 @@
 			// The rest of the table verbs. They are actions rather than bare
 			// commands because a user has to be able to FIND them — in the command
 			// palette, in the shortcuts panel — which a nameless `addCommand`
-			// cannot be. NONE of the four carries a keybinding now, and an action
-			// with no keybinding is still a command palette entry, which is where a
-			// verb you reach for twice a year belongs.
+			// cannot be.
 			//
-			// WHY THE DESTRUCTIVE PAIR HAS NO CHORD. They were on `Mod+K Shift+R`
-			// and `Mod+K Shift+C`, one slip from what was then Monaco's own
-			// `Mod+Shift+K` — delete line. That neighbour is unbound now (see the
-			// removal rule in `createEditor`), and the verbs still get no chord: the
-			// hazard was never only the neighbour. A mis-fired insert is an undo; a
-			// mis-fired delete of the row you were reading is the kind of thing that
-			// gets noticed three edits later.
-			//
-			// WHY INSERT ROW HAS NO CHORD EITHER: `Mod+Enter` owns it now, one
-			// keystroke instead of two, and Tab at the end of the table appends one.
+			// WHAT DECIDES WHICH ONE GETS A KEY is how hard the edit is by hand,
+			// not whether it is destructive. Insert Row is on `Mod+Enter` already
+			// (inside a table, "insert the line below" IS "insert the row below")
+			// and on Tab at the last cell, so it needs nothing here. Delete Row is
+			// the one verb left with no chord at all: putting the caret on the line
+			// and deleting it is the whole operation, so a chord would buy nothing.
+			// The two column verbs both have chords BECAUSE the manual route is
+			// editing the pipes on every row of the table without slipping —
+			// which for delete is not a fallback anyone would actually take.
+			// The reasoning is set out once, in TABLE_VERBS_WITHOUT_A_CHORD in
+			// shortcutRegistry.test.ts, and the per-verb notes are at each binding.
 			editor.addAction({
 				id: "table-insert-row",
 				label: t('menu.insertTableRow', lang),
@@ -1544,15 +1543,20 @@
 			editor.addAction({
 				id: "table-insert-column",
 				label: t('menu.insertTableColumn', lang),
-				// NO CHORD, for now. It was on `Mod+K C`, which cannot be typed any
-				// more: `Mod+K` is Insert Link and is no longer a prefix. The intended
-				// replacement, `Mod+Alt+C`, is not available — on macOS that is
-				// Monaco's `toggleFindCaseSensitive`, live whenever the editor has
-				// focus, and registered with `registerEditorCommand` rather than
-				// `registerEditorAction`, so it has no command palette entry to fall
-				// back on. Taking it would leave a user no way to toggle case in find
-				// except the mouse, which is the one thing no override in
-				// monacoChordOwnership.spec.ts is allowed to do.
+				// C for Column, and one of the "insert a structure" family: it sits
+				// with Ctrl/Cmd+Shift+7, +8 and +9, which insert the three list
+				// kinds. Monaco binds nothing on Ctrl/Cmd+Shift+C on any of the three
+				// platforms, as a whole chord or as a prefix.
+				//
+				// It was on `Mod+K C`, which cannot be typed any more: `Mod+K` is
+				// Insert Link and is no longer a prefix. `Mod+Alt+C` was the obvious
+				// replacement and had to be refused — see the note above
+				// DELIBERATE_OVERRIDES in monacoChordOwnership.spec.ts. Palette-only
+				// was tried first and is too weak for a verb people reach for while
+				// building a table: Mod+P, type the name, Enter.
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyC,
+				],
 				run: () => {
 					editTable("insert-column");
 				},
@@ -1561,6 +1565,28 @@
 			editor.addAction({
 				id: "table-delete-column",
 				label: t('menu.deleteTableColumn', lang),
+				// WHY THIS VERB GETS A KEY WHEN DELETE ROW DOES NOT: there is no way
+				// to do it by hand. Deleting a row is selecting a line and pressing
+				// delete; deleting a column means editing the pipes on every row of
+				// the table without slipping once. A shortcut for the first buys
+				// nothing over what the keyboard already does. For the second it is
+				// the only practical route.
+				//
+				// WHY BACKSPACE AND NOT A LETTER: Ctrl/Cmd+Shift+D is free, but D is
+				// the physical neighbour of the C above — one slip turns "insert a
+				// column" into "delete a column", which is precisely the shape of the
+				// complaint that started this rework (`Mod+K Shift+R` sat one slip
+				// from Monaco's delete-line). A destructive verb does not go next to
+				// its constructive counterpart. Backspace is across the keyboard and
+				// already means "remove", so there is no mnemonic to learn.
+				//
+				// Monaco binds nothing on Ctrl/Cmd+Shift+Backspace on any platform.
+				// Its nearest neighbour is Cmd+Backspace (`deleteAllLeft`) one
+				// modifier away, which is an ordinary undoable edit rather than a
+				// structural one.
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Backspace,
+				],
 				run: () => {
 					editTable("delete-column");
 				},

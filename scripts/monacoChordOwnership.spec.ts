@@ -195,6 +195,20 @@ type PerPlatform = Partial<Record<PlatformName, Chord>>;
  * `chords` is per platform because Monaco's keymap is not the same on all
  * three: Cmd+E collides only on macOS, Ctrl+Shift+R only off it. A row that
  * claimed to be universal would hide which command is actually losing its key.
+ *
+ * A CHORD THAT CANNOT BE ALLOW-LISTED, recorded here so the next person hunting
+ * for a free key does not have to rediscover it: `Mod+Alt+C` — `Alt+Meta+C` on
+ * macOS — is `toggleFindCaseSensitive`, and it fails the palette test above.
+ * Monaco registers it with `registerEditorCommand`, not `registerEditorAction`,
+ * and only the latter contributes a `MenuId.CommandPalette` entry
+ * (`editorExtensions.js`), so there is no palette fallback: taking the key would
+ * leave find-case-sensitivity reachable by mouse alone. Its `kbExpr` is a bare
+ * `EditorContextKeys.focus`, so it is live whenever the editor has focus rather
+ * than only while the find widget is open. Insert Column wanted this chord —
+ * `Mod+Alt+C` pairs with Insert Table's `Mod+Alt+T` — and got `Mod+Shift+C`
+ * instead. The same reasoning disqualifies `toggleFindWholeWord` (`Alt+Meta+W`),
+ * `toggleFindRegex` (`Alt+Meta+R`) and `toggleFindInSelection` (`Alt+Meta+L`),
+ * which are registered the same way.
  */
 type Override = {
 	/** The app registration: a Monaco action id, or `addCommand(fn)` for a bare command. */
