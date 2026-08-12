@@ -848,6 +848,33 @@ test('the panel renders the platform modifier the user is on', () => {
 	assert.equal(shortcutLabel('no-such-command', 'Cmd'), undefined);
 });
 
+test('the panel’s groups are visibly separated, not run together', () => {
+	// The five sections stacked with nothing between them, so each heading sat
+	// flush against the last row of the group above and read as belonging to it —
+	// the whole pane looked like one undifferentiated list.
+	//
+	// A source-shape assertion, because the subject is CSS and there is no DOM
+	// here. What it pins is the part that can silently regress: that consecutive
+	// groups get a rule and space at all, and that the rule's colour is a theme
+	// token rather than a literal, so it survives the light/dark switch.
+	const text = readSource('src/lib/components/Settings.svelte');
+	assert.match(
+		text,
+		/class="settings-group shortcut-group"/,
+		'the shortcut sections need a class of their own: `.settings-group` is shared with every other pane',
+	);
+
+	const rule = /\.shortcut-group\s*\+\s*\.shortcut-group\s*\{([^}]*)\}/.exec(text);
+	assert.ok(rule, 'nothing separates one shortcut group from the next');
+	assert.match(
+		rule[1],
+		/border-top:[^;]*var\(--color-border-[a-z]+\)/,
+		'the separator must take its colour from a theme variable, so both themes get it',
+	);
+	assert.match(rule[1], /padding-top:\s*\d/, 'a rule with no space under it still reads as part of the row above');
+	assert.match(rule[1], /margin-top:\s*\d/, 'and no space above it still reads as part of the row above');
+});
+
 // ------------------------------------------- reality -> registry (completeness)
 //
 // Every assertion above runs registry -> reality: it takes a row and checks the

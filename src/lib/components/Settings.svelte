@@ -1597,7 +1597,7 @@
 						handlers — so this list cannot drift away from what the keys do.
 					-->
 					{#each shortcutSections(platformOf(settings.osType)) as section (section.group)}
-						<div class="settings-group">
+						<div class="settings-group shortcut-group">
 							<div class="settings-group-header">
 								<h2>{t(section.labelKey, settings.language)}</h2>
 							</div>
@@ -1945,6 +1945,21 @@
 		font-weight: 600;
 		margin: 0 0 16px 0;
 		color: var(--color-fg-default);
+	}
+
+	/*
+	 * One group after another, with something between them.
+	 *
+	 * Every other pane shows a single `.settings-group`; the shortcuts pane stacks
+	 * five, and stacked with nothing between them each heading sat flush against
+	 * the last row of the group above and read as belonging to it. A rule and the
+	 * space either side of it is what says "this heading starts what follows".
+	 * Only between groups, so the first heading keeps the pane's own top padding.
+	 */
+	.shortcut-group + .shortcut-group {
+		margin-top: 24px;
+		padding-top: 24px;
+		border-top: 1px solid var(--color-border-muted);
 	}
 
 	/* Read-only shortcut rows: a command on the left, its chord(s) on the right. */
