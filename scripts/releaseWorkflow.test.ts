@@ -449,3 +449,29 @@ test('the Chocolatey job skips a version that is already on the feed', () => {
 	const pack = sliceFrom(publishWorkflow, '- name: Pack and publish');
 	assert.match(pack, /if: steps\.already\.outputs\.published != 'true'/);
 });
+
+test('one release build runs at a time, and none of its runners drift', () => {
+	// Dispatching twice gave two runs writing to the same draft release.
+	// publish-packages.yml records what that cost: markpad-app 2.7.2 reached
+	// Chocolatey at 15:37 UTC on 2026-08-07 from a run that then failed on Linux
+	// and produced no release, while the release users got came from a different
+	// run three hours later. #561 took the package pushes out of the build
+	// matrix, which fixed the irreversible half of that. This is the other half.
+	//
+	// `cancel-in-progress: false` is the part worth asserting rather than the
+	// group: cancelling the first run mid-flight leaves a draft holding some
+	// platforms' assets and not others, which is indistinguishable from a build
+	// that has not finished.
+	const concurrency = sliceBetween(workflow, '\nconcurrency:', '\njobs:');
+	assert.match(concurrency, /group:/, 'the release build can be dispatched twice into the same draft');
+	assert.match(concurrency, /cancel-in-progress:\s*false/);
+
+	// And every runner it names is a version, not a moving label. `ubuntu-latest`
+	// on generate-update-feed was the last one that could change without a commit.
+	const drifting = workflow
+		.split('\n')
+		.filter((line) => !/^\s*#/.test(line))
+		.filter((line) => /runs-on:\s*(ubuntu|macos|windows)-latest/.test(line))
+		.filter((line) => !/matrix\./.test(line));
+	assert.deepEqual(drifting, [], 'a release job runs on a moving runner label');
+});
