@@ -37,10 +37,37 @@ function updateFoldHeights(root: HTMLElement) {
 
 	if (pending.length === 0) return;
 
-	// Read pass: the first `scrollHeight` commits the cleared heights with a
-	// single reflow, and the remaining reads hit that same clean layout. No
-	// paint happens mid-task, so the cleared state is never visible.
-	const heights = pending.map(({ content }) => Math.ceil(content.scrollHeight));
+	// Read pass: the first measurement commits the cleared heights with a single
+	// reflow, and the remaining reads hit that same clean layout. No paint
+	// happens mid-task, so the cleared state is never visible.
+	//
+	// The measurement is the *layout* height, not `scrollHeight`. They are not
+	// the same number for maths. KaTeX stacks a display formula with negative
+	// margins and vertical-align, so its glyphs reach past the box that lays
+	// them out: `scrollHeight` reports the scrollable extent it needs, which is
+	// several pixels taller than the height `auto` resolves to. Writing that
+	// number back made the wrapper taller than the content it wraps.
+	//
+	// That is a visible defect, not a rounding artefact, and it fired on every
+	// keystroke: `{@html}` rebuilds the wrapper with no inline property, so it
+	// paints at `auto`, and the next frame writes the larger number and pushes
+	// everything below it down. Measured against `katex-stress.md`'s own
+	// formulas, at devicePixelRatio 2:
+	//
+	//     prose (control)               51.188 auto → 51  scrollHeight  -0.188px
+	//     `\mathrm`/`\mathit` row       25.227 auto → 25                -0.227px
+	//     grown delimiters              46.461 auto → 52                +5.539px
+	//     nested \frac + \sqrt + x^y^z  74.867 auto → 82                +7.133px
+	//
+	// which is exactly the shape of the report: the prose and short-formula
+	// sections sat still and the one with stacked fractions moved. Reading
+	// `getBoundingClientRect().height` instead takes every row to +0.000px,
+	// and keeps the sub-pixel precision `scrollHeight` rounds away.
+	//
+	// Nothing is clipped by the smaller number: both the wrapper and
+	// `.content-inner` are `overflow: visible` while expanded, and a collapsed
+	// wrapper takes `height: 0` from the more specific rule either way.
+	const heights = pending.map(({ content }) => content.getBoundingClientRect().height);
 
 	// Write pass 2: publish the measured heights without reading anything back.
 	pending.forEach(({ wrapper }, index) => {

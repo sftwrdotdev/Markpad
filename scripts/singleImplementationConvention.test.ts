@@ -71,6 +71,14 @@ const RULES: Rule[] = [
 		allowed: [],
 	},
 	{
+		name: 'a fold height is measured from layout, not from the scrollable extent',
+		why:
+			'KaTeX stacks a display formula with negative margins and vertical-align, so its glyphs reach past the box that lays them out and `scrollHeight` reports several pixels more than `height: auto` resolves to. Writing that number into `--fold-content-height` made the wrapper taller than its content, and `{@html}` rebuilds the wrapper without the property on every keystroke — so the section paints at `auto` and then jumps. Measured on katex-stress.md at devicePixelRatio 2: prose -0.188px, a `\\mathrm` row -0.227px, grown delimiters +5.539px, nested fractions +7.133px. `getBoundingClientRect().height` takes every one of them to +0.000px.',
+		marker: /\.scrollHeight/g,
+		allowed: [],
+		dir: 'src/lib/utils',
+	},
+	{
 		name: 'YouTube links never become embedded frames',
 		why: 'The app dropped frame-src from its CSP and renders YouTube as a thumbnail anchor that opens the browser; an iframe path is the pre-fix version and cannot load.',
 		marker: /createElement\((['"])iframe\1\)/g,
