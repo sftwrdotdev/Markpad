@@ -567,7 +567,23 @@ function collectLineSamples(root: AnchorNode): LineSample[] {
 			// class so that building the table still costs no measurement.
 			if (isCollapsedContainer(child)) {
 				const span = ownRange(child) ?? resolveSpan(child);
-				if (span) samples.push({ element: child, line: span.startLine });
+				if (span) {
+					// TWO samples, both on the fold's own box, because the fold is
+					// zero pixels tall and owns every line inside it. One sample
+					// makes the interval between the fold and the block after it
+					// span the whole hidden range across a margin's worth of
+					// pixels, and both directions interpolate over that interval:
+					// the editor is then dragged through hundreds of lines nobody
+					// can see while the reader scrolls the preview past a fold by
+					// 16px, and a hidden line resolves to a pixel somewhere
+					// between the fold and the next block rather than to the fold.
+					// A second sample at `endLine` makes the hidden range flat —
+					// every line in it is at the fold's own position — and leaves
+					// the interpolation after the fold running from its last line
+					// to the next block's first, which is one line, not a section.
+					samples.push({ element: child, line: span.startLine });
+					if (span.endLine > span.startLine) samples.push({ element: child, line: span.endLine });
+				}
 				continue;
 			}
 
