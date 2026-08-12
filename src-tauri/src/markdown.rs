@@ -238,14 +238,26 @@ fn wikilink_file_destination(path: &str) -> Option<String> {
     }
 }
 
-/// Byte ranges of code regions — fenced code blocks and inline code spans —
-/// paired with CommonMark's rules. The regex alternation previously used for
+/// Byte ranges of code regions — fenced code blocks, indented code blocks and
+/// inline code spans — paired with CommonMark's rules. The regex alternation
+/// previously used for
 /// protection (```` ```.*?```|`.*?` ````) cannot express them: a fence closes
 /// only on a line-leading run of the same character at least as long as the
 /// opener, and a span opened by N backticks closes only on a run of exactly
 /// N. One mismatched pairing (e.g. a 4-backtick inline sample, or a ~~~
 /// fence, which the old pattern did not know at all) desynchronized the
 /// protection for the entire rest of the document.
+///
+/// Indented code blocks are recognised only where this line-at-a-time scan can
+/// be *sure* of one: after a blank line, at the top level, outside any list.
+/// The scan tracks no container state, and inside a list item a four-space
+/// line is the item's own paragraph rather than code — how far in code would
+/// have to start depends on the item's content indent. Claiming one there
+/// would hand `$a_i$ and $b_i$` to comrak unmasked and get it back cut in half
+/// by an `<em>`, which is the whole class of bug the protection exists to
+/// stop. So detection is suspended for the rest of a list, and an indented
+/// block that only a real block parser could see stays unprotected — the
+/// status quo, not a new hole.
 ///
 /// The result is in ascending document order, which is not cosmetic:
 /// `in_code_region` binary-searches it. That order is produced by
@@ -262,9 +274,15 @@ fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
     // (fence char, opener run length, region start)
     let mut fence: Option<(u8, usize, usize)> = None;
     let mut seg_start = 0usize;
+    // An indented code block may not interrupt a paragraph, so it can only
+    // begin where a new block can: at the top of the document or after a
+    // blank line.
+    let mut prev_blank = true;
+    let mut list_open = false;
 
     let mut line_start = 0usize;
     while line_start < len {
+        let in_fence = fence.is_some();
         let line_end = content[line_start..]
             .find('\n')
             .map(|i| line_start + i + 1)
@@ -294,6 +312,19 @@ fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
                 }
             }
             None => {
+                if prev_blank && !list_open && !line.trim().is_empty() && is_indented_line(line) {
+                    let block_end = indented_code_block_end(content, line_start);
+                    // Before the block region itself, so the two kinds of
+                    // region stay interleaved in document order.
+                    if seg_start < line_start {
+                        push_inline_code_spans(content, seg_start, line_start, &mut regions);
+                    }
+                    regions.push((line_start, block_end));
+                    seg_start = block_end;
+                    line_start = block_end;
+                    prev_blank = false;
+                    continue;
+                }
                 // The info string of a backtick fence may not contain backticks.
                 let info_ok = marker != Some(b'`') || !trimmed[run_len..].contains('`');
                 if is_fence_line && info_ok {
@@ -305,6 +336,17 @@ fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
                     fence = Some((marker.expect("fence marker"), run_len, line_start));
                 }
             }
+        }
+        if !in_fence {
+            let blank = line.trim().is_empty();
+            if !blank {
+                if indent <= 3 && opens_a_list(trimmed) {
+                    list_open = true;
+                } else if indent == 0 && prev_blank {
+                    list_open = false;
+                }
+            }
+            prev_blank = blank;
         }
         line_start = line_end;
     }
@@ -324,6 +366,59 @@ fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
          makes in_code_region's binary search miss them: {regions:?}",
     );
     regions
+}
+
+/// Whether `line`'s leading whitespace reaches CommonMark's four-column
+/// indent. A tab anywhere in that whitespace is enough on its own: it advances
+/// to the next multiple of four, and from any column below four that is four.
+fn is_indented_line(line: &str) -> bool {
+    let indent = line.len() - line.trim_start_matches([' ', '\t']).len();
+    indent >= 4 || line[..indent].contains('\t')
+}
+
+/// Whether `trimmed` — a line with its leading spaces removed — starts a list
+/// item. A thematic break (`***`) or a setext underline (`---`) does not: the
+/// marker has to be followed by whitespace or end the line.
+fn opens_a_list(trimmed: &str) -> bool {
+    let bytes = trimmed.as_bytes();
+    let rest = match bytes.first() {
+        Some(b'-' | b'+' | b'*') => &trimmed[1..],
+        _ => {
+            let digits = bytes.iter().take_while(|b| b.is_ascii_digit()).count();
+            match (digits, bytes.get(digits)) {
+                (1..=9, Some(b'.' | b')')) => &trimmed[digits + 1..],
+                _ => return false,
+            }
+        }
+    };
+    rest.is_empty() || rest.starts_with([' ', '\t', '\n', '\r'])
+}
+
+/// The end of the indented code block opening at `line_start`.
+///
+/// A blank line between two indented lines belongs to the block, so the scan
+/// runs past blanks and only stops at a non-blank line that is not indented.
+/// The blank lines *trailing* the last indented line belong to nothing, which
+/// is why the end tracks that line rather than the point the scan stopped at.
+fn indented_code_block_end(content: &str, line_start: usize) -> usize {
+    let len = content.len();
+    let mut end = line_start;
+    let mut cursor = line_start;
+    while cursor < len {
+        let line_end = content[cursor..]
+            .find('\n')
+            .map(|i| cursor + i + 1)
+            .unwrap_or(len);
+        let line = &content[cursor..line_end];
+        if !line.trim().is_empty() {
+            if !is_indented_line(line) {
+                break;
+            }
+            end = line_end;
+        }
+        cursor = line_end;
+    }
+    end
 }
 
 /// Splits `content[start..end]` — a stretch of text between fences — into

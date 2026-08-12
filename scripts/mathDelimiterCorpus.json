@@ -339,6 +339,51 @@
 					"source": "x_1"
 				}
 			]
+		},
+		{
+			"name": "dollars inside an indented code block are not math",
+			"markdown": "Code:\n\n    a $5 and $x_1$ b\n    more\n\nDone.\n",
+			"html": "<p data-sourcepos=\"1:1-1:5\">Code:</p>\n<pre data-sourcepos=\"3:5-5:0\"><code>a $5 and $x_1$ b\nmore\n</code></pre>\n<p data-sourcepos=\"6:1-6:5\">Done.</p>\n",
+			"math": []
+		},
+		{
+			"name": "a display delimiter inside an indented code block does not flip parity",
+			"markdown": "Intro:\n\n    $$\n    x_1\n    $$\n\nand $y_1$ after.\n",
+			"html": "<p data-sourcepos=\"1:1-1:6\">Intro:</p>\n<pre data-sourcepos=\"3:5-6:0\"><code>$$\nx_1\n$$\n</code></pre>\n<p data-sourcepos=\"7:1-7:23\">and $y_1$ after.</p>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "y_1"
+				}
+			]
+		},
+		{
+			"name": "a blank line inside an indented code block keeps it one block",
+			"markdown": "Intro:\n\n    $a$\n\n    $b$\n\nDone.\n",
+			"html": "<p data-sourcepos=\"1:1-1:6\">Intro:</p>\n<pre data-sourcepos=\"3:5-6:0\"><code>$a$\n\n$b$\n</code></pre>\n<p data-sourcepos=\"7:1-7:5\">Done.</p>\n",
+			"math": []
+		},
+		{
+			"name": "an indented line may not interrupt a paragraph",
+			"markdown": "A paragraph\n    with $x_1$ continued.\n",
+			"html": "<p data-sourcepos=\"1:1-2:32\">A paragraph<br data-sourcepos=\"1:12-1:12\" />\nwith $x_1$ continued.</p>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "x_1"
+				}
+			]
+		},
+		{
+			"name": "an indented paragraph of a list item is not code",
+			"markdown": "- item\n\n    text $x_1$ here\n",
+			"html": "<ul data-sourcepos=\"1:1-3:26\">\n<li data-sourcepos=\"1:1-3:26\">\n<p data-sourcepos=\"1:3-1:6\">item</p>\n<p data-sourcepos=\"3:5-3:26\">text $x_1$ here</p>\n</li>\n</ul>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "x_1"
+				}
+			]
 		}
 	]
 }
