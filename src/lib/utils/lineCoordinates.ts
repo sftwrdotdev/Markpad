@@ -123,3 +123,37 @@ export function lineCoordinates(rawContent: string): LineCoordinates {
 			getPreviewOffsetForSourceLine(root, toRendererLine(line), measure),
 	};
 }
+
+/**
+ * How far below the top of the editor's viewport the tab's anchor line sits.
+ *
+ * The editor's counterpart to `PREVIEW_ANCHOR_OFFSET`, and there for the same
+ * reason: what a reader is returned to is the line they were READING, not
+ * whichever line the viewport happened to cut in half. The preview says that in
+ * pixels because it is laid out in pixels; the editor says it in lines because
+ * Monaco is aimed with one. It was written out as a bare `+ 2` at the capture
+ * and a bare `- 2` at the restore, under the comment "Anchor to 3rd line".
+ *
+ * It is NOT the front-matter shift wearing a disguise, which is the reading the
+ * `+ 2` invites: this is a constant and that shift is a property of the
+ * document, and the two crossings below apply both.
+ */
+export const EDITOR_ANCHOR_LINE_OFFSET = 2;
+
+/**
+ * The editor's crossing into the tab's numbering: `topLine` is the buffer line
+ * at the top of its viewport, the answer is what the tab records.
+ *
+ * Non-positive when the reader is parked in the front matter, which has no
+ * renderer line at all — it renders as a panel, not as body. Both restore
+ * cascades are guarded on `anchorLine > 0`, so that answer falls through to
+ * `scrollPercentage` rather than aiming the other pane at the top.
+ */
+export function tabAnchorForEditorTopLine(coords: LineCoordinates, topLine: BufferLine): RendererLine {
+	return coords.toRendererLine(asBufferLine(topLine + EDITOR_ANCHOR_LINE_OFFSET));
+}
+
+/** The way back: the buffer line to reveal near the top for a recorded anchor. */
+export function editorTopLineForTabAnchor(coords: LineCoordinates, anchor: RendererLine): BufferLine {
+	return asBufferLine(Math.max(1, coords.toBufferLine(anchor) - EDITOR_ANCHOR_LINE_OFFSET));
+}

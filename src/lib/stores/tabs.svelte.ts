@@ -141,6 +141,11 @@ export interface Tab {
 	 * makes forgetting that a type error instead of a document that opens the
 	 * height of its own front matter off (#607).
 	 *
+	 * The editor writes it too, and pays that toll in both directions:
+	 * `tabAnchorForEditorTopLine` on the way in, `editorTopLineForTabAnchor` on
+	 * the way out. It used to write a raw Monaco line here, which is why the
+	 * paragraph above is worth reading twice.
+	 *
 	 * `scrollPercentage` is a 0-1 fraction of the scrollable range. It survives
 	 * a container of some other height, but it drifts with the content: the
 	 * "rough percentage of the document instead of where you left off" that
@@ -870,27 +875,26 @@ class TabManager {
 	}
 
 	/**
-	 * The one place a bare number becomes this tab's anchor.
+	 * The one place this tab's anchor is written, in the one numbering it is in.
 	 *
-	 * `line` is a plain `number` and not a `RendererLine`, which is the ONE
-	 * unbranded claim left on this field, and it is deliberate rather than an
-	 * oversight. Two components write here and they do not agree on what they
-	 * are writing: `MarkdownViewer.svelte` hands over `getPreviewScrollAnchor`,
-	 * a renderer line off `data-sourcepos`; `components/Editor.svelte` hands
-	 * over `ranges[0].startLineNumber + 2`, a MONACO line, which is a buffer
-	 * line. Branding this parameter turns that second call into the type error
-	 * it deserves to be — and there is no conversion to write there without
-	 * settling which of the two numberings the field is (it is the renderer's:
-	 * `findAnchorElement` reads it back against `data-sourcepos`).
+	 * `line` is a `RendererLine` because that is what the field is — the restore
+	 * reads it back with `findAnchorElement` against `data-sourcepos`, which
+	 * counts from the first line of the body. Two components write here and they
+	 * used to disagree: `MarkdownViewer.svelte` hands over
+	 * `getPreviewScrollAnchor`, already a renderer line, while
+	 * `components/Editor.svelte` handed over a MONACO line, which counts from
+	 * the first line of the file. Both round-tripped their own writes, so
+	 * neither pane looked broken alone and every cross-pane switch landed the
+	 * height of the front matter away.
 	 *
-	 * So the assertion sits here, where it is visible, instead of at four call
-	 * sites where it would not be. Whoever fixes the editor's half takes this
-	 * parameter to `RendererLine` and deletes this comment.
+	 * The brand is what stops that being writable: the editor now converts at
+	 * its own edge (`tabAnchorForEditorTopLine`), and a caller that forgets is a
+	 * type error rather than a document that opens in the wrong place.
 	 */
-	updateTabAnchorLine(id: string, line: number) {
+	updateTabAnchorLine(id: string, line: RendererLine) {
 		const tab = this.tabs.find((t) => t.id === id);
 		if (tab) {
-			tab.anchorLine = asRendererLine(line);
+			tab.anchorLine = line;
 		}
 	}
 
