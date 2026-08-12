@@ -97,6 +97,8 @@ const warnings: string[] = [];
 const errors: string[] = [];
 /** What the session asked the UI to tell the user, before any wording. */
 const notices: Array<{ deferredPath: string | null }> = [];
+/** The "Restore State on Reopen" setting, as the session sees it. */
+let restoreEnabled = true;
 
 function makeSession() {
 	return createWindowSession({
@@ -105,7 +107,7 @@ function makeSession() {
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
 		serializeState: () => tabManager.serializeState(),
-		shouldRestoreState: () => true,
+		shouldRestoreState: () => restoreEnabled,
 		isDisposed: () => false,
 		restoreState: (json) => tabManager.restoreState(json),
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
@@ -146,6 +148,7 @@ function reset(paths: string[], contents: Record<string, string> = {}) {
 	unreadable = new Set();
 	onRead = () => {};
 	killsTheLaunch = () => false;
+	restoreEnabled = true;
 	died = false;
 	disk = new Map(paths.map((path) => [path, contents[path] ?? `# ${path}`]));
 	storedSnapshot = snapshotOf(paths);
@@ -550,4 +553,59 @@ test('a deferred document is released once Markpad has read it', async () => {
 	await session.persistState();
 
 	assert.equal(breadcrumb(), null, 'the deferral is not permanent');
+});
+
+// --- the localStorage era is over, and the switch that ended it still works ---
+//
+// The snapshot and the breadcrumb both moved to files on the Rust side; the
+// localStorage keys survive only as a read-once migration for a build that is
+// being upgraded over. Nothing writes them any more. That makes two things
+// worth locking down: the migration read still works, and every place that
+// used to erase the record by clearing localStorage still erases it.
+
+test('turning session restore off erases the record, as clearing localStorage used to', async () => {
+	reset(['/a.md', '/b.md']);
+	restoreEnabled = false;
+
+	await makeSession().restore();
+
+	assert.deepEqual(tabManager.tabs, [], 'nothing is restored');
+	// While the snapshot lived in localStorage this branch removed it, so
+	// switching the setting off ended the session for good. Once the snapshot
+	// moved to a file the same branch went on clearing keys nothing writes, and
+	// the list of every document the user had open stayed on disk indefinitely
+	// — including for the user who turned the setting off to stop that.
+	assert.equal(storedSnapshot, null, 'the file on the Rust side goes too');
+});
+
+test('a snapshot an older build left in localStorage is still restored, then migrated', async () => {
+	reset(['/a.md', '/b.md']);
+	// The world at first launch of a build that persists through Rust: the old
+	// key holds the session, the file does not exist yet. The entries carry the
+	// pre-v2 shape too — full tab records, an untitled entry, and the HOME
+	// sentinel — because that is what those users have.
+	storedSnapshot = null;
+	localStorage.setItem(
+		LEGACY_STATE_KEY,
+		JSON.stringify({
+			activeTabId: 'tab-0',
+			tabs: [
+				{ id: 'tab-0', path: '/a.md', title: 'a.md', content: '<h1>a</h1>', rawContent: '# a' },
+				{ id: 'tab-1', path: '', title: 'Untitled', content: '', rawContent: '' },
+				{ id: 'tab-2', path: 'HOME', title: 'Home' },
+				{ id: 'tab-3', path: '/b.md', title: 'b.md', content: '<h1>b</h1>', rawContent: '# b' },
+			],
+		}),
+	);
+
+	await makeSession().restore();
+
+	assert.deepEqual(
+		tabManager.tabs.map((tab) => tab.path),
+		['/a.md', '/b.md'],
+		'the documents come back; the untitled and HOME entries are not files',
+	);
+	assert.deepEqual(readsOf(), ['/a.md', '/b.md'], 'and their content is read from disk, not from the stale copy');
+	assert.deepEqual(persistedPaths(), ['/a.md', '/b.md'], 'the session is now on the Rust side');
+	assert.equal(localStorage.getItem(LEGACY_STATE_KEY), null, 'and the old key is not read a second time');
 });
