@@ -6,6 +6,28 @@ on:
 permissions:
   contents: write
 
+# One release build at a time, per version.
+#
+# Dispatching twice used to give two runs writing to the same draft release, and
+# that is not hypothetical: publish-packages.yml records markpad-app 2.7.2 going
+# to Chocolatey at 15:37 UTC on 2026-08-07 from run 31192564528 -- a run that
+# then failed on Linux and produced no release -- while the release users got
+# came out of a different run three hours later. #561 moved the package pushes
+# out of the matrix, which fixed the irreversible half. This is the other half.
+#
+# Keyed on the ref rather than on the version, because the version is read from
+# package.json inside `create-release` and is not available to a concurrency
+# group, which is evaluated before any job starts. A release is always dispatched
+# from master, so in practice the two are the same key.
+#
+# `cancel-in-progress: false` deliberately. The second dispatch waits instead of
+# killing the first: a half-cancelled run leaves a draft release holding some
+# platforms' assets and not others, which looks exactly like a build that has not
+# finished yet.
+concurrency:
+  group: build-and-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   create-release:
     runs-on: ubuntu-24.04
@@ -357,7 +379,11 @@ jobs:
 
   generate-update-feed:
     needs: [create-release, build]
-    runs-on: ubuntu-latest
+    # Pinned like every other runner that this pipeline names. This job only runs
+    # `gh` and `jq`, so the version buys little on its own -- what it buys is that
+    # `ubuntu-latest` moving is a thing that happens to us with a commit rather
+    # than without one.
+    runs-on: ubuntu-24.04
     # The updater feed must describe a complete release. Do not publish an
     # update if any platform build failed or was cancelled.
     if: ${{ always() && needs.create-release.result == 'success' && needs.build.result == 'success' }}
