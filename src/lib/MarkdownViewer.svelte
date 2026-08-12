@@ -112,7 +112,7 @@ import {
 } from './utils/scrollSync.js';
 import { resolveTheme, settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
-import { formatChord } from './utils/shortcuts.js';
+import { formatChord, modifierFor } from './utils/shortcuts.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
@@ -2372,7 +2372,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// `formatChord` rather than two literals, so the Mac and Windows
 		// spellings cannot drift apart. F1 has no modifier and is the same
 		// everywhere.
-		const chord = (c: string) => formatChord(c, settings.osType === 'macos' ? 'Cmd' : 'Ctrl');
+		const chord = (c: string) => formatChord(c, modifierFor(settings.osType));
 
 		docContextMenu = {
 			show: true,
@@ -3600,7 +3600,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							{#if settings.showEditorToolbar}
 								<div transition:slide={{ duration: 150 }}>
 									<EditorToolbar
-										modifier={settings.osType === 'macos' ? 'Cmd' : 'Ctrl'}
+										modifier={modifierFor(settings.osType)}
 										toolbarOrder={settings.editorToolbarOrder}
 										toolbarHidden={settings.editorToolbarHidden}
 										onaction={(actionId, payload) => editorPane?.runEditorAction(actionId, payload)}

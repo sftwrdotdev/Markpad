@@ -10,7 +10,8 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 	import { getConfiguredTitlebarToolbarIds } from '../utils/titlebarToolbar.js';
-	import { shortcutLabel } from '../utils/shortcuts.js';
+	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
+	import { platformOf } from '../utils/platform.js';
 	import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
 	import { hasRealFilePath } from '../utils/tabFileActions.js';
 	import { getVersion } from '@tauri-apps/api/app';
@@ -118,9 +119,21 @@
 
 	const DEBUG_MACOS = false;
 
-	const isMac = typeof navigator !== 'undefined' && (navigator.userAgent.includes('Macintosh') || DEBUG_MACOS);
-	const useNativeMacChrome = isMac && !DEBUG_MACOS;
-	const modifier = isMac ? 'Cmd' : 'Ctrl';
+	// The platform comes from `settings.osType` — the Rust `get_os_type` answer
+	// the rest of the app already reads — rather than from this component's own
+	// user-agent sniff for "Macintosh", which was a second source that could
+	// disagree with it. `platformOf` covers the window before that
+	// command answers; see the comment on it for why the title bar cannot simply
+	// read `settings.osType` directly without flashing Windows chrome on a Mac.
+	//
+	// `$derived` rather than plain consts: the source is now reactive state, and
+	// `osType` can change once after mount (unknown → resolved). At plain consts
+	// the title bar would keep whatever the fallback said and never correct
+	// itself on a machine where the two do differ.
+	let platform = $derived(DEBUG_MACOS ? 'macos' : platformOf(settings.osType));
+	let isMac = $derived(platform === 'macos');
+	let useNativeMacChrome = $derived(isMac && !DEBUG_MACOS);
+	let modifier = $derived(modifierFor(platform));
 
 	let isWin11 = $state(false);
 	const tagColors = ['#5f6368', '#1a73e8', '#d93025', '#f9ab00', '#188038', '#d01884', '#a142f4', '#007b83'];

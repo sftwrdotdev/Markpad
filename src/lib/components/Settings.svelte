@@ -22,6 +22,7 @@
 	import { fade, scale, fly } from 'svelte/transition';
 	import { t, getSupportedLanguages } from '../utils/i18n.js';
 	import { shortcutSections } from '../utils/shortcuts.js';
+	import { platformOf } from '../utils/platform.js';
 	import type { LanguageCode } from '../utils/i18n.js';
 	import { getEditorToolbarTools } from '../utils/editorToolbar.js';
 	import { getTitlebarToolbarActions, type TitlebarToolbarPlacement } from '../utils/titlebarToolbar.js';
@@ -1595,7 +1596,7 @@
 						`scripts/shortcutRegistry.test.ts` fires each one at the real
 						handlers — so this list cannot drift away from what the keys do.
 					-->
-					{#each shortcutSections(settings.osType === 'macos' ? 'macos' : 'windows') as section (section.group)}
+					{#each shortcutSections(platformOf(settings.osType)) as section (section.group)}
 						<div class="settings-group">
 							<div class="settings-group-header">
 								<h2>{t(section.labelKey, settings.language)}</h2>

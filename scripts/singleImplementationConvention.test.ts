@@ -245,6 +245,42 @@ const RULES: Rule[] = [
 		allowed: ['src/lib/utils/imageEmbed.ts'],
 	},
 	{
+		name: 'the frontend asks the browser what platform this is in one place',
+		why: "The app had two independent answers to \"what platform is this?\". Everything read `settings.osType`, filled in by the Rust `get_os_type` command; TitleBar.svelte read `navigator.userAgent.includes('Macintosh')` and decided for itself. Two sources can disagree, and at startup they did — `settings.osType` is `'unknown'` until an `await invoke(…)` in the SettingsStore constructor returns, so on a Mac the title bar already drew Mac chrome while the tab tooltips beside it printed the Ctrl chords. `platformOf` in utils/platform.ts is the single answer: `settings.osType` when it is resolved, the synchronous browser hint only in the window before that, which is what keeps the title bar from flashing Windows chrome on a Mac.",
+		// Both spellings, because they are interchangeable for this question and a
+		// second source would reach for either. `navigator.language` (settings
+		// store) and `navigator.clipboard` (Editor.svelte) are deliberately not
+		// matched: neither is a platform test.
+		//
+		// Editor.svelte is allowed because editorOptionWiring.test.ts pins its
+		// `isMacPlatform()` helper by name, in that file, as the thing that picks
+		// the Monaco tab-cycle modifier — so the copy cannot move without that
+		// test moving with it. It is the same three lines platform.ts now holds
+		// and should be folded into it; the entry goes away when it is.
+		marker: /navigator\.(?:userAgent|platform)\b/g,
+		allowed: ['src/lib/utils/platform.ts', 'src/lib/components/Editor.svelte'],
+	},
+	{
+		name: 'the Cmd-or-Ctrl decision has one implementation',
+		why: "`modifierFor()` was exported by #629 so that `settings.osType === 'macos' ? 'Cmd' : 'Ctrl'` would be written once, and four sites never joined it: two in MarkdownViewer.svelte (the document context menu's chords and the editor toolbar's `modifier` prop), one in TitleBar.svelte, and Settings.svelte's `? 'macos' : 'windows'` feeding the shortcut panel. A hand-written copy is not merely redundant — it is a site that cannot pick up what the helper learns. TitleBar's copy branched on the user agent rather than on the os type at all, and Settings' copy answered `'windows'` for a Mac whose os type had not resolved yet, so the shortcut panel opened on the Ctrl chords.",
+		// The shape of the defect rather than the helpers' names: a site that
+		// copies this decision is by construction one that calls neither
+		// `modifierFor` nor `platformOf`, and what it contains instead is a
+		// `=== 'macos'` test used as a ternary condition — which covers the
+		// `'Cmd' : 'Ctrl'` spelling and the `'macos' : 'windows'` one together.
+		// A bare `=== 'macos'` guarding an `{#if}` or an `&&` is NOT matched and
+		// must not be: asking whether this is a Mac is fine, deciding again what
+		// follows from it is the duplicate.
+		//
+		// The second alternative catches the same decision made off a local that
+		// already holds the verdict — TitleBar's copy was `isMac ? 'Cmd' : 'Ctrl'`
+		// and reaches the `=== 'macos'` test through no literal at all. The
+		// declared union `'Ctrl' | 'Cmd'` in editorToolbar.ts is a type, has the
+		// two words in the other order and separated by a pipe, and is not matched.
+		marker: /===\s*(['"])macos\1\s*\?|(['"])Cmd\2\s*:\s*(['"])Ctrl\3/g,
+		allowed: ['src/lib/utils/shortcuts.ts', 'src/lib/utils/platform.ts'],
+	},
+	{
 		name: 'this suite reads a file through one function',
 		why: "A test that reads source with its own readFileSync gets the bytes Git checked out, and on Windows `core.autocrlf` makes those CRLF. Every `\\n` in a pattern then matches nothing and every anchor containing one is 'not found' — fifteen files were red on the maintainer's Windows checkout while cutting v2.7.0 and were hand-patched assertion by assertion (#452). `readSource` in sourceTree.ts decides the line ending once, on read, so the assertions stay written against `\\n` and a new test cannot re-open the hole by accident. Read the file with `readSource(path)` from './sourceTree.js' — it takes a cwd-relative string or a `new URL(…, import.meta.url)` — and write the assertion against `\\n`.",
 		// The call, not the import: `import { readFileSync }` on its own reads
