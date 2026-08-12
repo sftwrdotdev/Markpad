@@ -5,7 +5,7 @@
 	import { t } from '../utils/i18n.js';
 	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
 	import { foldKeyOf } from '../utils/foldState.js';
-	import { PREVIEW_ANCHOR_OFFSET } from '../utils/previewAnchor.js';
+	import { anchorScrollTop } from '../utils/previewAnchor.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
 	let { markdownBody, htmlContent, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
@@ -314,10 +314,7 @@
 			el.classList.add('toc-target-active');
 			activeTargetEl = el;
 
-			const containerRect = markdownBody.getBoundingClientRect();
-			const elRect = el.getBoundingClientRect();
-			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - PREVIEW_ANCHOR_OFFSET;
-			markdownBody.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: 'smooth' });
 
 			// release lock after scroll settles
 			if (clickLockTimer) clearTimeout(clickLockTimer);
