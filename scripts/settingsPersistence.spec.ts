@@ -208,18 +208,13 @@ test('changing one setting rewrites only that setting key', () => {
 	assert.deepEqual(written(() => {}), []);
 });
 
-test('the store installs a storage listener that survives on the real window', () => {
-	// The other half of the multi-window fix, through jsdom's real event
-	// dispatch: `addEventListener('storage', …)` runs inside an `$effect`, so it
-	// is only wired up once the effects flush.
-	resetStorage();
-	const store = createStore();
-	flushSync();
-
-	localStorage.setItem('editor.fontSize', '30');
-	dispatchStorage('editor.fontSize', '30');
-	assert.equal(store.editorFontSize, 30);
-});
+// `the store installs a storage listener that survives on the real window` stood
+// here. Its body was the first half of `storage events fold another window
+// changes into this instance` below, verbatim — same reset, same store, same
+// flush, same `editor.fontSize` write and dispatch, same assertion — and that
+// test then goes on to do the language key as well. Deleting
+// `window.addEventListener('storage', …)` from the store turns eight tests in
+// this file red, that superset among them.
 
 test('a second window no longer clobbers what the first window just changed', () => {
 	// Window A and window B are separate webviews with separate store instances
@@ -889,10 +884,13 @@ test('the zen fallback is each setting own default', () => {
  * ---------------------------------------------------------------------------
  */
 
-test('the store listens for cross-window storage events', () => {
-	assert.match(storeSource, /addEventListener\('storage', onStorage\)/);
-	assert.match(storeSource, /removeEventListener\('storage', onStorage\)/);
-});
+// `the store listens for cross-window storage events` stood here, matching
+// `addEventListener('storage', onStorage)` and its `removeEventListener` in the
+// source text. Both halves are already run rather than read, in this same file:
+// neutering the `addEventListener` reddens eight tests, and replacing the
+// effect's disposer with `() => {}` reddens `a disposed store stops writing and
+// stops listening`. The text match added a way to fail that a rename of the
+// private `onStorage` handler would trigger on its own.
 
 test('the store has no single effect that writes every key', () => {
 	const setItemCalls = storeSource.match(/localStorage\.setItem\(/g) ?? [];
