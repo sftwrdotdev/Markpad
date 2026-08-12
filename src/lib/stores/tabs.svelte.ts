@@ -19,6 +19,47 @@ import {
 export interface Tab {
 	id: string;
 	path: string;
+	/**
+	 * What the tab strip, the window title and the per-tab close dialog call
+	 * this tab. Derived from `path` at every site that points a tab at a
+	 * document — `addTab`, `restoreState`, `updateTabPath`, `renameTab`,
+	 * `navigate`, `goBack`, `goForward` — as the last segment of the path, and
+	 * chosen by `nextUntitledTitle` when there is no path to take a segment
+	 * from.
+	 *
+	 * Five of those sites spell the derivation `path.split(/[/\\]/).pop() ||
+	 * 'Untitled'`, and that English literal is dead code, not an i18n hole. It
+	 * is there because `Array.prototype.pop` is typed `string | undefined`; the
+	 * arm needs a path that is empty or ends in a separator, and every route
+	 * into those five is guarded against both upstream:
+	 *
+	 * - `navigate` is only ever handed a link target, and `getMarkdownLinkTarget`
+	 *   refuses an href whose path does not end in one of
+	 *   `MARKDOWN_LINK_EXTENSIONS`, so what `resolveMarkdownTargetPath` returns
+	 *   always ends in a filename.
+	 * - `goBack`/`goForward` return on `!result.path` before the title is
+	 *   touched, so an empty entry cannot reach it — and every non-empty entry
+	 *   in `history` was put there by one of the other sites.
+	 * - `renameTab` replaces the last segment of a non-empty `tab.path` with a
+	 *   non-empty typed name, and only runs once `fs::rename` has SUCCEEDED on
+	 *   the result, which a destination ending in a separator cannot do.
+	 * - `updateTabPath` is reached from the Save/Save As dialog, which returns
+	 *   a file the user named, and from `loadMarkdown` — and there only when
+	 *   the active tab is an empty untitled one. The app's one unvalidated path
+	 *   source, `send_markdown_path`, hands back raw argv filtered only on a
+	 *   leading `-`, so `markpad ~/notes/` really does reach `loadMarkdown`
+	 *   with a trailing separator; it cannot reach THIS branch, because
+	 *   untitled tabs are not persisted (`serializeState` filters on
+	 *   `hasRealFilePath`) and so no empty untitled tab exists at startup for
+	 *   argv to repoint. That path lands on `addTab`, which resolves a nameless
+	 *   path through `nextUntitledTitle` and `t('tabs.untitled', …)`.
+	 *
+	 * If a route ever does hand one of them a directory or an empty string, the
+	 * fallback to reach for is `t('tabs.untitled', settings.language)` and NOT
+	 * `nextUntitledTitle`: numbering exists to tell several NEW untitled buffers
+	 * apart, and a tab that got here has a path — calling it "Untitled 3" would
+	 * claim otherwise.
+	 */
 	title: string;
 	/**
 	 * The three buffers. They are the same shape, they usually hold the same
@@ -340,7 +381,7 @@ class TabManager {
 			for (const saved of data.tabs) {
 				if (!saved || typeof saved.path !== 'string' || !hasRealFilePath(saved.path)) continue;
 				const filename = saved.path.split('\\').pop()?.split('/').pop() || saved.path;
-				const fileHistory = createFileHistory(saved.path, '');
+				const fileHistory = createFileHistory(saved.path);
 				restored.push({
 					id: typeof saved.id === 'string' ? saved.id : crypto.randomUUID(),
 					path: saved.path,
@@ -442,7 +483,9 @@ class TabManager {
 			// The title still names the file the buffer came from — that is what
 			// makes the tab recognizable, and `saveContent` offers it as the
 			// default filename when the user places it.
-			other.history = [''];
+			// It has no path now, so it has no history entry: the tab is untitled,
+			// and `''` is not somewhere Back can take the reader.
+			other.history = [];
 			other.historyIndex = 0;
 		}
 	}
@@ -478,7 +521,7 @@ class TabManager {
 				this.tabs.map((tab) => tab.title),
 				t('tabs.untitled', settings.language),
 			);
-		const fileHistory = createFileHistory(path, rawContent);
+		const fileHistory = createFileHistory(path);
 
 		this.tabs.push({
 			id,
@@ -529,7 +572,11 @@ class TabManager {
 				return this.rawContent !== this.originalContent;
 			},
 			isEditing: settings.newFileDefaultMode,
-			history: [content],
+			// Empty, as `addHomeTab` below already had it. This used to be
+			// `[content]` — a PATH list seeded with the new buffer's text, which
+			// is `''` and so looked harmless, and was not: see
+			// `navigateFileHistory`.
+			history: [],
 			historyIndex: 0,
 			editorViewState: null,
 			scrollPercentage: 0,
@@ -885,7 +932,6 @@ class TabManager {
 			// write would have been marked saved. The other caller repoints an
 			// untitled, empty, already-clean tab at the file it is about to load.
 			const fileHistory = replaceCurrentHistoryEntry({
-				currentPath: tab.path,
 				targetPath: path,
 				history: tab.history,
 				historyIndex: tab.historyIndex,
@@ -906,7 +952,6 @@ class TabManager {
 			tab.pathKey = pathKey;
 			tab.title = newPath.split(/[/\\]/).pop() || 'Untitled';
 			const fileHistory = replaceCurrentHistoryEntry({
-				currentPath: tab.path,
 				targetPath: newPath,
 				history: tab.history,
 				historyIndex: tab.historyIndex,
@@ -1063,7 +1108,6 @@ class TabManager {
 			// literally; the caller loads the file straight afterwards and
 			// `loadMarkdown` resolves the key then.
 			this.claimPath(path, id);
-			tab.history = result.history;
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
 			tab.pathKey = undefined;
@@ -1081,7 +1125,6 @@ class TabManager {
 			if (!result.path) return null;
 			const path = result.path;
 			this.claimPath(path, id);
-			tab.history = result.history;
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
 			tab.pathKey = undefined;
