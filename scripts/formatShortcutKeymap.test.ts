@@ -101,7 +101,16 @@ test('the toolbar tooltip prints the shortcut the editor actually registered', (
 			chords[0].replace(/\bMeta\b/g, 'Ctrl'),
 			`${id}: toolbar hint and registered keybinding disagree`,
 		);
-		assert.equal(tool.shortcut('Cmd'), tool.shortcut('Ctrl').replace('Ctrl', 'Cmd'));
+		// Both renderings come from the same registry row through `formatChord`, so
+		// they name the same key and the same number of modifiers — but NOT the same
+		// WORDS: `Alt` is `Opt` on macOS (#651). Asserting a string substitution here
+		// would be a second copy of that word map, which is the defect #651 removed;
+		// `shortcutRegistry.test.ts` owns the per-platform naming and this only has to
+		// prove the two renderings are still the same chord.
+		const asCmd = tool.shortcut('Cmd').split('+');
+		const asCtrl = tool.shortcut('Ctrl').split('+');
+		assert.equal(asCmd.length, asCtrl.length, `${id}: the two renderings are not the same chord`);
+		assert.equal(asCmd.at(-1), asCtrl.at(-1), `${id}: the two renderings end on different keys`);
 	}
 
 	// The rows this change adds, spelled out, so that deleting one of them from

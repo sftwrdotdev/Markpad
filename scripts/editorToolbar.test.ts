@@ -66,7 +66,7 @@ test('each tool carries the label, name and shortcut the toolbar renders', () =>
 	assert.equal(byId.get('fmt-strikethrough')?.shortcut?.('Cmd'), 'Cmd+Shift+X');
 	assert.equal(byId.get('fmt-strikethrough')?.label, 'S');
 	assert.equal(byId.get('fmt-strikethrough')?.name, 'Strikethrough');
-	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+Alt+T');
+	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+Opt+T');
 
 	// The four buttons that gained a hint when the keymap was reworked. Three list
 	// buttons had actions and no key at all, and Link — the chord four independent
