@@ -3,27 +3,6 @@ import test from 'node:test';
 
 import { offsetOf, readRustBackend, readSource, readSourceFiles, sliceBetween } from './sourceTree.js';
 
-// Runes and the Tauri bridge, shimmed the way truncatedBufferGuard.test.ts
-// shims them: the stores are runes modules, and Node's test runner gives every
-// file its own process, so this cannot leak into another suite.
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-Object.defineProperty(g, 'navigator', { value: { language: 'en-US' }, configurable: true });
-Object.defineProperty(g, 'localStorage', {
-	value: { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
-	configurable: true,
-});
-
 /*
  * #379 made every read that fills a WRITABLE buffer report whether the decode
  * was lossy, so the tab can refuse to write U+FFFD back over a file that was
@@ -35,120 +14,31 @@ Object.defineProperty(g, 'localStorage', {
  * is a destroyed document. It is now held by the code: every one of them reads
  * the fidelity itself.
  *
- * `ensureFullContent` is exercised for real below. The two MarkdownViewer sites
- * are in a Svelte component and are asserted against its source: those tests
- * establish that the checked command is called and its verdict stored, not that
- * the store then behaves — `lossyDecodeSaveGuard.test.ts` covers that.
+ * WHAT IS LEFT IN THIS FILE, AND WHY IT IS HERE RATHER THAN UNDER VITEST
+ *
+ * Every assertion below reads source text, and each one is of a kind no run can
+ * reach:
+ *
+ *   - that the unchecked command exists NOWHERE. An absence is not observable
+ *     at run time: executing the checked read cannot prove there is no other
+ *     caller of the unchecked one. The same claim then crosses into the Rust
+ *     crate, where nothing but the spelling connects the two sides.
+ *   - the two MarkdownViewer call sites, and the two auto-save ones. They are
+ *     in a `.svelte` component, and mounting one here would put jsdom in for
+ *     Monaco, mermaid and KaTeX to earn a weaker claim than the text does —
+ *     what these pin is the ORDER of statements inside a handler (flag the tab
+ *     before the buffer is published; recognise the refusal before raising the
+ *     generic toast), which is a property of the code as written.
+ *
+ * `ensureFullContent` is not here: it is a runes module driven for real, and
+ * running it under a hand-written `$state` was standing exactly where the
+ * assertions look. It is `checkedReadMigration.spec.ts` now. `lossyDecodeSaveGuard.test.ts`
+ * and `lossySaveRefusalScope.spec.ts` cover the store behaviour these source
+ * assertions deliberately stop short of.
  *
  * The second half of this file is the toast the guard's refusal used to
  * trigger every 1.5 seconds.
  */
-
-const PARTIAL = 'first half';
-const FULL = 'first half and the rest';
-
-/** Set per test. `get_os_type` is the settings store booting on import. */
-let handleInvoke: (cmd: string, args: Record<string, unknown>) => unknown = (cmd) => {
-	if (cmd === 'get_os_type') return 'macos';
-	throw new Error(`unexpected invoke: ${cmd}`);
-};
-const errors: string[] = [];
-
-g.window.__TAURI_INTERNALS__ = {
-	invoke: (command: string, args: Record<string, unknown>) =>
-		Promise.resolve(handleInvoke(command.replace(/^plugin:[^|]*\|/, ''), args ?? {})),
-	transformCallback: (fn: unknown) => fn,
-};
-
-const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
-const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
-
-function makeSession() {
-	return createDocumentSession({
-		setShowHome: () => {},
-		currentFile: () => tabManager.activeTab?.path ?? '',
-		resetScrollHistory: () => {},
-		renderMarkdown: async () => '<p>x</p>',
-		afterLoad: async () => {},
-		saveRecentFile: () => {},
-		deleteRecentFile: () => {},
-		setLoadingTabs: () => {},
-		measureInitialViewport: () => {},
-		isScrolling: () => false,
-		renderRichContent: () => {},
-		onError: (message) => errors.push(message),
-		selfWriteGraceMs: 400,
-		cancelPendingAutoSave: () => {},
-		askClose: async () => 'discard' as const,
-		onCloseSaveNewerEdits: () => {},
-		onCloseAutoSaveFailed: () => {},
-		onPartialCopySaved: () => {},
-	});
-}
-
-/** Open a >50KB file and leave the background full read pending forever. */
-async function openPartial() {
-	tabManager.closeAll();
-	errors.length = 0;
-	handleInvoke = (cmd) => {
-		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', PARTIAL, false, false];
-		if (cmd === 'read_file_content_checked') return new Promise(() => {});
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
-	const session = makeSession();
-	await session.loadMarkdown('/docs/big.md');
-	const tab = tabManager.activeTab!;
-	assert.equal(tab.isTruncated, true, 'precondition: the buffer is partial');
-	assert.equal(tab.hasReplacementChars, false, 'precondition: the preview decoded cleanly');
-	return { session, tab };
-}
-
-test('completing a partial buffer carries the tail\'s own verdict', async () => {
-	// The case the old comment called safe: the preview covered the first 50KB
-	// and decoded cleanly, but a file can be valid UTF-8 up to there and not
-	// after. With the bare command the tab kept the preview's verdict and the
-	// next auto-save wrote U+FFFD over the file.
-	const { session, tab } = await openPartial();
-
-	handleInvoke = (cmd) => {
-		if (cmd === 'read_file_content_checked') return [FULL, true];
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
-
-	assert.equal(await session.ensureFullContent(tab.id), true);
-	assert.equal(tab.rawContent, FULL);
-	assert.equal(tab.hasReplacementChars, true, 'the completed buffer must carry its own fidelity');
-});
-
-test('completing a clean tail also clears a stale flag', async () => {
-	// The same mechanism in the other direction: a verdict that is decided on
-	// every read cannot go stale.
-	const { session, tab } = await openPartial();
-	tabManager.setTabDecodedLossy(tab.id, true);
-
-	handleInvoke = (cmd) => {
-		if (cmd === 'read_file_content_checked') return [FULL, false];
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
-
-	assert.equal(await session.ensureFullContent(tab.id), true);
-	assert.equal(tab.hasReplacementChars, false);
-});
-
-test('the completed buffer is refused or accepted according to that verdict', async () => {
-	// End to end: the flag is not decoration, it decides the write.
-	const { session, tab } = await openPartial();
-	handleInvoke = (cmd) => {
-		if (cmd === 'read_file_content_checked') return [FULL, true];
-		if (cmd === 'save_file_content') return null;
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
-	await session.ensureFullContent(tab.id);
-
-	assert.equal(await session.saveContent(tab.id), false, 'a lossy buffer must not overwrite its file');
-	assert.equal(session.isLossySaveRefused(tab.id), true);
-	assert.ok(errors.length > 0, 'and the user is told once');
-});
 
 // --- the two component call sites -------------------------------------------
 

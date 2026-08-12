@@ -215,15 +215,36 @@ unchanged. Two things bite:
   answer, so a bare `invoke: () => Promise.resolve(null)` leaves `osType` null and the
   font defaults it indexes undefined.
 
-Three of the shimmed files were left where they are, because a rename does not reach what
-is wrong with them:
+One shimmed file is still where it is, because a rename does not reach what is wrong
+with it:
 
 - `foldStatePerDocument.test.ts` cuts functions out of `.svelte` files with its own
   brace-pairing scanner. The logic has to move into a `.svelte.ts` module first.
-- `tabReadingPosition.test.ts` calls `installShimDom()`, which assigns `globalThis.document`
-  — under vitest that replaces jsdom's. Its harness has to move to the real DOM first.
-- `checkedReadMigration.test.ts` is mostly the two never-migrate categories: that an
-  unchecked command exists nowhere in `src` *or* in the Rust crate.
+
+Of the other two:
+
+- `tabReadingPosition.test.ts` called `installShimDom()`, which assigns
+  `globalThis.document` — under vitest that replaces jsdom's. Its anchor harness was
+  rewritten onto the real DOM (`tabReadingPosition.spec.ts`), which it could be because
+  `findAnchorElement` reads structure and attributes and measures nothing.
+- `checkedReadMigration.test.ts` was two files in one, which is why neither answer fit
+  it. Six of its tests are the never-migrate categories — an unchecked command existing
+  nowhere in `src` *or* in the Rust crate, and four statement-order claims about a
+  `.svelte` component — and stayed. The three that drive `ensureFullContent` are a runes
+  module run for real, and are `checkedReadMigration.spec.ts` now. A file that shims
+  runes is worth opening before it is worth renaming: the split may be per test rather
+  than per file.
+
+### A real DOM is not a layout
+
+jsdom implements the DOM, not CSS layout: `offsetTop`, `offsetHeight` and every
+`getBoundingClientRect()` are 0. So migrating a file buys real answers about structure,
+attributes, traversal and parsing, and buys nothing at all about geometry. A test whose
+subject is a position on screen has to construct the boxes either way —
+`scrollSyncAcrossFolds.test.ts` lays a document out with collapsed folds in it, and
+`anchorJumpUnderZoom.spec.ts` builds elements whose rects carry a zoom factor while their
+`offsetWidth` does not. Neither is worse for being under `node --test` or better for being
+under vitest; the geometry is the fixture.
 
 ### Anything a test constructs inside an effect root must be torn down
 
