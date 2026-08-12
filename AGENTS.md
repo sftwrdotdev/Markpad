@@ -227,8 +227,13 @@ Of the other two:
   `globalThis.document` — under vitest that replaces jsdom's. Its anchor harness was
   rewritten onto the real DOM (`tabReadingPosition.spec.ts`), which it could be because
   `findAnchorElement` reads structure and attributes and measures nothing.
-- `checkedReadMigration.test.ts` is mostly the two never-migrate categories: that an
-  unchecked command exists nowhere in `src` *or* in the Rust crate.
+- `checkedReadMigration.test.ts` was two files in one, which is why neither answer fit
+  it. Six of its tests are the never-migrate categories — an unchecked command existing
+  nowhere in `src` *or* in the Rust crate, and four statement-order claims about a
+  `.svelte` component — and stayed. The three that drive `ensureFullContent` are a runes
+  module run for real, and are `checkedReadMigration.spec.ts` now. A file that shims
+  runes is worth opening before it is worth renaming: the split may be per test rather
+  than per file.
 
 ### A real DOM is not a layout
 
