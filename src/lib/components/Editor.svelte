@@ -27,7 +27,13 @@
 		getVerticalOffsetForLine,
 		type ScrollSyncPosition,
 	} from '../utils/scrollSync.js';
-	import { asBufferLine, type BufferLine } from '../utils/lineCoordinates.js';
+	import {
+		asBufferLine,
+		editorTopLineForTabAnchor,
+		lineCoordinates,
+		tabAnchorForEditorTopLine,
+		type BufferLine,
+	} from '../utils/lineCoordinates.js';
 	import {
 		DEFAULT_IMAGE_DIRECTORY,
 		documentParentDir,
@@ -485,8 +491,13 @@
 		} else if (tabManager.activeTab) {
 			let scrolled = false;
 			if (tabManager.activeTab.anchorLine > 0) {
+				// The anchor is a RENDERER line, whoever recorded it — this pane
+				// or the preview — and Monaco can only be aimed with a buffer
+				// line. The conversion is the whole point of the crossing: a tab
+				// last scrolled in the preview used to open here the height of
+				// its front matter too far up the document.
 				editor.revealLineNearTop(
-					Math.max(1, tabManager.activeTab.anchorLine - 2),
+					editorTopLineForTabAnchor(lineCoordinates(value), tabManager.activeTab.anchorLine),
 					monaco.editor.ScrollType.Immediate,
 				);
 				scrolled = true;
@@ -841,10 +852,19 @@
 				}
 
 				const ranges = editor.getVisibleRanges();
-				if (ranges.length > 0) {
-					const startLine = ranges[0].startLineNumber;
-					const anchorLine = startLine + 2;
-					tabManager.updateTabAnchorLine(currentTabId, anchorLine);
+				const model = editor.getModel();
+				if (ranges.length > 0 && model) {
+					// Monaco counts from the first line of the FILE and the tab's
+					// anchor counts from the first line of the body, so this is a
+					// crossing; `EDITOR_ANCHOR_LINE_OFFSET` is the old `+ 2`,
+					// which is a separate decision and is documented as one.
+					tabManager.updateTabAnchorLine(
+						currentTabId,
+						tabAnchorForEditorTopLine(
+							lineCoordinates(model.getValue()),
+							asBufferLine(ranges[0].startLineNumber),
+						),
+					);
 				}
 			}
 
