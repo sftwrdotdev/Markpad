@@ -82,7 +82,24 @@ function updateFoldHeights(root: HTMLElement) {
 	}
 }
 
-export function observeFoldLayout(root: HTMLElement): () => void {
+export interface FoldLayoutObservation {
+	/**
+	 * Start watching the fold contents inside newly rendered markup.
+	 *
+	 * Called with the blocks `blockPatch.ts` just inserted, rather than with the
+	 * whole article. The observation used to be torn down and rebuilt on every
+	 * keystroke, which meant a document's every fold got a fresh
+	 * ResizeObserver registration per character — and a fresh registration
+	 * delivers an initial observation, so every fold re-measured whether or not
+	 * anything about it had changed. A block nobody replaced now keeps the
+	 * observer it already had. `observe` is idempotent, so re-registering a
+	 * survivor costs nothing either.
+	 */
+	observe(scope: Element): void;
+	stop(): void;
+}
+
+export function observeFoldLayout(root: HTMLElement): FoldLayoutObservation {
 	let frame: number | null = null;
 
 	const scheduleUpdate = () => {
@@ -94,18 +111,47 @@ export function observeFoldLayout(root: HTMLElement): () => void {
 	};
 
 	const observer = new ResizeObserver(scheduleUpdate);
-	for (const content of root.querySelectorAll<HTMLElement>(
-		`${FOLD_WRAPPER_SELECTOR} > .content-inner`,
-	)) {
-		observer.observe(content);
-	}
+	const observe = (scope: Element) => {
+		// A block that just replaced another is not obliged to be the same height,
+		// and every fold wrapper above it is still pinned to the height the old one
+		// measured. For the frame it takes ResizeObserver to fire, `.content-inner`
+		// — `overflow: visible` while expanded — spills past the box meant to hold
+		// it, and the next section is overlapped. Rebuilding the article never
+		// showed this: a fresh wrapper carries no inline property and lays out at
+		// `auto`. Releasing puts the patch on that same footing, and the measured
+		// height is republished below either way. A collapsed wrapper is unaffected
+		// — its `height: 0` comes from the more specific `.is-collapsed` rule.
+		for (let element = scope.parentElement; element; element = element.parentElement) {
+			if (element.matches(FOLD_WRAPPER_SELECTOR)) {
+				element.style.removeProperty('--fold-content-height');
+			}
+		}
 
+		// `querySelectorAll` never returns the node it was called on, and a block
+		// the patch inserted can itself be the wrapper.
+		if (scope.matches(FOLD_WRAPPER_SELECTOR)) {
+			const own = scope.querySelector<HTMLElement>(FOLD_CONTENT_SELECTOR);
+			if (own) observer.observe(own);
+		}
+		for (const content of scope.querySelectorAll<HTMLElement>(
+			`${FOLD_WRAPPER_SELECTOR} > .content-inner`,
+		)) {
+			observer.observe(content);
+		}
+
+		scheduleUpdate();
+	};
+
+	observe(root);
 	window.addEventListener('resize', scheduleUpdate);
 	scheduleUpdate();
 
-	return () => {
-		observer.disconnect();
-		window.removeEventListener('resize', scheduleUpdate);
-		if (frame !== null) cancelAnimationFrame(frame);
+	return {
+		observe,
+		stop: () => {
+			observer.disconnect();
+			window.removeEventListener('resize', scheduleUpdate);
+			if (frame !== null) cancelAnimationFrame(frame);
+		},
 	};
 }

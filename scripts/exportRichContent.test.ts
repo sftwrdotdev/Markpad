@@ -329,7 +329,7 @@ test('the renderer works on a detached element', async () => {
 	assert.equal(root.parentNode, null);
 
 	await renderRichContent({
-		root,
+		roots: [root],
 		libraries: fakeLibraries(record) as any,
 		mermaidTheme: 'neutral',
 		idFactory: (index: number) => `diagram-${index}`,

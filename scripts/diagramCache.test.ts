@@ -111,7 +111,7 @@ async function render(
 	const root = (globalThis as any).document.createElement('div');
 	root.innerHTML = html;
 	await renderRichContent({
-		root,
+		roots: [root],
 		libraries: libraries(options.record, options.extraFor) as any,
 		mermaidTheme: options.theme ?? 'neutral',
 		idFactory: ids(),

@@ -142,8 +142,17 @@ export function sanitizeDiagramSvg(svg: string): string {
 }
 
 export interface RenderRichContentOptions {
-	/** The element holding processed Markdown. Live or detached, both work. */
-	root: HTMLElement;
+	/**
+	 * The elements holding processed Markdown. Live or detached, both work.
+	 *
+	 * A list, not one element, because the preview no longer rebuilds its
+	 * article: `blockPatch.ts` replaces the blocks that changed and hands their
+	 * new nodes here, so a keystroke typesets one paragraph instead of the
+	 * document. The export passes the single detached element it is building.
+	 * The roots must not contain one another — each is visited on its own, so a
+	 * nested pair would be highlighted, typeset and wrapped twice.
+	 */
+	roots: HTMLElement[];
 	libraries: RichContentLibraries;
 	/** Mermaid's own theme name, from `resolveMermaidTheme`. */
 	mermaidTheme: string;
@@ -185,17 +194,32 @@ export function carrySourcepos(from: Element, to: Element) {
 const COPY_ICON_SVG =
 	'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
 
+/**
+ * Everything in `root`'s subtree matching `selector`, and `root` itself if it
+ * matches.
+ *
+ * `querySelectorAll` alone was right while the root was the whole article,
+ * because a block is never the article. It is wrong for a root that IS a block:
+ * a patched-in `<p data-math="display">` would be skipped by its own typesetting
+ * pass.
+ */
+function selfAndDescendants(root: HTMLElement, selector: string): Element[] {
+	const matches: Element[] = root.matches(selector) ? [root] : [];
+	matches.push(...root.querySelectorAll(selector));
+	return matches;
+}
+
 export async function renderRichContent(options: RenderRichContentOptions): Promise<void> {
-	const { root, libraries } = options;
-	if (!root) return;
+	const { roots, libraries } = options;
+	if (roots.length === 0) return;
 
 	const { hljs, katex, renderMathInElement, mermaid } = libraries;
 	if (!hljs || !renderMathInElement || !mermaid) return;
 
-	const doc = root.ownerDocument ?? document;
+	const doc = roots[0].ownerDocument ?? document;
 	const idFactory = options.idFactory ?? defaultIdFactory;
 
-	const codeBlocks = Array.from(root.querySelectorAll('pre code'));
+	const codeBlocks = roots.flatMap((root) => selfAndDescendants(root, 'pre code'));
 
 	// `htmlLabels: false` is what keeps a diagram's text in the picture. With
 	// Mermaid's default (`true`) every label is an HTML `<div>`/`<span>` inside a
@@ -336,8 +360,8 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 
 	// KaTeX math rendering
 	if (katex) {
-		const mathElements = root.querySelectorAll('[data-math]');
-		for (const el of Array.from(mathElements)) {
+		const mathElements = roots.flatMap((root) => selfAndDescendants(root, '[data-math]'));
+		for (const el of mathElements) {
 			const isDisplay = el.getAttribute('data-math') === 'display';
 			const mathSource = el.getAttribute('data-math-source') || el.textContent || '';
 			try {
@@ -357,10 +381,16 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		}
 	}
 
+	// The one pass with no memo behind it (see #614: there is no seam to
+	// memoise without re-implementing KaTeX's delimiter scanner), so it is also
+	// the one that gains most from being handed a paragraph instead of a
+	// document. Per root, because the scanner walks a subtree.
 	if (renderMathInElement) {
-		renderMathInElement(root, {
-			delimiters: MATH_DELIMITERS,
-			throwOnError: false,
-		});
+		for (const root of roots) {
+			renderMathInElement(root, {
+				delimiters: MATH_DELIMITERS,
+				throwOnError: false,
+			});
+		}
 	}
 }

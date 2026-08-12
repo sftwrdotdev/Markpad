@@ -200,6 +200,18 @@ export class ShimNode {
 	querySelector(selector: string): ShimElement | null {
 		return this.querySelectorAll(selector)[0] ?? null;
 	}
+
+	/**
+	 * Does this element itself match?
+	 *
+	 * Needed since `renderRichContent` started taking a list of roots that are
+	 * blocks rather than the whole article: a root that IS a `[data-math]`
+	 * element has to be typeset, and `querySelectorAll` never returns the node
+	 * it was called on.
+	 */
+	matches(selector: string): boolean {
+		return parseSelectorList(selector).some((matcher) => matcher(this as unknown as ShimElement));
+	}
 }
 
 export class ShimText extends ShimNode {

@@ -76,7 +76,7 @@ async function render(html: string, record: Recorder, mathOutput?: (source: stri
 	const root = (globalThis as any).document.createElement('div');
 	root.innerHTML = html;
 	await renderRichContent({
-		root,
+		roots: [root],
 		libraries: libraries(record, mathOutput) as any,
 		mermaidTheme: 'neutral',
 	});

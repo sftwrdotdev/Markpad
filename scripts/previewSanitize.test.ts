@@ -87,11 +87,49 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 	// `markdownBody`, i.e. of the DOM the sanitized sink already injected. It is
 	// not a second policy, it is the same bytes read back out of the document —
 	// which is what the next two assertions pin.
-	const injected = [...new Set([...viewerSource.matchAll(/\{@html\s+([^}]+?)\s*\}/g)].map((m) => m[1]))].sort();
+	//
+	// The document's own sink is no longer one of them. `{@html sanitizedHtml}`
+	// rebuilt the whole article per keystroke, so the preview now patches in only
+	// the blocks that changed (see utils/blockPatch.ts) — which means the string
+	// becomes nodes inside that module instead of inside the compiler's `@html`.
+	// The security property is unchanged and the chain is the same length: the
+	// sanitizer's output, and nothing else, is what is parsed. The two
+	// assertions after this one are that chain.
+	//
+	// Matched at the start of a line so that a comment *about* `{@html}` — this
+	// file's subject, and the viewer is full of them now — cannot stand in for a
+	// sink and quietly satisfy the check.
+	const injected = [
+		...new Set([...viewerSource.matchAll(/^[^\S\n]*\{@html\s+([^}]+?)\s*\}/gm)].map((m) => m[1])),
+	].sort();
 	assert.deepEqual(
 		injected,
-		[sanitizedSinkName(), 'tooltip.html'].sort(),
+		['tooltip.html'],
 		'unexpected {@html} sink — what the preview injects is the shared sanitizer output',
+	);
+
+	// The document sink, in the form it takes now: one call, and what it is
+	// handed is the sanitized string. `patchPreviewBlocks` is the only way into
+	// the preview's article, so pinning its argument pins the whole path.
+	const patchArguments = [...viewerSource.matchAll(/patchPreviewBlocks\(\s*[\w.]+\s*,\s*([\w.]+)\s*\)/g)].map(
+		(match) => match[1],
+	);
+	assert.deepEqual(
+		patchArguments,
+		[sanitizedSinkName()],
+		'the preview must patch in the shared sanitizer output, once, and nothing else',
+	);
+
+	// And that the module it is handed to has no other way of making nodes out
+	// of a string: one `innerHTML`, assigned from the parameter above.
+	const blockPatchSource = readSource('src/lib/utils/blockPatch.ts');
+	const parses = [...blockPatchSource.matchAll(/\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
+		(m) => m[1].trim(),
+	);
+	assert.deepEqual(
+		parses,
+		['sanitizedHtml'],
+		'blockPatch.ts must parse the sanitized string and never assemble markup of its own',
 	);
 
 	// Why the footnote sink is allowed, pinned as a direction rather than as a

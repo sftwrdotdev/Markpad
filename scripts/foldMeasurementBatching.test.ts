@@ -50,6 +50,8 @@ function createFoldRoot(specs: { id: string; height: number | null }[]) {
 	});
 
 	const root = {
+		// The article, which is never itself a fold wrapper.
+		matches: () => false,
 		querySelectorAll: () => wrappers,
 		get offsetHeight() {
 			events.push({ type: 'commit' });
@@ -82,9 +84,9 @@ async function runFoldLayout(specs: { id: string; height: number | null }[]) {
 	globals.window = { addEventListener() {}, removeEventListener() {} };
 
 	try {
-		const stop = observeFoldLayout(root as unknown as HTMLElement);
+		const observation = observeFoldLayout(root as unknown as HTMLElement);
 		for (const frame of frames.splice(0)) frame();
-		stop();
+		observation.stop();
 		return events;
 	} finally {
 		Object.assign(globals, saved);

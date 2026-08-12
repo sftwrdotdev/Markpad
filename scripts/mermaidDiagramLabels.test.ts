@@ -162,7 +162,7 @@ async function renderDiagrams(): Promise<Map<string, ShimElement>> {
 		.join('');
 
 	await renderRichContent({
-		root: root as any,
+		roots: [root as any],
 		libraries: libraries() as any,
 		mermaidTheme: 'neutral',
 		idFactory: (index: number) => `diagram-${index}`,

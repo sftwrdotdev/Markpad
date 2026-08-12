@@ -48,11 +48,40 @@ test('preview lifecycle starts and cleans up fold observation', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	assert.match(viewer, /observeFoldLayout\((?:markdownBody|body)\)/);
-	assert.match(viewer, /stopObservingFoldLayout\?\.\(\)/);
+	assert.match(viewer, /observation\.stop\(\)/);
 });
 
 test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	assert.match(viewer, /if \(!html \|\| !body \|\| \(isEditing && !isSplit\)\) return;/);
+	assert.match(viewer, /if \(!body \|\| \(isEditing && !isSplit\)\) return;/);
+});
+
+// The observation used to be torn down and rebuilt on every render, which is
+// how a document's every fold came to re-measure once per character:
+// `ResizeObserver.observe` re-registers a target it is already watching, and a
+// registration delivers an initial observation. What replaced it is a live
+// observation plus `observe` calls for the blocks the patch inserted, so the
+// two halves of that have to stay coupled — a viewer that re-observes the whole
+// host, or a `foldLayout.ts` that only observes from a root, puts the cost back
+// without changing a single assertion above.
+test('only newly patched blocks are handed to the fold observer', () => {
+	const viewer = readSource('src/lib/MarkdownViewer.svelte');
+	const foldLayout = readSource('src/lib/utils/foldLayout.ts');
+
+	assert.match(
+		viewer,
+		/for \(const \w+ of patch\.inserted\) foldLayout\?\.observe\(\w+\)/,
+		'the viewer must observe the patched blocks, not the whole preview',
+	);
+	assert.doesNotMatch(
+		viewer,
+		/foldLayout\?\.observe\(host\)/,
+		're-observing the host re-registers every fold in the document',
+	);
+	assert.match(
+		foldLayout,
+		/observe\(scope: Element\)/,
+		'observeFoldLayout must accept a scope smaller than the article',
+	);
 });

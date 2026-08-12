@@ -306,7 +306,13 @@ async function renderExportRichContent(root: HTMLElement, ctx: ExportContext): P
 	try {
 		const libraries = ctx.libraries ?? (await loadRichContentLibraries());
 		await renderRichContent({
-			root,
+			// One root, and always the whole thing: an exported file is a string,
+			// so there is no previous DOM to keep any of. The preview's split from
+			// this — same render, same filter, same detached parse, then either
+			// serialize it or diff it into the article — is the whole reason
+			// `blockPatch.ts` takes an already-sanitized string and produces nodes
+			// rather than owning a render of its own.
+			roots: [root],
 			libraries,
 			mermaidTheme: ctx.mermaidTheme,
 			onError: (error) => console.error('Rich content failed to render for HTML export', error),
