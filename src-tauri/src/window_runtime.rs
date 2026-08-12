@@ -211,7 +211,11 @@ fn save_pinned_tag_at(
     })
 }
 
-fn remove_pinned_tag_at(lock: &Mutex<()>, path: &Path, name: String) -> Result<(), crate::error::Error> {
+fn remove_pinned_tag_at(
+    lock: &Mutex<()>,
+    path: &Path,
+    name: String,
+) -> Result<(), crate::error::Error> {
     update_pinned_tags(lock, path, move |tags| {
         tags.retain(|tag| tag.name != name);
     })
@@ -298,7 +302,11 @@ fn tag_held_by_another_window(
 }
 
 #[tauri::command]
-pub fn is_window_tag_taken(window: tauri::Window, state: State<'_, AppState>, name: String) -> bool {
+pub fn is_window_tag_taken(
+    window: tauri::Window,
+    state: State<'_, AppState>,
+    name: String,
+) -> bool {
     let registry = lock_recover(&state.window_registry);
     tag_held_by_another_window(&registry, window.label(), &name)
 }
@@ -786,7 +794,11 @@ mod tests {
         .unwrap();
 
         let tags = read_pinned_tags_at(&path);
-        assert_eq!(tags.len(), 1, "one name, one entry — the pin file is keyed by name");
+        assert_eq!(
+            tags.len(),
+            1,
+            "one name, one entry — the pin file is keyed by name"
+        );
         assert_eq!(
             tags[0].files,
             vec!["/notes/c.md".to_string()],
@@ -829,8 +841,14 @@ mod tests {
         registry.insert("main".to_string(), meta_with_tag(Some("Research")));
         registry.insert("window-2".to_string(), meta_with_tag(None));
 
-        assert!(!tag_held_by_another_window(&registry, "window-3", "research"));
-        assert!(!tag_held_by_another_window(&registry, "window-3", "Research notes"));
+        assert!(!tag_held_by_another_window(
+            &registry, "window-3", "research"
+        ));
+        assert!(!tag_held_by_another_window(
+            &registry,
+            "window-3",
+            "Research notes"
+        ));
         assert!(!tag_held_by_another_window(&registry, "window-3", ""));
 
         // The registry is the live window list, so a closed window releases its

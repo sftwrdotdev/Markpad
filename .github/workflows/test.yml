@@ -117,7 +117,36 @@ jobs:
       - name: run frontend behavior tests (vitest)
         run: npm run test:vitest
 
+      # Nothing had ever checked Rust formatting, so master drifted to 47
+      # rustfmt diffs across all six source files -- not because anyone
+      # disagreed with the tool, but because `cargo fmt` is a thing you have to
+      # remember and nothing remembered it. The cost landed on whoever ran it
+      # next: a formatting sweep buried inside an unrelated change, or an
+      # unrelated change buried inside a formatting sweep.
+      #
+      # The sweep is done. This step is what stops it happening again, and it
+      # is the cheap half of this pair -- `--check` parses and prints, it does
+      # not compile, so it fails in about a second and before the two
+      # multi-minute steps below it.
+      - name: check rust formatting
+        run: |
+          cd src-tauri
+          cargo fmt --check
+
       - name: run cargo test
         run: |
           cd src-tauri
           cargo test
+
+      # `-D warnings` is only defensible because the count is currently zero:
+      # the two that existed (a redundant `'static` on a const, a `push_str`
+      # with a one-character literal) are fixed in the same commit as this
+      # gate. A gate added over a non-zero count is one people learn to ignore.
+      #
+      # `--all-targets` so the test modules are linted too -- one of the two
+      # lived in a `#[cfg(test)]` const and a default `cargo clippy` never saw
+      # it.
+      - name: run clippy
+        run: |
+          cd src-tauri
+          cargo clippy --all-targets -- -D warnings

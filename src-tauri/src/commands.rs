@@ -108,11 +108,9 @@ pub async fn list_heading_anchors(markdown: String) -> Result<Vec<HeadingAnchor>
 
 #[tauri::command]
 pub async fn render_markdown(content: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(convert_markdown(&content))
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    tauri::async_runtime::spawn_blocking(move || Ok(convert_markdown(&content)))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// Reads a file, with the fidelity of the decode and the encoding it was
@@ -248,8 +246,8 @@ pub async fn export_pdf_windows(window: tauri::WebviewWindow, path: String) -> R
         use std::sync::mpsc::sync_channel;
         use std::time::Duration;
         use webview2_com::{
-            PrintToPdfCompletedHandler,
             Microsoft::Web::WebView2::Win32::{ICoreWebView2Environment6, ICoreWebView2_7},
+            PrintToPdfCompletedHandler,
         };
         use windows::core::{Interface, HSTRING};
 
@@ -419,11 +417,21 @@ pub async fn fetch_vscode_theme(app: AppHandle, url: String) -> Result<String, S
         .timeout(VSIX_REQUEST_TIMEOUT)
         .build()
         .map_err(|e| e.to_string())?;
-    let mut response = client.get(&vsix_url).send().await.map_err(|e| e.to_string())?;
+    let mut response = client
+        .get(&vsix_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("VSIX download failed with HTTP {}", response.status()));
+        return Err(format!(
+            "VSIX download failed with HTTP {}",
+            response.status()
+        ));
     }
-    if response.content_length().is_some_and(|length| length > MAX_VSIX_DOWNLOAD_BYTES as u64) {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_VSIX_DOWNLOAD_BYTES as u64)
+    {
         return Err("VSIX download exceeds the allowed size".to_string());
     }
     let mut bytes = Vec::new();
@@ -643,7 +651,6 @@ pub fn get_os_type() -> String {
     }
 }
 
-
 #[tauri::command]
 pub fn clipboard_write_text(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
@@ -669,14 +676,14 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
     {
         let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
         use image::ImageEncoder;
-        
+
         // Check if running on macOS and scale image if needed
         #[cfg(target_os = "macos")]
         {
             if macos_image_scaling {
                 // Use image crate for high-quality scaling
                 use image::{DynamicImage, ImageBuffer, Rgba};
-                
+
                 // Convert arboard Image to ImageBuffer
                 let mut img_buffer = ImageBuffer::new(image.width as u32, image.height as u32);
                 for (x, y, pixel) in img_buffer.enumerate_pixels_mut() {
@@ -686,21 +693,21 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
                             image.bytes[idx],
                             image.bytes[idx + 1],
                             image.bytes[idx + 2],
-                            image.bytes[idx + 3]
+                            image.bytes[idx + 3],
                         ]);
                     }
                 }
-                
+
                 // Create DynamicImage
                 let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
-                
+
                 // Resize with high-quality Lanczos3 filter
                 let resized = dynamic_image.resize(
                     (image.width / 2) as u32,
                     (image.height / 2) as u32,
-                    image::imageops::FilterType::Lanczos3
+                    image::imageops::FilterType::Lanczos3,
                 );
-                
+
                 // Write the resized image
                 let resized_rgba = resized.to_rgba8();
                 encoder
@@ -723,7 +730,7 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
                     .map_err(|e| e.to_string())?;
             }
         }
-        
+
         #[cfg(not(target_os = "macos"))]
         {
             // For other platforms, use the original image
@@ -958,7 +965,9 @@ pub(crate) mod tests {
     fn zip_entry_reads_stop_at_the_limit_even_when_the_header_understates_size() {
         let payload = vec![b'a'; 64];
         assert_eq!(
-            read_zip_entry_to_string(payload.as_slice(), 64).unwrap().len(),
+            read_zip_entry_to_string(payload.as_slice(), 64)
+                .unwrap()
+                .len(),
             64,
         );
         assert!(
@@ -969,10 +978,22 @@ pub(crate) mod tests {
 
     #[test]
     fn export_data_url_uses_mime_from_extension_case_insensitively() {
-        assert_eq!(mime_type_for_export_path(Path::new("diagram.PNG")), "image/png");
-        assert_eq!(mime_type_for_export_path(Path::new("photo.JpEg")), "image/jpeg");
-        assert_eq!(mime_type_for_export_path(Path::new("vector.svg")), "image/svg+xml");
-        assert_eq!(mime_type_for_export_path(Path::new("unknown.bin")), "application/octet-stream");
+        assert_eq!(
+            mime_type_for_export_path(Path::new("diagram.PNG")),
+            "image/png"
+        );
+        assert_eq!(
+            mime_type_for_export_path(Path::new("photo.JpEg")),
+            "image/jpeg"
+        );
+        assert_eq!(
+            mime_type_for_export_path(Path::new("vector.svg")),
+            "image/svg+xml"
+        );
+        assert_eq!(
+            mime_type_for_export_path(Path::new("unknown.bin")),
+            "application/octet-stream"
+        );
     }
 
     #[test]
@@ -1018,10 +1039,17 @@ pub(crate) mod tests {
             .map(|(i, body)| drop_source(&root, i, "a.png", body))
             .collect();
 
-        let written: Vec<String> = sources.iter().map(|src| drop_into_img(src, &doc_dir)).collect();
+        let written: Vec<String> = sources
+            .iter()
+            .map(|src| drop_into_img(src, &doc_dir))
+            .collect();
 
         let distinct: std::collections::HashSet<&String> = written.iter().collect();
-        assert_eq!(distinct.len(), written.len(), "two drops shared a name: {written:?}");
+        assert_eq!(
+            distinct.len(),
+            written.len(),
+            "two drops shared a name: {written:?}"
+        );
         for (rel, body) in written.iter().zip(bodies.iter()) {
             assert_eq!(
                 fs::read(doc_dir.join(rel)).unwrap(),
@@ -1085,8 +1113,13 @@ pub(crate) mod tests {
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
 
-        let distinct: std::collections::HashSet<&String> = written.iter().map(|(rel, _)| rel).collect();
-        assert_eq!(distinct.len(), DROPS, "concurrent drops shared a name: {written:?}");
+        let distinct: std::collections::HashSet<&String> =
+            written.iter().map(|(rel, _)| rel).collect();
+        assert_eq!(
+            distinct.len(),
+            DROPS,
+            "concurrent drops shared a name: {written:?}"
+        );
         for (rel, body) in &written {
             assert_eq!(
                 &fs::read(doc_dir.join(rel)).unwrap(),

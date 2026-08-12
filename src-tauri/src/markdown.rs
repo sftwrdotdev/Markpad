@@ -23,7 +23,8 @@ use std::sync::LazyLock;
 /// between into an `<img src>`, destroying the prose *and* renumbering every
 /// task checkbox below it. Not matching (rather than matching and bailing out)
 /// also leaves the later, well-formed embed free to render.
-static INTERNAL_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[\[(.*?)\]\]").expect("valid regex literal"));
+static INTERNAL_EMBED_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"!\[\[(.*?)\]\]").expect("valid regex literal"));
 /// `[[target]]` / `[[target|alias]]` where the target names a heading — either
 /// in this document (`#Setup`) or in another file (`Notes#Setup`). The `#` is
 /// required: a wikilink without one is a bare note link, which Markpad has
@@ -33,7 +34,8 @@ static INTERNAL_EMBED_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!\[\[(
 /// `process_wikilinks` re-checks that the target half really has one.
 /// The inner text stops at the first `]`, as the narrower `[[#…]]` pattern
 /// this replaced also did.
-static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[\[([^\]]*#[^\]]*)\]\]").expect("valid regex literal"));
+static WIKILINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[\[([^\]]*#[^\]]*)\]\]").expect("valid regex literal"));
 /// ` ^block-id` at the end of a line. The leading whitespace is captured
 /// because Obsidian also accepts a block id alone on the line after the block
 /// it names, and `\s+` then spans the newline: the replacement has to put that
@@ -276,9 +278,8 @@ fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
             .iter()
             .take_while(|&&b| Some(b) == marker)
             .count();
-        let is_fence_line = indent <= 3
-            && matches!(marker, Some(b'`') | Some(b'~'))
-            && run_len >= 3;
+        let is_fence_line =
+            indent <= 3 && matches!(marker, Some(b'`') | Some(b'~')) && run_len >= 3;
 
         match fence {
             Some((ch, opener_len, start)) => {
@@ -358,7 +359,12 @@ fn push_inline_code_spans(
 /// Records the inline code spans inside `content[start..end]`, which must be
 /// a single block's worth of text. A run of N backticks pairs with the next
 /// run of exactly N; runs that never pair are literal text.
-fn pair_inline_code_runs(content: &str, start: usize, end: usize, regions: &mut Vec<(usize, usize)>) {
+fn pair_inline_code_runs(
+    content: &str,
+    start: usize,
+    end: usize,
+    regions: &mut Vec<(usize, usize)>,
+) {
     let chunk = &content.as_bytes()[start..end];
     let mut runs: Vec<(usize, usize)> = Vec::new(); // (offset in chunk, len)
     let mut i = 0usize;
@@ -620,7 +626,7 @@ fn process_parenthesized_autolinks(content: &str) -> Cow<'_, str> {
         output.push_str(url);
         output.push_str("](");
         output.push_str(url);
-        output.push_str(")");
+        output.push(')');
         output.push(')');
         copied_to = after_closing;
         scan_from = after_closing;
@@ -994,7 +1000,10 @@ fn find_escaped_dollar_spans(
                 run_end += 1;
             }
             if run_end < segment_end && bytes[run_end] == b'$' {
-                if !math.iter().any(|&(start, end)| start < run_end + 1 && end > index) {
+                if !math
+                    .iter()
+                    .any(|&(start, end)| start < run_end + 1 && end > index)
+                {
                     spans.push((index, run_end + 1));
                 }
                 index = run_end + 1;
@@ -1285,8 +1294,7 @@ fn annotate_task_checkboxes(html: String, markdown: &str) -> String {
             );
             format!(
                 "<li data-sourcepos=\"{}\">{}",
-                &captures["sourcepos"],
-                input,
+                &captures["sourcepos"], input,
             )
         })
         .into_owned()
@@ -1697,7 +1705,10 @@ pub(crate) mod tests {
         // matters is that the RENDERED document still has it as code.
         let html = convert_markdown(input);
         assert!(html.contains("^[not a footnote]"), "got: {html}");
-        assert!(!html.contains("not a footnote</p>"), "it became a footnote: {html}");
+        assert!(
+            !html.contains("not a footnote</p>"),
+            "it became a footnote: {html}"
+        );
     }
 
     /// A document that has BOTH kinds of code region, with the inline span at
@@ -2272,7 +2283,10 @@ pub(crate) mod tests {
         assert!(!sized.contains("onload=\""), "attribute injection: {sized}");
 
         let single = process_internal_embeds("![[p.png|64\" onload=\"y]]\n");
-        assert!(!single.contains("onload=\""), "attribute injection: {single}");
+        assert!(
+            !single.contains("onload=\""),
+            "attribute injection: {single}"
+        );
     }
 
     #[test]
@@ -2458,20 +2472,47 @@ pub(crate) mod tests {
             // meant. See `markdown_options` for why.
             ("~~gone~~", "<del", "strikethrough, unchanged"),
             ("H~2~O", "<del", "a lone tilde is still GFM strikethrough"),
-            ("text^[a note]", "footnote-ref", "the inline footnote still owns `^[`"),
-            ("A paragraph. ^abc123", "block-id-anchor", "and a block id its own shape"),
+            (
+                "text^[a note]",
+                "footnote-ref",
+                "the inline footnote still owns `^[`",
+            ),
+            (
+                "A paragraph. ^abc123",
+                "block-id-anchor",
+                "and a block id its own shape",
+            ),
             // Inserted text against the `+` that starts a list.
             ("++added++", "<ins", "inserted text"),
-            ("+ item one\n+ item two", "<ul", "a `+` list is still a list"),
+            (
+                "+ item one\n+ item two",
+                "<ul",
+                "a `+` list is still a list",
+            ),
             // The false positives that would make prose unreadable.
-            ("I know C++ and also C++ well", "C++ and also C++", "C++ in prose is not inserted text"),
-            ("see ~/notes and ~/tmp", "~/notes and ~/tmp", "home paths are not subscripts"),
-            ("`H~2~O ^2^ ++y++`", "<code", "and none of it applies inside code"),
+            (
+                "I know C++ and also C++ well",
+                "C++ and also C++",
+                "C++ in prose is not inserted text",
+            ),
+            (
+                "see ~/notes and ~/tmp",
+                "~/notes and ~/tmp",
+                "home paths are not subscripts",
+            ),
+            (
+                "`H~2~O ^2^ ++y++`",
+                "<code",
+                "and none of it applies inside code",
+            ),
         ];
 
         for (markdown, expected, why) in cases {
             let html = convert_markdown(&format!("{markdown}\n"));
-            assert!(html.contains(expected), "{why}: {markdown:?} produced {html}");
+            assert!(
+                html.contains(expected),
+                "{why}: {markdown:?} produced {html}"
+            );
         }
     }
 
@@ -2484,7 +2525,10 @@ pub(crate) mod tests {
     #[test]
     fn an_empty_table_cell_is_not_a_spoiler() {
         let html = convert_markdown("| a | b |\n|---|---|\n| 1 || 3 |\n");
-        assert!(html.contains("<td data-sourcepos=\"3:2-3:4\">1</td>"), "{html}");
+        assert!(
+            html.contains("<td data-sourcepos=\"3:2-3:4\">1</td>"),
+            "{html}"
+        );
         assert!(!html.contains("1 || 3"), "the `||` was swallowed: {html}");
         assert!(!html.contains("class=\"spoiler\""), "{html}");
     }
@@ -2504,8 +2548,14 @@ pub(crate) mod tests {
         // `\^\[([^\]\n]+)\]` stopped at the first `]`, so a note containing
         // brackets lost its tail and left a stray `]` in the paragraph.
         let nested = convert_markdown("text^[a note with [brackets] inside]\n");
-        assert!(nested.contains("a note with [brackets] inside"), "got: {nested}");
-        assert!(!nested.contains("inside]</p>"), "the tail was dropped: {nested}");
+        assert!(
+            nested.contains("a note with [brackets] inside"),
+            "got: {nested}"
+        );
+        assert!(
+            !nested.contains("inside]</p>"),
+            "the tail was dropped: {nested}"
+        );
     }
 
     #[test]
@@ -2553,7 +2603,10 @@ pub(crate) mod tests {
         // to render as literal text because the pattern required `#` to
         // follow `[[` immediately.
         let out = process_wikilinks("[[Notes#Setup]]\n");
-        assert!(out.contains("[Notes > Setup](Notes.md#setup)"), "got: {out}");
+        assert!(
+            out.contains("[Notes > Setup](Notes.md#setup)"),
+            "got: {out}"
+        );
     }
 
     #[test]
@@ -2607,7 +2660,10 @@ pub(crate) mod tests {
     #[test]
     fn file_wikilink_alias_and_subfolder_and_punctuated_heading() {
         let out = process_wikilinks("[[docs/Guide#1. 概述|Overview]]\n");
-        assert!(out.contains("[Overview](docs/Guide.md#1-概述)"), "got: {out}");
+        assert!(
+            out.contains("[Overview](docs/Guide.md#1-概述)"),
+            "got: {out}"
+        );
     }
 
     #[test]
@@ -2616,7 +2672,10 @@ pub(crate) mod tests {
         // title; parentheses would close it early. decodeLinkPath() on the
         // frontend undoes all of this.
         let out = process_wikilinks("[[My Notes (v2)#Setup]]\n");
-        assert!(out.contains("(My%20Notes%20%28v2%29.md#setup)"), "got: {out}");
+        assert!(
+            out.contains("(My%20Notes%20%28v2%29.md#setup)"),
+            "got: {out}"
+        );
         assert!(out.contains("[My Notes (v2) > Setup]"), "got: {out}");
     }
 
@@ -2799,11 +2858,7 @@ pub(crate) mod tests {
     /// would leave the total unchanged, but no prefix boundary between the
     /// two survives. Checking the sentinel rather than the raw line count is
     /// what lets the inline-footnote step append its definitions afterwards.
-    fn assert_transform_preserves_line_numbers(
-        name: &str,
-        transform: LineTransform,
-        input: &str,
-    ) {
+    fn assert_transform_preserves_line_numbers(name: &str, transform: LineTransform, input: &str) {
         let lines: Vec<&str> = input.split_inclusive('\n').collect();
         for take in 0..=lines.len() {
             let mut probe = lines[..take].concat();
@@ -2943,7 +2998,9 @@ pub(crate) mod tests {
             .find(&needle)
             .expect("convert_markdown must keep its `&str -> String` signature");
         let rest = &source[start + needle.len()..];
-        let body = &rest[..rest.find("\n}\n").expect("convert_markdown must be terminated")];
+        let body = &rest[..rest
+            .find("\n}\n")
+            .expect("convert_markdown must be terminated")];
 
         // Bare `name(` calls: `.method(` and `Type::assoc(` are excluded by
         // the leading character class.
@@ -3036,8 +3093,8 @@ pub(crate) mod tests {
         // different one — the shape a broken line contract produces. Line 3
         // of the buffer is a fence, so annotating would let a click write a
         // "- [x]" marker into a code block (issue #352).
-        let rendered =
-            convert_markdown("intro paragraph\n\n- [ ] task\n").replace(" data-task-checkbox=\"\"", "");
+        let rendered = convert_markdown("intro paragraph\n\n- [ ] task\n")
+            .replace(" data-task-checkbox=\"\"", "");
         assert!(
             rendered.contains("data-sourcepos=\"3:1-3:10\"><input type=\"checkbox\""),
             "expected an unannotated task input on line 3: {rendered}",
