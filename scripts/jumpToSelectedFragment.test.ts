@@ -440,7 +440,7 @@ test('one function owns what ⌘E means, and every entry point uses it', () => {
 	// here, so the chord cannot mean one thing with the caret in the editor and
 	// another with it in the preview — which is what
 	// `formatShortcutKeymap.test.ts` pins from the other side.
-	assert.match(viewerSource, /if \(cmdOrCtrl && key === 'e'\) \{[\s\S]{0,600}?toggleEditView\(\)/);
+	assert.match(viewerSource, /if \(mod && key === 'e'\) \{[\s\S]{0,600}?toggleEditView\(\)/);
 	assert.equal(
 		(viewerSource.match(/ontoggleEdit=\{\(\) => toggleEditView\(\)\}/g) ?? []).length,
 		3,

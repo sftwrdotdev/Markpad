@@ -59,6 +59,6 @@ test('window organization exposes move, merge, and carry actions', () => {
 	assert.match(tab, /menu-tab-move/);
 	assert.match(viewer, /async function mergeAllWindowsHere/);
 	assert.match(viewer, /async function carryActiveTabToNextWindow/);
-	assert.match(viewer, /cmdOrCtrl && e\.shiftKey && key === 'm'/);
+	assert.match(viewer, /modShift && key === 'm'/);
 	assert.match(titleBar, /onmergeAllWindows/);
 });

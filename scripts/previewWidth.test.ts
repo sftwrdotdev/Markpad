@@ -88,7 +88,9 @@ test('preview width keyboard shortcuts avoid editable controls and app modals', 
 	assert.match(viewerSource, /function canUsePreviewWidthShortcut\(target: EventTarget \| null, isSplit: boolean\)/);
 	assert.match(viewerSource, /showSettings \|\| modalState\.show \|\| promptModal\.show \|\| showHome/);
 	assert.match(viewerSource, /closest\('input, textarea, select, \[contenteditable="true"\], \[role="textbox"\]'\)/);
-	assert.match(viewerSource, /cmdOrCtrl && e\.altKey && !e\.shiftKey && \(code === 'BracketLeft' \|\| code === 'BracketRight'\)/);
+	// `modAlt` is the handler's name for "the platform modifier and Alt, and
+	// nothing else" — the chord these two keys are advertised under.
+	assert.match(viewerSource, /modAlt && \(code === 'BracketLeft' \|\| code === 'BracketRight'\)/);
 	assert.match(viewerSource, /settings\.previewFullWidth = false/);
 	assert.match(viewerSource, /settings\.previewMaxWidth = adjustPreviewMaxWidth\(settings\.previewMaxWidth, code === 'BracketLeft' \? -40 : 40\)/);
 });
