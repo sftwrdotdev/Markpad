@@ -160,6 +160,76 @@ export function isFoldCollapsed(region: FoldRegion): boolean {
 	return region.content.classList.contains(COLLAPSED_CLASS);
 }
 
+/**
+ * Where a fold driver acts, and where what it flips is written down.
+ *
+ * An argument rather than an import. The deviations live on the tab, and
+ * `markdown.ts` imports this module while it builds the preview — reaching for
+ * the tab store from here would put the whole store behind every render, and
+ * behind every test that renders anything.
+ */
+export interface FoldHost {
+	/** The preview root. `null` while the preview is off screen — editor-only mode. */
+	readonly root: Element | null;
+	/** The deviations recorded for the document on screen. */
+	readonly folds: ReadonlySet<string>;
+	/** Write a new deviation set to whatever owns that document. */
+	setFolds(next: Set<string>): void;
+}
+
+/**
+ * The single write path for a fold, whichever of the three drivers asked: the
+ * preview's own control (`toggleFoldFromClick`), the outline's fold button, and
+ * find opening what hides a match (`revealFold`).
+ *
+ * Both halves happen here, and that is the point. The stored deviation is what
+ * the NEXT render reads; the two class writes are what the current DOM shows. A
+ * driver that did only the second — which is what the callout title used to do —
+ * folds something that springs open again on the next keystroke, and there is
+ * nothing on screen to say why. One function is what stops a fourth driver from
+ * getting it half right.
+ *
+ * The state is flipped even when the fold is not in the DOM (the preview is
+ * hidden in editor-only mode, and the outline is still there to click), so the
+ * fold is honoured by the render that brings it back.
+ */
+export function toggleFold(host: FoldHost, key: string): void {
+	host.setFolds(flipFold(host.folds, key));
+
+	const region = host.root ? foldRegionByKey(host.root, key) : null;
+	if (region) applyFold(region, !isFoldCollapsed(region));
+}
+
+/** Open this fold if it is shut — what find asks for on the way to a match. */
+export function revealFold(host: FoldHost, key: string): void {
+	const region = host.root ? foldRegionByKey(host.root, key) : null;
+	if (region && isFoldCollapsed(region)) toggleFold(host, key);
+}
+
+/**
+ * The two things a click folds through: a heading's chevron, and a foldable
+ * callout's whole title bar. Narrower than `foldRegionAt` reads, deliberately —
+ * `.foldable-header` is the entire heading, and clicking the words of a heading
+ * is not a fold.
+ */
+const FOLD_CONTROL_SELECTOR = '.header-fold-icon, .callout-toggle';
+
+/**
+ * Fold whatever the reader clicked, and say whether they clicked a fold at all.
+ *
+ * `false` is an ordinary click — a link, or text — and still the caller's to
+ * deal with. `true` is a fold control, even in the case where it names no
+ * region: the click belonged to the fold either way and is not also a link.
+ */
+export function toggleFoldFromClick(host: FoldHost, target: Element): boolean {
+	const control = target.closest(FOLD_CONTROL_SELECTOR);
+	if (!control) return false;
+
+	const region = foldRegionAt(control);
+	if (region) toggleFold(host, region.key);
+	return true;
+}
+
 /** Put a fold's two elements in the given state. The stored deviation is the caller's. */
 export function applyFold(region: FoldRegion, collapsed: boolean): void {
 	region.head.classList.toggle(COLLAPSED_CLASS, collapsed);
