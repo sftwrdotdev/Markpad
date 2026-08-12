@@ -4,6 +4,7 @@ import { test } from 'vitest';
 
 import ts from 'typescript';
 
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { callbackBodies, functionSource, readSource } from './sourceTree.js';
 
 /*
@@ -734,7 +735,7 @@ test('a tab moved to another window has its model disposed on the way out', () =
 			isScrollSynced: false,
 			scrollTop: 0,
 			scrollPercentage: 0,
-			anchorLine: 0,
+			anchorLine: asRendererLine(0),
 			hasReplacementChars: false,
 			encoding: 'UTF-8',
 			history: ['/docs/a.md'],

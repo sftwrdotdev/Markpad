@@ -5,6 +5,7 @@ import { test } from 'vitest';
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { readSource } from './sourceTree.js';
 
 /*
@@ -429,7 +430,7 @@ test('every Tab construction site starts the rendered-HTML field empty', () => {
 		history: ['/notes/c.md'],
 		historyIndex: 0,
 		scrollPercentage: 0,
-		anchorLine: 0,
+		anchorLine: asRendererLine(0),
 		isSplit: false,
 		splitRatio: 0.5,
 		isScrollSynced: false,

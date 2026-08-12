@@ -1,4 +1,5 @@
 import type { Tab } from '../stores/tabs.svelte.js';
+import { asRendererLine, type RendererLine } from './lineCoordinates.js';
 import { nextUntitledTitle } from './untitledTitle.js';
 
 /**
@@ -55,7 +56,15 @@ export interface TransferableTab {
 	splitRatio: number;
 	scrollTop: number;
 	scrollPercentage: number;
-	anchorLine: number;
+	/**
+	 * A renderer line, as on the tab it was snapshotted from — see
+	 * `Tab.anchorLine`. The brand is phantom, so the wire format is a plain
+	 * JSON number and unchanged; what it buys is that the destination window
+	 * cannot quietly rebuild the tab with the arriving number read as a buffer
+	 * line. `NUMBER_FIELDS` below still validates it as a number, which is all
+	 * the wire can be checked for.
+	 */
+	anchorLine: RendererLine;
 	historyIndex: number;
 	history: string[];
 }
@@ -146,7 +155,10 @@ export function validateTransferPayload(json: string): TransferableTab | null {
 		splitRatio: obj.splitRatio as number,
 		scrollTop: obj.scrollTop as number,
 		scrollPercentage: obj.scrollPercentage as number,
-		anchorLine: obj.anchorLine as number,
+		// The number survived JSON; the brand did not. Re-declared here rather
+		// than left to `as number`, so the deserialising side states which
+		// numbering it believes arrived instead of inheriting it by accident.
+		anchorLine: asRendererLine(obj.anchorLine as number),
 		historyIndex: obj.historyIndex as number,
 		history: [...history] as string[],
 	};

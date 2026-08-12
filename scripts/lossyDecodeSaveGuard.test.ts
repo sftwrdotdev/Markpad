@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload } from '../src/lib/utils/tabTransfer.js';
 import { offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
@@ -209,7 +210,7 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
 		historyIndex: 0,
 		editorViewState: null,
 		scrollPercentage: 0,
-		anchorLine: 0,
+		anchorLine: asRendererLine(0),
 		isSplit: false,
 		splitRatio: 0.5,
 		isScrollSynced: false,

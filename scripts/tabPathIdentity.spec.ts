@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
+
 // A file path identifies a tab. Two tabs on one file are two buffers with two
 // dirty flags and two auto-save timers writing the same file in turn, so
 // whichever lands last silently overwrites the other's work. Every way to
@@ -150,7 +152,7 @@ test('a tab arriving from another window does not duplicate a file open here', (
 		isEditing: true,
 		scrollTop: 0,
 		scrollPercentage: 0,
-		anchorLine: 0,
+		anchorLine: asRendererLine(0),
 		isSplit: false,
 		splitRatio: 0.5,
 		isScrollSynced: false,
