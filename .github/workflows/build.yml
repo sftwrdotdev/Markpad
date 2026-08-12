@@ -41,7 +41,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          # An exact major rather than `lts/*`. Resolving an LTS *alias*
+          # requires the version manifest, which is a network call made before
+          # the tool-cache lookup — and that call is what failed three times in
+          # one afternoon with `self-signed certificate`, on jobs whose own
+          # work needed no network at all. A semver range is matched against
+          # the runner's tool cache first, and the cache already holds what
+          # `lts/*` was resolving to (`Found in cache @ …/node/24.18.0`), so
+          # the manifest is never reached. If a future image drops 24 this
+          # falls back to fetching the manifest — today's behaviour, not worse.
+          node-version: 24
 
       - name: Get Version
         id: get_version
@@ -192,7 +201,16 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: lts/*
+          # An exact major rather than `lts/*`. Resolving an LTS *alias*
+          # requires the version manifest, which is a network call made before
+          # the tool-cache lookup — and that call is what failed three times in
+          # one afternoon with `self-signed certificate`, on jobs whose own
+          # work needed no network at all. A semver range is matched against
+          # the runner's tool cache first, and the cache already holds what
+          # `lts/*` was resolving to (`Found in cache @ …/node/24.18.0`), so
+          # the manifest is never reached. If a future image drops 24 this
+          # falls back to fetching the manifest — today's behaviour, not worse.
+          node-version: 24
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
