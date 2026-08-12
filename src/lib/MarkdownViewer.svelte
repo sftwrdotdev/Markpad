@@ -2059,7 +2059,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			contentWidth: previewContentWidth,
 		});
 		if (result?.missingImages) {
-			addToast(`Exported HTML, but ${result.missingImages} local image(s) could not be embedded.`, 'warning');
+			addToast(
+				t('toast.exportedHtmlMissingImages', settings.language).replace(
+					'{{count}}',
+					String(result.missingImages),
+				),
+				'warning',
+			);
 		}
 		if (result?.path) {
 			const openResult = await askToOpenExportedFile(result.path, 'HTML', {
@@ -2122,7 +2128,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// Printing the stale DOM is still better than not printing, but the
 			// user must not be told a fresh export happened.
 			console.error('Failed to refresh the preview before export', error);
-			addToast('Exported PDF may not include the latest edits', 'warning');
+			addToast(t('toast.exportPdfStale', settings.language), 'warning');
 		}
 	}
 
@@ -2146,7 +2152,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			});
 		} catch (error) {
 			console.error('Failed to export PDF', error);
-			addToast('Failed to export PDF', 'error');
+			addToast(t('toast.exportPdfFailed', settings.language), 'error');
 		} finally {
 			restoreDiagrams();
 		}
@@ -2190,7 +2196,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// that does what its menu item says.
 			discardUnsavedBuffer: true,
 		});
-		addToast('Reloaded from disk', 'info');
+		addToast(t('toast.reloadedFromDisk', settings.language), 'info');
 	}
 
 	function toggleHome() {
@@ -2265,7 +2271,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// display.) The download has to happen in Rust, and there is no
 			// command for it yet, so say that rather than reporting a network
 			// failure that never happened.
-			addToast('Saving a remote image is not supported yet', 'error');
+			addToast(t('toast.remoteImageNotSupported', settings.language), 'error');
 			return;
 		}
 
@@ -2277,9 +2283,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (dest) {
 			try {
 				await invoke('copy_file', { src: realPath, dest });
-				addToast('Image saved successfully');
+				addToast(t('toast.imageSavedSuccessfully', settings.language));
 			} catch (e) {
-				addToast(`Failed to save image: ${e}`, 'error');
+				addToast(`${t('toast.failedToSaveImage', settings.language)}: ${e}`, 'error');
 			}
 		}
 	}
@@ -2294,9 +2300,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (dest) {
 			try {
 				await invoke('save_file_content', { path: dest, content: svg, encoding: 'UTF-8' });
-				addToast('Diagram saved as SVG');
+				addToast(t('toast.diagramSavedAsSVG', settings.language));
 			} catch (e) {
-				addToast(`Failed to save diagram: ${e}`, 'error');
+				addToast(`${t('toast.failedToSaveDiagram', settings.language)}: ${e}`, 'error');
 			}
 		}
 	}
@@ -2577,7 +2583,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					await openPath(localFilePath);
 				} catch (error) {
 					console.error('Failed to open local file link', localFilePath, error);
-					addToast(`Failed to open ${localFilePath}`, 'error');
+					addToast(
+						t('toast.openFailed', settings.language).replace('{{target}}', localFilePath),
+						'error',
+					);
 				}
 				return;
 			}
@@ -2592,7 +2601,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					await openUrl(anchor.href);
 				} catch (error) {
 					console.error('Failed to open link', anchor.href, error);
-					addToast(`Failed to open ${rawHref}`, 'error');
+					addToast(t('toast.openFailed', settings.language).replace('{{target}}', rawHref), 'error');
 				}
 			}
 		}

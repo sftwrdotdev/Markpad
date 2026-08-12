@@ -133,7 +133,7 @@ test('neither OS call can leave an unhandled rejection behind', () => {
 		offsetOf(handler, '} catch (error) {', at); // must have a catch after it
 		assert.ok(before.slice(tryAt).split('} catch').length === 1, `${call} must be inside the nearest try`);
 	}
-	assert.equal(handler.match(/addToast\(`Failed to open/g)?.length, 2, 'both failures are reported');
+	assert.equal(handler.match(/t\('toast\.openFailed'/g)?.length, 2, 'both failures are reported');
 });
 
 test('an asset URL is never treated as a link to a local file', () => {

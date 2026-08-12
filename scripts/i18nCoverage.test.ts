@@ -138,6 +138,8 @@ const staticKeys: Reference[] = [];
 const dynamicPrefixes = new Map<string, Set<string>>();
 /** `t(someVariable, lang)` — the key is computed elsewhere. */
 const indirectCalls = new Set<string>();
+/** The first argument of every `addToast(…)` call, whitespace-normalised. */
+const toastMessages: { arg: string; file: string }[] = [];
 
 for (const file of walkSourceFiles(SOURCE_ROOT)) {
 	if (file === DICTIONARY) continue;
@@ -180,6 +182,18 @@ for (const file of walkSourceFiles(SOURCE_ROOT)) {
 	// through `t(action.labelKey)`. Same exposure, different spelling.
 	for (const match of src.matchAll(/\blabelKey: '([^']+)'/g)) {
 		staticKeys.push({ key: match[1], file });
+	}
+
+	// Toast text is the one user-facing string nothing above can see. Every rule
+	// in this file is about a key that WAS asked for; a hardcoded English
+	// literal handed straight to `addToast()` never asks for one, so it passes
+	// every check and then shows English to all 26 locales. (`function addToast`
+	// is the declaration, not a call.)
+	for (const match of src.matchAll(/(?<!function\s)(?<![\w$.])addToast\(/g)) {
+		const arg = firstArgument(src, match.index + 'addToast'.length)
+			.trim()
+			.replace(/\s+/g, ' ');
+		toastMessages.push({ arg, file });
 	}
 }
 
@@ -230,6 +244,20 @@ const KNOWN_ORPHANS = new Set(['editor.status.lines', 'tooltip.zoomIn', 'tooltip
 // collects every one of them and checks it exists in English like any other key.
 // `scripts/shortcutRegistry.test.ts` additionally measures their per-locale
 // coverage, which this file only reports.
+// ------------------------------------------------- toasts that carry no t()
+//
+// One shape, reached from two call sites (`documentSession`'s and
+// `windowSession`'s `onError`). It is a pass-through, not a message: the words
+// are chosen by the caller in `src/lib/sessions/`, and those callers already
+// pass `t('toast.lossySaveBlocked', …)` and `t('toast.partialSaveBlocked', …)`
+// through it. The remaining raw strings ("Failed to release tab transfer
+// claim") are developer detail printed next to `String(error)` for a bug
+// report; translating them here is impossible anyway, because the scanner
+// cannot see which caller it is looking at. Fix them where they are written.
+const UNTRANSLATED_TOASTS = new Map<string, string>([
+	['`${message}: ${String(error)}`', 'the two onError pass-throughs (see src/lib/sessions/)'],
+]);
+
 const KNOWN_INDIRECT_CALLS = new Set([
 	'src/lib/components/Settings.svelte: t(action.labelKey)',
 	'src/lib/components/Settings.svelte: t(entry.labelKey)',
@@ -444,6 +472,35 @@ test('every t() call resolves to a literal, a declared family, or a known indire
 		'a t() call takes a key this scanner cannot see; either give it a literal ' +
 			'or add it here after making sure the key is checked some other way',
 	);
+});
+
+test('every toast message goes through t()', () => {
+	// The gap this closes: `addToast('Reloaded from disk', 'info')` satisfies
+	// every rule above by asking for nothing. Eleven of these shipped in
+	// MarkdownViewer.svelte, two of them inside `exportAsHtml`, whose next
+	// statement already read `t('modal.openExportedFileTitle', …)`.
+	//
+	// The rule is stated over the whole argument rather than over "is it a
+	// string literal", because `` `Failed to open ${path}` `` is the same defect
+	// spelled as a template. Anything that is not visibly built from t() has to
+	// be justified below.
+	assert.ok(toastMessages.length > 25, `found ${toastMessages.length} addToast() call sites`);
+
+	const untranslated = toastMessages.filter(({ arg }) => !/(?<![\w$.])t\(/.test(arg));
+	const unexpected = untranslated.filter(({ arg }) => !UNTRANSLATED_TOASTS.has(arg));
+	assert.deepEqual(
+		unexpected.map(({ arg, file }) => `${file}: addToast(${arg})`),
+		[],
+		'a toast shows text that never went through t(); it will read English in all 26 languages',
+	);
+
+	// The pin must not rot: a shape that got translated has to leave the list.
+	for (const [arg] of UNTRANSLATED_TOASTS) {
+		assert.ok(
+			untranslated.some((toast) => toast.arg === arg),
+			`addToast(${arg}) no longer exists — drop it from UNTRANSLATED_TOASTS`,
+		);
+	}
 });
 
 // ------------------------------------------- one label per control, per pane

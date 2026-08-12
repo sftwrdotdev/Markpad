@@ -74,7 +74,7 @@ test('a local image is copied on the Rust side', () => {
 	assert.match(body, /invoke\('copy_file', \{ src: realPath, dest \}\)/);
 	// And the save dialog is only offered for a file that can actually be
 	// written; the remote case bails out before it.
-	const bail = offsetOf(body, "addToast('Saving a remote image is not supported yet'");
+	const bail = offsetOf(body, "t('toast.remoteImageNotSupported'");
 	const dialog = offsetOf(body, 'await save(');
 	assert.ok(bail < dialog, 'do not ask for a destination that cannot be written');
 });
