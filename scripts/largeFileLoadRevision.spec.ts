@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { readSource } from './sourceTree.js';
 
-const sessionPath = new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url);
+const sessionPath = 'src/lib/sessions/documentSession.svelte.ts';
 const session = existsSync(sessionPath) ? readSource(sessionPath) : '';
 
 test('large-file completion requires the current clean load revision and unchanged view mode', () => {
@@ -32,18 +33,9 @@ test('large-file completion requires the current clean load revision and unchang
 // These drive the real TabManager and the real document session, so they lock
 // the outcome rather than the shape of the guard.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 // The preview always returns isFull=false to exercise the two-stage path
 // regardless of the actual threshold — no need for a multi-MB test string.
@@ -59,7 +51,8 @@ let handleInvoke: (cmd: string, args: any) => unknown = () => {
 	throw new Error('unexpected invoke');
 };
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => Promise.resolve(handleInvoke(cmd, args)),
 };
 

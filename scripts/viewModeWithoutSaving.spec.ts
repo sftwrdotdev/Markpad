@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 import ts from 'typescript';
@@ -27,19 +28,11 @@ import ts from 'typescript';
 
 // ---------------------------------------------------------------- environment
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-g.window.__TAURI_INTERNALS__ = g.window.__TAURI_INTERNALS__ ?? {
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: () => Promise.reject(new Error('no invoke expected in these tests')),
 };
 
@@ -47,7 +40,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
-const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 // ------------------------------------------------------------ source plucking
 

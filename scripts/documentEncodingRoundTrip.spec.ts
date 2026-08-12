@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 import { functionSource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
@@ -24,23 +25,9 @@ import { functionSource, readRustBackend, readSource, sliceBetween } from './sou
  * than read for.
  */
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
-Object.defineProperty(g, 'navigator', { value: { language: 'en-US' }, configurable: true });
-Object.defineProperty(g, 'localStorage', {
-	value: { getItem: () => null, setItem: () => {}, removeItem: () => {}, clear: () => {} },
-	configurable: true,
-});
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity, and jsdom
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 
 /** What the backend reports for the next read. Set per test. */
 let fileEncoding = 'UTF-8';
@@ -50,7 +37,8 @@ const BODY = '# 中文标题';
 /** Every `save_file_content` the session issued, in order. */
 let writes: Array<{ path: string; content: string; encoding: string }> = [];
 
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (command: string, args: Record<string, unknown>) => {
 		const cmd = command.replace(/^plugin:[^|]*\|/, '');
 		if (cmd === 'get_os_type') return Promise.resolve('macos');

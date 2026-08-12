@@ -141,8 +141,9 @@ export function readSourceFiles(dir: string): SourceFile[] {
  * the crate, not about which file the author last put X in.
  */
 export function rustSourceFiles(): string[] {
-	const dir = new URL('../src-tauri/src/', import.meta.url);
-	return readdirSync(dir)
+	// Cwd-relative, not `import.meta.url`: see the note on `readSource`. Under
+	// vitest that URL is `http://`, which `readdirSync` refuses outright.
+	return readdirSync('src-tauri/src')
 		.filter((name) => name.endsWith('.rs'))
 		.sort()
 		.map((name) => `src-tauri/src/${name}`);
@@ -157,7 +158,7 @@ export function rustSourceFiles(): string[] {
  */
 export function readRustBackend(): string {
 	return rustSourceFiles()
-		.map((path) => readSource(new URL(`../${path}`, import.meta.url)))
+		.map((path) => readSource(path))
 		.join('\n');
 }
 

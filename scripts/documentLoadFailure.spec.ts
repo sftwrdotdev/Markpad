@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+
+import { test } from 'vitest';
 
 // A read can fail on a file that is perfectly fine a moment later: a watcher
 // fires while another process is replacing the file, a network volume blinks,
@@ -15,22 +16,14 @@ import test from 'node:test';
 // collaborators as plain callbacks, and eleven other files in this suite
 // already build one, so the failure can be run instead of described.
 
-const g = globalThis as any;
-const runeEffect = (fn: () => void) => {
-	void fn;
-};
-runeEffect.root = (fn: () => unknown) => fn();
-g.$state = (value: unknown) => value;
-g.$state.raw = (value: unknown) => value;
-g.$state.snapshot = (value: unknown) => value;
-g.$derived = (value: unknown) => value;
-g.$derived.by = (fn: () => unknown) => fn();
-g.$effect = runeEffect;
-g.window = g.window ?? {};
+// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
+// Svelte plugin, so the store and the session run under real reactivity. Only
+// the Tauri backend, which jsdom cannot provide, is stubbed.
 let handleInvoke: (cmd: string, args: any) => unknown = (cmd) => {
 	throw new Error(`unexpected invoke: ${cmd}`);
 };
-g.window.__TAURI_INTERNALS__ = {
+(window as any).__TAURI_INTERNALS__ = {
+	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string, args: any) => Promise.resolve(handleInvoke(cmd, args)),
 };
 

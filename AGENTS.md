@@ -208,7 +208,22 @@ unchanged. Two things bite:
   resolves to its SSR build and `$effect` never flushes — the runes go quietly back to
   behaving like the shims.
 - `readSource(new URL('…', import.meta.url))` throws under vitest, which serves test files
-  over `http://`. Use the cwd-relative string form.
+  over `http://`. Use the cwd-relative string form. (`sourceTree.ts`'s own helpers already
+  do; `rustSourceFiles` had the same bug in `readdirSync` and was fixed the same way.)
+- Stub `get_os_type`. Importing `tabs.svelte.ts` pulls in the `settings` singleton, which
+  boots for real under the compiler; `initOSType` catches a rejection but not a `null`
+  answer, so a bare `invoke: () => Promise.resolve(null)` leaves `osType` null and the
+  font defaults it indexes undefined.
+
+Three of the shimmed files were left where they are, because a rename does not reach what
+is wrong with them:
+
+- `foldStatePerDocument.test.ts` cuts functions out of `.svelte` files with its own
+  brace-pairing scanner. The logic has to move into a `.svelte.ts` module first.
+- `tabReadingPosition.test.ts` calls `installShimDom()`, which assigns `globalThis.document`
+  — under vitest that replaces jsdom's. Its harness has to move to the real DOM first.
+- `checkedReadMigration.test.ts` is mostly the two never-migrate categories: that an
+  unchecked command exists nowhere in `src` *or* in the Rust crate.
 
 ### Anything a test constructs inside an effect root must be torn down
 
