@@ -65,9 +65,11 @@ export type ShortcutEntry = {
 	 */
 	readonly labelKey: string;
 	/**
-	 * The chords, most-advertised first. `Mod` renders as `Cmd` on macOS and
-	 * `Ctrl` elsewhere; a literal `Ctrl` stays `Ctrl` on every platform, which is
-	 * what tab cycling actually binds.
+	 * The chords, most-advertised first. Written in the spelling the CODE uses,
+	 * which is not always the spelling a user reads: `Mod` renders as `Cmd` on
+	 * macOS and `Ctrl` elsewhere, and `Alt` renders as `Opt` on macOS. A
+	 * literal `Ctrl` stays `Ctrl` on every platform, which is what tab cycling
+	 * actually binds.
 	 *
 	 * Consumers with room for one chord (the app menu, the toolbar tooltip) show
 	 * `chords[0]`; the panel shows all of them.
@@ -402,13 +404,39 @@ export function modifierFor(platform: string): 'Cmd' | 'Ctrl' {
 }
 
 /**
- * A chord template as a user should read it on `platform`.
+ * The words each platform prints on the keys the two platforms name
+ * differently, keyed by that platform's `Mod` word.
  *
- * Only `Mod` is substituted. Everything else — `Ctrl`, `Alt`, `F5`, `Shift` —
- * is already the literal the key carries.
+ * `Cmd` IS macOS here, and nothing else produces these two values: they come
+ * from `modifierFor` above, which is the one place the os type is read. So a
+ * caller holding a modifier has already told this table which platform it is
+ * rendering for, even though it never passes a platform.
+ *
+ * `Ctrl` and `Shift` are absent on purpose — a Mac keyboard prints `control`
+ * and `shift`, so those words need no translation. `Alt` is here because it
+ * needs one: Apple keyboards print `⌥ option` and the word "Alt" appears on no
+ * modern Mac keyboard.
+ */
+const PLATFORM_KEY_WORDS = {
+	Cmd: { Mod: 'Cmd', Alt: 'Opt' },
+	Ctrl: { Mod: 'Ctrl', Alt: 'Alt' },
+} as const;
+
+/**
+ * A chord template as a user should read it on `modifier`'s platform.
+ *
+ * The keys whose NAME differs across platforms are substituted — `Mod` and
+ * `Alt`, per `PLATFORM_KEY_WORDS`. Everything else — `Ctrl`, `Shift`, `F5`,
+ * the key itself — is already the literal the key carries on both.
+ *
+ * `Alt` used to be in that second list, and that was wrong: the panel advertised
+ * `Alt+Left` to a Mac user, who has no key called Alt to press. Adding a modifier
+ * that macOS renames without adding it here fails
+ * `scripts/shortcutRegistry.test.ts`.
  */
 export function formatChord(chord: string, modifier: 'Cmd' | 'Ctrl'): string {
-	return chord.replace(/\bMod\b/g, modifier);
+	const words: Record<string, string> = PLATFORM_KEY_WORDS[modifier];
+	return chord.replace(/\b(?:Mod|Alt)\b/g, (token) => words[token]);
 }
 
 const byId = new Map(SHORTCUTS.map((entry) => [entry.id, entry]));

@@ -934,6 +934,80 @@ test('the panel renders the platform modifier the user is on', () => {
 	assert.equal(shortcutLabel('no-such-command', 'Cmd'), undefined);
 });
 
+/**
+ * What each modifier the registry writes is CALLED on each platform.
+ *
+ * `Mod` was the only one `formatChord` ever substituted, and its docblock said
+ * everything else "is already the literal the key carries". That was false for
+ * `Alt`: Apple keyboards print `⌥ option`, the word "Alt" appears on no modern
+ * Mac keyboard, and so the panel told Mac users to press a key their hardware
+ * does not have — `Alt+Left`/`Alt+Right`, the two navigation rows.
+ *
+ * The two columns are what stops a repeat. A modifier is listed here with BOTH
+ * of its names, so a row added later that reaches for a key macOS names
+ * differently has to say so here, and the test below then requires the panel to
+ * actually render that difference. A modifier absent from this table fails
+ * outright rather than defaulting to "same word everywhere", which is the
+ * assumption that produced the defect.
+ */
+const MODIFIER_NAMES: Record<string, { macos: string; windows: string }> = {
+	Mod: { macos: 'Cmd', windows: 'Ctrl' },
+	// Ctrl and Shift really are spelled the same on both: a Mac keyboard prints
+	// `control` and `shift`. These two rows are the claim the docblock got right.
+	Ctrl: { macos: 'Ctrl', windows: 'Ctrl' },
+	Shift: { macos: 'Shift', windows: 'Shift' },
+	Alt: { macos: 'Opt', windows: 'Alt' },
+};
+
+/**
+ * The modifiers of a chord: every `+`-separated part except the last, which is
+ * the key. Handles a chord SEQUENCE (`Mod+K T`) the way the rest of this file
+ * does, one chord at a time.
+ */
+function modifiersOf(chord: string): string[] {
+	return chord.split(' ').flatMap((single) => single.split('+').slice(0, -1));
+}
+
+test('every modifier the panel prints is what that platform calls the key', () => {
+	// Enumerated from SHORTCUTS rather than hand-listed, so a row added later with
+	// a modifier nobody has classified fails here instead of silently rendering
+	// its raw registry spelling to a user.
+	const used = new Set(SHORTCUTS.flatMap((entry: ShortcutEntry) => entry.chords.flatMap(modifiersOf)));
+	assert.ok(used.size > 2, `the registry uses ${used.size} distinct modifiers`);
+
+	assert.deepEqual(
+		[...used].filter((token) => !(token in MODIFIER_NAMES)),
+		[],
+		'nothing says what these keys are called on each platform — add them to MODIFIER_NAMES, ' +
+			'with the macOS name spelled the way the key is actually printed on a Mac keyboard',
+	);
+
+	for (const entry of SHORTCUTS) {
+		for (const chord of entry.chords) {
+			const raw = modifiersOf(chord);
+			const rendered = {
+				macos: modifiersOf(formatChord(chord, modifierFor('macos'))),
+				windows: modifiersOf(formatChord(chord, modifierFor('windows'))),
+			};
+			for (const platform of ['macos', 'windows'] as const) {
+				assert.equal(
+					rendered[platform].length,
+					raw.length,
+					`${entry.id}: rendering "${chord}" for ${platform} changed the shape of the chord`,
+				);
+				raw.forEach((token, i) => {
+					assert.equal(
+						rendered[platform][i],
+						MODIFIER_NAMES[token][platform],
+						`${entry.id}: the panel shows "${formatChord(chord, modifierFor(platform))}" on ${platform}, ` +
+							`but ${platform} calls that key "${MODIFIER_NAMES[token][platform]}", not "${rendered[platform][i]}"`,
+					);
+				});
+			}
+		}
+	}
+});
+
 test('the panel’s groups are visibly separated, not run together', () => {
 	// The five sections stacked with nothing between them, so each heading sat
 	// flush against the last row of the group above and read as belonging to it —
