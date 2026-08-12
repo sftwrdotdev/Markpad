@@ -28,6 +28,8 @@
  * on a 1,700-line one).
  */
 
+import type { RendererLine } from './lineCoordinates.js';
+
 /** Inclusive source line range, as written in `data-sourcepos`. */
 export type LineRange = {
 	startLine: number;
@@ -61,7 +63,16 @@ export type AnchorBox = {
 	height: number;
 };
 
-type MeasureAnchorBox = (node: AnchorNode) => AnchorBox;
+export type MeasureAnchorBox = (node: AnchorNode) => AnchorBox;
+
+/**
+ * Every line number in this file is a RENDERER line, because every one of them
+ * came out of a `data-sourcepos` and that attribute counts from the first line
+ * of the body. `lineCoordinates.ts` holds the shift onto the editor's
+ * numbering; this is the one place a number is declared to be on this side of
+ * it. Imported as a type, so nothing here depends on that module at run time.
+ */
+const rendererLine = (line: number) => line as RendererLine;
 
 /**
  * The layout API `measureAnchorBox` reads, declared structurally for the same
@@ -579,7 +590,7 @@ export function getSourceLineAtPreviewOffset(
 	root: AnchorNode,
 	offset: number,
 	measure: MeasureAnchorBox,
-): number | null {
+): RendererLine | null {
 	if (!Number.isFinite(offset)) return null;
 
 	const samples = collectLineSamples(root);
@@ -592,17 +603,17 @@ export function getSourceLineAtPreviewOffset(
 	if (next) {
 		const nextTop = measure(next.element).top;
 		const span = nextTop - previousTop;
-		if (!Number.isFinite(span) || span <= 0) return previous.line;
+		if (!Number.isFinite(span) || span <= 0) return rendererLine(previous.line);
 
 		const progress = Math.max(0, Math.min(1, (offset - previousTop) / span));
-		return previous.line + progress * (next.line - previous.line);
+		return rendererLine(previous.line + progress * (next.line - previous.line));
 	}
 
 	// Past the last sample: its own height is all there is to go on, and a
 	// height of one rendered line is worth one source line.
 	const height = measure(previous.element).height;
-	if (!Number.isFinite(height) || height <= 0) return previous.line;
-	return previous.line + Math.max(0, (offset - previousTop) / height);
+	if (!Number.isFinite(height) || height <= 0) return rendererLine(previous.line);
+	return rendererLine(previous.line + Math.max(0, (offset - previousTop) / height));
 }
 
 /**
@@ -615,7 +626,7 @@ export function getSourceLineAtPreviewOffset(
  */
 export function getPreviewOffsetForSourceLine(
 	root: AnchorNode,
-	line: number,
+	line: RendererLine,
 	measure: MeasureAnchorBox,
 ): number | null {
 	if (!Number.isFinite(line)) return null;

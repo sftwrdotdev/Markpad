@@ -22,7 +22,16 @@ import test from 'node:test';
 
 import { functionSource, readSource, sliceBetween } from './sourceTree.js';
 
-import { activeTocIdForLine, sourceLineOf } from '../src/lib/utils/tocFollow.js';
+import { activeTocIdForLine, sourceLineOf, type TocLineEntry } from '../src/lib/utils/tocFollow.js';
+import { asBufferLine, asRendererLine, lineCoordinates } from '../src/lib/utils/lineCoordinates.js';
+
+/**
+ * Every line in the outline is a BODY line, because the outline is built out of
+ * `data-sourcepos` and that attribute counts from the first line of the body.
+ * The alias is here so each fixture below says which of the two numberings it
+ * is written in — the distinction this whole file turns on.
+ */
+const bodyLine = asRendererLine;
 
 const tocSource = readSource(new URL('../src/lib/components/Toc.svelte', import.meta.url));
 const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
@@ -30,21 +39,21 @@ const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts'
 const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 
 /** An outline of a document whose headings are 20 source lines apart. */
-const OUTLINE = [
-	{ id: 'intro', line: 1 },
-	{ id: 'setup', line: 21 },
+const OUTLINE: TocLineEntry[] = [
+	{ id: 'intro', line: bodyLine(1) },
+	{ id: 'setup', line: bodyLine(21) },
 	{ id: 'a-block-anchor', line: null },
-	{ id: 'usage', line: 41 },
-	{ id: 'api', line: 61 },
+	{ id: 'usage', line: bodyLine(41) },
+	{ id: 'api', line: bodyLine(61) },
 ];
 
 test('the active entry is the last heading at or above the editor position', () => {
-	assert.equal(activeTocIdForLine(OUTLINE, 1), 'intro');
-	assert.equal(activeTocIdForLine(OUTLINE, 20), 'intro');
-	assert.equal(activeTocIdForLine(OUTLINE, 21), 'setup');
-	assert.equal(activeTocIdForLine(OUTLINE, 40.7), 'setup');
-	assert.equal(activeTocIdForLine(OUTLINE, 41), 'usage');
-	assert.equal(activeTocIdForLine(OUTLINE, 4000), 'api');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(1)), 'intro');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(20)), 'intro');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(21)), 'setup');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(40.7)), 'setup');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(41)), 'usage');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(4000)), 'api');
 });
 
 test('a position above every heading takes the first entry, as the preview does', () => {
@@ -52,19 +61,19 @@ test('a position above every heading takes the first entry, as the preview does'
 	// loop, so front matter — or anything above the first heading — leaves the
 	// first entry highlighted. Answering `null` here instead would blank the
 	// outline on the way past the top of a document scrolled in the editor.
-	assert.equal(activeTocIdForLine([{ id: 'later', line: 12 }], 3), 'later');
+	assert.equal(activeTocIdForLine([{ id: 'later', line: bodyLine(12) }], bodyLine(3)), 'later');
 });
 
 test('an entry with no source range never becomes active, and never hides one that has', () => {
 	// Block anchors (`^id`) are in the outline and carry no range of their own.
 	// A `null` must not be read as line 0 and swallow every position after it.
-	assert.equal(activeTocIdForLine(OUTLINE, 45), 'usage');
-	assert.equal(activeTocIdForLine([{ id: 'block', line: null }], 900), 'block');
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(45)), 'usage');
+	assert.equal(activeTocIdForLine([{ id: 'block', line: null }], bodyLine(900)), 'block');
 });
 
 test('nothing to follow yields nothing, rather than a stale entry', () => {
-	assert.equal(activeTocIdForLine([], 12), null);
-	assert.equal(activeTocIdForLine(OUTLINE, Number.NaN), null);
+	assert.equal(activeTocIdForLine([], bodyLine(12)), null);
+	assert.equal(activeTocIdForLine(OUTLINE, bodyLine(Number.NaN)), null);
 });
 
 test('the start line comes from the sourcepos comrak wrote, or nothing', () => {
@@ -111,7 +120,27 @@ test('the editor position reaches the outline whether or not scroll sync is on',
 
 	assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
 	assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');
-	assert.match(handler, /if \(position\.line !== undefined\) tocActiveLine = toRendererLine\(position\.line\);/);
+	assert.match(handler, /tocActiveLine = lineCoords\.toRendererLine\(position\.line\)/);
+});
+
+test('the editor position is converted before the outline compares it', () => {
+	// What the assertion above cannot see, and what a regular expression over
+	// the viewer's source never could: whether the conversion is the RIGHT one.
+	// This is the shift itself, over the outline's own rule.
+	const raw = ['---', 'title: "T"', 'tags:', '  - a', '---', '', '# Intro'].join('\n') + '\n';
+	const coords = lineCoordinates(raw);
+	assert.equal(coords.frontMatterLines, 6, 'the fixture must actually have front matter');
+
+	// The reader is on the last line of the intro section: body line 20, which
+	// is buffer line 26 because six lines of YAML sit above it.
+	const position = asBufferLine(20 + coords.frontMatterLines);
+	assert.equal(activeTocIdForLine(OUTLINE, coords.toRendererLine(position)), 'intro');
+
+	// Handed over unconverted it is past the next heading, and the outline
+	// highlights the section the reader has not reached yet. That is the whole
+	// defect, and it is invisible in a document without front matter — which is
+	// every other fixture in this file.
+	assert.equal(activeTocIdForLine(OUTLINE, asRendererLine(position)), 'setup');
 });
 
 test('the preview feeds the same state, off the line it already measures', () => {

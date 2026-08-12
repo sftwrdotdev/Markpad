@@ -60,8 +60,21 @@ const {
 	getVerticalOffsetForLine,
 } = await import('../src/lib/utils/scrollSync.ts');
 
+const { asBufferLine, asRendererLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.ts');
+
 type AnchorNode = Parameters<typeof getSourceLineAtPreviewOffset>[0];
 type ScrollSyncPosition = Parameters<typeof getScrollTopForSyncPosition>[0];
+type LineCoordinates = ReturnType<typeof lineCoordinates>;
+
+/**
+ * A line written the way `data-sourcepos` writes it: counted from the first
+ * line of the body. Every literal line number in this file is one, because
+ * every fixture below is built out of that attribute.
+ */
+const bodyLine = asRendererLine;
+
+/** The coordinates of a document with no front matter, where the two numberings coincide. */
+const NO_FRONT_MATTER = lineCoordinates('# A document with no front matter\n');
 
 const FILE_PATH = '/documents/stress.md';
 
@@ -408,10 +421,16 @@ type Preview = {
 	scrollMax: number;
 };
 
-function buildPreview(doc: DocumentBuilder, gap = BLOCK_GAP): Preview {
+/**
+ * `frontMatterHeight` is the front-matter panel: the preview renders one above
+ * the document, it carries no source range, and every rendered block therefore
+ * starts that many pixels further down. Nothing else about the mapping changes,
+ * which is the property the front-matter test below is after.
+ */
+function buildPreview(doc: DocumentBuilder, gap = BLOCK_GAP, frontMatterHeight = 0): Preview {
 	const body = parseHtml(processMarkdownHtml(doc.html(), FILE_PATH, new Set<string>())).body;
 	wrapCodeBlocks(body);
-	const boxes = layOut(body, 0, gap);
+	const boxes = layOut(body, frontMatterHeight, gap);
 
 	let contentHeight = 0;
 	for (const box of boxes.values()) contentHeight = Math.max(contentHeight, box.top + box.height);
@@ -474,8 +493,13 @@ type Editor = {
 	scrollMax: number;
 };
 
-function buildEditor(doc: DocumentBuilder): Editor {
-	const lineCount = doc.lineCount;
+/**
+ * `frontMatterLines` are buffer lines above the body: the editor holds them,
+ * the preview renders them as a panel with no source range of its own, and
+ * every line number the two panes exchange differs by exactly that many.
+ */
+function buildEditor(doc: DocumentBuilder, frontMatterLines = 0): Editor {
+	const lineCount = doc.lineCount + frontMatterLines;
 	return {
 		lineCount,
 		topForLine: (line) => (line - 1) * EDITOR_LINE_HEIGHT,
@@ -488,13 +512,16 @@ function buildEditor(doc: DocumentBuilder): Editor {
 // These four functions are the arithmetic of `getEditorScrollSyncPosition`,
 // `syncScrollToPosition`, `getPreviewScrollSyncPosition` and
 // `scrollPreviewToSyncPosition`, over injected measurements instead of Monaco
-// and the DOM. Everything they call is imported from `src/`.
+// and the DOM. Everything they call is imported from `src/` — including the
+// front-matter shift, which the preview pair used to leave out entirely
+// because it re-implemented the viewer's glue rather than calling it.
 
 function editorPositionAt(editor: Editor, scrollTop: number, frontMatterEnd = 0): ScrollSyncPosition {
 	const position = getScrollSyncPositionFromPixels(scrollTop, editor.scrollMax, frontMatterEnd);
 	if (position.section !== 'body') return position;
 
-	const line = getLineAtVerticalOffset(scrollTop, editor.lineCount, editor.topForLine);
+	// Monaco counts from the first line of the file, so this is a buffer line.
+	const line = asBufferLine(getLineAtVerticalOffset(scrollTop, editor.lineCount, editor.topForLine));
 	return Number.isFinite(line) ? { ...position, line } : position;
 }
 
@@ -523,15 +550,16 @@ function editorScrollTopFor(
 	return { scrollTop, clamped: scrollTop !== target };
 }
 
-function previewPositionAt(preview: Preview, scrollTop: number, frontMatterEnd = 0): ScrollSyncPosition {
+function previewPositionAt(
+	preview: Preview,
+	scrollTop: number,
+	frontMatterEnd = 0,
+	coords: LineCoordinates = NO_FRONT_MATTER,
+): ScrollSyncPosition {
 	const position = getScrollSyncPositionFromPixels(scrollTop, preview.scrollMax, frontMatterEnd);
 	if (position.section !== 'body') return position;
 
-	const line = getSourceLineAtPreviewOffset(
-		preview.body,
-		scrollTop,
-		preview.measure,
-	);
+	const line = coords.bufferLineAtPreviewOffset(preview.body, scrollTop, preview.measure);
 	return line === null ? position : { ...position, line };
 }
 
@@ -539,11 +567,12 @@ function previewScrollTopFor(
 	preview: Preview,
 	position: ScrollSyncPosition,
 	frontMatterEnd = 0,
+	coords: LineCoordinates = NO_FRONT_MATTER,
 ): { scrollTop: number; clamped: boolean } {
 	let target: number | null = null;
 
 	if (position.section === 'body' && position.line !== undefined) {
-		const offset = getPreviewOffsetForSourceLine(preview.body, position.line, preview.measure);
+		const offset = coords.previewOffsetForBufferLine(preview.body, position.line, preview.measure);
 		if (offset !== null) target = offset;
 	}
 
@@ -702,6 +731,112 @@ test('driving the preview lands the editor on the same source line', (t) => {
 		worst <= LINE_SLACK,
 		`the editor drifted ${worst.toFixed(1)} source lines at preview scrollTop ${Math.round(worstAt)}`,
 	);
+});
+
+/* ------------------------------------------------------------------ */
+/* the same document, with front matter above it                       */
+/* ------------------------------------------------------------------ */
+//
+// Everything above this point is a document with no front matter, where the
+// editor's line numbers and `data-sourcepos`'s are the same numbers — so the
+// conversion between them could be left out entirely and every measurement
+// above would still pass. It was left out, in this file: the glue here used to
+// be a copy of the viewer's rather than a call into it, and the copy had no
+// shift in it at all.
+//
+// The same fixture, then, with six buffer lines of YAML above the body and the
+// panel the preview renders for them. Nothing about the block mapping changes;
+// what changes is that a pane which forgets to convert is now six lines out,
+// everywhere, uniformly.
+
+const FRONT_MATTER_LINES = 6;
+const FM_COORDS = lineCoordinates(['---', 'title: "T"', 'tags:', '  - a', '---', '', '# Heading'].join('\n') + '\n');
+/** The rendered front-matter panel: a fixed height, and no source range at all. */
+const FM_PANEL = 180;
+
+const FM_PREVIEW = buildPreview(DOC, BLOCK_GAP, FM_PANEL);
+const FM_EDITOR = buildEditor(DOC, FRONT_MATTER_LINES);
+const FM_EDITOR_END = FRONT_MATTER_LINES * EDITOR_LINE_HEIGHT;
+
+/** Which BODY line each pane is showing, which is the only thing they can be compared on. */
+function fmEditorBodyLineAt(scrollTop: number): number {
+	const line = getLineAtVerticalOffset(scrollTop, FM_EDITOR.lineCount, FM_EDITOR.topForLine);
+	return FM_COORDS.toRendererLine(asBufferLine(line));
+}
+
+function fmPreviewBodyLineAt(scrollTop: number): number {
+	const line = getSourceLineAtPreviewOffset(FM_PREVIEW.body, scrollTop, FM_PREVIEW.measure);
+	assert.ok(line !== null, `the preview must resolve a source line at ${scrollTop}px`);
+	return line;
+}
+
+test('the fixture has front matter in both panes, of different heights', () => {
+	assert.equal(FM_COORDS.frontMatterLines, FRONT_MATTER_LINES);
+	assert.equal(FM_EDITOR.lineCount, DOC.lineCount + FRONT_MATTER_LINES);
+	// The preview's panel and the editor's six lines of text are not the same
+	// number of pixels, which is the reason `scrollSync.ts` splits the range at
+	// the boundary instead of carrying a single ratio.
+	assert.notEqual(FM_PANEL, FM_EDITOR_END);
+	assert.equal(FM_PREVIEW.measure(FM_PREVIEW.body.querySelectorAll('p')[0]).top, FM_PANEL);
+});
+
+test('with front matter the panes still show the same body line', (t) => {
+	let worst = 0;
+	let worstAt = 0;
+	let unconverted = 0;
+
+	for (const scrollTop of sweep(FM_EDITOR.scrollMax, 0, 1, 200)) {
+		if (scrollTop <= FM_EDITOR_END) continue;
+
+		const sent = editorPositionAt(FM_EDITOR, scrollTop, FM_EDITOR_END);
+		assert.equal(sent.section, 'body');
+		assert.ok(sent.line !== undefined, 'the editor resolves a line for every body position');
+
+		const landed = previewScrollTopFor(FM_PREVIEW, sent, FM_PANEL, FM_COORDS);
+		if (landed.clamped) continue;
+
+		const drift = Math.abs(fmPreviewBodyLineAt(landed.scrollTop) - fmEditorBodyLineAt(scrollTop));
+		if (drift > worst) {
+			worst = drift;
+			worstAt = scrollTop;
+		}
+
+		// The control: the same buffer line handed to the preview as if it were
+		// a body line, which is what every consumer here did before the shift
+		// existed and what the copied glue in this file kept doing after it.
+		const naive = previewScrollTopFor(FM_PREVIEW, sent, FM_PANEL, NO_FRONT_MATTER);
+		if (!naive.clamped) {
+			unconverted = Math.max(unconverted, Math.abs(fmPreviewBodyLineAt(naive.scrollTop) - fmEditorBodyLineAt(scrollTop)));
+		}
+	}
+
+	t.diagnostic(`converted: worst drift ${worst.toFixed(1)} body lines; unconverted: ${unconverted.toFixed(1)}`);
+
+	assert.ok(
+		unconverted > FRONT_MATTER_LINES - 1,
+		`the control must be off by about the front matter, got ${unconverted.toFixed(1)} lines`,
+	);
+	assert.ok(
+		worst <= LINE_SLACK,
+		`the preview drifted ${worst.toFixed(1)} body lines from the editor at scrollTop ${Math.round(worstAt)}`,
+	);
+});
+
+test('a position inside the front matter carries no line, and lands in the panel', () => {
+	// Front matter renders as a panel with no source range, so there is nothing
+	// for a line to resolve against and the section ratio is the only thing that
+	// can carry the position. That carve-out is what `scrollSync.ts` is for, and
+	// it has to survive the panes having different-sized front matter.
+	const inside = editorPositionAt(FM_EDITOR, FM_EDITOR_END / 2, FM_EDITOR_END);
+	assert.equal(inside.section, 'frontmatter');
+	assert.equal(inside.line, undefined);
+
+	const landed = previewScrollTopFor(FM_PREVIEW, inside, FM_PANEL, FM_COORDS);
+	assert.equal(landed.scrollTop, FM_PANEL / 2);
+
+	// And the boundary maps onto the boundary exactly, from either side.
+	assert.equal(previewScrollTopFor(FM_PREVIEW, { section: 'frontmatter', ratio: 1 }, FM_PANEL, FM_COORDS).scrollTop, FM_PANEL);
+	assert.equal(previewScrollTopFor(FM_PREVIEW, { section: 'body', ratio: 0 }, FM_PANEL, FM_COORDS).scrollTop, FM_PANEL);
 });
 
 test('the ends of the document are the ends of the mapping', (t) => {
@@ -866,7 +1001,7 @@ test('the pixel two blocks share belongs to the lower one', () => {
 
 	assert.equal(getSourceLineAtPreviewOffset(preview.body, box.top, preview.measure), 3);
 	assert.equal(getSourceLineAtPreviewOffset(preview.body, box.top + box.height, preview.measure), 5);
-	assert.equal(getPreviewOffsetForSourceLine(preview.body, 3, preview.measure), box.top);
+	assert.equal(getPreviewOffsetForSourceLine(preview.body, bodyLine(3), preview.measure), box.top);
 });
 
 test('repeating the echo does not walk the panes down the document', () => {
@@ -937,7 +1072,7 @@ test('a row reports an offset measured from its table, and a code block from its
 });
 
 test('a line inside a table maps into that table, not to the top of the document', () => {
-	const line = LAST_TABLE_RANGE.startLine + 7;
+	const line = bodyLine(LAST_TABLE_RANGE.startLine + 7);
 	const table = PREVIEW.measure(LAST_TABLE);
 
 	const offset = getPreviewOffsetForSourceLine(PREVIEW.body, line, PREVIEW.measure);
@@ -1068,7 +1203,7 @@ test('a preview holding no annotated block falls back to the ratio', () => {
 	const measure = () => ({ top: 0, height: 0 });
 
 	assert.equal(getSourceLineAtPreviewOffset(empty, 400, measure), null);
-	assert.equal(getPreviewOffsetForSourceLine(empty, 12, measure), null);
+	assert.equal(getPreviewOffsetForSourceLine(empty, bodyLine(12), measure), null);
 
 	const emptyPreview: Preview = { body: empty, measure, rawMeasure: measure, contentHeight: 0, scrollMax: 600 };
 	const position = previewPositionAt(emptyPreview, 300);
@@ -1077,7 +1212,7 @@ test('a preview holding no annotated block falls back to the ratio', () => {
 	assert.equal(position.ratio, 0.5);
 
 	// And a line arriving from the editor still moves it, by ratio.
-	assert.equal(previewScrollTopFor(emptyPreview, { section: 'body', ratio: 0.25, line: 400 }).scrollTop, 150);
+	assert.equal(previewScrollTopFor(emptyPreview, { section: 'body', ratio: 0.25, line: asBufferLine(400) }).scrollTop, 150);
 });
 
 test('an element the app renders around the document does not swallow the offset', () => {
@@ -1166,7 +1301,7 @@ test('a collapsed fold answers for its hidden contents', () => {
 
 	// Line 3 is inside the collapsed section; it must map to the wrapper's own
 	// position and not to where its hidden paragraph claims to be.
-	const offset = getPreviewOffsetForSourceLine(body, 3, measure);
+	const offset = getPreviewOffsetForSourceLine(body, bodyLine(3), measure);
 	assert.equal(offset, 38);
 });
 
@@ -1335,7 +1470,7 @@ test('a line inside the paragraph resolves to its own anchor, not to an interpol
 	const measure = (node: unknown) => boxes.get(node) ?? { top: 0, height: 0 };
 
 	const interpolated = PARAGRAPH_TOP + 6 * ROW * ((11 - 10) / (13 - 10));
-	const actual = getPreviewOffsetForSourceLine(root as AnchorNode, 11, measure as never);
+	const actual = getPreviewOffsetForSourceLine(root as AnchorNode, bodyLine(11), measure as never);
 
 	assert.equal(actual, PARAGRAPH_TOP + 3 * ROW, 'line 11 lands where line 11 is drawn');
 	assert.notEqual(actual, interpolated, 'and not where the block-wide interpolation would put it');
@@ -1351,5 +1486,5 @@ test('an anchor carries no height, and the mapping never asks it for one', () =>
 	const measure = (node: unknown) =>
 		node === anchors[0].element ? { top: 250, height: 0 } : { top: 0, height: 999 };
 
-	assert.equal(getPreviewOffsetForSourceLine(root as AnchorNode, 11, measure as never), 250);
+	assert.equal(getPreviewOffsetForSourceLine(root as AnchorNode, bodyLine(11), measure as never), 250);
 });

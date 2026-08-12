@@ -43,7 +43,6 @@ import {
 	findAnchorElement,
 	findSourceLineRange,
 	getAnchorScrollTop,
-	getPreviewOffsetForSourceLine,
 	getSourceLineAtPreviewOffset,
 	measureAnchorBox,
 	mergeSourceLineRanges,
@@ -54,8 +53,14 @@ import {
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import {
+	asRendererLine,
+	lineCoordinates,
+	type BufferLine,
+	type BufferLineRange,
+	type RendererLine,
+} from './utils/lineCoordinates.js';
+import {
 	addFrontMatterListItems,
-	frontMatterLineOffset,
 	getMarkdownBodyWithoutFrontMatter,
 	getFrontMatterListItems,
 	parseFrontMatter,
@@ -150,7 +155,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		runEditorAction: (actionId: string, payload?: any) => void;
 		undo: () => void;
 		redo: () => void;
-		revealHeader: (sourceLine: number | null, text: string) => void;
+		revealHeader: (sourceLine: BufferLine | null, text: string) => void;
 		revealSourceRange: (startLine: number, endLine: number) => void;
 		triggerFind: () => void;
 		// The three the editor's context menu runs, which are the three its
@@ -1224,9 +1229,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// This is the carve-out `scrollSync.ts` exists for, unchanged.
 		if (position.section !== 'body') return position;
 
-		const line = getSourceLineAtPreviewOffset(target, target.scrollTop, measurePreviewBox);
+		const line = lineCoords.bufferLineAtPreviewOffset(target, target.scrollTop, measurePreviewBox);
 
-		return line === null ? position : { ...position, line: toBufferLine(line) };
+		return line === null ? position : { ...position, line };
 	}
 
 	function scrollPreviewToSyncPosition(position: ScrollSyncPosition) {
@@ -1236,9 +1241,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		let targetScroll: number | null = null;
 
 		if (position.section === 'body' && position.line !== undefined) {
-			const offset = getPreviewOffsetForSourceLine(
+			const offset = lineCoords.previewOffsetForBufferLine(
 				markdownBody,
-				toRendererLine(position.line),
+				position.line,
 				measurePreviewBox,
 			);
 			if (offset !== null) targetScroll = offset;
@@ -1276,11 +1281,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * the entry, so the two panes cannot disagree about which heading is
 	 * current while both are on screen.
 	 */
-	let tocActiveLine = $state<number | null>(null);
+	let tocActiveLine = $state<RendererLine | null>(null);
 
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
 		// The outline is built from `data-sourcepos`, so it counts from the body.
-		if (position.line !== undefined) tocActiveLine = toRendererLine(position.line);
+		if (position.line !== undefined) tocActiveLine = lineCoords.toRendererLine(position.line);
 
 		if (tabManager.activeTab?.isScrollSynced) {
 			scrollPreviewToSyncPosition(position);
@@ -1302,14 +1307,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * it had no opinion about `<br>`, which carries a source range and no box, so
 	 * an anchor at the top of the document could resolve to one (#464).
 	 */
-	function getPreviewScrollAnchor(target: HTMLElement): number | null {
+	function getPreviewScrollAnchor(target: HTMLElement): RendererLine | null {
 		const line = getSourceLineAtPreviewOffset(
 			target,
 			target.scrollTop + PREVIEW_ANCHOR_OFFSET,
 			measurePreviewBox,
 		);
 
-		return line === null ? null : Math.round(line);
+		// Straight off `data-sourcepos`, so it is already a renderer line: the
+		// two consumers — the tab's saved reading position and the outline —
+		// both count from the first line of the body.
+		return line === null ? null : asRendererLine(Math.round(line));
 	}
 
 	function syncEditorToPreviewScroll(target: HTMLElement) {
@@ -1416,7 +1424,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (options.pushHistory !== false) pushScrollHistory();
 			const containerRect = markdownBody.getBoundingClientRect();
 			const elRect = el.getBoundingClientRect();
-			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - 60;
+			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - PREVIEW_ANCHOR_OFFSET;
 			markdownBody.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
 			return true;
 		}
@@ -1741,7 +1749,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * effect below spends it the moment they do, and immediately when the
 	 * editor is already on screen (split view).
 	 */
-	let pendingEditReveal = $state<LineRange | null>(null);
+	let pendingEditReveal = $state<BufferLineRange | null>(null);
 
 	$effect(() => {
 		const range = pendingEditReveal;
@@ -1838,40 +1846,27 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!isEditing) await toggleEdit();
 		// `toggleEdit` swallows a failed read and stays in reading mode. Arming
 		// the jump anyway would fire it at whatever document is edited next.
-		if (range && tabManager.activeTab?.isEditing) pendingEditReveal = toBufferRange(range);
+		if (range && tabManager.activeTab?.isEditing) pendingEditReveal = lineCoords.toBufferRange(range);
 	}
 
 	/**
-	 * A renderer line range moved onto the buffer's numbering.
+	 * This document's two line numberings, and the only thing that converts
+	 * between them.
 	 *
 	 * `data-sourcepos` counts from the first line of the BODY, because that is
 	 * what `renderMarkdownPreview` hands comrak — front matter is stripped
-	 * first. The editor holds the whole file. Without this every jump into a
-	 * document with front matter lands that many lines early, and the outline
-	 * has been doing exactly that: `Toc.svelte` reads the same attribute and
-	 * passes it to `revealHeader` untouched.
-	 */
-	function toBufferRange(range: LineRange): LineRange {
-		const offset = frontMatterLineOffset(rawContent);
-		if (!offset) return range;
-		return { startLine: range.startLine + offset, endLine: range.endLine + offset };
-	}
-
-	/**
-	 * The same conversion for a single line, in both directions.
+	 * first. The editor holds the whole file. The shift between the two used to
+	 * be spelled out by hand at each of the five places they meet, and a place
+	 * that forgot it landed every jump that many lines early — which the outline
+	 * did for as long as it existed. `lineCoordinates.ts` owns the shift now,
+	 * and the two numberings are different TYPES, so a crossing that forgets to
+	 * convert no longer compiles.
 	 *
-	 * `ScrollSyncPosition.line` is a BUFFER line, because the editor is the only
-	 * pane that can produce one and the buffer is all it knows. Everything on the
-	 * preview side — `data-sourcepos`, the outline built from it — counts from
-	 * the first line of the body. Every crossing between the two has to say so.
+	 * Derived from `rawContent`, which is the buffer: measuring the render would
+	 * answer 0 forever, since the render is what the front matter was stripped
+	 * out of.
 	 */
-	function toBufferLine(line: number): number {
-		return line + frontMatterLineOffset(rawContent);
-	}
-
-	function toRendererLine(line: number): number {
-		return line - frontMatterLineOffset(rawContent);
-	}
+	let lineCoords = $derived(lineCoordinates(rawContent));
 
 	async function saveContent(tabId?: string): Promise<boolean> {
 		const saved = await documentSession.saveContent(tabId);
@@ -3815,7 +3810,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										{collapsedHeaders} 
 										ontoggleFold={toggleFold} 
 										oncopyref={(text: string, slug: string) => copyHeadingReference(text, slug)}
-										onjump={(id: string, text: string, sourceLine: number | null) => {
+										onjump={(id: string, text: string, sourceLine: RendererLine | null) => {
 											// A floating outline that is covering the text has done its
 											// job the moment you pick an entry: it exists to be called
 											// up, used once and dismissed. Pinned it is a permanent
@@ -3829,7 +3824,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 												// short by the front matter's height for as long as both
 												// have existed.
 												editorPane.revealHeader(
-													sourceLine === null ? null : toBufferRange({ startLine: sourceLine, endLine: sourceLine }).startLine,
+													sourceLine === null ? null : lineCoords.toBufferLine(sourceLine),
 													text,
 												);
 											}
