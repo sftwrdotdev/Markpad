@@ -70,7 +70,7 @@ test('an in-page anchor is not a file', () => {
 });
 
 test('an unsaved buffer has nothing to resolve a relative link against', () => {
-	// `resolvePath('', './data.csv')` yields `data.csv`, which the OS would
+	// `resolveDocumentRelativePath('', './data.csv')` yields `data.csv`, which the OS would
 	// open relative to the process's working directory — some arbitrary file,
 	// or none. Refusing is the only honest answer.
 	assert.equal(resolveLocalFileLinkPath('./data.csv', ''), null);

@@ -4,7 +4,7 @@
  * Correctness of the math pipeline rests on one invariant that lives in two
  * languages at once:
  *
- *     the spans `src-tauri/src/lib.rs` hides from comrak
+ *     the spans `src-tauri/src/markdown.rs` hides from comrak
  *   ≡ the spans `src/lib/utils/markdown.ts` renders with KaTeX
  *
  *   backend ⊂ frontend → comrak rewrites the formula before KaTeX ever sees

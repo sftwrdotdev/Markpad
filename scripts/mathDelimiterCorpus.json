@@ -1,7 +1,7 @@
 {
 	"$comment": [
 		"Shared math-delimiter corpus. Read by BOTH sides of the render pipeline:",
-		"  src-tauri/src/lib.rs  -> the_backend_recognises_exactly_the_math_the_contract_lists",
+		"  src-tauri/src/markdown.rs  -> the_backend_recognises_exactly_the_math_the_contract_lists",
 		"  scripts/mathDelimiterContract.test.ts -> the frontend's own decision",
 		"",
 		"The invariant it pins: the set of spans the BACKEND hides from comrak must",
@@ -276,6 +276,67 @@
 				{
 					"kind": "display",
 					"source": "\\mathbf{Accuracy: 100\\%}"
+				}
+			]
+		},
+		{
+			"name": "an even backslash run still refuses the dollar",
+			"markdown": "A \\\\$x\\\\$ here.\n",
+			"html": "<p data-sourcepos=\"1:1-1:33\">A \\\\$x\\\\$ here.</p>\n",
+			"math": []
+		},
+		{
+			"name": "an odd backslash run refuses it the same way",
+			"markdown": "A \\\\\\$x\\\\\\$ here.\n",
+			"html": "<p data-sourcepos=\"1:1-1:33\">A \\\\\\$x\\\\\\$ here.</p>\n",
+			"math": []
+		},
+		{
+			"name": "a tilde fence hides its dollars too",
+			"markdown": "~~~\n$x_1$\n~~~\n",
+			"html": "<pre data-sourcepos=\"1:1-3:3\"><code>$x_1$\n</code></pre>\n",
+			"math": []
+		},
+		{
+			"name": "two display blocks separated by a blank line",
+			"markdown": "$$\nx_1\n$$\n\n$$\ny_1\n$$\n",
+			"html": "<p data-sourcepos=\"1:1-3:12\">$$<br data-sourcepos=\"1:13-1:13\" />\nx_1<br data-sourcepos=\"2:13-2:13\" />\n$$</p>\n<p data-sourcepos=\"5:1-7:12\">$$<br data-sourcepos=\"5:13-5:13\" />\ny_1<br data-sourcepos=\"6:13-6:13\" />\n$$</p>\n",
+			"math": [
+				{
+					"kind": "display",
+					"source": "x_1"
+				},
+				{
+					"kind": "display",
+					"source": "y_1"
+				}
+			]
+		},
+		{
+			"name": "two stray display delimiters may not pair across a hard break",
+			"markdown": "A $$ opener not alone\nand $$ later.\n",
+			"html": "<p data-sourcepos=\"1:1-2:13\">A $$ opener not alone<br data-sourcepos=\"1:22-1:22\" />\nand $$ later.</p>\n",
+			"math": []
+		},
+		{
+			"name": "math after a code span and a fence",
+			"markdown": "`$a$` then\n\n```\n$b$\n```\n\nand $c_1$.\n",
+			"html": "<p data-sourcepos=\"1:1-1:10\"><code data-sourcepos=\"1:1-1:5\">$a$</code> then</p>\n<pre data-sourcepos=\"3:1-5:3\"><code>$b$\n</code></pre>\n<p data-sourcepos=\"7:1-7:17\">and $c_1$.</p>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "c_1"
+				}
+			]
+		},
+		{
+			"name": "a formula in a block quote",
+			"markdown": "> Quoted $x_1$ math.\n",
+			"html": "<blockquote data-sourcepos=\"1:1-1:27\">\n<p data-sourcepos=\"1:3-1:27\">Quoted $x_1$ math.</p>\n</blockquote>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "x_1"
 				}
 			]
 		}

@@ -1,5 +1,7 @@
 import DOMPurify from 'dompurify';
 
+import { MARKDOWN_LINK_EXTENSIONS } from './markdownLinks.js';
+
 // The Rust renderer runs comrak with `render.unsafe_ = true`, so whatever raw
 // HTML a document author wrote survives into the rendered output verbatim. A
 // `.md` file is untrusted input — it can arrive by download, by shared folder,
@@ -9,11 +11,12 @@ import DOMPurify from 'dompurify';
 // to drift apart, because a payload that is invisible on screen but live in an
 // exported file is worse than one the user can see.
 
-// Mirrors the extension set `hasMarkdownLinkExtension` accepts in
-// ./markdownLinks.ts. It lives here as data (not as that predicate) because the
-// sanitizer needs to splice the extensions into a URI pattern; a test pins the
-// two lists against each other so they cannot drift.
-export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
+// The extension set `hasMarkdownLinkExtension` accepts, spliced into a URI
+// pattern rather than called as a predicate — DOMPurify takes a regexp, not a
+// function. Re-exported because MarkdownViewer.svelte reads the same list for
+// the Open dialog's file filter and imports it from the sanitizer; the list
+// itself is defined once, in ./markdownLinks.ts.
+export { MARKDOWN_LINK_EXTENSIONS };
 
 const markdownLinkExtensionPattern = MARKDOWN_LINK_EXTENSIONS
 	.map((ext) => ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))

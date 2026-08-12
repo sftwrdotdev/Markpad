@@ -9,6 +9,7 @@ import {
 	resolveExportImagePath,
 	rewriteMarkdownHrefForExport,
 } from '../src/lib/utils/exportHtml.js';
+import { resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
 test('normalizeAssetPath decodes Tauri asset URLs for Windows drive paths and UNC paths', () => {
 	assert.equal(
@@ -64,6 +65,38 @@ test('resolveExportImagePath preserves remote/data images and resolves local pat
 	assert.equal(resolveExportImagePath('img/a%20b.png', 'C:\\Docs\\note.md'), 'C:/Docs/img/a b.png');
 	assert.equal(resolveExportImagePath('./img/a.png', '/home/daniel/docs/note.md'), '/home/daniel/docs/img/a.png');
 	assert.equal(resolveExportImagePath('/home/daniel/assets/a.png', '/home/daniel/docs/note.md'), '/home/daniel/assets/a.png');
+});
+
+test('the path resolver for documents and the one for hrefs differ on purpose', () => {
+	// Two functions called `resolvePath` used to sit in markdown.ts and
+	// markdownLinks.ts. They are NOT copies that drifted, and collapsing them
+	// would have silently changed one caller or the other, so they are named
+	// apart now and their three differences are pinned here — through the public
+	// entry points, since the href one is private to its module.
+	//
+	// The image side is `resolveDocumentRelativePath` (via resolveExportImagePath),
+	// the link side `resolveHrefRelativePath` (via resolveMarkdownTargetPath).
+	const target = (path: string) => ({ path, hash: '' });
+
+	// 1. `\` in the relative half. An image path is a filesystem path: a Windows
+	//    author's `img\a.png` names a directory. An href is a URL: `\` is an
+	//    ordinary character and the name must survive intact.
+	assert.equal(resolveExportImagePath('img\\a.png', '/notes/index.md'), '/notes/img/a.png');
+	assert.equal(
+		resolveMarkdownTargetPath('/notes/index.md', target('sub\\other.md')),
+		'/notes/sub\\other.md',
+	);
+
+	// 2. Empty segments. A path is bytes for the OS; an href gets tidied.
+	assert.equal(resolveExportImagePath('a//b.png', '/notes/index.md'), '/notes/a//b.png');
+	assert.equal(resolveMarkdownTargetPath('/notes/index.md', target('a//b.md')), '/notes/a/b.md');
+
+	// 3. A base with no separator. The href side would answer `/other.md` — the
+	//    filesystem root, a real and wrong directory — so its caller refuses the
+	//    empty base outright. The document side answers relatively and lets
+	//    resolveLocalFileLinkPath do the refusing (see localFileLinks.test.ts).
+	assert.equal(resolveExportImagePath('a.png', ''), 'a.png');
+	assert.equal(resolveMarkdownTargetPath('', target('other.md')), null);
 });
 
 test('rewriteMarkdownHrefForExport rewrites local Markdown links and preserves query/hash', () => {

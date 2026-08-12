@@ -4,6 +4,7 @@ import test from 'node:test';
 import { readRustBackend, readSource } from './sourceTree.js';
 
 import {
+	MARKDOWN_LINK_EXTENSIONS,
 	getMarkdownLinkTarget,
 	hasMarkdownLinkExtension,
 	resolveMarkdownTargetPath,
@@ -74,10 +75,21 @@ test('non-markdown wikilink targets are left literal rather than emitted as link
 });
 
 test('the extension list the rewriter mirrors still matches markdownLinks.ts', () => {
+	// The last cross-language copy of this list. Every TypeScript reader — the
+	// sanitizer's URI pattern, the export's `.md` -> `.html` rewrite, the Open
+	// dialog filter — now imports MARKDOWN_LINK_EXTENSIONS from markdownLinks.ts,
+	// so a drift between two of them is no longer expressible. Rust cannot
+	// import it, so the drift is caught here instead, by reading the array back
+	// out of the source and comparing the two *sets*: a third-party extension
+	// added to either side alone fails, in whichever direction it was added.
 	const declared = rustSource.match(/const MARKDOWN_LINK_EXTENSIONS: \[&str; \d+\] = \[([^\]]*)\]/);
-	assert.notEqual(declared, null, 'MARKDOWN_LINK_EXTENSIONS disappeared from lib.rs');
+	assert.notEqual(declared, null, 'MARKDOWN_LINK_EXTENSIONS disappeared from the Rust backend');
 	const extensions = [...declared![1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-	assert.deepEqual(extensions, ['md', 'markdown', 'mdown', 'mkd', 'txt']);
+	assert.deepEqual(
+		[...extensions].sort(),
+		[...MARKDOWN_LINK_EXTENSIONS].sort(),
+		'the Rust and TypeScript extension lists disagree — add the extension to both',
+	);
 	for (const extension of extensions) {
 		assert.equal(hasMarkdownLinkExtension(`file.${extension}`), true, extension);
 	}
