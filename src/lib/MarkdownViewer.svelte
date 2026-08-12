@@ -54,6 +54,7 @@ import {
 	measureAnchorBox,
 	mergeSourceLineRanges,
 	PREVIEW_ANCHOR_OFFSET,
+	anchorScrollTop,
 	type AnchorBox,
 	type AnchorNode,
 	type LineRange,
@@ -1430,10 +1431,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			(markdownBody?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
 		if (el && markdownBody) {
 			if (options.pushHistory !== false) pushScrollHistory();
-			const containerRect = markdownBody.getBoundingClientRect();
-			const elRect = el.getBoundingClientRect();
-			const targetScrollTop = elRect.top - containerRect.top + markdownBody.scrollTop - PREVIEW_ANCHOR_OFFSET;
-			markdownBody.scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: 'smooth' });
 			return true;
 		}
 		return false;

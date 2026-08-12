@@ -148,6 +148,49 @@ function isAnchorable(node: AnchorNode): boolean {
  */
 export const PREVIEW_ANCHOR_OFFSET = 60;
 
+/**
+ * The factor between the coordinates `getBoundingClientRect()` reports and the
+ * ones `scrollTop` is measured in, for anything inside `container`.
+ *
+ * The preview sets CSS `zoom` on `.markdown-container`, an ANCESTOR of the
+ * scrolling element. A rect is reported in viewport pixels, which have that
+ * zoom folded in; `scrollTop` counts in the scroller's own pixels, which do
+ * not. The two are the same number only at 100%.
+ *
+ * Measured off the container rather than read from the settings store, so this
+ * module keeps knowing nothing about where the zoom is applied or how many
+ * ancestors apply one. `offsetWidth` is the container's own layout width and
+ * the rect is its rendered width, so the ratio is exactly the accumulated
+ * scale — whatever produced it.
+ *
+ * A container with no layout (display:none, detached) reports `offsetWidth` 0.
+ * There is nothing to scroll in that case; 1 keeps the caller's arithmetic
+ * finite instead of handing it an Infinity to scroll to.
+ */
+export function previewZoomFactor(container: HTMLElement): number {
+	const layoutWidth = container.offsetWidth;
+	if (!layoutWidth) return 1;
+	const renderedWidth = container.getBoundingClientRect().width;
+	if (!renderedWidth) return 1;
+	return renderedWidth / layoutWidth;
+}
+
+/**
+ * Where `container` has to scroll to for `element` to sit
+ * `PREVIEW_ANCHOR_OFFSET` below its top edge.
+ *
+ * This was written out twice — once for an in-document anchor, once for the
+ * outline — and both copies added a rect delta straight to `scrollTop`. At
+ * zoom 150% that overshot the heading by half the distance to it, and at 50%
+ * it stopped half-way short (#621). Dividing by the factor above puts both
+ * terms in the scroller's own pixels before they meet.
+ */
+export function anchorScrollTop(container: HTMLElement, element: HTMLElement): number {
+	const zoom = previewZoomFactor(container);
+	const delta = element.getBoundingClientRect().top - container.getBoundingClientRect().top;
+	return delta / zoom + container.scrollTop - PREVIEW_ANCHOR_OFFSET;
+}
+
 export function parseSourceposLineRange(sourcepos: string | null | undefined): LineRange | null {
 	if (!sourcepos) return null;
 
