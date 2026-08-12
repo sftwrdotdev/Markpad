@@ -60,7 +60,9 @@ The failure is quiet and unfixable from here: `latest.json` 404s, the updater re
 
 ## Per-release workflow
 
-The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. The same applies to [`snapcraft.yaml`](snapcraft.yaml), which builds the snap outside GitHub Actions; `scripts/releaseWorkflow.test.ts` guards both.
+The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. `scripts/releaseWorkflow.test.ts` guards that.
+
+[`snapcraft.yaml`](snapcraft.yaml) no longer builds anything. It packages the `.deb` the release already shipped (`plugin: dump`, `source-type: deb`), so the snap carries the same binary as the `.deb` and the AppImage rather than a second compilation of the same source — which is also what removed rust and node from a file that had failed four release attempts on them. The same test asserts it is packaging rather than building.
 
 1. **Bump the version:**
    ```bash
@@ -84,6 +86,9 @@ The workflow uses `npm ci`, so its installed dependency graph is exactly the com
 3. **Trigger the workflow:**
    - GitHub UI: Actions → "Build and Release" → Run workflow → master
    - Or CLI: `gh workflow run build.yml --ref master`
+
+   Only one release build runs at a time — a second dispatch queues behind the
+   first instead of racing it to the same draft.
 4. **Wait** ~30 min for matrix builds to finish, plus ~2 min for `generate-update-feed`.
 5. **Open the draft release** on the [Releases page](https://github.com/sftwrdotdev/Markpad/releases). Verify the assets:
    - **macOS**: `*.dmg`, `*.app.tar.gz`, `*.app.tar.gz.sig`
@@ -116,7 +121,7 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 
 - **macOS** uses one universal binary (`darwin-aarch64` + `darwin-x86_64` share the same `.app.tar.gz` and signature).
 - **Windows** uses NSIS — the auto-updater downloads `*-setup.exe` (verified by `*-setup.exe.sig`) and runs it in `passive` install mode. The existing raw portable `.exe` distribution path is preserved alongside, so users who download the portable `.exe` directly continue to work; only the auto-updater path uses the NSIS installer.
-- **Linux**: only `AppImage` users get auto-updates — `tauri-plugin-updater` doesn't support `.deb` or `.rpm`, and there is no apt or dnf repository either. `.deb` and `.rpm` are therefore one-time installs: those users upgrade by downloading a newer package. *Check for Updates…* still offers them the update and then fails to install it, because `__TAURI_BUNDLE_TYPE` is not patched into the Linux binary and every Linux package therefore takes the AppImage install path — see #570. This is stated in the README as well; if a repository is ever published, both change together.
+- **Linux**: only `AppImage` users get auto-updates — `tauri-plugin-updater` doesn't support `.deb` or `.rpm`, and there is no apt or dnf repository either. `.deb` and `.rpm` are therefore one-time installs: those users upgrade by downloading a newer package. Since #573 the app asks `self_update_supported` *before* it checks, so those installs are told where their updates come from instead of being offered one that then fails to install — `__TAURI_BUNDLE_TYPE` is not patched into the Linux binary, so every Linux package would otherwise take the AppImage install path (#570). This is stated in the README as well; if a repository is ever published, both change together.
 - **Snap / Chocolatey**: independent distribution channels, published by `publish-packages.yml` after the release is published. Their update mechanisms are unaffected. The Chocolatey package wraps the release's own `Markpad_<version>_x64.exe` rather than a second build, which is what `packaging/choco/tools/VERIFICATION.txt` promises.
 
 ## Troubleshooting
@@ -129,7 +134,8 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 | Users don't see the update | (1) Did you click *Publish release*? Drafts aren't visible to clients. (2) Is the user on a version older than the first auto-update-capable release? They need a one-time manual reinstall. |
 | Update download succeeds but install fails with signature error | Pubkey mismatch — the Secrets and `tauri.conf.json` `pubkey` belong to different keypairs. |
 | `Strip host-coupled libraries from AppImage` fails | Run [`scripts/strip-appimage.sh`](scripts/strip-appimage.sh) locally against the AppImage from the draft release — it needs no signing key. It failed in two of the three v2.7.2 attempts, once because `signer sign` had a stray flag and once because it was reading the deprecated `TAURI_PRIVATE_KEY` names on a CLI too old to accept the current ones. |
-| `Publish Packages` / snap job fails | Read the snapcraft error rather than re-running: `Environment validation failed for part 'markpad'` means the `rust-deps` part in `snapcraft.yaml` is gone or renamed. Fix, then re-run the workflow with the tag as `workflow_dispatch` input. |
+| `Publish Packages` / snap job fails | Read the snapcraft error rather than re-running. `snapcraft.yaml` only unpacks a `.deb` now, so the two live failures are: the job did not put `markpad.deb` next to the file (the message names the path), or the `snapcraft` snap the runner installed that day changed under us — the job prints `snap list snapcraft`, and an 8.14.5 → 9.0.1 bump is exactly what killed the snap for three months. Fix, then re-run the workflow with the tag as `workflow_dispatch` input. |
+| An AppImage check fails in `test_build.yml` | Three scripts run against it and say which one: [`check-appimage-libraries.sh`](scripts/check-appimage-libraries.sh) (what it bundles), [`strip-appimage.sh`](scripts/strip-appimage.sh) (removing the host-coupled ones), [`smoke-appimage.sh`](scripts/smoke-appimage.sh) (whether it starts). All three run locally against the AppImage from the draft release and need no signing key; the tooling does not need FUSE. |
 | `Publish Packages` / chocolatey job fails on push | A version can only be pushed to Chocolatey once. If it is already there, nothing needs doing; if it is not, check `CHOCO_API_KEY`. |
 
 ## Out of scope (not handled by this workflow)

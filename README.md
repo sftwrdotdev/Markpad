@@ -75,7 +75,7 @@ The two Windows files differ only in that one installs and one does not — `-se
 
 > After a direct `.dmg` (macOS), `*-setup.exe` (Windows NSIS) or `.AppImage` (Linux) install, Markpad self-updates from GitHub releases via the in-app *Check for Updates…* entry (macOS app menu, or Settings elsewhere). Chocolatey and Snap keep Markpad current through those package managers instead.
 >
-> **`.deb` and `.rpm` are one-time installs.** `tauri-plugin-updater` cannot replace a package-managed install, and there is no apt or dnf repository to update from — upgrading means downloading a newer package from the releases page. *Check for Updates…* will report that a newer version exists but cannot install it ([#570](https://github.com/sftwrdotdev/Markpad/issues/570)).
+> **`.deb` and `.rpm` are one-time installs.** `tauri-plugin-updater` cannot replace a package-managed install, and there is no apt or dnf repository to update from — upgrading means downloading a newer package from the releases page. *Check for Updates…* recognises a package-managed install and says where its updates come from, rather than offering one it cannot install ([#570](https://github.com/sftwrdotdev/Markpad/issues/570)).
 
 ## What Markpad renders
 
