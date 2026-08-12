@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { flushSync } from 'svelte';
 import { parse } from 'svelte/compiler';
-import { test } from 'vitest';
+import { onTestFinished, test } from 'vitest';
 
 import { callbackBodies, readSource, sliceBetween } from './sourceTree.js';
 // Plain TypeScript, no runes: safe to import statically, unlike the store below.
@@ -64,6 +64,23 @@ type PersistedEntry = ReturnType<typeof createSettingsPersistence>[number];
 const storeSource = readSource('src/lib/stores/settings.svelte.ts');
 const componentSource = readSource('src/lib/components/Settings.svelte');
 
+/**
+ * A store that is torn down when the test that made it ends.
+ *
+ * Every construction installs one write `$effect` per persisted key plus the
+ * `storage` listener, all into the single jsdom this file shares with the other
+ * ~25 spec files. A store nobody disposed keeps them: the next `flushSync()`
+ * anywhere runs its effects too, and they write its values over the live
+ * store's. `dispose()` is what the store's own `$effect.root()` disposer is
+ * exposed for — the app never calls it, because its singleton is meant to live
+ * as long as the window.
+ */
+function createStore(): InstanceType<typeof SettingsStore> {
+	const store = new SettingsStore();
+	onTestFinished(() => store.dispose());
+	return store;
+}
+
 function resetStorage(seed: Record<string, string> = {}) {
 	localStorage.clear();
 	for (const [key, value] of Object.entries(seed)) localStorage.setItem(key, value);
@@ -77,7 +94,7 @@ function resetStorage(seed: Record<string, string> = {}) {
 function createRecordingStore(): { proxy: InstanceType<typeof SettingsStore>; reads: Set<string> } {
 	const reads = new Set<string>();
 	resetStorage();
-	const real = new SettingsStore();
+	const real = createStore();
 	const proxy = new Proxy(real, {
 		get(target, property) {
 			if (typeof property === 'string') reads.add(property);
@@ -166,7 +183,7 @@ test('changing one setting rewrites only that setting key', () => {
 	// by this file's idea of it. Under the hand-written `$effect` shim this
 	// suite used to install, the assertion below could not fail: nothing re-ran.
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync(); // seeds every key from the store's current values
 
 	const written = (change: () => void) => {
@@ -196,7 +213,7 @@ test('the store installs a storage listener that survives on the real window', (
 	// dispatch: `addEventListener('storage', …)` runs inside an `$effect`, so it
 	// is only wired up once the effects flush.
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync();
 
 	localStorage.setItem('editor.fontSize', '30');
@@ -210,8 +227,8 @@ test('a second window no longer clobbers what the first window just changed', ()
 	const entries = createSettingsPersistence();
 	resetStorage();
 
-	const windowA = new SettingsStore();
-	const windowB = new SettingsStore(); // holds its own construction-time snapshot
+	const windowA = createStore();
+	const windowB = createStore(); // holds its own construction-time snapshot
 
 	// A changes font size and language and persists just those two keys.
 	windowA.editorFontSize = 30;
@@ -227,14 +244,14 @@ test('a second window no longer clobbers what the first window just changed', ()
 	assert.equal(localStorage.getItem('editor.language'), 'ja');
 
 	// And a fresh window (a restart) sees A's changes intact.
-	const restarted = new SettingsStore();
+	const restarted = createStore();
 	assert.equal(restarted.editorFontSize, 30);
 	assert.equal(restarted.language, 'ja');
 });
 
 test('storage events fold another window changes into this instance', () => {
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync();
 
 	// Another window wrote the value; localStorage already reflects it when the
@@ -253,7 +270,7 @@ test('a value that arrived from localStorage is not written back', () => {
 	// because compare-and-set finds the value already stored.
 	const entries = createSettingsPersistence();
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync();
 	const entry = entries.find((item) => item.key === 'editor.fontSize') as PersistedEntry;
 
@@ -277,13 +294,47 @@ test('writeStoredSetting is compare-and-set and removes on null', () => {
 
 test('a cleared localStorage is re-read rather than half-applied', () => {
 	resetStorage({ 'editor.fontSize': '30' });
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync();
 	assert.equal(store.editorFontSize, 30);
 
 	localStorage.clear();
 	dispatchStorage(null, null);
 	assert.equal(store.editorFontSize, EDITOR_FONT_SIZE_RANGE.default);
+});
+
+test('a disposed store stops writing and stops listening', () => {
+	// `$effect.root()` returns a disposer, and it used to be discarded. In the
+	// app that is correct — the singleton lives as long as the window — but every
+	// store a *test* builds then leaks ~30 live write effects and a `storage`
+	// listener into the one jsdom every spec file shares. Both halves of that
+	// leak are asserted here, because both are cross-test pollution: an
+	// abandoned store answers a later `flushSync()` with its own values, and it
+	// answers a later `storage` event by mutating fields the test still reads.
+	resetStorage();
+	const abandoned = new SettingsStore();
+	flushSync();
+	abandoned.dispose();
+
+	const current = createStore();
+	flushSync();
+	current.editorFontSize = 30;
+	flushSync();
+	assert.equal(localStorage.getItem('editor.fontSize'), '30');
+
+	// The write effects are gone, so touching the disposed store's fields is
+	// inert. Undisposed, its effect re-runs on this flush and puts 12 in the key
+	// the live store just set to 30.
+	abandoned.editorFontSize = 12;
+	flushSync();
+	assert.equal(localStorage.getItem('editor.fontSize'), '30', 'a disposed store still writes to localStorage');
+
+	// ...and so is the `storage` listener: it was registered by an effect inside
+	// the same root, so destroying the root runs that effect's teardown.
+	localStorage.setItem('editor.fontSize', '40');
+	dispatchStorage('editor.fontSize', '40');
+	assert.equal(abandoned.editorFontSize, 12, 'a disposed store is still listening on window');
+	assert.equal(current.editorFontSize, 40, 'and disposing one store must not deafen the others');
 });
 
 /*
@@ -314,7 +365,7 @@ test('a size the UI allows survives a restart', () => {
 		'preview.codeFontSize': '48',
 		'editor.maxWidth': '500',
 	});
-	const store = new SettingsStore();
+	const store = createStore();
 	assert.equal(store.editorFontSize, 30);
 	assert.equal(store.previewFontSize, 40);
 	assert.equal(store.codeFontSize, 48);
@@ -323,7 +374,7 @@ test('a size the UI allows survives a restart', () => {
 
 test('values outside the shared range are still clamped on load', () => {
 	resetStorage({ 'editor.fontSize': '900', 'preview.fontSize': '2', 'editor.maxWidth': '5000' });
-	const store = new SettingsStore();
+	const store = createStore();
 	assert.equal(store.editorFontSize, EDITOR_FONT_SIZE_RANGE.max);
 	assert.equal(store.previewFontSize, PREVIEW_FONT_SIZE_RANGE.min);
 	assert.equal(store.editorMaxWidth, EDITOR_MAX_WIDTH_RANGE.max);
@@ -406,7 +457,7 @@ test('a theme picked in one window reaches the others without a restart', () => 
 	// free. The theme <select> sat in the same panel and did not: it wrote
 	// `localStorage` directly, and nothing in the app listened for `theme`.
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	// The `storage` listener is only wired up once the effects flush.
 	flushSync();
 	assert.equal(store.theme, 'system');
@@ -481,9 +532,9 @@ test('an unusable stored theme falls back rather than being applied', () => {
 	assert.equal(isThemeSetting(42), false);
 
 	resetStorage({ theme: 'midnight' });
-	assert.equal(new SettingsStore().theme, 'system');
+	assert.equal(createStore().theme, 'system');
 	resetStorage({ theme: 'vscode:Ayu Dark' });
-	assert.equal(new SettingsStore().theme, 'vscode:Ayu Dark');
+	assert.equal(createStore().theme, 'vscode:Ayu Dark');
 });
 
 test('a corrupt stored zoom level loads as 100, not as NaN', () => {
@@ -494,15 +545,15 @@ test('a corrupt stored zoom level loads as 100, not as NaN', () => {
 	// the reset button could recover the app.
 	for (const stored of ['banana', 'null', '', '   ', 'NaN', 'Infinity']) {
 		resetStorage({ zoomLevel: stored });
-		const store = new SettingsStore();
+		const store = createStore();
 		assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default, `zoomLevel=${JSON.stringify(stored)}`);
 		assert.ok(Number.isFinite(store.zoomLevel));
 	}
 
 	resetStorage({ zoomLevel: '250' });
-	assert.equal(new SettingsStore().zoomLevel, 250, 'a good value still survives a restart');
+	assert.equal(createStore().zoomLevel, 250, 'a good value still survives a restart');
 	resetStorage({ zoomLevel: '9000' });
-	assert.equal(new SettingsStore().zoomLevel, ZOOM_LEVEL_RANGE.max, 'and one out of range is clamped, not dropped');
+	assert.equal(createStore().zoomLevel, ZOOM_LEVEL_RANGE.max, 'and one out of range is clamped, not dropped');
 });
 
 test('the zoom operations are bounded by one range, and recover a corrupt level', () => {
@@ -515,7 +566,7 @@ test('the zoom operations are bounded by one range, and recover a corrupt level'
 	);
 
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	store.zoomIn();
 	assert.equal(store.zoomLevel, 110);
 	store.zoomOut();
@@ -540,7 +591,7 @@ test('the zoom operations are bounded by one range, and recover a corrupt level'
 
 test('zoom and preview width follow the other windows too', () => {
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	flushSync();
 
 	localStorage.setItem('zoomLevel', '150');
@@ -562,14 +613,14 @@ test('zoom and preview width follow the other windows too', () => {
 
 test('the legacy full-width key is honoured once and then superseded', () => {
 	resetStorage({ isFullWidth: 'true' });
-	assert.equal(new SettingsStore().previewFullWidth, true, 'an install upgrading from the old key keeps its setting');
+	assert.equal(createStore().previewFullWidth, true, 'an install upgrading from the old key keeps its setting');
 
 	// The old key is left in place rather than deleted — `read` touches one field
 	// and so cannot remove a second key — and the new one takes precedence from
 	// the first write onwards, which is how `editor.openFileMode` and
 	// `editor.autoSaveEdits` treat theirs.
 	resetStorage({ isFullWidth: 'true', 'preview.fullWidth': 'false' });
-	assert.equal(new SettingsStore().previewFullWidth, false);
+	assert.equal(createStore().previewFullWidth, false);
 });
 
 /*
@@ -629,10 +680,10 @@ test('system detection falls back to English for unsupported locales', () => {
 test('a stored language is validated against the catalogue', () => {
 	resetStorage({ 'editor.language': 'klingon' });
 	setNavigatorLanguage('ja-JP');
-	assert.equal(new SettingsStore().language, 'en'); // unchanged default, not the bogus code
+	assert.equal(createStore().language, 'en'); // unchanged default, not the bogus code
 
 	resetStorage();
-	assert.equal(new SettingsStore().language, 'ja'); // nothing stored -> detect
+	assert.equal(createStore().language, 'ja'); // nothing stored -> detect
 	setNavigatorLanguage('en-US');
 });
 
@@ -745,7 +796,7 @@ test('a stored zen snapshot is accepted only whole', () => {
 test('a corrupt zen snapshot never reaches the settings it would restore', () => {
 	for (const [description, stored] of Object.entries(CORRUPT_SNAPSHOTS)) {
 		resetStorage({ 'editor.preZenState': stored });
-		const store = new SettingsStore();
+		const store = createStore();
 		assert.equal(store.preZenState, null, description);
 		// The store's own fields are untouched: the record was rejected before
 		// anything could be copied out of it.
@@ -754,7 +805,7 @@ test('a corrupt zen snapshot never reaches the settings it would restore', () =>
 	}
 
 	resetStorage({ 'editor.preZenState': JSON.stringify(USER_SNAPSHOT) });
-	assert.deepEqual(new SettingsStore().preZenState, USER_SNAPSHOT, 'a good snapshot still survives a restart');
+	assert.deepEqual(createStore().preZenState, USER_SNAPSHOT, 'a good snapshot still survives a restart');
 });
 
 test('the tab bar comes back on leaving zen mode even when the snapshot is unusable', () => {
@@ -774,7 +825,7 @@ test('the tab bar comes back on leaving zen mode even when the snapshot is unusa
 			'editor.lineNumbers': 'off',
 			'editor.preZenState': stored,
 		});
-		const store = new SettingsStore();
+		const store = createStore();
 		flushSync();
 		assert.equal(store.zenMode, true, description);
 		assert.equal(store.showTabs, false, description);
@@ -793,7 +844,7 @@ test('the tab bar comes back on leaving zen mode even when the snapshot is unusa
 		assert.equal(localStorage.getItem('editor.showTabs'), 'true', description);
 		assert.equal(localStorage.getItem('editor.preZenState'), null, `${description}: the bad record is gone`);
 		// ...so the next launch keeps the tab bar instead of reading it back as false.
-		assert.equal(new SettingsStore().showTabs, true, `${description}: and it is still there after a restart`);
+		assert.equal(createStore().showTabs, true, `${description}: and it is still there after a restart`);
 	}
 });
 
@@ -801,7 +852,7 @@ test('a good snapshot still restores what the user had, not the defaults', () =>
 	// The other half: the fallback must not be reached while there is a record
 	// to honour, or leaving zen mode would reset six settings every time.
 	resetStorage();
-	const store = new SettingsStore();
+	const store = createStore();
 	Object.assign(store, USER_SNAPSHOT);
 	flushSync();
 
@@ -811,7 +862,7 @@ test('a good snapshot still restores what the user had, not the defaults', () =>
 	assert.equal(store.minimap, false, 'zen mode flattens everything, including what was already off');
 
 	// Through localStorage and a restart, the way a real session gets there.
-	const restarted = new SettingsStore();
+	const restarted = createStore();
 	assert.deepEqual(restarted.preZenState, USER_SNAPSHOT);
 	restarted.toggleZenMode();
 	assert.equal(restarted.zenMode, false);
@@ -825,7 +876,7 @@ test('the zen fallback is each setting own default', () => {
 	// DEFAULT_PRE_ZEN_STATE spells out six values the store already declares in
 	// its field initializers. This is what stops the two copies drifting.
 	resetStorage();
-	const fresh = new SettingsStore();
+	const fresh = createStore();
 	for (const [field, value] of Object.entries(DEFAULT_PRE_ZEN_STATE)) {
 		assert.equal(Reflect.get(fresh, field), value, `${field} default differs from the zen fallback`);
 	}

@@ -210,6 +210,18 @@ unchanged. Two things bite:
 - `readSource(new URL('…', import.meta.url))` throws under vitest, which serves test files
   over `http://`. Use the cwd-relative string form.
 
+### Anything a test constructs inside an effect root must be torn down
+
+A runes module that calls `$effect.root()` gets a disposer back, and a store that keeps
+its effects for the life of the process is right in the app and wrong in the suite: every
+spec file shares one jsdom, so a store nobody disposed answers a later `flushSync()` with
+its own values and a later `storage` event by mutating fields that test still reads.
+`SettingsStore.dispose()` exists for exactly this; construct through a helper that pairs
+it with vitest's `onTestFinished` rather than remembering per test. Disposing the root
+also runs the effects' teardowns, so listeners registered inside one (`window`'s
+`storage` handler, say) come off with it — a listener added *outside* the root would not,
+and would need its own seam.
+
 ## Notes
 
 - No ESLint or Prettier configured - rely on TypeScript strict mode
