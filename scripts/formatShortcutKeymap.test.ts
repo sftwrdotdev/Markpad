@@ -239,50 +239,19 @@ test('a chord that both layers answer means the same thing in both', () => {
 	}
 });
 
-/**
- * Standalone Monaco's own defaults for the chords this change considered.
+/*
+ * WHERE THE MONACO SIDE OF THIS WENT.
  *
- * A SNAPSHOT, and the weakest assertion in this file — it is a copy of what
- * Monaco 0.55 registers, not a reading of it. Enumerating them for real means
- * evaluating `monaco-editor`'s browser-side contribution graph, which needs a
- * DOM the Node test runner does not have; a shim large enough to load it would
- * be a second, synthetic source of truth for exactly the thing being checked.
+ * This file used to end with `MONACO_DEFAULTS`: eleven chords hand-copied out
+ * of Monaco 0.55, and a test that the six #121 bindings avoided them. It was
+ * the weakest assertion here and said so — a copy of Monaco's keymap, not a
+ * reading of it, covering the chords that happened to be considered at the
+ * time. What it could not see is what it did not list, and `toggle-zen-mode`
+ * sitting on `redo` was exactly that.
  *
- * Regenerate against the installed package (not against VS Code's documentation
- * — the two keymaps are NOT the same, which is how Ctrl+Shift+K got proposed
- * for a code block) by loading `monaco-editor` under a DOM shim and dumping
- * `KeybindingsRegistry.getDefaultKeybindings()` once per `process.platform`.
+ * `monacoChordOwnership.spec.ts` replaces it by importing `monaco-editor` under
+ * jsdom and dumping `KeybindingsRegistry.getDefaultKeybindings()` per platform,
+ * so the check is against ALL of Monaco's chords rather than a remembered
+ * eleven — including Quote's deliberate `inPlaceReplace.down` override, which
+ * is now argued in that file's allow-list instead of asserted by absence here.
  */
-const MONACO_DEFAULTS: Record<Chord, string> = {
-	'Ctrl+Shift+K': 'editor.action.deleteLines',
-	'Shift+Meta+K': 'editor.action.deleteLines',
-	'Alt+Meta+C': 'toggleFindCaseSensitive',
-	'Ctrl+Shift+L': 'editor.action.selectHighlights',
-	'Shift+Meta+L': 'editor.action.selectHighlights',
-	'Ctrl+Shift+O': 'editor.action.quickOutline',
-	'Shift+Meta+O': 'editor.action.quickOutline',
-	'Ctrl+Shift+1': 'editor.action.replaceOne',
-	'Shift+Meta+1': 'editor.action.replaceOne',
-	'Ctrl+Shift+,': 'editor.action.inPlaceReplace.up',
-	'Shift+Meta+,': 'editor.action.inPlaceReplace.up',
-};
-
-test('the shortcuts added for #121 avoid the Monaco defaults they were checked against', () => {
-	for (const platform of PLATFORMS) {
-		for (const [id, mac, other] of NEW_BINDINGS) {
-			const chord = platform.mac ? mac : other;
-			assert.ok(
-				!(chord in MONACO_DEFAULTS),
-				`${id} takes ${chord} on ${platform.name}, which is Monaco's ${MONACO_DEFAULTS[chord]}`,
-			);
-		}
-	}
-
-	// The one deliberate exception, stated rather than left implicit: Quote
-	// takes Ctrl/Cmd+Shift+. — GitHub's blockquote chord — from Monaco's
-	// `inPlaceReplace.down`, which stays reachable from the command palette.
-	// Its sibling `inPlaceReplace.up` is listed above precisely so that moving
-	// Quote onto Ctrl+Shift+, would fail this test instead of silently taking
-	// the other half.
-	assert.equal(MONACO_DEFAULTS['Ctrl+Shift+.'], undefined);
-});

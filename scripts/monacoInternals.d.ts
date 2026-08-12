@@ -199,6 +199,32 @@ declare module 'monaco-editor/esm/vs/base/common/keybindings.js' {
 	): { readonly chords: readonly KeyCodeChord[] } | null;
 }
 
+declare module 'monaco-editor/esm/vs/platform/keybinding/common/keybindingsRegistry.js' {
+	import type { KeyCodeChord } from 'monaco-editor/esm/vs/base/common/keybindings.js';
+
+	/**
+	 * One row of Monaco's own keymap. `keybinding` is ALREADY decoded — the
+	 * registry resolves the platform at registration time — so callers read
+	 * `.chords` rather than calling `decodeKeybinding` a second time.
+	 */
+	export interface KeybindingItem {
+		readonly keybinding: { readonly chords: readonly KeyCodeChord[] } | null;
+		readonly command: string | null;
+		readonly weight1: number;
+	}
+
+	export const KeybindingsRegistry: {
+		getDefaultKeybindings(): readonly KeybindingItem[];
+	};
+}
+
+declare module 'monaco-editor/esm/vs/base/common/platform.js' {
+	/** True in Node/Electron, false in a browser or WebView. Decides whether
+	 * Monaco binds the clipboard chords at all. */
+	export const isNative: boolean;
+	export const isMacintosh: boolean;
+}
+
 declare module 'monaco-editor/esm/vs/editor/common/core/wordHelper.js' {
 	/**
 	 * The `wordSeparators` default. The editor does not set that option, so this
