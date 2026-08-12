@@ -38,6 +38,7 @@ setNavigatorLanguage('en-US');
 const settingsModule = await import('../src/lib/stores/settings.svelte.js');
 const {
 	CODE_FONT_SIZE_RANGE,
+	DEFAULT_PRE_ZEN_STATE,
 	EDITOR_FONT_SIZE_RANGE,
 	EDITOR_MAX_WIDTH_RANGE,
 	PREVIEW_FONT_SIZE_RANGE,
@@ -49,6 +50,7 @@ const {
 	isSupportedLanguage,
 	isThemeSetting,
 	isWithinRange,
+	normalizePreZenState,
 	parseStoredNumber,
 	resolveLanguageTag,
 	resolveTheme,
@@ -685,6 +687,149 @@ test('the open effect neither reads the app version nor re-enters itself', () =>
 	// so they must not be reactive.
 	assert.match(componentSource, /\n\tlet loaded = false;/);
 	assert.match(componentSource, /\n\tlet previousActiveElement: HTMLElement \| null = null;/);
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * Task 6 — the zen-mode snapshot is validated like every other stored value.
+ *
+ * `editor.preZenState` was the one entry in the table that trusted what it
+ * found: a bare `JSON.parse` straight onto the field, with a `console.error`
+ * for the only failure it considered possible. Its neighbours all validate —
+ * `normalizeEditorToolbarOrder`, `parseStoredNumber`, `isSupportedLanguage`,
+ * `raw === 'left' || raw === 'right'` — and this is the entry whose unchecked
+ * value is copied back onto six other settings the moment zen mode ends.
+ * ---------------------------------------------------------------------------
+ */
+
+/** A snapshot whose six values all differ from the store's defaults. */
+const USER_SNAPSHOT = {
+	renderLineHighlight: 'none',
+	showTabs: false,
+	statusBar: false,
+	minimap: true,
+	lineNumbers: 'off',
+	showToc: true,
+};
+
+/** Every way a stored snapshot can be unusable, as it appears in localStorage. */
+const CORRUPT_SNAPSHOTS: Record<string, string> = {
+	'a field of the wrong type': '{"renderLineHighlight":"none","showTabs":"yes","statusBar":true,"minimap":false,"lineNumbers":"on","showToc":false}',
+	'a missing field': '{"renderLineHighlight":"none","statusBar":true,"minimap":false,"lineNumbers":"on","showToc":false}',
+	'not an object': '"showTabs"',
+	'unparseable JSON': '{"showTabs":',
+};
+
+test('a stored zen snapshot is accepted only whole', () => {
+	assert.deepEqual(normalizePreZenState({ ...USER_SNAPSHOT }), USER_SNAPSHOT);
+	// Fields nobody declared are dropped rather than carried onto the store.
+	assert.deepEqual(normalizePreZenState({ ...USER_SNAPSHOT, wordWrap: 'off' }), USER_SNAPSHOT);
+
+	// One field wrong is the whole record wrong: a snapshot this version cannot
+	// read comes from a version whose other five fields it cannot vouch for
+	// either, and a half-applied restore is a state the user never had.
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showTabs: 'yes' }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showTabs: 1 }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, lineNumbers: 0 }), null);
+	assert.equal(normalizePreZenState({ ...USER_SNAPSHOT, showToc: null }), null);
+	const { showTabs, ...missingShowTabs } = USER_SNAPSHOT;
+	assert.equal(normalizePreZenState(missingShowTabs), null);
+	assert.equal(normalizePreZenState({}), null);
+
+	// And nothing that is not an object gets that far.
+	for (const value of [null, undefined, 42, 'showTabs', true, [USER_SNAPSHOT]]) {
+		assert.equal(normalizePreZenState(value), null, `${JSON.stringify(value)} is not a snapshot`);
+	}
+});
+
+test('a corrupt zen snapshot never reaches the settings it would restore', () => {
+	for (const [description, stored] of Object.entries(CORRUPT_SNAPSHOTS)) {
+		resetStorage({ 'editor.preZenState': stored });
+		const store = new SettingsStore();
+		assert.equal(store.preZenState, null, description);
+		// The store's own fields are untouched: the record was rejected before
+		// anything could be copied out of it.
+		assert.equal(store.showTabs, true, description);
+		assert.equal(store.statusBar, true, description);
+	}
+
+	resetStorage({ 'editor.preZenState': JSON.stringify(USER_SNAPSHOT) });
+	assert.deepEqual(new SettingsStore().preZenState, USER_SNAPSHOT, 'a good snapshot still survives a restart');
+});
+
+test('the tab bar comes back on leaving zen mode even when the snapshot is unusable', () => {
+	// THE BUG, end to end. Zen mode had already hidden the tab bar and written
+	// `editor.showTabs=false`; the snapshot that says how to put it back is one
+	// this version cannot read.
+	//
+	// Unvalidated, the missing-field case restored `showTabs = undefined`, whose
+	// write effect stored the *string* `"undefined"` — and `raw === 'true'` is
+	// false forever after, so the tab bar was gone on every later launch too,
+	// with only the settings dialog to bring it back.
+	for (const [description, stored] of Object.entries(CORRUPT_SNAPSHOTS)) {
+		resetStorage({
+			'editor.zenMode': 'true',
+			'editor.showTabs': 'false',
+			'editor.statusBar': 'false',
+			'editor.lineNumbers': 'off',
+			'editor.preZenState': stored,
+		});
+		const store = new SettingsStore();
+		flushSync();
+		assert.equal(store.zenMode, true, description);
+		assert.equal(store.showTabs, false, description);
+
+		store.toggleZenMode();
+		flushSync();
+
+		assert.equal(store.zenMode, false, description);
+		assert.equal(store.showTabs, true, `${description}: the tab bar is back`);
+		assert.equal(store.statusBar, true, description);
+		assert.equal(store.lineNumbers, 'on', description);
+		assert.equal(store.renderLineHighlight, 'line', description);
+		assert.equal(store.showToc, false, description);
+
+		// What was persisted is a boolean's spelling, not "undefined"...
+		assert.equal(localStorage.getItem('editor.showTabs'), 'true', description);
+		assert.equal(localStorage.getItem('editor.preZenState'), null, `${description}: the bad record is gone`);
+		// ...so the next launch keeps the tab bar instead of reading it back as false.
+		assert.equal(new SettingsStore().showTabs, true, `${description}: and it is still there after a restart`);
+	}
+});
+
+test('a good snapshot still restores what the user had, not the defaults', () => {
+	// The other half: the fallback must not be reached while there is a record
+	// to honour, or leaving zen mode would reset six settings every time.
+	resetStorage();
+	const store = new SettingsStore();
+	Object.assign(store, USER_SNAPSHOT);
+	flushSync();
+
+	store.toggleZenMode();
+	flushSync();
+	assert.equal(store.showTabs, false);
+	assert.equal(store.minimap, false, 'zen mode flattens everything, including what was already off');
+
+	// Through localStorage and a restart, the way a real session gets there.
+	const restarted = new SettingsStore();
+	assert.deepEqual(restarted.preZenState, USER_SNAPSHOT);
+	restarted.toggleZenMode();
+	assert.equal(restarted.zenMode, false);
+	for (const [field, value] of Object.entries(USER_SNAPSHOT)) {
+		assert.equal(Reflect.get(restarted, field), value, `${field} came back as the user left it`);
+	}
+	assert.equal(restarted.preZenState, null, 'the snapshot is spent once it has been restored');
+});
+
+test('the zen fallback is each setting own default', () => {
+	// DEFAULT_PRE_ZEN_STATE spells out six values the store already declares in
+	// its field initializers. This is what stops the two copies drifting.
+	resetStorage();
+	const fresh = new SettingsStore();
+	for (const [field, value] of Object.entries(DEFAULT_PRE_ZEN_STATE)) {
+		assert.equal(Reflect.get(fresh, field), value, `${field} default differs from the zen fallback`);
+	}
+	assert.equal(Object.keys(DEFAULT_PRE_ZEN_STATE).length, 6);
 });
 
 /*
