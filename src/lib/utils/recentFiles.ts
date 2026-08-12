@@ -7,6 +7,14 @@ import { writeStoredSetting } from '../stores/settings.svelte.js';
 // itself is not a contract with anyone.
 const RECENT_FILES_KEY = 'recent-files';
 const RECENT_FILES_LIMIT = 9;
+/**
+ * How many times {@link updateStoredRecentFiles} will re-apply its mutation
+ * over a sibling window's write before giving up. A cap rather than a loop
+ * until success: N windows all retrying each other is a live-lock, and this
+ * runs synchronously on a click. Exhausting it loses one recent-file entry,
+ * which is exactly what happened on every interleaving before.
+ */
+const RECENT_FILES_WRITE_ATTEMPTS = 3;
 
 /**
  * The recent-file list, as stored. Anything that is not an array of strings is
@@ -63,14 +71,39 @@ export function readStoredRecentFiles(): string[] {
  * makes each change a change to the *stored* list rather than to a stale copy
  * of it.
  *
- * It narrows the race rather than closing it. Two windows are two documents
- * over one storage area and the spec's storage mutex is not implemented
- * anywhere, so the `getItem`/`setItem` pair below can still interleave with
- * another window's. It is accepted here because the cycle is one synchronous
- * turn of the event loop, it runs only on discrete user actions, and the worst
- * loss is one recent-file entry the next open restores — three things that are
- * NOT true of every shared key. `update_pinned_tags` in `window_runtime.rs`
- * documents the contrast and takes a real lock.
+ * Re-reading alone narrows the race without closing it. Two windows are two
+ * documents over one storage area, the spec's storage mutex is not implemented
+ * anywhere, and localStorage has no compare-and-swap — so a sibling's write can
+ * still land between this window's `getItem` and its `setItem`, and the entry
+ * that sibling had just added is gone.
+ *
+ * So the cycle reads back what actually landed. If the stored list is not the
+ * one this window just wrote, a sibling overwrote it, and `mutate` is applied
+ * again over the list that won. That works because every mutation here is
+ * "apply my one change to whatever list you hand me" — promote, drop, rename
+ * are each idempotent and each merge — so re-applying folds this change into
+ * the sibling's instead of one of the two being dropped. Both windows run this
+ * code, so the loser of any interleaving is the one that retries, and the pair
+ * converges without either of them holding anything.
+ *
+ * What is left: a sibling write that lands after the read-back. That window is
+ * itself reading back, finds the list this one published, and merges into it —
+ * so the surviving loss needs a sibling to clobber us *and* to see its own
+ * write intact, which is a second interleaving inside a few microseconds of
+ * synchronous code that runs only on discrete user actions. The attempt cap is
+ * what keeps two busy windows from live-locking; hitting it loses one entry
+ * that the next open restores, which is the pre-existing worst case.
+ *
+ * Rust owning the list instead — the way `update_pinned_tags` in
+ * `window_runtime.rs` owns the pin list under a real `Mutex` — was the other
+ * answer, and it is not available for the same reason it was available there.
+ * That lock works because every window is a thread of one Rust process; these
+ * writers are separate webview processes with no shared primitive between them,
+ * so a backend list would have to be pushed back out to each window anyway,
+ * which is what the `storage` event already does. And Rust is the authority on
+ * pins because Rust reads them (it owns the window list); nothing in the
+ * backend reads recent files. Moving them there would make a list the home
+ * screen renders synchronously into an async IPC round trip at every reader.
  *
  * The write goes through {@link writeStoredSetting} (#370) so that a write
  * which changes nothing does not fire a `storage` event in the other windows.
@@ -79,8 +112,13 @@ export function readStoredRecentFiles(): string[] {
  * "I am applying a remote change" flag is documented there.
  */
 export function updateStoredRecentFiles(mutate: (current: string[]) => string[]): string[] {
-	const next = dedupe(mutate(readStoredRecentFiles())).slice(0, RECENT_FILES_LIMIT);
-	writeStoredSetting(RECENT_FILES_KEY, JSON.stringify(next));
+	let next: string[] = [];
+	for (let attempt = 0; attempt < RECENT_FILES_WRITE_ATTEMPTS; attempt++) {
+		next = dedupe(mutate(readStoredRecentFiles())).slice(0, RECENT_FILES_LIMIT);
+		const written = JSON.stringify(next);
+		writeStoredSetting(RECENT_FILES_KEY, written);
+		if (JSON.stringify(readStoredRecentFiles()) === written) break;
+	}
 	return next;
 }
 
