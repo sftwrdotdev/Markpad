@@ -125,7 +125,7 @@ function escapeHtml(value: string): string {
 /** The libraries `renderRichContent` needs, with Mermaid backed by the corpus. */
 function libraries() {
 	return {
-		hljs: { highlightElement() {} },
+		hljs: { getLanguage: () => null },
 		katex: null,
 		renderMathInElement() {},
 		mermaid: {

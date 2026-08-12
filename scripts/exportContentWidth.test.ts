@@ -319,8 +319,8 @@ async function exportedFile(contentWidth: number | null): Promise<string> {
 		tabPath: '/documents/notes.md',
 		mermaidTheme: 'neutral',
 		libraries: {
-			hljs: { highlightElement() {} },
-			katex: { render() {} },
+			hljs: { getLanguage: () => null },
+			katex: { renderToString: () => '' },
 			renderMathInElement() {},
 			mermaid: { initialize() {}, async render() { return { svg: '' }; } },
 		} as any,
