@@ -7,11 +7,13 @@ const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.met
 
 // The guard gained `!e.shiftKey` when Save As was finally bound to Mod+Shift+S:
 // the branch used to match on the modifier and the letter alone, so the chord
-// the app menu advertised for Save As fell through to a plain Save. The Save As
-// branch sits above this one, so slicing from here still captures exactly the
+// the app menu advertised for Save As fell through to a plain Save. It later
+// gained `!e.altKey` too, and both now come from `mod` — the handler's name for
+// "the platform modifier and nothing else". The Save As branch (`modShift`)
+// sits above this one, so slicing from here still captures exactly the
 // plain-save body every assertion below is about.
 function keydownSaveBranch(): string {
-	return sliceBetween(viewer, "if (cmdOrCtrl && !e.shiftKey && key === 's') {", "if (cmdOrCtrl && e.shiftKey && key === 't')");
+	return sliceBetween(viewer, "if (mod && key === 's') {", "if (modShift && key === 't')");
 }
 
 // Reported in #168 by @dayeggpi: with a document that was never saved,

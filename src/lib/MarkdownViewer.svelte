@@ -2767,15 +2767,39 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const key = e.key.toLowerCase();
 		const code = e.code;
 
+		/*
+		 * The three modifier shapes almost every branch below wants, named once.
+		 *
+		 * A chord means the modifiers it names AND the absence of the ones it does
+		 * not. Half the branches here used to say only `cmdOrCtrl && key === …`,
+		 * which is not `Mod+X` — it is `Mod+X` plus its whole Shift/Alt cross
+		 * product. `Mod+W` was the expensive case: Shift+Cmd+W and Alt+Cmd+W are
+		 * what a user reaches for when they mean "close the window" or "close
+		 * everything", and both silently closed one document instead. `Mod+Q`,
+		 * `Mod+E`, `Mod+S`, `Mod+,` and the zoom chords all had the same hole, and
+		 * on macOS Shift+Cmd+Q — Log Out — reached the window-close branch.
+		 *
+		 * The guard is here rather than repeated in fourteen branches so that a
+		 * branch added later INHERITS it by reaching for `mod`, instead of having
+		 * to remember three negations. `shortcutRegistry.test.ts` closes the other
+		 * half: any chord this handler answers that the registry does not advertise
+		 * fails there, so a new branch cannot quietly grow a cross product again.
+		 *
+		 * Three branches are deliberately not written in these terms, each with its
+		 * reason at the branch: tab cycling (Shift picks the direction), zoom in
+		 * (`+` is the shifted `=`), and the Alt-only navigation chords.
+		 */
+		const mod = cmdOrCtrl && !e.shiftKey && !e.altKey;
+		const modShift = cmdOrCtrl && e.shiftKey && !e.altKey;
+		const modAlt = cmdOrCtrl && !e.shiftKey && e.altKey;
+
 		// The macOS application menu owns ⌘Q. Document shortcuts remain in the
 		// in-window controls, so they continue to act on the current webview.
-		if (settings.osType === 'macos' && cmdOrCtrl && !e.shiftKey) {
-			if (key === 'q') return; // → menu-app-quit
-		}
+		if (settings.osType === 'macos' && mod && key === 'q') return; // → menu-app-quit
 
 		const isSplit = tabManager.activeTab?.isSplit;
 
-		if (cmdOrCtrl && e.altKey && !e.shiftKey && (code === 'BracketLeft' || code === 'BracketRight')) {
+		if (modAlt && (code === 'BracketLeft' || code === 'BracketRight')) {
 			if (!canUsePreviewWidthShortcut(e.target, !!isSplit)) return;
 			e.preventDefault();
 			settings.previewFullWidth = false;
@@ -2788,16 +2812,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			reloadFromDisk();
 			return;
 		}
-		if (cmdOrCtrl && e.shiftKey && key === 'm') {
+		if (modShift && key === 'm') {
 			e.preventDefault();
 			carryActiveTabToNextWindow();
 			return;
 		}
-		if (cmdOrCtrl && key === 'w') {
+		// Nothing catches the Shift and Alt variants on the way past: they are not
+		// another command in disguise, they are a user asking the WINDOW manager
+		// for something. Leaving them unhandled — and unprevented — is what lets
+		// the OS answer them, which is strictly better than answering with the one
+		// irreversible thing the app can do.
+		if (mod && key === 'w') {
 			e.preventDefault();
 			closeFile();
 		}
-		if (cmdOrCtrl && e.code === 'F4') {
+		if (mod && code === 'F4') {
 			e.preventDefault();
 			closeFile();
 		}
@@ -2817,23 +2846,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// about only one of the two, which left Ctrl+N doing nothing at all
 		// outside the editor. Both are listed here so the two paths cannot
 		// drift again; `formatShortcutKeymap.test.ts` holds them equal.
-		if (cmdOrCtrl && !e.shiftKey && !e.altKey && (key === 't' || key === 'n')) {
+		if (mod && (key === 't' || key === 'n')) {
 			e.preventDefault();
 			handleNewFile();
 		}
-		if (cmdOrCtrl && !e.shiftKey && !e.altKey && key === 'o') {
+		if (mod && key === 'o') {
 			e.preventDefault();
 			selectFile();
 		}
-			if (cmdOrCtrl && key === 'q') {
-				e.preventDefault();
-				getCurrentWindow().close();
-			}
-		if (cmdOrCtrl && !e.shiftKey && !e.altKey && (code === 'Backslash' || code === 'IntlBackslash')) {
+		if (mod && key === 'q') {
+			e.preventDefault();
+			getCurrentWindow().close();
+		}
+		if (mod && (code === 'Backslash' || code === 'IntlBackslash')) {
 			e.preventDefault();
 			if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
 		}
-		if (cmdOrCtrl && key === 'e') {
+		if (mod && key === 'e') {
 			e.preventDefault();
 			// The `silentSave` argument these two used to pass meant "suppress
 			// the unsaved-changes modal on the hotkey path". There is no modal
@@ -2844,7 +2873,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			//
 			toggleEditView();
 		}
-		if (cmdOrCtrl && e.shiftKey && !e.altKey && key === 's') {
+		if (modShift && key === 's') {
 			// Save As. The app menu advertised this chord for as long as the menu has
 			// existed, but nothing ever bound it: the branch below matched on
 			// `cmdOrCtrl && key === 's'` with no Shift guard, so the advertised
@@ -2855,7 +2884,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			saveContentAs();
 			return;
 		}
-		if (cmdOrCtrl && !e.shiftKey && key === 's') {
+		if (mod && key === 's') {
 			// Reading mode used to swallow the shortcut entirely. An untitled
 			// buffer reaches it with content still unsaved — `toggleEdit`
 			// only runs its save flow for tabs that already have a path — so
@@ -2869,51 +2898,61 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (saveTarget && (saveTarget.isDirty || saveTarget.path === '')) saveContent();
 		}
 
-		if (cmdOrCtrl && e.shiftKey && key === 't') {
+		if (modShift && key === 't') {
 			e.preventDefault();
 			handleUndoCloseTab();
 		}
-		if (cmdOrCtrl && code === 'Tab') {
+		// Not `mod`/`modShift`: Shift is the ARGUMENT here, not part of the chord's
+		// identity — it picks the direction. Alt still has to be up.
+		if (cmdOrCtrl && !e.altKey && code === 'Tab') {
 			e.preventDefault();
 			tabManager.cycleTab(e.shiftKey ? 'prev' : 'next');
 		}
-		if (cmdOrCtrl && code === 'PageUp') {
+		if (mod && code === 'PageUp') {
 			e.preventDefault();
 			tabManager.cycleTab('prev');
 		}
-		if (cmdOrCtrl && code === 'PageDown') {
+		if (mod && code === 'PageDown') {
 			e.preventDefault();
 			tabManager.cycleTab('next');
 		}
-		if (e.metaKey && e.altKey && code === 'ArrowLeft') {
+		// Alt-based chords, so they say what they need by hand: `mod` would demand
+		// Alt be up, which is the opposite of what these two bind.
+		if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowLeft') {
 			e.preventDefault();
 			tabManager.cycleTab('prev');
 		}
-		if (e.metaKey && e.altKey && code === 'ArrowRight') {
+		if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowRight') {
 			e.preventDefault();
 			tabManager.cycleTab('next');
 		}
-		if (e.altKey && !cmdOrCtrl && code === 'ArrowLeft') {
+		if (e.altKey && !e.shiftKey && !cmdOrCtrl && code === 'ArrowLeft') {
 			e.preventDefault();
 			navigateFileHistory('back');
 		}
-		if (e.altKey && !cmdOrCtrl && code === 'ArrowRight') {
+		if (e.altKey && !e.shiftKey && !cmdOrCtrl && code === 'ArrowRight') {
 			e.preventDefault();
 			navigateFileHistory('forward');
 		}
-		if (cmdOrCtrl && (key === '=' || key === '+')) {
+		// The one chord that cannot demand Shift be up. `+` IS the shifted `=` on
+		// the layouts that have both, so `mod` would delete the `+` spelling
+		// outright and leave Cmd+Shift+= — how a lot of people zoom in — dead. The
+		// guard is per-spelling instead: bare `=` wants no Shift, `+` brings its
+		// own. (The keymap harness only ever fires unshifted characters, so it sees
+		// the `=` half of this and never the `+` half.)
+		if (cmdOrCtrl && !e.altKey && (key === '+' || (key === '=' && !e.shiftKey))) {
 			e.preventDefault();
 			settings.zoomIn();
 		}
-		if (cmdOrCtrl && key === '-') {
+		if (mod && key === '-') {
 			e.preventDefault();
 			settings.zoomOut();
 		}
-		if (cmdOrCtrl && key === '0') {
+		if (mod && key === '0') {
 			e.preventDefault();
 			settings.resetZoom();
 		}
-		if (cmdOrCtrl && key === ',') {
+		if (mod && key === ',') {
 			e.preventDefault();
 			showSettings = true;
 		}
@@ -2921,7 +2960,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// FindBar depending on focus and which panes are visible. We only
 		// preventDefault when we actually take the action ourselves —
 		// otherwise we let Monaco's own keybinding fire.
-		if (cmdOrCtrl && !e.shiftKey && !e.altKey && key === 'f') {
+		if (mod && key === 'f') {
 			const active = document.activeElement as Node | null;
 			const editorHasFocus = !!editorPaneEl && !!active && editorPaneEl.contains(active);
 			if (!editorHasFocus) {

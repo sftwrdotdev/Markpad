@@ -69,7 +69,12 @@ function toMonacoLabel(chord: string, mac: boolean): Chord {
 			const key = parts.pop()!;
 			const mods = new Set(parts);
 			const ctrl = mods.has('Ctrl') || (mods.has('Mod') && !mac);
-			const meta = mods.has('Mod') && mac;
+			// A literal `Meta` stays Meta on every platform, the same way a literal
+			// `Ctrl` does. The registry has no such row — the chords that need this
+			// spelling are the unadvertised ones named in
+			// DOCUMENT_CHORDS_NOT_ADVERTISED, which are written in registry syntax so
+			// the exemption list and the registry read alike.
+			const meta = mods.has('Meta') || (mods.has('Mod') && mac);
 			return [
 				ctrl && 'Ctrl',
 				mods.has('Shift') && 'Shift',
@@ -95,6 +100,7 @@ test('the chord translator agrees with the harness on chords both already know',
 	assert.equal(toMonacoLabel('Mod+Shift+E', false), 'Ctrl+Shift+E');
 	assert.equal(toMonacoLabel('Mod+K T', false), 'Ctrl+K T');
 	assert.equal(toMonacoLabel('Ctrl+Tab', true), 'Ctrl+Tab', 'a literal Ctrl stays Ctrl on macOS');
+	assert.equal(toMonacoLabel('Meta+Alt+Left', false), 'Alt+Meta+LeftArrow', 'a literal Meta stays Meta off macOS');
 	assert.equal(toMonacoLabel('Alt+Left', false), 'Alt+LeftArrow');
 
 	assert.deepEqual(mac.get('fmt-inline-code'), ['Shift+Meta+E']);
@@ -531,6 +537,42 @@ test('Save As runs Save As, and not a plain Save', () => {
 	}
 });
 
+test('a close chord wearing an extra modifier destroys nothing', () => {
+	// `Mod+W` and `Mod+Q` tested the platform modifier and the key and nothing
+	// else, so the whole Shift/Alt cross product reached them. `Shift+Cmd+W`,
+	// `Alt+Cmd+W` and `Shift+Cmd+Q` — the last of which is the macOS Log Out
+	// gesture — each threw the document away, while the neighbours in the same
+	// handler (`file-new`, `file-open`, `app-find`) had spelled every modifier
+	// out from the start.
+	//
+	// Not "these three chords do nothing" but "nothing destructive answers to a
+	// modifier it does not name": a fourth spelling nobody thought of fails here
+	// too, and so does a future destructive branch that forgets its guard.
+	const DESTRUCTIVE = ['closeFile', 'getCurrentWindow'];
+	let plainClosesFound = 0;
+
+	for (const platform of PLATFORMS) {
+		const keymap = documentKeymap(platform.osType);
+		for (const [chord, calls] of keymap) {
+			const damage = calls.filter((call) => DESTRUCTIVE.some((command) => call.startsWith(command)));
+			if (damage.length === 0) continue;
+			if (!/\b(Shift|Alt)\b/.test(chord)) {
+				plainClosesFound++;
+				continue;
+			}
+			assert.fail(
+				`${platform.name}: ${chord} runs ${damage.join(', ')} — a chord reached for a window-level or ` +
+					'"close all" gesture must not close the document',
+			);
+		}
+	}
+
+	// Without this the test passes just as happily when the handler answers no
+	// close chord at all, which is the empty-iteration failure the file guards
+	// against everywhere else.
+	assert.ok(plainClosesFound >= 3, `only ${plainClosesFound} unmodified close chords fire; the harness found nothing to guard`);
+});
+
 // -------------------------------------------------- editor bindings vs panel
 
 /**
@@ -735,6 +777,89 @@ test('every command the document handler can reach is advertised, or consciously
 
 	for (const command of Object.keys(DOCUMENT_NOT_ADVERTISED)) {
 		assert.ok(reachable.has(command), `${command} is no longer reachable — drop it from DOCUMENT_NOT_ADVERTISED`);
+	}
+});
+
+/**
+ * Every harness label one registry chord is answered by.
+ *
+ * `cmdOrCtrl` in the document handler is `e.ctrlKey || e.metaKey` on EVERY
+ * platform, so a `Mod` chord answers both spellings everywhere — a Windows
+ * user's Ctrl fingers keep working on a Mac and the reverse. That is one
+ * decision about the modifier, not one decision per chord, so it is applied
+ * here rather than repeated as thirty exemptions below.
+ */
+function documentSpellings(chord: string, mac: boolean): Chord[] {
+	if (!chord.includes('Mod')) return [toMonacoLabel(chord, mac)];
+	return [toMonacoLabel(chord, false), toMonacoLabel(chord, true)];
+}
+
+/**
+ * Chords the document handler answers that the panel deliberately never shows,
+ * written in registry syntax so this list and the registry read alike.
+ *
+ * The command-level test above cannot see any of this: it asks whether a
+ * command is mentioned somewhere, and `closeFile` is mentioned, so `Mod+W`
+ * accounted for `Shift+Mod+W`, `Alt+Mod+W` and the rest of the cross product
+ * as well. This is the same completeness question asked one level finer — per
+ * CHORD — which is the level the bug lived at.
+ *
+ * What that buys: a branch added tomorrow that forgets to say which modifiers
+ * must be up does not quietly grow four undocumented chords. It fails here,
+ * and the author either advertises what they bound or writes down why not.
+ */
+const DOCUMENT_CHORDS_NOT_ADVERTISED: Record<string, string> = {
+	'Mod+F4':
+		'The Windows document-close convention, kept as a second way to reach file-close. Not shown because ' +
+		'the panel already prints Mod+W for that command and a second row would read as a second command.',
+	'Mod+PageUp':
+		'Tab cycling as browsers and editors bind it. tab-prev advertises Ctrl+Shift+Tab; this is the same ' +
+		'command under the chord the muscle memory reaches for.',
+	'Mod+PageDown': 'The tab-next half of the same pair as Mod+PageUp.',
+	'Meta+Alt+Left':
+		'The macOS tab-cycling gesture (Cmd+Alt+arrow), kept for Mac users whose fingers expect it. Advertising ' +
+		'it would give tab-prev a platform-specific second row that is wrong on the other two platforms.',
+	'Meta+Alt+Right': 'The tab-next half of the same pair as Meta+Alt+Left.',
+	'Mod+OEM_102':
+		'The extra backslash key on ISO keyboards, the same physical gesture as view-toggle-split\'s Mod+\\. ' +
+		"The registry's own note on that row says why it is not shown as a second chord.",
+	'Meta+Tab':
+		'The Cmd twin of tab-next, which is spelled with a literal Ctrl precisely because Cmd+Tab is the macOS ' +
+		'application switcher and never reaches the app. Reachable in the handler, unreachable in practice.',
+	'Meta+Shift+Tab': 'The tab-prev half of the same pair as Meta+Tab.',
+};
+
+test('every chord the document handler answers is advertised, or consciously not', () => {
+	for (const platform of PLATFORMS) {
+		const advertised = new Set(
+			SHORTCUTS.filter((entry) => entry.documentCall)
+				.flatMap((entry) => entry.chords)
+				.flatMap((chord) => documentSpellings(chord, platform.mac)),
+		);
+		for (const chord of Object.keys(DOCUMENT_CHORDS_NOT_ADVERTISED)) {
+			for (const spelling of documentSpellings(chord, platform.mac)) advertised.add(spelling);
+		}
+
+		const answered = [...documentKeymap(platform.osType).keys()];
+		assert.ok(answered.length > 15, `${platform.name}: the handler answered ${answered.length} chords`);
+
+		assert.deepEqual(
+			answered.filter((chord) => !advertised.has(chord)).sort(),
+			[],
+			`${platform.name}: the keyboard reaches these chords and nothing accounts for them. ` +
+				'A branch must name every modifier that has to be UP, or the chord it really binds ' +
+				'belongs in SHORTCUTS or in DOCUMENT_CHORDS_NOT_ADVERTISED with a reason.',
+		);
+	}
+
+	// The exemption list must not rot: a chord that stopped firing has to leave it.
+	const live = new Set(PLATFORMS.flatMap((platform) => [...documentKeymap(platform.osType).keys()]));
+	for (const chord of Object.keys(DOCUMENT_CHORDS_NOT_ADVERTISED)) {
+		assert.ok(
+			documentSpellings(chord, false).some((spelling) => live.has(spelling)) ||
+				documentSpellings(chord, true).some((spelling) => live.has(spelling)),
+			`${chord} is no longer answered — drop it from DOCUMENT_CHORDS_NOT_ADVERTISED`,
+		);
 	}
 });
 
