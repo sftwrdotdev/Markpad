@@ -199,6 +199,18 @@ jobs:
       - name: Build app
         env:
           NODE_OPTIONS: "--max_old_space_size=4096"
+          # linuxdeploy and its appimage plugin are AppImages themselves, and an
+          # AppImage mounts itself through FUSE to run. GitHub's runners do not
+          # reliably provide it, and the failure is silent: the tool runs for a
+          # minute and exits non-zero with nothing on stderr. That is what the
+          # intermittent `failed to run linuxdeploy` here was -- the four
+          # downloads all succeed, the .deb bundles, only the AppImage step dies.
+          #
+          # This tells every AppImage to unpack itself to a temp dir and run from
+          # there instead of mounting. It costs a little disk and removes the
+          # dependency entirely. Ignored on macOS and Windows, which is why it
+          # sits on the shared step rather than behind a matrix condition.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
         run: npm run tauri build -- --no-sign ${{ matrix.args }}
 
       # The AppImage this job just built is the un-stripped one, and for this
