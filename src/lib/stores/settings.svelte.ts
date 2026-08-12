@@ -52,6 +52,24 @@ export type ThemeSetting = 'system' | 'light' | 'dark' | `vscode:${string}`;
 
 export const DEFAULT_THEME: ThemeSetting = 'system';
 
+/**
+ * The four the backend can answer `get_os_type` with.
+ *
+ * Guarded rather than cast, because the failure that reaches here is not a
+ * rejection. `initOSType` catches those; what it did not catch was a
+ * *successful* `null` or `undefined`, which `as OSType` laundered into the
+ * union. `DEFAULT_FONTS[null]` is `undefined`, and the line after it reads
+ * `.editorFont` off that — so the store's constructor threw before any
+ * setting was applied.
+ *
+ * Not reachable from the shipped app: the Rust command always answers with a
+ * string. It surfaced in #635, when the vitest move started booting the real
+ * singleton against a bridge stub that answered `null` to everything.
+ */
+export function isOSType(value: unknown): value is OSType {
+	return value === 'macos' || value === 'windows' || value === 'linux' || value === 'unknown';
+}
+
 export function isThemeSetting(value: unknown): value is ThemeSetting {
 	if (value === 'system' || value === 'light' || value === 'dark') return true;
 	return typeof value === 'string' && value.startsWith('vscode:') && value.length > 'vscode:'.length;
@@ -758,8 +776,8 @@ export class SettingsStore {
 
 	async initOSType() {
 		try {
-			const osType = await invoke<string>('get_os_type');
-			this.osType = osType as OSType;
+			const osType = await invoke<unknown>('get_os_type');
+			this.osType = isOSType(osType) ? osType : 'unknown';
 		} catch (e) {
 			console.error('Failed to get OS type:', e);
 			this.osType = 'unknown';
