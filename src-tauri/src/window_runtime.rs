@@ -491,24 +491,65 @@ pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     viewers.into_iter().next()
 }
 
+/// The openable paths named on a command line, in order, resolved against the
+/// directory the command was run from.
+///
+/// argv is the one path source nobody vetted. Every other way a path enters is
+/// narrower: the file picker returns a file that exists, and macOS's
+/// `RunEvent::Opened` carries a URL Launch Services already resolved to a real
+/// file it decided Markpad handles. Here the shell hands over whatever was
+/// typed, and what comes back goes straight to the frontend's `loadMarkdown`,
+/// so it has to be a path a document could plausibly live at.
+///
+/// Relative arguments are resolved rather than left for the eventual read to
+/// resolve against the process's own directory. Both answer the same at
+/// launch, but the resolved string is what the tab, the recent-files list and
+/// the watcher keep — a bare `notes.md` in the recent list names whatever
+/// directory the NEXT launch happens to start in.
+///
+/// Dropped, silently, because there is nothing to open and no channel here to
+/// report on:
+/// - a directory, and any argument with a trailing separator, which spells a
+///   directory whether or not one exists there. `markpad ~/notes/` otherwise
+///   opens a tab whose path is a directory: every read of it fails, and the
+///   tab has a path so `serializeState` persists it — the failure then repeats
+///   on every later launch until the user closes the tab.
+/// - the empty string, which names no file at all.
+///
+/// A path that does not exist is KEPT. `markpad draft.md` naming a file yet to
+/// be written is the request `vim` and `code` answer with an empty buffer at
+/// that name, and nothing here can tell it from a typo; dropping it would
+/// answer a deliberate request with an empty window. An existing file that is
+/// not Markdown is kept too — Markpad's own Open dialog offers "All Files", so
+/// the extension is not what decides whether a path is openable.
+pub fn startup_paths(args: &[String], cwd: &Path) -> Vec<String> {
+    args.iter()
+        .skip(1)
+        .filter(|arg| !arg.is_empty() && !arg.starts_with('-'))
+        .filter_map(|arg| {
+            if arg.ends_with(std::path::is_separator) {
+                return None;
+            }
+            let path = Path::new(arg);
+            let resolved = if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                cwd.join(path)
+            };
+            if resolved.is_dir() {
+                return None;
+            }
+            Some(resolved.display().to_string())
+        })
+        .collect()
+}
+
 pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     let Some(window) = pick_delivery_window(app) else {
         return;
     };
-    let path_str = args
-        .iter()
-        .skip(1)
-        .find(|arg| !arg.starts_with('-'))
-        .map(String::as_str)
-        .unwrap_or("");
-    if !path_str.is_empty() {
-        let path = Path::new(path_str);
-        let resolved_path = if path.is_absolute() {
-            path_str.to_string()
-        } else {
-            Path::new(&cwd).join(path).display().to_string()
-        };
-        let _ = app.emit_to(window.label(), "file-path", resolved_path);
+    if let Some(path) = startup_paths(&args, Path::new(&cwd)).into_iter().next() {
+        let _ = app.emit_to(window.label(), "file-path", path);
     }
     bring_to_front(&window);
 }
@@ -582,10 +623,8 @@ pub fn unwatch_file(window: tauri::Window, state: State<'_, WatcherState>) -> Re
 
 #[tauri::command]
 pub fn send_markdown_path(state: State<'_, AppState>) -> Vec<String> {
-    let mut files: Vec<String> = std::env::args()
-        .skip(1)
-        .filter(|arg| !arg.starts_with('-'))
-        .collect();
+    let args: Vec<String> = std::env::args().collect();
+    let mut files = startup_paths(&args, &std::env::current_dir().unwrap_or_default());
     let startup_files: Vec<String> = lock_recover(&state.startup_files).drain(..).collect();
     for path in startup_files.into_iter().rev() {
         if !files.contains(&path) {
@@ -630,6 +669,85 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("markpad-{tag}-{nonce}"));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    /// argv, as the shell would hand it over: `argv[0]` and then the arguments.
+    fn argv(args: &[&str]) -> Vec<String> {
+        std::iter::once("markpad")
+            .chain(args.iter().copied())
+            .map(String::from)
+            .collect()
+    }
+
+    /// Nothing that names a directory may reach the frontend as a document.
+    ///
+    /// A tab whose path is a directory cannot be read and cannot be saved, and
+    /// it is not disposable either: it HAS a path, so the session serialiser
+    /// keeps it and every later launch restores it and fails again.
+    ///
+    /// The trailing-separator cases are the ones the existence check alone does
+    /// not answer: `gone/` names no directory that exists, but it still cannot
+    /// name a file. Without that guard the last two entries come back.
+    #[test]
+    fn an_argument_naming_a_directory_is_never_offered_as_a_document() {
+        let dir = temp_dir("argv-directory");
+        let sep = std::path::MAIN_SEPARATOR;
+        let with_sep = format!("{}{}", dir.display(), sep);
+        let missing_with_sep = format!("{}{}", dir.join("gone").display(), sep);
+
+        let args = argv(&[
+            &dir.display().to_string(),
+            &with_sep,
+            ".",
+            "",
+            &missing_with_sep,
+            "notes/",
+        ]);
+
+        assert_eq!(startup_paths(&args, &dir), Vec::<String>::new());
+    }
+
+    /// A file the user has yet to write is a request, not a mistake: `vim` and
+    /// `code` both answer it with an empty buffer at that name, and argv cannot
+    /// tell it from a typo. Guards against "validate" being read as "reject
+    /// anything that fails `exists()`", which would answer `markpad draft.md`
+    /// with an empty window and no explanation.
+    ///
+    /// The extension is not part of the question either — Markpad's Open dialog
+    /// offers "All Files".
+    #[test]
+    fn a_file_that_does_not_exist_yet_is_still_offered() {
+        let dir = temp_dir("argv-missing");
+        let existing = dir.join("kept.png");
+        fs::write(&existing, b"not markdown").unwrap();
+        let missing = dir.join("draft.md");
+
+        let args = argv(&[
+            &missing.display().to_string(),
+            &existing.display().to_string(),
+        ]);
+
+        assert_eq!(
+            startup_paths(&args, &dir),
+            vec![
+                missing.display().to_string(),
+                existing.display().to_string()
+            ]
+        );
+    }
+
+    /// Relative arguments are resolved once, here, rather than by whichever
+    /// directory the reader happens to be in. The resolved string is what the
+    /// tab, the recent-files list and the watcher all keep.
+    #[test]
+    fn a_relative_argument_is_resolved_against_the_launch_directory() {
+        let dir = temp_dir("argv-relative");
+        let file = dir.join("notes.md");
+        fs::write(&file, b"# notes").unwrap();
+
+        let args = argv(&["-f", "notes.md"]);
+
+        assert_eq!(startup_paths(&args, &dir), vec![file.display().to_string()]);
     }
 
     fn names(tags: &[PinnedTag]) -> HashSet<String> {

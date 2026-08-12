@@ -200,9 +200,13 @@ pub fn run() {
 
             let _ = window.set_shadow(true);
 
-            let file_path = args.iter().skip(1).find(|arg| !arg.starts_with("-"));
+            // Same vetting as `send_markdown_path`, which reads the same argv:
+            // the frontend consumes BOTH channels, so a path this one lets
+            // through reaches `loadMarkdown` no matter what the other decides.
+            let startup_files =
+                window_runtime::startup_paths(&args, &std::env::current_dir().unwrap_or_default());
 
-            if let Some(path) = file_path {
+            if let Some(path) = startup_files.first() {
                 let _ = window.emit("file-path", path.as_str());
                 window_runtime::bring_to_front(&window);
             }
