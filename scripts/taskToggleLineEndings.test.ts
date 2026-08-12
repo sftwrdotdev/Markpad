@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+
+import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 
 // Toggling a task checkbox in the preview finds the line to rewrite by counting
 // `\n` up to the regex match. Three rounds of fixes for #148 were verified on
@@ -171,6 +173,33 @@ for (const [name, eol] of [
 		}
 	});
 }
+
+test('the marker grammar the renderer reads still matches listSyntax.ts', () => {
+	// The last cross-language copy of this vocabulary. The rewrite above only
+	// gets a chance to run on lines the *renderer* turned into a task item, and
+	// `TASK_SOURCE_RE` is what decides that — so a marker one side accepts and
+	// the other does not is a checkbox that draws and then refuses to toggle.
+	// Every TypeScript reader imports the fragments from utils/listSyntax.ts
+	// (pinned by singleImplementationConvention.test.ts); Rust cannot, so the
+	// drift is caught here instead, by reading the pattern back out of the
+	// source and looking for the fragments inside it.
+	//
+	// Fragments rather than the whole pattern, deliberately: what surrounds them
+	// is allowed to differ. Rust asks a yes/no question about one line and may
+	// spell its whitespace `\s`; the rewrite above works over the whole body
+	// with `/m` and may not (see the comment at the call site). The marker
+	// itself is the only part that has to be the same on both sides.
+	const declared = sliceFrom(readRustBackend(), 'static TASK_SOURCE_RE');
+	const pattern = /Regex::new\(r"([^"]*)"\)/.exec(declared);
+	assert.notEqual(pattern, null, 'TASK_SOURCE_RE no longer holds a raw regex literal');
+
+	for (const fragment of [LIST_MARKER, TASK_BOX]) {
+		assert.ok(
+			pattern![1].includes(fragment),
+			`the Rust renderer reads ${JSON.stringify(pattern![1])}, which does not contain ${fragment} — the two sides disagree about what a list item is`,
+		);
+	}
+});
 
 test('a tab-indented task keeps its indentation', async () => {
 	// `[ \t]*` has to admit a tab, or a tab-indented task stops being found at

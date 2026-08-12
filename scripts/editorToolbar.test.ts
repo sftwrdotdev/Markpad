@@ -151,7 +151,6 @@ const LINE_MARKER_MATRIX: Array<[LineMarkerToolId, string, string]> = [
 	['fmt-bullet-list', '1. foo', '- foo'],
 	['fmt-bullet-list', '- [ ] foo', '- foo'],
 	['fmt-bullet-list', '- [x] foo', '- foo'],
-	['fmt-bullet-list', '> foo', '- > foo'],
 
 	// Numbered list.
 	['fmt-numbered-list', 'foo', '1. foo'],
@@ -159,7 +158,6 @@ const LINE_MARKER_MATRIX: Array<[LineMarkerToolId, string, string]> = [
 	['fmt-numbered-list', '1. foo', 'foo'],
 	['fmt-numbered-list', '- [ ] foo', '1. foo'],
 	['fmt-numbered-list', '1. [ ] foo', '1. foo'],
-	['fmt-numbered-list', '> foo', '1. > foo'],
 
 	// Checklist.
 	['fmt-checklist', 'foo', '- [ ] foo'],
@@ -167,7 +165,49 @@ const LINE_MARKER_MATRIX: Array<[LineMarkerToolId, string, string]> = [
 	['fmt-checklist', '1. foo', '- [ ] foo'],
 	['fmt-checklist', '- [ ] foo', 'foo'],
 	['fmt-checklist', '- [x] foo', 'foo'],
-	['fmt-checklist', '> foo', '- [ ] > foo'],
+
+	// `1)` is the other ordered delimiter CommonMark defines, and the renderer
+	// has always read it (`TASK_SOURCE_RE`, and the preview's own checkbox
+	// rewrite). The toolbar knew only `1.`, so bullet on `1) item` produced
+	// `- 1) item` — issue #451 exactly, one delimiter over — and the numbered
+	// button added a second marker to a line that already was an ordered item
+	// instead of taking it off.
+	['fmt-bullet-list', '1) item', '- item'],
+	['fmt-numbered-list', '1) item', 'item'],
+	['fmt-numbered-list', '2) item', 'item'],
+	['fmt-checklist', '1) item', '- [ ] item'],
+	['fmt-checklist', '1) [ ] item', '- [ ] item'],
+
+	// Indentation belongs to the line, not to the marker: it is what makes the
+	// item a *nested* one, and a toggle that dropped it flattened the item to top
+	// level. The button did not even see the marker — `- sub` behind four spaces
+	// matched neither `own` nor `competing` — so a click on any nested bullet
+	// answered with `-     - sub`.
+	['fmt-bullet-list', '    - sub', '    sub'],
+	['fmt-bullet-list', '    sub', '    - sub'],
+	['fmt-bullet-list', '  1. sub', '  - sub'],
+	['fmt-numbered-list', '\t1. sub', '\tsub'],
+	['fmt-numbered-list', '\t- sub', '\t1. sub'],
+	['fmt-bullet-list', '  - [ ] sub', '  - sub'],
+	['fmt-checklist', '    - [x] sub', '    sub'],
+	['fmt-quote', '  - sub', '  > - sub'],
+
+	// A list item inside a block quote is a list item — the same grammar the
+	// renderer reads to find a task line. The quote markers travel with the
+	// indentation for the same reason: they say where the item sits, and a list
+	// button that consumed them would lift the item out of the quote.
+	['fmt-bullet-list', '> - item', '> item'],
+	['fmt-numbered-list', '> - item', '> 1. item'],
+	['fmt-checklist', '> - [ ] item', '> item'],
+	['fmt-bullet-list', '> > - deep', '> > deep'],
+
+	// Which is also why a list button on a quoted *paragraph* now writes the
+	// marker inside the quote. `- > foo` — the old answer — is a list item
+	// containing a quote, a different document from the quoted list item the
+	// click asked for, and one that no second click could undo.
+	['fmt-bullet-list', '> foo', '> - foo'],
+	['fmt-numbered-list', '> foo', '> 1. foo'],
+	['fmt-checklist', '> foo', '> - [ ] foo'],
 
 	// Quote wraps, it does not displace: a quoted list item is the point.
 	['fmt-quote', 'foo', '> foo'],
@@ -205,6 +245,21 @@ test('a selection that mixes marker types converges on the toggled one', () => {
 	);
 
 	assert.deepEqual(toggleLineMarker('fmt-bullet-list', ['- alpha', '- beta']), ['alpha', 'beta']);
+});
+
+test('a nested selection keeps every line at the depth the author put it', () => {
+	// The whole selection is already bulleted, so this is the removal branch —
+	// the one that used to hand back `- top` / `- sub` with the indentation
+	// eaten, collapsing two levels into one.
+	assert.deepEqual(
+		toggleLineMarker('fmt-bullet-list', ['- top', '    - sub', '\t\t- deeper']),
+		['top', '    sub', '\t\tdeeper'],
+	);
+
+	assert.deepEqual(
+		toggleLineMarker('fmt-numbered-list', ['    alpha', '    beta']),
+		['    1. alpha', '    2. beta'],
+	);
 });
 
 test('numbering counts content lines and leaves blank lines alone', () => {

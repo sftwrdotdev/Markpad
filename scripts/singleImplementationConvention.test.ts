@@ -96,6 +96,15 @@ const RULES: Rule[] = [
 		allowed: ['src/lib/utils/markdownLinks.ts', 'src/lib/MarkdownViewer.svelte'],
 	},
 	{
+		name: 'the list-marker grammar has one implementation in src',
+		why:
+			"\"What a list item's marker looks like\" had three spellings: the Rust renderer's TASK_SOURCE_RE, the preview's checkbox rewrite in documentSession.svelte.ts, and the toolbar's line-marker toggles. The first two agreed; the toolbar's copy accepted neither an indented item nor the `1)` delimiter, so a click on a nested bullet answered `-     - sub` and a click on `1) item` answered `- 1) item` — issue #451 verbatim, one delimiter over. utils/listSyntax.ts holds the vocabulary now. What each site wraps around it — the anchors, the separator, and whether the leading indentation is consumed or preserved — stays at the call site on purpose: the renderer throws that prefix away, the toolbar has to put it back, and sharing *that* would flatten every nested list item on the first click. The Rust copy is pinned against this one by taskToggleLineEndings.test.ts, because no import crosses that boundary.",
+		// The two fragments distinctive enough that prose cannot match them: the
+		// task box's character class and the ordered delimiter pair.
+		marker: /\[ xX\]|\\d\+\[\.\)\]/g,
+		allowed: ['src/lib/utils/listSyntax.ts'],
+	},
+	{
 		name: 'YouTube links never become embedded frames',
 		why: 'The app dropped frame-src from its CSP and renders YouTube as a thumbnail anchor that opens the browser; an iframe path is the pre-fix version and cannot load.',
 		marker: /createElement\((['"])iframe\1\)/g,

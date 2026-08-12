@@ -4,6 +4,7 @@ import { settings } from '../stores/settings.svelte.js';
 import { tabManager, type Tab } from '../stores/tabs.svelte.js';
 import { getMarkdownBodyWithoutFrontMatter } from '../utils/frontMatter.js';
 import { t } from '../utils/i18n.js';
+import { LIST_MARKER, LIST_MARKER_PREFIX, TASK_BOX } from '../utils/listSyntax.js';
 import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
 import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 
@@ -724,6 +725,11 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		if (!(await ensureFullContent(tab.id))) return false;
 		const raw = tab.rawContent;
 		const body = getMarkdownBodyWithoutFrontMatter(raw);
+		// The marker grammar comes from `listSyntax.ts`, shared with the editor
+		// toolbar's line-marker toggles; what surrounds it does not. Here the
+		// prefix is *captured* and written back out, because this rewrite replaces
+		// the box in the middle of the line rather than the head of it.
+		//
 		// Horizontal whitespace only, and it has to stay that way. `\s` matches
 		// `\r` as well as `\n`, and JavaScript's `/m` `^` also matches at the
 		// position *between* a `\r` and its `\n`. With `\s*` greedy, every match
@@ -733,11 +739,14 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// as "the checkbox does not work" (#148); anywhere else the off-by-one
 		// lands on a *real* task line and silently toggles the wrong one. Every
 		// CRLF document was affected, which is to say every Windows author.
-		const updatedBody = body.replace(/^([ \t]*(?:>[ \t]*)*(?:[-+*]|\d+[.)])[ \t]+)\[( |x|X)\]/gm, (match, prefix, _state, offset) => {
-			const line = body.slice(0, offset).split('\n').length;
-			if (line === sourceLine) return `${prefix}[${nowChecked ? 'x' : ' '}]`;
-			return match;
-		});
+		const updatedBody = body.replace(
+			new RegExp(String.raw`^(${LIST_MARKER_PREFIX}${LIST_MARKER}[ \t]+)${TASK_BOX}`, 'gm'),
+			(match, prefix, offset) => {
+				const line = body.slice(0, offset).split('\n').length;
+				if (line === sourceLine) return `${prefix}[${nowChecked ? 'x' : ' '}]`;
+				return match;
+			},
+		);
 		const updated = `${raw.slice(0, raw.length - body.length)}${updatedBody}`;
 		if (updated === raw) return false;
 		tabManager.updateTabRawContent(tab.id, updated);
