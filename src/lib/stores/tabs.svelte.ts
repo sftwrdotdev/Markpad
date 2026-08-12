@@ -276,22 +276,28 @@ export interface Tab {
 class TabManager {
 	tabs = $state<Tab[]>([]);
 	activeTabId = $state<string | null>(null);
-	splitScrollSyncPreference = $state(false);
 	windowTag = $state<{ name: string; color: string; pinned: boolean } | null>(null);
 
-	constructor() {
-		if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
-			const saved = localStorage.getItem('editor.splitScrollSync');
-			if (saved !== null) {
-				this.splitScrollSyncPreference = saved === 'true';
-			}
-		}
+	/**
+	 * The sticky "does a new split start scroll-locked" answer, stored as
+	 * `settings.splitScrollSync` and named here for the tab code that seeds a
+	 * split from it — `Tab.isScrollSynced` is the per-tab value, and the two
+	 * names being different is the point.
+	 *
+	 * It used to be a `$state` here with a bare `localStorage.setItem` beside
+	 * it. One key and one write, so it could not clobber its neighbours the way
+	 * the three writers #618 collected did — but nothing listened for `storage`,
+	 * so a second window kept its own answer until it was restarted, while every
+	 * other preference synced live. Reaching through the settings store is what
+	 * makes it a persisted entry like the rest: compare-and-set on write, and
+	 * the store's own `storage` listener folding in what the siblings did.
+	 */
+	get splitScrollSyncPreference(): boolean {
+		return settings.splitScrollSync;
 	}
 
-	private saveSplitScrollSyncPreference() {
-		if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
-			localStorage.setItem('editor.splitScrollSync', String(this.splitScrollSyncPreference));
-		}
+	set splitScrollSyncPreference(value: boolean) {
+		settings.splitScrollSync = value;
 	}
 
 	get activeTab() {
@@ -873,7 +879,6 @@ class TabManager {
 			tab.isScrollSynced = this.splitScrollSyncPreference;
 		} else {
 			this.splitScrollSyncPreference = tab.isScrollSynced;
-			this.saveSplitScrollSyncPreference();
 		}
 	}
 
@@ -889,7 +894,6 @@ class TabManager {
 		if (tab) {
 			tab.isScrollSynced = !tab.isScrollSynced;
 			this.splitScrollSyncPreference = tab.isScrollSynced;
-			this.saveSplitScrollSyncPreference();
 		}
 	}
 

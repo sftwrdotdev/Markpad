@@ -234,17 +234,7 @@ const RULES: Rule[] = [
 		// appends to rather than a scalar preference — but its write already goes
 		// through `writeStoredSetting`, so it does not match this marker at all.
 		marker: /localStorage\.setItem\s*\(/g,
-		allowed: [
-			'src/lib/stores/settings.svelte.ts',
-			// KNOWN GAP, not an exemption. `editor.splitScrollSync` is a scalar
-			// preference like any other and belongs in `createSettingsPersistence`;
-			// it is listed only because collecting it means editing the tab store,
-			// which was out of the blast radius of the change that added this rule.
-			// It has the milder half of the same defect: one key, one write, so it
-			// cannot clobber its neighbours, but no listener, so a second window
-			// keeps its own answer until it restarts. Delete this line when it moves.
-			'src/lib/stores/tabs.svelte.ts',
-		],
+		allowed: ['src/lib/stores/settings.svelte.ts'],
 	},
 	{
 		name: 'the app writes an image embed in one place',
