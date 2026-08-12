@@ -238,6 +238,14 @@ const RULES: Rule[] = [
 		],
 	},
 	{
+		name: 'the app writes an image embed in one place',
+		why: "Pasting a screenshot and dropping a file are two commands (`save_image`, `copy_file_to_img`) returning the same kind of relative path, and Editor.svelte built the link for each with its own inline copy of the same four expressions, 300 lines apart. Both copies escaped the space and nothing else, so a file named `note#1.png` was written as `![alt](img/note#1.png)` and read back — by the preview and by the export resolver — as `img/note`. A third caller copying either one reintroduces it. `imageEmbed` in src/lib/utils/imageEmbed.ts is the single writer; scripts/imageEmbed.test.ts runs the round trip through the real readers.",
+		// The emitted Markdown itself: a magic string handed to another parser,
+		// which is what makes it a legal marker.
+		marker: /!\[alt\]\(/g,
+		allowed: ['src/lib/utils/imageEmbed.ts'],
+	},
+	{
 		name: 'this suite reads a file through one function',
 		why: "A test that reads source with its own readFileSync gets the bytes Git checked out, and on Windows `core.autocrlf` makes those CRLF. Every `\\n` in a pattern then matches nothing and every anchor containing one is 'not found' — fifteen files were red on the maintainer's Windows checkout while cutting v2.7.0 and were hand-patched assertion by assertion (#452). `readSource` in sourceTree.ts decides the line ending once, on read, so the assertions stay written against `\\n` and a new test cannot re-open the hole by accident. Read the file with `readSource(path)` from './sourceTree.js' — it takes a cwd-relative string or a `new URL(…, import.meta.url)` — and write the assertion against `\\n`.",
 		// The call, not the import: `import { readFileSync }` on its own reads
