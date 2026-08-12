@@ -39,11 +39,10 @@ import {
 import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
 import { patchPreviewBlocks } from './utils/blockPatch.js';
 import {
-	applyFold,
-	flipFold,
-	foldRegionAt,
-	foldRegionByKey,
-	isFoldCollapsed,
+	revealFold,
+	toggleFold,
+	toggleFoldFromClick,
+	type FoldHost,
 } from './utils/foldState.js';
 import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
@@ -287,7 +286,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let zoomData = $state<{ src?: string; html?: string } | null>(null);
 
 	// What a document with no tab behind it has folded. Never written to — every
-	// write goes through `setFoldOverrides`, which needs an active tab.
+	// write goes through `foldHost.setFolds`, which needs an active tab.
 	const NO_FOLD_OVERRIDES = new Set<string>();
 
 	// derived from tab manager
@@ -1440,40 +1439,25 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		syncEditorToPreviewScroll(target);
 	}
 
-	// The one place fold state is written. It goes to the tab the user is
-	// looking at, which is the document the fold is a fold OF — every toggle
-	// path below acts on the preview or the table of contents of that tab.
-	function setFoldOverrides(next: Set<string>) {
-		if (tabManager.activeTabId) tabManager.setTabFoldOverrides(tabManager.activeTabId, next);
-	}
-
 	/**
-	 * The single write path for a fold, whichever of the three drivers asked:
-	 * the preview chevron and the callout title (`handleLinkClick`), the
-	 * outline's fold button, and find opening what hides a match (`revealFold`).
+	 * What the fold drivers in `foldState.ts` act on: the document on screen,
+	 * and the tab that document belongs to.
 	 *
-	 * Both halves happen here, and that is the point. The stored deviation is
-	 * what the NEXT render reads; the two class writes are what the current DOM
-	 * shows. A driver that did only the second — which is what the callout title
-	 * used to do — folds something that springs open again on the next
-	 * keystroke, and there is nothing on screen to say why.
-	 *
-	 * The state is flipped even when the fold is not in the DOM (the preview is
-	 * hidden in editor-only mode, and the outline is still there to click), so
-	 * the fold is honoured by the render that brings it back.
+	 * The write goes to the tab the user is looking at, which is the document
+	 * the fold is a fold OF — a fold is per document (see `Tab.foldOverrides`),
+	 * and the read above is what makes a tab switch swap the whole set.
 	 */
-	function toggleFold(key: string) {
-		setFoldOverrides(flipFold(foldOverrides, key));
-
-		const region = markdownBody ? foldRegionByKey(markdownBody, key) : null;
-		if (region) applyFold(region, !isFoldCollapsed(region));
-	}
-
-	/** Open this fold if it is shut — what FindBar asks for on the way to a match. */
-	function revealFold(key: string) {
-		const region = markdownBody ? foldRegionByKey(markdownBody, key) : null;
-		if (region && isFoldCollapsed(region)) toggleFold(key);
-	}
+	const foldHost: FoldHost = {
+		get root() {
+			return markdownBody ?? null;
+		},
+		get folds() {
+			return foldOverrides;
+		},
+		setFolds(next) {
+			if (tabManager.activeTabId) tabManager.setTabFoldOverrides(tabManager.activeTabId, next);
+		},
+	};
 
 	function scrollToAnchor(anchor: string, options: { pushHistory?: boolean } = {}) {
 		let id = decodeLinkPath(anchor);
@@ -1542,12 +1526,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// bar. One branch for both, because they are one feature — the callout's
 		// own branch used to toggle the classes and stop there, so a folded
 		// callout re-opened on the next render while a folded heading did not.
-		const foldControl = target.closest('.header-fold-icon, .callout-toggle');
-		if (foldControl) {
+		if (toggleFoldFromClick(foldHost, target)) {
 			if (e.detail > 1) e.preventDefault(); // prevent double-click selection
 			e.stopPropagation();
-			const region = foldRegionAt(foldControl);
-			if (region) toggleFold(region.key);
 			return;
 		}
 
@@ -3681,7 +3662,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							bind:this={findBar}
 							bind:open={findOpen}
 							{markdownBody}
-							onunfold={revealFold}
+							onunfold={(key: string) => revealFold(foldHost, key)}
 							language={settings.language} />
 
 							<div class="viewer-content">
@@ -3870,7 +3851,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										htmlContent={sanitizedHtml}
 										onBeforeJump={pushScrollHistory} 
 										{foldOverrides} 
-										ontoggleFold={toggleFold} 
+										ontoggleFold={(key: string) => toggleFold(foldHost, key)} 
 										oncopyref={(text: string, slug: string) => copyHeadingReference(text, slug)}
 										onjump={(id: string, text: string, sourceLine: RendererLine | null) => {
 											// A floating outline that is covering the text has done its
