@@ -404,18 +404,20 @@ test('a theme picked in one window reaches the others without a restart', () => 
 	// free. The theme <select> sat in the same panel and did not: it wrote
 	// `localStorage` directly, and nothing in the app listened for `theme`.
 	resetStorage();
-	storageListeners.length = 0;
 	const store = new SettingsStore();
-	assert.equal(storageListeners.length, 1);
-	const onStorage = storageListeners[0];
+	// The `storage` listener is only wired up once the effects flush.
+	flushSync();
 	assert.equal(store.theme, 'system');
 
-	localStorageShim.setItem('theme', 'dark');
-	onStorage({ key: 'theme', newValue: 'dark', storageArea: localStorageShim });
+	// A real `storage` event through the real `window`, so what is exercised is
+	// the listener the store actually registered — not a callback this test
+	// captured and called itself.
+	localStorage.setItem('theme', 'dark');
+	dispatchStorage('theme', 'dark');
 	assert.equal(store.theme, 'dark');
 
-	localStorageShim.setItem('theme', 'vscode:Ayu Dark');
-	onStorage({ key: 'theme', newValue: 'vscode:Ayu Dark', storageArea: localStorageShim });
+	localStorage.setItem('theme', 'vscode:Ayu Dark');
+	dispatchStorage('theme', 'vscode:Ayu Dark');
 	assert.equal(store.theme, 'vscode:Ayu Dark');
 
 	// And the arriving value is not echoed back at the window that sent it.
@@ -430,7 +432,7 @@ test('the persisted theme key is the one app.html paints from', () => {
 	// that script exists to prevent, and nothing else in the app would notice.
 	const keys = createSettingsPersistence().map((entry) => entry.key);
 	assert.ok(keys.includes('theme'), 'the theme is persisted');
-	const appHtml = readSource(new URL('../src/app.html', import.meta.url));
+	const appHtml = readSource('src/app.html');
 	assert.match(appHtml, /localStorage\.getItem\('theme'\)/);
 });
 
@@ -442,7 +444,7 @@ test('the startup background is told the appearance, not the theme name', () => 
 	// last arm, and a dark VS Code theme on a light desktop flashed white on
 	// every launch. Whether such a theme is dark is inside its own JSON, which
 	// only the frontend parses, so the resolved answer is what gets sent.
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+	const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
 	assert.match(viewerSource, /function saveStartupAppearance\(appearance: 'system' \| 'light' \| 'dark'\)/);
 	assert.match(viewerSource, /invoke\('save_theme', \{ theme: appearance \}\)/);
 	assert.equal(
@@ -536,22 +538,21 @@ test('the zoom operations are bounded by one range, and recover a corrupt level'
 
 test('zoom and preview width follow the other windows too', () => {
 	resetStorage();
-	storageListeners.length = 0;
 	const store = new SettingsStore();
-	const onStorage = storageListeners[0];
+	flushSync();
 
-	localStorageShim.setItem('zoomLevel', '150');
-	onStorage({ key: 'zoomLevel', newValue: '150', storageArea: localStorageShim });
+	localStorage.setItem('zoomLevel', '150');
+	dispatchStorage('zoomLevel', '150');
 	assert.equal(store.zoomLevel, 150);
 
 	// Including garbage another window somehow published: the load path is the
 	// same one the constructor uses, so it validates the same way.
-	localStorageShim.setItem('zoomLevel', 'banana');
-	onStorage({ key: 'zoomLevel', newValue: 'banana', storageArea: localStorageShim });
+	localStorage.setItem('zoomLevel', 'banana');
+	dispatchStorage('zoomLevel', 'banana');
 	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default);
 
-	localStorageShim.setItem('preview.fullWidth', 'true');
-	onStorage({ key: 'preview.fullWidth', newValue: 'true', storageArea: localStorageShim });
+	localStorage.setItem('preview.fullWidth', 'true');
+	dispatchStorage('preview.fullWidth', 'true');
 	assert.equal(store.previewFullWidth, true);
 	store.togglePreviewFullWidth();
 	assert.equal(store.previewFullWidth, false);

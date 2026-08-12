@@ -191,6 +191,28 @@ const RULES: Rule[] = [
 		allowed: ['src/lib/utils/foldState.ts'],
 	},
 	{
+		name: 'localStorage is written through one function',
+		why: "Every window is a separate webview over one shared localStorage, so a persisted value needs compare-and-set on write and a `storage` listener to fold in what the other windows did — `writeStoredSetting` and `installPersistedSettings` in settings.svelte.ts are both. Three values were written with a bare `setItem` outside that: `theme` (changed in one window's settings panel, ignored by every other window until restart, while every switch beside it in the same panel synced live), `zoomLevel` (read back with a bare `parseInt`, so a corrupt key rendered `zoom: NaN` and `Math.min(NaN + 10, 500)` left the wheel and the chords unable to recover it), and `preview.fullWidth`. A bare `setItem` IS the defect: it is the write that no listener answers and no range validates.",
+		// The call, so the `typeof localStorage.setItem === 'function'` guards do
+		// not match. `utils/recentFiles.ts` is deliberately absent rather than
+		// allowed: it keeps its own read-modify-write and its own `storage`
+		// listener — correct, because the recent list is a collection every window
+		// appends to rather than a scalar preference — but its write already goes
+		// through `writeStoredSetting`, so it does not match this marker at all.
+		marker: /localStorage\.setItem\s*\(/g,
+		allowed: [
+			'src/lib/stores/settings.svelte.ts',
+			// KNOWN GAP, not an exemption. `editor.splitScrollSync` is a scalar
+			// preference like any other and belongs in `createSettingsPersistence`;
+			// it is listed only because collecting it means editing the tab store,
+			// which was out of the blast radius of the change that added this rule.
+			// It has the milder half of the same defect: one key, one write, so it
+			// cannot clobber its neighbours, but no listener, so a second window
+			// keeps its own answer until it restarts. Delete this line when it moves.
+			'src/lib/stores/tabs.svelte.ts',
+		],
+	},
+	{
 		name: 'this suite reads a file through one function',
 		why: "A test that reads source with its own readFileSync gets the bytes Git checked out, and on Windows `core.autocrlf` makes those CRLF. Every `\\n` in a pattern then matches nothing and every anchor containing one is 'not found' — fifteen files were red on the maintainer's Windows checkout while cutting v2.7.0 and were hand-patched assertion by assertion (#452). `readSource` in sourceTree.ts decides the line ending once, on read, so the assertions stay written against `\\n` and a new test cannot re-open the hole by accident. Read the file with `readSource(path)` from './sourceTree.js' — it takes a cwd-relative string or a `new URL(…, import.meta.url)` — and write the assertion against `\\n`.",
 		// The call, not the import: `import { readFileSync }` on its own reads
