@@ -25,17 +25,19 @@ export interface Tab {
 	 * document, and picking the wrong one loses the user's work.
 	 *
 	 * `rawContent` IS the document — the Markdown as it stands right now. The
-	 * editor two-way binds to it, the preview and the HTML export render from
-	 * it, and it is the exact string `saveContent` hands to `save_file_content`.
+	 * editor shows it and writes every keystroke back through
+	 * `updateTabRawContent`, the preview and the HTML export render from it,
+	 * and it is the exact string `saveContent` hands to `save_file_content`.
 	 * Anything that reads or changes the user's text wants this one.
 	 *
 	 * `originalContent` is that same buffer as it last came off, or last went
-	 * onto, disk. It exists only to answer "changed?": `isDirty` is literally
-	 * `rawContent !== originalContent` (`updateTabRawContent` below), and
-	 * discarding edits is `rawContent = originalContent` (`canCloseTab`). Write
-	 * it to a file and you save the last-saved text over the user's unsaved
-	 * edits; overwrite it and the edits stop even looking unsaved, which is why
-	 * `resolveExternalChange` refuses to reload a dirty tab.
+	 * onto, disk. It exists only to answer "changed?": `isDirty` IS
+	 * `rawContent !== originalContent` — a getter, not a field, so the two
+	 * cannot disagree — and discarding edits is `rawContent = originalContent`
+	 * (`canCloseTab`). Write it to a file and you save the last-saved text over
+	 * the user's unsaved edits; overwrite it and the edits stop even looking
+	 * unsaved, which is why `resolveExternalChange` refuses to reload a dirty
+	 * tab.
 	 *
 	 * `content` is not Markdown at all. It is the rendered preview HTML, cached
 	 * per tab and re-sanitized at the sink (`sanitizedHtml`). It is allowed to
@@ -44,12 +46,8 @@ export interface Tab {
 	 * repair. So it answers "what is on screen", never "what does the document
 	 * say", and it must never reach a file.
 	 *
-	 * Two things that are easy to assume and are not true. Assigning
-	 * `rawContent` directly does NOT update `isDirty` — go through
-	 * `updateTabRawContent` (edits) or `setTabRawContent` (a fresh read), or
-	 * maintain the flag yourself as `saveContent` does. And a clean tab is not
-	 * necessarily a copy of its file: a partial or failed read puts the same
-	 * prefix — or `''` — in BOTH buffers and clears `isDirty`, so "not dirty"
+	 * A clean tab is not necessarily a copy of its file: a partial or failed
+	 * read puts the same prefix — or `''` — in BOTH buffers, so "not dirty"
 	 * means "no unsaved edits", not "matches disk". See `isTruncated`.
 	 */
 	content: string;
@@ -57,7 +55,21 @@ export interface Tab {
 	originalContent: string;
 	/** Preview pixels — the coarsest of three position fields. See `scrollPercentage`. */
 	scrollTop: number;
-	isDirty: boolean;
+	/**
+	 * Derived, never assigned: exactly `rawContent !== originalContent`, read
+	 * off the two buffers every time. Each construction site below spells it as
+	 * a getter, which is why this is `readonly` — `tab.isDirty = false` is now
+	 * a compile error rather than a fourth opinion about what "changed" means.
+	 *
+	 * It used to be a plain field that nine sites maintained by hand, in three
+	 * different ways, and every one of them was really saying one of two
+	 * things: "this text is the saved text now" (`originalContent = rawContent`,
+	 * which the navigation routes below still say) or nothing at all, because
+	 * the buffers already agreed. A flag that can be set independently of the
+	 * buffers it summarises can be wrong about them, and the tab close dialog,
+	 * the auto-save trigger and the reload guard all believe it.
+	 */
+	readonly isDirty: boolean;
 	isEditing: boolean;
 	/**
 	 * Back/forward navigation, not undo — despite sitting next to three text
@@ -141,6 +153,26 @@ export interface Tab {
 	 * from a cross-window transfer payload always arrive complete.
 	 */
 	isTruncated?: boolean;
+	/**
+	 * The `rawContent` the preview in `content` was rendered from — the answer
+	 * to "is what is on screen still this document?".
+	 *
+	 * Its whole job is to let the render effect skip work: a re-render rebuilds
+	 * the article and takes the reader's scroll position, fold state and find
+	 * highlights with it, so the effect renders only when this does not match
+	 * `rawContent`. Which also makes it a claim anyone may make on the
+	 * preview's behalf: `toggleTaskCheckbox` updates the DOM by hand and then
+	 * says so here, and that is the one place outside the viewer allowed to.
+	 *
+	 * Not the same question as `content !== ''`. `content` is the rendered
+	 * HTML and is allowed to lag; this says whether it lags.
+	 *
+	 * Optional, and absent is the safe direction: "nothing has been rendered
+	 * from this buffer", which costs one render. It lived on the tab as an
+	 * undeclared `_lastRenderedRawContent` reached through `as any` from two
+	 * files, which is the same field with nothing to check the spelling of it.
+	 */
+	previewedRawContent?: string;
 	/**
 	 * `rawContent` was decoded with U+FFFD substitutions because NO encoding
 	 * could read the file: a truncated multi-byte tail, or bytes that are not
@@ -310,7 +342,9 @@ class TabManager {
 					rawContent: '',
 					originalContent: '',
 					scrollTop: typeof saved.scrollTop === 'number' ? saved.scrollTop : 0,
-					isDirty: false,
+					get isDirty() {
+						return this.rawContent !== this.originalContent;
+					},
 					isEditing: saved.isEditing === true,
 					history: fileHistory.history,
 					historyIndex: fileHistory.historyIndex,
@@ -447,7 +481,9 @@ class TabManager {
 			rawContent,
 			originalContent: rawContent,
 			scrollTop: 0,
-			isDirty: false,
+			get isDirty() {
+				return this.rawContent !== this.originalContent;
+			},
 			isEditing: false,
 			history: fileHistory.history,
 			historyIndex: fileHistory.historyIndex,
@@ -482,7 +518,9 @@ class TabManager {
 			rawContent: content,
 			originalContent: content,
 			scrollTop: 0,
-			isDirty: false,
+			get isDirty() {
+				return this.rawContent !== this.originalContent;
+			},
 			isEditing: settings.newFileDefaultMode,
 			history: [content],
 			historyIndex: 0,
@@ -517,7 +555,9 @@ class TabManager {
 			rawContent: '',
 			originalContent: '',
 			scrollTop: 0,
-			isDirty: false,
+			get isDirty() {
+				return this.rawContent !== this.originalContent;
+			},
 			isEditing: false,
 			history: [],
 			historyIndex: 0,
@@ -629,7 +669,6 @@ class TabManager {
 		const tab = this.tabs.find((t) => t.id === id);
 		if (tab) {
 			tab.rawContent = raw;
-			tab.isDirty = tab.rawContent !== tab.originalContent;
 		}
 	}
 
@@ -649,7 +688,6 @@ class TabManager {
 		if (tab) {
 			tab.rawContent = raw;
 			tab.originalContent = raw;
-			tab.isDirty = false;
 			tab.isTruncated = isTruncated;
 		}
 	}
@@ -832,7 +870,13 @@ class TabManager {
 			tab.path = path;
 			tab.pathKey = pathKey;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			tab.isDirty = false;
+			// The buffer is not touched here, so nothing about "changed?" changed
+			// either. This used to clear a dirty flag by hand, which was only ever
+			// right because both callers reach here mid-save and set
+			// `originalContent` to the text they just wrote a line later — and
+			// wrong in the window between, where a keystroke landing during the
+			// write would have been marked saved. The other caller repoints an
+			// untitled, empty, already-clean tab at the file it is about to load.
 			const fileHistory = replaceCurrentHistoryEntry({
 				currentPath: tab.path,
 				targetPath: path,
@@ -878,9 +922,10 @@ class TabManager {
 	 * this trigger — both doc comments below used to open by restating it, which
 	 * is what an unnamed shared concept looks like. This is its name.
 	 *
-	 * Not the buffer: `rawContent`, `originalContent` and `content` are
-	 * overwritten by the load that follows, not cleared here. This is only the
-	 * state that describes a document without being it.
+	 * Not the buffer's TEXT: `rawContent`, `originalContent` and `content` are
+	 * overwritten by the load that follows, not cleared here. Only the saved
+	 * baseline moves, and only so the tab stops reading dirty — see
+	 * `clearUnsavedEdits` below.
 	 *
 	 * Only a change of DOCUMENT gets here. Save As and rename (`updateTabPath`,
 	 * `renameTab`) change the tab's path while the text on screen stays put: the
@@ -888,8 +933,27 @@ class TabManager {
 	 * it. Tests guard both directions.
 	 */
 	private forgetPreviousDocument(tab: Tab) {
+		this.clearUnsavedEdits(tab);
 		this.clearReadingPosition(tab);
 		this.clearCollapsedHeaders(tab);
+	}
+
+	/**
+	 * The tab no longer holds the document its buffer came from, so it has no
+	 * unsaved edits to that document any more — and it must not look as if it
+	 * has, because `path` is already the NEW file. The auto-save effect arms on
+	 * `isDirty && path !== ''`, so a tab left dirty across a navigation would
+	 * write the document it just left into the file it just moved to, during
+	 * the await before the load lands.
+	 *
+	 * Moving the baseline rather than the text: the load that follows replaces
+	 * both buffers within the same user action, and clearing `rawContent` here
+	 * would blank the editor for that frame. This is what the three navigation
+	 * routes were each saying with `isDirty = false` while it was still a field
+	 * anyone could assign — one place now, because they ask one question.
+	 */
+	private clearUnsavedEdits(tab: Tab) {
+		tab.originalContent = tab.rawContent;
 	}
 
 	/**
@@ -966,7 +1030,6 @@ class TabManager {
 			tab.path = path;
 			tab.pathKey = pathKey;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			tab.isDirty = false;
 			this.forgetPreviousDocument(tab);
 		}
 	}
@@ -998,7 +1061,6 @@ class TabManager {
 			tab.path = path;
 			tab.pathKey = undefined;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			tab.isDirty = false;
 			this.forgetPreviousDocument(tab);
 			return path;
 		}
@@ -1017,7 +1079,6 @@ class TabManager {
 			tab.path = path;
 			tab.pathKey = undefined;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			tab.isDirty = false;
 			this.forgetPreviousDocument(tab);
 			return path;
 		}

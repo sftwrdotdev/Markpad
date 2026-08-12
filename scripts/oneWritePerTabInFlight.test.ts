@@ -270,3 +270,49 @@ test('closing a tab mid-write does not leave the older snapshot on disk', async 
 	assert.equal(sawOverlap, false);
 	assert.equal(disk.get('/notes/e.md'), 'B', 'the closed tab’s newest text must be what is left on disk');
 });
+
+// ------------------------------------------ what "saved" means for the buffer
+//
+// `isDirty` is `rawContent !== originalContent` read off the tab, so the only
+// way a save can report itself is by moving `originalContent` to the text it
+// actually wrote. These two used to be assertions about the *shape* of that
+// code — that `documentSession` still contained a particular assignment — which
+// stopped being expressible once the flag became a getter nobody assigns. They
+// run here instead, where a live session already writes to a fake disk.
+
+test('a keystroke that misses the Save As write is still unsaved when it returns', async () => {
+	// The baseline is the snapshot that reached the file, never the buffer as it
+	// stands afterwards: the write is awaited, and anything typed while it
+	// drains is not in the file. Marking the tab clean there is silent data
+	// loss with a clean dirty dot on top of it.
+	reset();
+	const session = makeSession();
+	const tabId = await openDirtyTab(session, '/notes/f.md', 'A');
+	writeDurationsMs = [30];
+	nextSaveTarget = '/notes/copy-f.md';
+
+	const saveAs = session.saveContentAs();
+	// Past the dialog and the snapshot, still inside the write.
+	await new Promise((resolve) => setTimeout(resolve, 5));
+	tabManager.updateTabRawContent(tabId, 'AB');
+
+	assert.equal(await saveAs, true);
+	assert.equal(disk.get('/notes/copy-f.md'), 'A', 'the copy holds the snapshot the save took');
+	const tab = tabManager.tabs.find((item) => item.id === tabId)!;
+	assert.equal(tab.isDirty, true, 'the keystroke the copy does not contain was reported as saved');
+});
+
+test('discarding at the close prompt puts the last saved text back', async () => {
+	reset();
+	settings.autoSave = false;
+	const session = makeSession();
+	const tabId = await openDirtyTab(session, '/notes/g.md', 'edited');
+
+	// `askClose` answers 'discard'.
+	assert.equal(await session.canCloseTab(tabId), true);
+
+	const tab = tabManager.tabs.find((item) => item.id === tabId)!;
+	assert.equal(tab.rawContent, 'original', 'the buffer kept the edits the user chose to discard');
+	assert.equal(tab.isDirty, false, 'the discarded tab still reads dirty, so closing it asks again');
+	assert.equal(disk.get('/notes/g.md'), 'original', 'discarding wrote to the file');
+});

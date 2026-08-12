@@ -249,7 +249,6 @@ type Component = {
  */
 const factorySource = ts.transpileModule(
 	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel) => {
-		let value = '';
 		let wordCount = 0;
 		let currentLanguage = 'markdown';
 		let lineEnding = 'LF';
@@ -291,6 +290,14 @@ const factorySource = ts.transpileModule(
 const unmodelledScope = new Proxy(Object.create(null), {
 	has: (_target, key) => typeof key === 'string' && !(key in globalThis),
 	get: (_target, key) => {
+		// The `value` prop, modelled as what Svelte compiles a dynamic prop to:
+		// a getter over the parent's expression, which is
+		// `value={tabManager.activeTab.rawContent}`. A local copy would be a
+		// second buffer with its own staleness — the very thing the component
+		// stopped keeping when `bind:value` went — and the listener's
+		// `value !== newValue` guard would then mean "changed since this copy
+		// was last assigned" instead of "the editor changed the document".
+		if (key === 'value') return tabManager.activeTab?.rawContent ?? '';
 		if (typeof key !== 'string') return undefined;
 		throw new Error(
 			`the editor reads component state \`${String(key)}\` that this harness does not model. ` +

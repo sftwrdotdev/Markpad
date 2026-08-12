@@ -161,10 +161,12 @@ test('the untitled save dialog prefills the numbered tab title', () => {
 	assert.match(scope, /defaultPath: tab\.title/);
 });
 
-test('save-as keeps snapshot-based dirty tracking in documentSession', () => {
+test('save-as writes a snapshot rather than the buffer as it stands', () => {
+	// The other half — that a keystroke landing during that write is still
+	// unsaved afterwards — is `isDirty` reading the two buffers, and it runs
+	// for real in oneWritePerTabInFlight.test.ts.
 	const fn = sliceFrom(documentSession, 'async function saveContentAs');
 	assert.match(fn, /const snapshot = tab\.rawContent;/);
-	assert.match(fn, /tab\.isDirty = tab\.rawContent !== snapshot;/);
 });
 
 test('the restore-on-reopen branch persists window state via the shared helper', () => {

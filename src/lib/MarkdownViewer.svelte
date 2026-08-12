@@ -579,8 +579,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		applyRestoredContent: async (tabId, raw) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
 			if (!tab) return;
-			tab.rawContent = raw;
-			tab.originalContent = raw;
+			// Through the store, not by assigning the two buffers here: this is
+			// a whole file read from disk, so it also settles `isTruncated` —
+			// and a tab whose earlier restore attempt was deferred arrives here
+			// carrying `true` from `markTabContentUnavailable`, which would have
+			// gone on refusing every save of a buffer that is now complete.
+			tabManager.setTabRawContent(tabId, raw);
 			const processed = await renderMarkdownPreview(raw, tab.path, tab.collapsedHeaders);
 			if (isDisposed) return;
 			tabManager.updateTabContent(tab.id, processed);
@@ -840,10 +844,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		return processMarkdownHtml(html, filePath, folds);
 	}
 
-	async function renderTabPreviewFromRaw(tab: { id: string; path: string; rawContent: string; collapsedHeaders: Set<string>; [key: string]: any }) {
+	async function renderTabPreviewFromRaw(tab: Tab) {
 		const processed = await renderMarkdownPreview(tab.rawContent, tab.path, tab.collapsedHeaders);
 		tabManager.updateTabContent(tab.id, processed);
-		tab._lastRenderedRawContent = tab.rawContent;
+		tab.previewedRawContent = tab.rawContent;
 		await tick();
 		renderRichContent();
 	}
@@ -2128,13 +2132,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const tabId = tab.id;
 		const rawContent = tab.rawContent;
 		if (rawContent === undefined) return;
-		if ((tab as any)._lastRenderedRawContent === rawContent) return;
+		if (tab.previewedRawContent === rawContent) return;
 		try {
 			const processed = await renderMarkdownPreview(rawContent, tab.path, tab.collapsedHeaders);
 			const current = tabManager.activeTab;
 			if (tabManager.activeTabId !== tabId || current?.rawContent !== rawContent) return;
 			tabManager.updateTabContent(tabId, processed);
-			(current as any)._lastRenderedRawContent = rawContent;
+			current.previewedRawContent = rawContent;
 			await tick();
 			// Awaited, unlike the on-screen path: Mermaid, KaTeX and
 			// highlight.js all replace nodes asynchronously, and the diagram
@@ -2645,7 +2649,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (tab && (tab.isSplit || (isEditing && settings.showToc)) && tab.rawContent !== undefined) {
 			const tabId = tab.id;
 			const rawContent = tab.rawContent;
-			if ((tab as any)._lastRenderedRawContent === rawContent) return;
+			if (tab.previewedRawContent === rawContent) return;
 
 			const timer = setTimeout(() => {
 				renderMarkdownPreview(rawContent, tab.path, tab.collapsedHeaders)
@@ -2657,7 +2661,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							currentTab?.rawContent !== rawContent
 						) return;
 						tabManager.updateTabContent(tabId, processed);
-						(currentTab as any)._lastRenderedRawContent = rawContent;
+						currentTab.previewedRawContent = rawContent;
 						tick().then(renderRichContent);
 					})
 					.catch(console.error);
@@ -3582,7 +3586,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							{/if}
 							<Editor
 								bind:this={editorPane}
-								bind:value={tabManager.activeTab.rawContent}
+								value={tabManager.activeTab.rawContent}
 								language={editorLanguage}
 								{theme}
 								onsave={saveContent}

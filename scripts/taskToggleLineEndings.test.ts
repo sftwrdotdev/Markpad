@@ -213,7 +213,7 @@ test('LF: two blank lines above the list', async () => {
 // ---------------------------------------------- the toggle does not re-render
 //
 // Ticking a checkbox writes the buffer, and MarkdownViewer's render effect
-// re-renders whenever the buffer stops matching `_lastRenderedRawContent`. It
+// re-renders whenever the buffer stops matching `previewedRawContent`. It
 // would rebuild the whole article to arrive at the DOM already on screen — the
 // browser has drawn the native checkbox and the caller has added `task-done` —
 // and rebuilding drops the reader's scroll position, which in a long document
@@ -237,11 +237,7 @@ test('a toggle tells the preview it is already up to date', async () => {
 
 	await session.toggleTaskCheckbox(3, true);
 
-	assert.equal(
-		(tab as unknown as Record<string, unknown>)._lastRenderedRawContent,
-		tab.rawContent,
-		'the render effect has nothing to do',
-	);
+	assert.equal(tab.previewedRawContent, tab.rawContent, 'the render effect has nothing to do');
 });
 
 test('it is marked before anything can be awaited', () => {
@@ -249,7 +245,7 @@ test('it is marked before anything can be awaited', () => {
 	// checks the field BEFORE that — so marking after an `await` would be too
 	// late to prevent the render it has already scheduled.
 	const fn = sliceBetween(sessionSource, 'async function toggleTaskCheckbox(', '\n\tasync function ');
-	const marked = fn.indexOf('markPreviewMatchesBuffer');
+	const marked = fn.indexOf('tab.previewedRawContent = updated;');
 	const awaited = fn.indexOf('await saveContent');
 	assert.ok(marked > 0, 'the toggle marks the preview');
 	assert.ok(marked < awaited, 'marked before the first await after the write');

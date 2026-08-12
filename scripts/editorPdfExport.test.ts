@@ -354,7 +354,7 @@ test('the refresh is skipped when the DOM already matches the buffer', () => {
 	// Reading mode is rendered by loadMarkdown from this same buffer, and
 	// re-rendering it would discard the scroll, fold and find state on screen.
 	assert.match(body_, /if \(!tab \|\| !\(tab\.isEditing \|\| tab\.isSplit\)\) return;/);
-	assert.match(body_, /_lastRenderedRawContent === rawContent\) return;/);
+	assert.match(body_, /previewedRawContent === rawContent\) return;/);
 });
 
 test('the refresh actually lands before the print', () => {
