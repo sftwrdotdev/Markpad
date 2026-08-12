@@ -19,6 +19,47 @@ import {
 export interface Tab {
 	id: string;
 	path: string;
+	/**
+	 * What the tab strip, the window title and the per-tab close dialog call
+	 * this tab. Derived from `path` at every site that points a tab at a
+	 * document — `addTab`, `restoreState`, `updateTabPath`, `renameTab`,
+	 * `navigate`, `goBack`, `goForward` — as the last segment of the path, and
+	 * chosen by `nextUntitledTitle` when there is no path to take a segment
+	 * from.
+	 *
+	 * Five of those sites spell the derivation `path.split(/[/\\]/).pop() ||
+	 * 'Untitled'`, and that English literal is dead code, not an i18n hole. It
+	 * is there because `Array.prototype.pop` is typed `string | undefined`; the
+	 * arm needs a path that is empty or ends in a separator, and every route
+	 * into those five is guarded against both upstream:
+	 *
+	 * - `navigate` is only ever handed a link target, and `getMarkdownLinkTarget`
+	 *   refuses an href whose path does not end in one of
+	 *   `MARKDOWN_LINK_EXTENSIONS`, so what `resolveMarkdownTargetPath` returns
+	 *   always ends in a filename.
+	 * - `goBack`/`goForward` return on `!result.path` before the title is
+	 *   touched, so an empty entry cannot reach it — and every non-empty entry
+	 *   in `history` was put there by one of the other sites.
+	 * - `renameTab` replaces the last segment of a non-empty `tab.path` with a
+	 *   non-empty typed name, and only runs once `fs::rename` has SUCCEEDED on
+	 *   the result, which a destination ending in a separator cannot do.
+	 * - `updateTabPath` is reached from the Save/Save As dialog, which returns
+	 *   a file the user named, and from `loadMarkdown` — and there only when
+	 *   the active tab is an empty untitled one. The app's one unvalidated path
+	 *   source, `send_markdown_path`, hands back raw argv filtered only on a
+	 *   leading `-`, so `markpad ~/notes/` really does reach `loadMarkdown`
+	 *   with a trailing separator; it cannot reach THIS branch, because
+	 *   untitled tabs are not persisted (`serializeState` filters on
+	 *   `hasRealFilePath`) and so no empty untitled tab exists at startup for
+	 *   argv to repoint. That path lands on `addTab`, which resolves a nameless
+	 *   path through `nextUntitledTitle` and `t('tabs.untitled', …)`.
+	 *
+	 * If a route ever does hand one of them a directory or an empty string, the
+	 * fallback to reach for is `t('tabs.untitled', settings.language)` and NOT
+	 * `nextUntitledTitle`: numbering exists to tell several NEW untitled buffers
+	 * apart, and a tab that got here has a path — calling it "Untitled 3" would
+	 * claim otherwise.
+	 */
 	title: string;
 	/**
 	 * The three buffers. They are the same shape, they usually hold the same
