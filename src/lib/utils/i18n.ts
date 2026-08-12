@@ -150,9 +150,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Editing Keys',
-            enter: 'In a list: continue it; on an empty item, end it',
-            tab: 'In a table: next cell (new row at the end); in a list: indent',
-            shiftTab: 'In a table: previous cell; elsewhere: outdent'
+            enter: 'List: continue · Empty item: end',
+            tab: 'Table: next cell · List: indent',
+            shiftTab: 'Table: previous cell · Else: outdent',
+            modEnter: 'Table: row below · Else: line below',
+            modShiftEnter: 'Table: row above · Else: line above'
         },
         menu: {
             file: 'File',
@@ -503,9 +505,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: '编辑按键',
-            enter: '在列表中：续写下一项；空项则结束列表',
-            tab: '在表格中：跳到下一格（在末尾则新增一行）；在列表中：增加层级',
-            shiftTab: '在表格中：跳到上一格；其他位置：减少缩进'
+            enter: '列表：续写下一项 · 空项：结束列表',
+            tab: '表格：下一格 · 列表：加一级',
+            shiftTab: '表格：上一格 · 其他：减少缩进',
+            modEnter: '表格：下方加一行 · 其他：下方加空行',
+            modShiftEnter: '表格：上方加一行 · 其他：上方加空行'
         },
         menu: {
             file: '文件',
@@ -840,9 +844,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: '編集キー',
-            enter: 'リスト内: 次の項目を続ける。空の項目なら終了',
-            tab: '表内: 次のセル（末尾なら行を追加）。リスト内: レベルを上げる',
-            shiftTab: '表内: 前のセル。その他: インデントを減らす'
+            enter: 'リスト: 続ける · 空項目: 終了',
+            tab: '表: 次のセル · リスト: レベルを上げる',
+            shiftTab: '表: 前のセル · その他: インデント減',
+            modEnter: '表: 下に行を追加 · その他: 下に空行',
+            modShiftEnter: '表: 上に行を追加 · その他: 上に空行'
         },
         menu: {
             file: 'ファイル',
@@ -1122,9 +1128,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: '編輯按鍵',
-            enter: '在清單中：接續下一項；空項目則結束清單',
-            tab: '在表格中：跳到下一格（在結尾則新增一列）；在清單中：增加層級',
-            shiftTab: '在表格中：跳到上一格；其他位置：減少縮排'
+            enter: '清單：接續下一項 · 空項目：結束清單',
+            tab: '表格：下一格 · 清單：加一級',
+            shiftTab: '表格：上一格 · 其他：減少縮排',
+            modEnter: '表格：下方加一列 · 其他：下方加空行',
+            modShiftEnter: '表格：上方加一列 · 其他：上方加空行'
         },
         menu: {
             file: '檔案',
@@ -1471,9 +1479,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: '편집 키',
-            enter: '목록에서: 다음 항목 계속. 빈 항목이면 목록 종료',
-            tab: '표에서: 다음 셀(끝에서는 행 추가). 목록에서: 수준 올리기',
-            shiftTab: '표에서: 이전 셀. 그 외: 들여쓰기 줄이기'
+            enter: '목록: 계속 · 빈 항목: 종료',
+            tab: '표: 다음 셀 · 목록: 수준 올리기',
+            shiftTab: '표: 이전 셀 · 그 외: 들여쓰기 감소',
+            modEnter: '표: 아래에 행 추가 · 그 외: 아래에 빈 줄',
+            modShiftEnter: '표: 위에 행 추가 · 그 외: 위에 빈 줄'
         },
         menu: {
             file: '파일',
@@ -1791,9 +1801,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Клавиши редактирования',
-            enter: 'В списке: продолжить его; на пустом пункте — завершить',
-            tab: 'В таблице: следующая ячейка (в конце — новая строка); в списке: увеличить уровень',
-            shiftTab: 'В таблице: предыдущая ячейка; в остальных случаях: уменьшить отступ'
+            enter: 'Список: продолжить · Пустой пункт: завершить',
+            tab: 'Таблица: следующая ячейка · Список: уровень выше',
+            shiftTab: 'Таблица: предыдущая ячейка · Иначе: уменьшить отступ',
+            modEnter: 'Таблица: строка ниже · Иначе: пустая строка ниже',
+            modShiftEnter: 'Таблица: строка выше · Иначе: пустая строка выше'
         },
         menu: {
             file: 'Файл',
@@ -2032,9 +2044,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Teclas de edición',
-            enter: 'En una lista: continuarla; en un elemento vacío, terminarla',
-            tab: 'En una tabla: celda siguiente (al final, nueva fila); en una lista: aumentar nivel',
-            shiftTab: 'En una tabla: celda anterior; en otro caso: reducir sangría'
+            enter: 'Lista: continuar · Elemento vacío: terminar',
+            tab: 'Tabla: celda siguiente · Lista: aumentar nivel',
+            shiftTab: 'Tabla: celda anterior · Si no: reducir sangría',
+            modEnter: 'Tabla: fila debajo · Si no: línea debajo',
+            modShiftEnter: 'Tabla: fila encima · Si no: línea encima'
         },
         menu: {
             file: 'Archivo',
@@ -2269,9 +2283,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Touches d\'édition',
-            enter: 'Dans une liste : la poursuivre ; sur un élément vide, la terminer',
-            tab: 'Dans un tableau : cellule suivante (nouvelle ligne à la fin) ; dans une liste : augmenter le niveau',
-            shiftTab: 'Dans un tableau : cellule précédente ; ailleurs : réduire le retrait'
+            enter: 'Liste : continuer · Élément vide : terminer',
+            tab: 'Tableau : cellule suivante · Liste : augmenter le niveau',
+            shiftTab: 'Tableau : cellule précédente · Sinon : réduire le retrait',
+            modEnter: 'Tableau : ligne en dessous · Sinon : ligne vide en dessous',
+            modShiftEnter: 'Tableau : ligne au-dessus · Sinon : ligne vide au-dessus'
         },
         menu: {
             file: 'Fichier',
@@ -2506,9 +2522,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Bearbeitungstasten',
-            enter: 'In einer Liste: fortsetzen; bei leerem Eintrag beenden',
-            tab: 'In einer Tabelle: nächste Zelle (am Ende neue Zeile); in einer Liste: Ebene erhöhen',
-            shiftTab: 'In einer Tabelle: vorherige Zelle; sonst: Einzug verringern'
+            enter: 'Liste: fortsetzen · Leerer Eintrag: beenden',
+            tab: 'Tabelle: nächste Zelle · Liste: Ebene erhöhen',
+            shiftTab: 'Tabelle: vorherige Zelle · Sonst: Einzug verringern',
+            modEnter: 'Tabelle: Zeile darunter · Sonst: Leerzeile darunter',
+            modShiftEnter: 'Tabelle: Zeile darüber · Sonst: Leerzeile darüber'
         },
         menu: {
             file: 'Datei',
@@ -2743,9 +2761,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Teclas de edição',
-            enter: 'Em uma lista: continuá-la; em um item vazio, terminá-la',
-            tab: 'Em uma tabela: próxima célula (no fim, nova linha); em uma lista: aumentar nível',
-            shiftTab: 'Em uma tabela: célula anterior; caso contrário: reduzir indentação'
+            enter: 'Lista: continuar · Item vazio: terminar',
+            tab: 'Tabela: próxima célula · Lista: aumentar nível',
+            shiftTab: 'Tabela: célula anterior · Senão: reduzir indentação',
+            modEnter: 'Tabela: linha abaixo · Senão: linha vazia abaixo',
+            modShiftEnter: 'Tabela: linha acima · Senão: linha vazia acima'
         },
         menu: {
             file: 'Arquivo',
@@ -2980,9 +3000,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Tasti di modifica',
-            enter: 'In un elenco: continuarlo; su una voce vuota, terminarlo',
-            tab: 'In una tabella: cella successiva (alla fine, nuova riga); in un elenco: aumentare il livello',
-            shiftTab: 'In una tabella: cella precedente; altrove: ridurre il rientro'
+            enter: 'Elenco: continuare · Voce vuota: terminare',
+            tab: 'Tabella: cella successiva · Elenco: aumentare livello',
+            shiftTab: 'Tabella: cella precedente · Altrimenti: ridurre rientro',
+            modEnter: 'Tabella: riga sotto · Altrimenti: riga vuota sotto',
+            modShiftEnter: 'Tabella: riga sopra · Altrimenti: riga vuota sopra'
         },
         menu: {
             file: 'File',
@@ -3229,9 +3251,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Klawisze edycji',
-            enter: 'Na liście: kontynuuj ją; na pustym elemencie zakończ',
-            tab: 'W tabeli: następna komórka (na końcu nowy wiersz); na liście: zwiększ poziom',
-            shiftTab: 'W tabeli: poprzednia komórka; poza nią: zmniejsz wcięcie'
+            enter: 'Lista: kontynuuj · Pusty element: zakończ',
+            tab: 'Tabela: następna komórka · Lista: zwiększ poziom',
+            shiftTab: 'Tabela: poprzednia komórka · Poza nią: zmniejsz wcięcie',
+            modEnter: 'Tabela: wiersz poniżej · Poza nią: pusty wiersz poniżej',
+            modShiftEnter: 'Tabela: wiersz powyżej · Poza nią: pusty wiersz powyżej'
         },
         menu: {
             file: 'Plik',
@@ -3476,9 +3500,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Bewerkingstoetsen',
-            enter: 'In een lijst: doorgaan; bij een leeg item beëindigen',
-            tab: 'In een tabel: volgende cel (aan het eind een nieuwe rij); in een lijst: niveau verhogen',
-            shiftTab: 'In een tabel: vorige cel; elders: inspringing verkleinen'
+            enter: 'Lijst: doorgaan · Leeg item: beëindigen',
+            tab: 'Tabel: volgende cel · Lijst: niveau verhogen',
+            shiftTab: 'Tabel: vorige cel · Anders: inspringing verkleinen',
+            modEnter: 'Tabel: rij eronder · Anders: lege regel eronder',
+            modShiftEnter: 'Tabel: rij erboven · Anders: lege regel erboven'
         },
         menu: {
             file: 'Bestand',
@@ -3713,9 +3739,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Redigeringstangenter',
-            enter: 'I en lista: fortsätt den; på ett tomt objekt avsluta den',
-            tab: 'I en tabell: nästa cell (ny rad i slutet); i en lista: öka nivån',
-            shiftTab: 'I en tabell: föregående cell; annars: minska indraget'
+            enter: 'Lista: fortsätt · Tomt objekt: avsluta',
+            tab: 'Tabell: nästa cell · Lista: öka nivån',
+            shiftTab: 'Tabell: föregående cell · Annars: minska indraget',
+            modEnter: 'Tabell: rad under · Annars: tom rad under',
+            modShiftEnter: 'Tabell: rad över · Annars: tom rad över'
         },
         menu: {
             file: 'Arkiv',
@@ -3950,9 +3978,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Phím chỉnh sửa',
-            enter: 'Trong danh sách: tiếp tục; ở mục trống thì kết thúc',
-            tab: 'Trong bảng: ô kế tiếp (ở cuối thì thêm hàng); trong danh sách: tăng cấp',
-            shiftTab: 'Trong bảng: ô trước đó; nơi khác: giảm thụt lề'
+            enter: 'Danh sách: tiếp tục · Mục trống: kết thúc',
+            tab: 'Bảng: ô kế tiếp · Danh sách: tăng cấp',
+            shiftTab: 'Bảng: ô trước · Nơi khác: giảm thụt lề',
+            modEnter: 'Bảng: thêm hàng dưới · Nơi khác: dòng trống dưới',
+            modShiftEnter: 'Bảng: thêm hàng trên · Nơi khác: dòng trống trên'
         },
         menu: {
             file: 'Tệp',
@@ -4187,9 +4217,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Teclas de edição',
-            enter: 'Numa lista: continuá-la; num item vazio, terminá-la',
-            tab: 'Numa tabela: célula seguinte (no fim, nova linha); numa lista: aumentar nível',
-            shiftTab: 'Numa tabela: célula anterior; caso contrário: reduzir indentação'
+            enter: 'Lista: continuar · Item vazio: terminar',
+            tab: 'Tabela: célula seguinte · Lista: aumentar nível',
+            shiftTab: 'Tabela: célula anterior · Senão: reduzir indentação',
+            modEnter: 'Tabela: linha abaixo · Senão: linha vazia abaixo',
+            modShiftEnter: 'Tabela: linha acima · Senão: linha vazia acima'
         },
         menu: {
             file: 'Ficheiro',
@@ -4424,9 +4456,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Taste de editare',
-            enter: 'Într-o listă: continuă lista; pe un element gol, o încheie',
-            tab: 'Într-un tabel: celula următoare (la final, rând nou); într-o listă: crește nivelul',
-            shiftTab: 'Într-un tabel: celula anterioară; în rest: reduce indentarea'
+            enter: 'Listă: continuă · Element gol: încheie',
+            tab: 'Tabel: celula următoare · Listă: crește nivelul',
+            shiftTab: 'Tabel: celula anterioară · În rest: reduce indentarea',
+            modEnter: 'Tabel: rând dedesubt · În rest: rând gol dedesubt',
+            modShiftEnter: 'Tabel: rând deasupra · În rest: rând gol deasupra'
         },
         menu: {
             file: 'Fișier',
@@ -4661,9 +4695,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Szerkesztőbillentyűk',
-            enter: 'Listában: folytatás; üres elemnél befejezés',
-            tab: 'Táblázatban: következő cella (a végén új sor); listában: szint növelése',
-            shiftTab: 'Táblázatban: előző cella; egyébként: behúzás csökkentése'
+            enter: 'Lista: folytatás · Üres elem: befejezés',
+            tab: 'Táblázat: következő cella · Lista: szint növelése',
+            shiftTab: 'Táblázat: előző cella · Egyébként: behúzás csökkentése',
+            modEnter: 'Táblázat: sor alá · Egyébként: üres sor alá',
+            modShiftEnter: 'Táblázat: sor fölé · Egyébként: üres sor fölé'
         },
         menu: {
             file: 'Fájl',
@@ -4898,9 +4934,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Klávesy pro úpravy',
-            enter: 'V seznamu: pokračovat; u prázdné položky ukončit',
-            tab: 'V tabulce: další buňka (na konci nový řádek); v seznamu: zvýšit úroveň',
-            shiftTab: 'V tabulce: předchozí buňka; jinde: zmenšit odsazení'
+            enter: 'Seznam: pokračovat · Prázdná položka: ukončit',
+            tab: 'Tabulka: další buňka · Seznam: zvýšit úroveň',
+            shiftTab: 'Tabulka: předchozí buňka · Jinde: zmenšit odsazení',
+            modEnter: 'Tabulka: řádek pod · Jinde: prázdný řádek pod',
+            modShiftEnter: 'Tabulka: řádek nad · Jinde: prázdný řádek nad'
         },
         menu: {
             file: 'Soubor',
@@ -5141,9 +5179,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Klávesy na úpravy',
-            enter: 'V zozname: pokračovať; pri prázdnej položke ukončiť',
-            tab: 'V tabuľke: ďalšia bunka (na konci nový riadok); v zozname: zvýšiť úroveň',
-            shiftTab: 'V tabuľke: predchádzajúca bunka; inde: zmenšiť odsadenie'
+            enter: 'Zoznam: pokračovať · Prázdna položka: ukončiť',
+            tab: 'Tabuľka: ďalšia bunka · Zoznam: zvýšiť úroveň',
+            shiftTab: 'Tabuľka: predchádzajúca bunka · Inde: zmenšiť odsadenie',
+            modEnter: 'Tabuľka: riadok pod · Inde: prázdny riadok pod',
+            modShiftEnter: 'Tabuľka: riadok nad · Inde: prázdny riadok nad'
         },
         menu: {
             file: 'Súbor',
@@ -5378,9 +5418,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Πλήκτρα επεξεργασίας',
-            enter: 'Σε λίστα: συνέχισέ την· σε κενό στοιχείο, τερμάτισέ την',
-            tab: 'Σε πίνακα: επόμενο κελί (στο τέλος, νέα γραμμή)· σε λίστα: αύξηση επιπέδου',
-            shiftTab: 'Σε πίνακα: προηγούμενο κελί· αλλού: μείωση εσοχής'
+            enter: 'Λίστα: συνέχεια · Κενό στοιχείο: τερματισμός',
+            tab: 'Πίνακας: επόμενο κελί · Λίστα: αύξηση επιπέδου',
+            shiftTab: 'Πίνακας: προηγούμενο κελί · Αλλού: μείωση εσοχής',
+            modEnter: 'Πίνακας: γραμμή κάτω · Αλλού: κενή γραμμή κάτω',
+            modShiftEnter: 'Πίνακας: γραμμή πάνω · Αλλού: κενή γραμμή πάνω'
         },
         menu: {
             file: 'Αρχείο',
@@ -5615,9 +5657,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Muokkausnäppäimet',
-            enter: 'Luettelossa: jatka sitä; tyhjässä kohdassa lopeta se',
-            tab: 'Taulukossa: seuraava solu (lopussa uusi rivi); luettelossa: kasvata tasoa',
-            shiftTab: 'Taulukossa: edellinen solu; muualla: pienennä sisennystä'
+            enter: 'Luettelo: jatka · Tyhjä kohta: lopeta',
+            tab: 'Taulukko: seuraava solu · Luettelo: kasvata tasoa',
+            shiftTab: 'Taulukko: edellinen solu · Muualla: pienennä sisennystä',
+            modEnter: 'Taulukko: rivi alle · Muualla: tyhjä rivi alle',
+            modShiftEnter: 'Taulukko: rivi ylle · Muualla: tyhjä rivi ylle'
         },
         menu: {
             file: 'Tiedosto',
@@ -5852,9 +5896,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Redigeringstaster',
-            enter: 'I en liste: fortsæt den; ved et tomt punkt afsluttes den',
-            tab: 'I en tabel: næste celle (til sidst en ny række); i en liste: øg niveauet',
-            shiftTab: 'I en tabel: forrige celle; ellers: formindsk indrykningen'
+            enter: 'Liste: fortsæt · Tomt punkt: afslut',
+            tab: 'Tabel: næste celle · Liste: øg niveauet',
+            shiftTab: 'Tabel: forrige celle · Ellers: formindsk indrykning',
+            modEnter: 'Tabel: række under · Ellers: tom linje under',
+            modShiftEnter: 'Tabel: række over · Ellers: tom linje over'
         },
         menu: {
             file: 'Fil',
@@ -6089,9 +6135,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Redigeringstaster',
-            enter: 'I en liste: fortsett den; på et tomt punkt avsluttes den',
-            tab: 'I en tabell: neste celle (til slutt en ny rad); i en liste: øk nivået',
-            shiftTab: 'I en tabell: forrige celle; ellers: reduser innrykket'
+            enter: 'Liste: fortsett · Tomt punkt: avslutt',
+            tab: 'Tabell: neste celle · Liste: øk nivået',
+            shiftTab: 'Tabell: forrige celle · Ellers: reduser innrykk',
+            modEnter: 'Tabell: rad under · Ellers: tom linje under',
+            modShiftEnter: 'Tabell: rad over · Ellers: tom linje over'
         },
         menu: {
             file: 'Fil',
@@ -6326,9 +6374,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Tombol pengeditan',
-            enter: 'Dalam daftar: lanjutkan; pada item kosong, akhiri',
-            tab: 'Dalam tabel: sel berikutnya (di akhir, baris baru); dalam daftar: naikkan tingkat',
-            shiftTab: 'Dalam tabel: sel sebelumnya; selain itu: kurangi indentasi'
+            enter: 'Daftar: lanjutkan · Item kosong: akhiri',
+            tab: 'Tabel: sel berikutnya · Daftar: naikkan tingkat',
+            shiftTab: 'Tabel: sel sebelumnya · Selain itu: kurangi indentasi',
+            modEnter: 'Tabel: baris di bawah · Selain itu: baris kosong di bawah',
+            modShiftEnter: 'Tabel: baris di atas · Selain itu: baris kosong di atas'
         },
         menu: {
             file: 'Berkas',
@@ -6563,9 +6613,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         keys: {
             group: 'Düzenleme tuşları',
-            enter: 'Listede: listeye devam et; boş öğede listeyi bitir',
-            tab: 'Tabloda: sonraki hücre (sonda yeni satır); listede: seviyeyi artır',
-            shiftTab: 'Tabloda: önceki hücre; başka yerde: girintiyi azalt'
+            enter: 'Liste: devam et · Boş öğe: bitir',
+            tab: 'Tablo: sonraki hücre · Liste: seviyeyi artır',
+            shiftTab: 'Tablo: önceki hücre · Başka yerde: girintiyi azalt',
+            modEnter: 'Tablo: alta satır · Başka yerde: alta boş satır',
+            modShiftEnter: 'Tablo: üste satır · Başka yerde: üste boş satır'
         },
         menu: {
             file: 'Dosya',

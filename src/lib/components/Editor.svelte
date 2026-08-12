@@ -769,6 +769,20 @@
 			handleShiftTabKey,
 			`${EDITING_KEY_CONTEXT} && !editorTabMovesFocus`,
 		);
+		// The same two keys Monaco binds to Insert Line Below / Above, which is why
+		// they need no guard of their own beyond the shared one: the only other
+		// claimants on Mod+Enter in the bundle are the find widget's Replace All and
+		// the references peek, and `editorTextFocus` is false in both.
+		editor.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+			handleModEnterKey,
+			EDITING_KEY_CONTEXT,
+		);
+		editor.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+			handleModShiftEnterKey,
+			EDITING_KEY_CONTEXT,
+		);
 
 		editorReady = true;
 
@@ -999,12 +1013,18 @@
 		return true;
 	};
 
-	/** The `Mod+K` row and column commands, which are the same edit one level up. */
+	/**
+	 * The row and column commands, which are the same edit one level up. False
+	 * when the caret is not in a table, or when the table refuses the edit — which
+	 * is what lets the two Enter keys hand themselves back to Monaco.
+	 */
 	const editTable = (operation: TableOperation) => {
 		const caret = soleCaret();
-		if (!caret) return;
+		if (!caret) return false;
 		const edit = tableOperation(caret.model, caret.line, caret.column, operation);
-		if (edit) applyTableEdit(edit, `table-${operation}`);
+		if (!edit) return false;
+		applyTableEdit(edit, `table-${operation}`);
+		return true;
 	};
 
 	/**
@@ -1038,6 +1058,30 @@
 	const handleShiftTabKey = () => {
 		if (stepTableCell(true)) return;
 		editor.trigger("keyboard", "outdent", null);
+	};
+
+	/**
+	 * Mod+Enter: a row below in a table, else Monaco's own "Insert Line Below".
+	 *
+	 * THE KEY IS NOT BEING TAKEN, IT IS BEING SPECIALISED. Monaco already binds
+	 * `Mod+Enter` to `editor.action.insertLineAfter` and `Mod+Shift+Enter` to
+	 * `insertLineBefore`, and inside a table "the line below" IS "the row below" —
+	 * so these two handlers are the same shape as Shift+Tab's above: take the key,
+	 * and hand it straight back everywhere the table branch declines.
+	 *
+	 * The rows used to be on `Mod+K R`, and a two-key chord for the commonest edit
+	 * a table gets is a chord nobody presses. Columns keep theirs: they are rarer,
+	 * and no unmodified key means "insert a column" in any editor.
+	 */
+	const handleModEnterKey = () => {
+		if (editTable("insert-row")) return;
+		editor.trigger("keyboard", "editor.action.insertLineAfter", null);
+	};
+
+	/** Mod+Shift+Enter: a row above in a table, else "Insert Line Above". */
+	const handleModShiftEnterKey = () => {
+		if (editTable("insert-row-above")) return;
+		editor.trigger("keyboard", "editor.action.insertLineBefore", null);
 	};
 
 	const wrapAsCodeBlock = () => {
@@ -1358,10 +1402,19 @@
 			editor.addAction({
 				id: "insert-table-simple",
 				label: t('menu.insertTable', lang),
+				// BOTH FORMS OF THE CHORD, which is what VS Code registers for every
+				// one of its own `Mod+K` chords and for the same reason: "Cmd+K T"
+				// reads as one gesture, so the Cmd stays down for the T. Without the
+				// second entry `Cmd+K` then `Cmd+T` matched nothing, fell through, and
+				// reached `file-new` — asking for a table opened a tab.
 				keybindings: [
 					monaco.KeyMod.chord(
 						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
 						monaco.KeyCode.KeyT,
+					),
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT,
 					),
 				],
 				run: () => {
@@ -1388,39 +1441,44 @@
 				},
 			}),
 
-			// The rest of the table verbs, in the chord namespace `Mod+K` already
-			// opened for Insert Table. They are actions rather than bare commands
-			// because a user has to be able to FIND them — in the command palette,
-			// in the shortcuts panel — which a nameless `addCommand` cannot be.
+			// The rest of the table verbs. They are actions rather than bare
+			// commands because a user has to be able to FIND them — in the command
+			// palette, in the shortcuts panel — which a nameless `addCommand`
+			// cannot be. Three of the four carry no keybinding at all, and an
+			// action with no keybinding is still a command palette entry, which is
+			// where a verb you reach for twice a year belongs.
 			//
-			// R and C for row and column; Shift for the destructive half of each
-			// pair, which is the pairing every table UI uses and the reason the
-			// four of them need no separate mnemonic. Only the second key of a
-			// chord is in question here, and `T` was the only one taken.
+			// WHY THE DESTRUCTIVE PAIR HAS NO CHORD. They were on `Mod+K Shift+R`
+			// and `Mod+K Shift+C`, one slip from Monaco's own `Mod+Shift+K` —
+			// delete line. A mis-fired insert is an undo; a mis-fired delete of the
+			// row you were reading is the kind of thing that gets noticed three
+			// edits later. Insert keeps a chord; delete does not get one.
+			//
+			// WHY INSERT ROW HAS NO CHORD EITHER: `Mod+Enter` owns it now, one
+			// keystroke instead of two, and Tab at the end of the table appends one.
 			editor.addAction({
 				id: "table-insert-row",
 				label: t('menu.insertTableRow', lang),
-				keybindings: [
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyCode.KeyR,
-					),
-				],
-				run: () => editTable("insert-row"),
+				run: () => {
+					editTable("insert-row");
+				},
 			}),
 
 			editor.addAction({
 				id: "table-delete-row",
 				label: t('menu.deleteTableRow', lang),
-				keybindings: [
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyMod.Shift | monaco.KeyCode.KeyR,
-					),
-				],
-				run: () => editTable("delete-row"),
+				run: () => {
+					editTable("delete-row");
+				},
 			}),
 
+			// The one table verb still on the chord, in the namespace `Mod+K`
+			// already opened for Insert Table. `C` for column, and only the
+			// released form: `Mod+K Mod+C` is Monaco's own
+			// `editor.action.addCommentLine`, which is live in Markdown — with no
+			// line-comment token it falls back to wrapping the line in `<!-- -->`.
+			// `addAction` registers at weight 1000 and would win, so claiming it
+			// would delete a working command rather than fill an empty slot.
 			editor.addAction({
 				id: "table-insert-column",
 				label: t('menu.insertTableColumn', lang),
@@ -1430,19 +1488,17 @@
 						monaco.KeyCode.KeyC,
 					),
 				],
-				run: () => editTable("insert-column"),
+				run: () => {
+					editTable("insert-column");
+				},
 			}),
 
 			editor.addAction({
 				id: "table-delete-column",
 				label: t('menu.deleteTableColumn', lang),
-				keybindings: [
-					monaco.KeyMod.chord(
-						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
-						monaco.KeyMod.Shift | monaco.KeyCode.KeyC,
-					),
-				],
-				run: () => editTable("delete-column"),
+				run: () => {
+					editTable("delete-column");
+				},
 			}),
 
 			editor.addAction({

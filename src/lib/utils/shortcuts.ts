@@ -28,10 +28,11 @@
  * Which menu the command would live under. Four of the five labels are the
  * existing menu-bar categories, so grouping the panel cost no new translations.
  *
- * `keys` is the fifth and is not a menu. Enter, Tab and Shift+Tab do different
- * things depending on what the caret is sitting on — continue a list, move to
- * the next table cell — and a behaviour attached to a CONTEXT rather than to a
- * command has no menu entry to live under and no command name to be listed as.
+ * `keys` is the fifth and is not a menu. Enter, Tab, Shift+Tab and the two
+ * Mod+Enter keys do different things depending on what the caret is sitting on —
+ * continue a list, move to the next table cell, add a table row — and a
+ * behaviour attached to a CONTEXT rather than to a command has no menu entry to
+ * live under and no command name to be listed as.
  * It was invisible in the app until this group existed: #636 shipped list
  * continuation and nothing anywhere told a user it was there.
  */
@@ -201,22 +202,23 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		group: 'edit',
 		editorAction: true,
 	},
-	// The rest of the table verbs share Insert Table's `Mod+K` prefix, so they
-	// open no new chord namespace. Adding a ROW is not among them: Tab at the end
-	// of a table already does that, which is what every other editor's users
-	// expect and what the `keys` group below advertises.
-	{ id: 'table-insert-row', labelKey: 'menu.insertTableRow', chords: ['Mod+K R'], group: 'edit', editorAction: true },
-	{ id: 'table-delete-row', labelKey: 'menu.deleteTableRow', chords: ['Mod+K Shift+R'], group: 'edit', editorAction: true },
+	// Columns are the one table verb still on a chord: rarer than rows, and no
+	// unmodified key means "insert a column" anywhere. Rows are on `Mod+Enter` and
+	// on Tab at the end of the table, both in the `keys` group below, and the two
+	// DELETE verbs have no chord at all — they are palette-only, because
+	// `Mod+K Shift+R` sat one slip from Monaco's `Mod+Shift+K` (delete line).
 	{ id: 'table-insert-column', labelKey: 'menu.insertTableColumn', chords: ['Mod+K C'], group: 'edit', editorAction: true },
-	{ id: 'table-delete-column', labelKey: 'menu.deleteTableColumn', chords: ['Mod+K Shift+C'], group: 'edit', editorAction: true },
 
 	// ---------------------------------------------------------------- keys
 	//
-	// What Enter, Tab and Shift+Tab do when the caret is somewhere they mean
-	// something extra. One row per KEY, not per behaviour: each of these keys is a
-	// single binding that dispatches on what the caret is sitting on, and two rows
-	// advertising `Enter` would be the panel claiming two shortcuts where the app
-	// has one.
+	// What a key does when the caret is somewhere it means something extra. One
+	// row per KEY, not per behaviour: each of these is a single binding that
+	// dispatches on what the caret is sitting on, and two rows advertising `Enter`
+	// would be the panel claiming two shortcuts where the app has one.
+	//
+	// `Mod+Enter` carries a modifier and still belongs here rather than under Edit:
+	// it is not a command being invoked by name, it is Monaco's own Insert Line
+	// Below meaning one more thing inside a table.
 	{
 		id: 'key-enter',
 		labelKey: 'keys.enter',
@@ -237,6 +239,20 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Shift+Tab'],
 		group: 'keys',
 		editorCommand: 'handleShiftTabKey',
+	},
+	{
+		id: 'key-mod-enter',
+		labelKey: 'keys.modEnter',
+		chords: ['Mod+Enter'],
+		group: 'keys',
+		editorCommand: 'handleModEnterKey',
+	},
+	{
+		id: 'key-mod-shift-enter',
+		labelKey: 'keys.modShiftEnter',
+		chords: ['Mod+Shift+Enter'],
+		group: 'keys',
+		editorCommand: 'handleModShiftEnterKey',
 	},
 
 	// ---------------------------------------------------------------- view

@@ -69,13 +69,26 @@ export type TableEdit = {
 	readonly endLine: number;
 	/** The table as it should be: re-aligned, always. */
 	readonly lines: readonly string[];
-	/** 1-based, and pointing at the first character of a cell's content. */
+	/**
+	 * Where the caret goes: 1-based, and just past the LAST character of a cell's
+	 * content — ready to keep typing, which is what every editor with a table Tab
+	 * does. An empty cell has one position and that is where it lands.
+	 *
+	 * `caretColumn` is a MONACO column, i.e. a UTF-16 offset into
+	 * `lines[caretLine - startLine]`. It is not a display column and must never be
+	 * computed from one; see `caretColumnOf`.
+	 */
 	readonly caretLine: number;
 	readonly caretColumn: number;
 };
 
-/** What the `Mod+K` chords ask for. */
-export type TableOperation = 'insert-row' | 'delete-row' | 'insert-column' | 'delete-column';
+/** The row and column edits, asked for by a chord or by a key. */
+export type TableOperation =
+	| 'insert-row'
+	| 'insert-row-above'
+	| 'delete-row'
+	| 'insert-column'
+	| 'delete-column';
 
 /**
  * A table row: indentation, optional block-quote markers, then a pipe.
@@ -284,20 +297,50 @@ function lineOfRow(startLine: number, index: number): number {
 	return startLine + (index === 0 ? 0 : index + 1);
 }
 
+/**
+ * The Monaco column at the END of cell `cell`, READ OUT OF `line` ITSELF.
+ *
+ * WHY IT IS READ RATHER THAN CALCULATED. The obvious version sums the column
+ * widths — `prefix.length + 3`, then `widths[i] + 3` per earlier cell — and it
+ * is wrong, because those two numbers are in different units. `widths` comes
+ * from `displayWidth`, where a CJK character is two columns and an emoji is two;
+ * a Monaco column is a UTF-16 offset, where the CJK character is one unit and
+ * the emoji is a surrogate pair. On `| 甲   | 北京 | 一   |` the sum says 10 and
+ * the caret lands between 北 and 京.
+ *
+ * So there is no second calculation to keep in step: `line` is the line the edit
+ * is about to write, and the column is a position in that string. The only way
+ * for it to disagree with the layout now is for the layout to disagree with
+ * itself.
+ *
+ * The pipe that opens the cell is found by counting unescaped pipes, exactly as
+ * `cellAtColumn` counts them going the other way. `| ` follows it, then the
+ * cell's text, then its padding — so trimming the padding off leaves the offset
+ * the caret wants, and an empty cell leaves the caret on the one position it
+ * has: the single space after the pipe.
+ */
+function caretColumnOf(line: string, cell: number): number {
+	const pipes: number[] = [];
+	for (let i = 0; i < line.length && pipes.length <= cell + 1; i++) {
+		if (line[i] === '\\') i++;
+		else if (line[i] === '|') pipes.push(i);
+	}
+
+	const start = pipes[cell] ?? 0;
+	const end = pipes[cell + 1] ?? line.length;
+	return start + 3 + line.slice(start + 2, end).trimEnd().length;
+}
+
 /** The table as an edit that re-aligns it and puts the caret in cell (`row`, `cell`). */
 function editAt(table: Table, row: number, cell: number): TableEdit {
-	const widths = columnWidths(table);
-	// Each cell occupies `width + 3` characters from the start of its content to
-	// the start of the next one: the padding, the space, the pipe and the space.
-	let caretColumn = table.prefix.length + 3;
-	for (let i = 0; i < cell; i++) caretColumn += widths[i] + 3;
-
+	const lines = formatTable(table);
+	const caretLine = lineOfRow(table.startLine, row);
 	return {
 		startLine: table.startLine,
 		endLine: table.endLine,
-		lines: formatTable(table),
-		caretLine: lineOfRow(table.startLine, row),
-		caretColumn,
+		lines,
+		caretLine,
+		caretColumn: caretColumnOf(lines[caretLine - table.startLine], cell),
 	};
 }
 
@@ -409,9 +452,10 @@ export function tableOperation(
 
 	const { row, cell } = locate(table, doc.getLineContent(line), line, column);
 
-	if (operation === 'insert-row') {
-		// From the header or the delimiter row, "below" means the top of the body.
-		const at = row <= 0 ? 1 : row + 1;
+	if (operation === 'insert-row' || operation === 'insert-row-above') {
+		// From the header or the delimiter row BOTH directions mean the top of the
+		// body: there is no row above the header that is still inside the table.
+		const at = row <= 0 ? 1 : operation === 'insert-row' ? row + 1 : row;
 		return editAt(withRowAt(table, at), at, 0);
 	}
 

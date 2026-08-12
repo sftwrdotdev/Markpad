@@ -23,6 +23,7 @@ import {
 	chordOf,
 	documentKeymap,
 	editorKeymap,
+	registeredActions,
 	type Chord,
 } from './keymapHarness.js';
 import { functionSource, readRustBackend, readSource, readSourceFiles } from './sourceTree.js';
@@ -106,7 +107,9 @@ test('the chord translator agrees with the harness on chords both already know',
 	assert.equal(toMonacoLabel('Alt+Left', false), 'Alt+LeftArrow');
 
 	assert.deepEqual(mac.get('fmt-inline-code'), ['Shift+Meta+E']);
-	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+K T']);
+	// Two keybindings, one action: the second is the same chord with the modifier
+	// still held for the second key. See the modifier-held test further down.
+	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+K T', 'Ctrl+K Ctrl+T']);
 });
 
 // ------------------------------------------------------------- sanity guards
@@ -573,6 +576,90 @@ test('every keybinding the editor registers is either advertised or consciously 
 	}
 });
 
+// ---------------------------------------- the Mod+K chords, with Mod held down
+
+/**
+ * `Mod+K <key>` chords that deliberately do NOT also take `Mod+K Mod+<key>`.
+ *
+ * The exemption is a collision, not a preference: `addAction` registers at
+ * weight 1000, above every Monaco default, so taking one of these would not fill
+ * an empty slot — it would silently delete a command that works today.
+ */
+const MODIFIER_HELD_EXEMPT: Record<string, string> = {
+	'table-insert-column':
+		"Mod+K Mod+C is Monaco's own editor.action.addCommentLine " +
+		'(contrib/comment/browser/comment.js), and it is not a dead binding in Markdown: with no ' +
+		'line-comment token the command falls back to wrapping the line in <!-- -->. Mod+K C, ' +
+		'released, is unclaimed and stays the chord for Insert Column.',
+};
+
+test('every Mod+K chord also answers with the modifier still held', () => {
+	// HOW PEOPLE ACTUALLY PRESS THESE. "Cmd+K T" reads as one gesture, so the Cmd
+	// stays down for the T — and `Cmd+K` then `Cmd+T` matched nothing here, fell
+	// through, and reached the app's own new-tab chord: asking for Insert Table
+	// opened a tab. VS Code registers both forms of every Mod+K chord it ships for
+	// exactly this reason.
+	let checked = 0;
+	for (const platform of PLATFORMS) {
+		const modifier = platform.mac ? 'Meta' : 'Ctrl';
+		for (const [id, chords] of editorKeymap(platform.mac, platform.os)) {
+			if (id in MODIFIER_HELD_EXEMPT) continue;
+			for (const chord of chords) {
+				const [first, second] = chord.split(' ');
+				if (!second || first !== `${modifier}+K` || second.startsWith(`${modifier}+`)) continue;
+				assert.ok(
+					chords.includes(`${first} ${modifier}+${second}`),
+					`${platform.name}: ${id} answers ${chord}, but not the same chord with ${modifier} ` +
+						'still held for the second key — which is how the chord is pressed',
+				);
+				checked++;
+			}
+		}
+	}
+	assert.ok(checked >= 3, `only ${checked} Mod+K chords were checked`);
+
+	// The exemption list must not rot either: an id that stopped binding a Mod+K
+	// chord has no collision left to be excused from.
+	const bound = editorKeymap(false, OperatingSystem.Windows);
+	for (const id of Object.keys(MODIFIER_HELD_EXEMPT)) {
+		assert.ok(
+			bound.get(id)?.some((chord) => chord.startsWith('Ctrl+K ')),
+			`${id} no longer binds a Mod+K chord — drop it from MODIFIER_HELD_EXEMPT`,
+		);
+	}
+});
+
+/**
+ * Table verbs that are commands with no key, and the reason each one lost it.
+ *
+ * Dropping a CHORD is not dropping a command: `addAction` without `keybindings`
+ * still puts the verb in the command palette (`Mod+P`, which runs Monaco's
+ * `editor.action.quickCommand`), which is where a rarely-used destructive edit
+ * belongs.
+ */
+const TABLE_VERBS_WITHOUT_A_CHORD: Record<string, string> = {
+	'table-insert-row':
+		'Mod+Enter owns it now — inside a table, "insert a line below" already means "insert a row below"',
+	'table-delete-row':
+		"Mod+K Shift+R sat one slip from Monaco's own Mod+Shift+K (delete line), and a mis-fired " +
+		'destructive table edit is much worse than a mis-fired insert',
+	'table-delete-column': 'the same, one key over',
+};
+
+test('the table verbs with no chord are still commands, and advertise nothing', () => {
+	const actions = new Map(registeredActions(false).actions.map((action) => [action.id, action]));
+	for (const [id, why] of Object.entries(TABLE_VERBS_WITHOUT_A_CHORD)) {
+		const action = actions.get(id);
+		assert.ok(action, `${id} must stay registered — the key went away, not the command (${why})`);
+		assert.deepEqual(action.keybindings ?? [], [], `${id} has a keybinding again; it was dropped because ${why}`);
+		assert.equal(
+			SHORTCUTS.find((entry) => entry.id === id),
+			undefined,
+			`${id} has no chord, so the panel must not claim one`,
+		);
+	}
+});
+
 // ------------------------------------- the contextual keys (the `keys` group)
 //
 // Enter, Tab and Shift+Tab are bound with a bare `editor.addCommand`: no action
@@ -639,15 +726,20 @@ test('every nameless command the editor binds is advertised, or consciously not'
 	}
 });
 
-test('the contextual keys are shown as the bare keys they are, with no modifier', () => {
-	// A row in this group that grew a `Mod+` would be a chord, and would belong in
-	// one of the four menu groups instead — the distinction the group exists for.
+test('the contextual keys are shown as single keystrokes, never as chord sequences', () => {
+	// What separates this group from the four menu groups is not the absence of a
+	// modifier — Mod+Enter is in it — but that each row is ONE keystroke whose
+	// meaning depends on where the caret is. A two-part `Mod+K …` sequence is a
+	// command being invoked by name and belongs under the menu it lives in.
 	const shown = shortcutSections('macos').find((section) => section.group === 'keys');
 	assert.ok(shown, 'the panel renders the keys group');
 	assert.deepEqual(
 		shown.entries.flatMap((entry) => entry.chords),
-		['Enter', 'Tab', 'Shift+Tab'],
+		['Enter', 'Tab', 'Shift+Tab', 'Cmd+Enter', 'Cmd+Shift+Enter'],
 	);
+	for (const chord of shown.entries.flatMap((entry) => entry.chords)) {
+		assert.ok(!chord.includes(' '), `${chord} is a chord sequence, not a key`);
+	}
 });
 
 // ------------------------------------------------------------------- i18n
