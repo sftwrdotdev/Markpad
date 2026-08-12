@@ -3,9 +3,9 @@ import test from 'node:test';
 
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
-import ts from 'typescript';
 
 import { listEnter, parseListItem } from '../src/lib/utils/listEditing.js';
+import { bareCommands, runEditorHandler } from './keymapHarness.js';
 import { functionSource, readSource } from './sourceTree.js';
 
 /*
@@ -153,93 +153,23 @@ test('parseListItem reports where the marker ends', () => {
 });
 
 // ------------------------------------------------- the handlers, actually run
+//
+// The two handlers are lifted out of the component and run against a stub
+// editor by `runEditorHandler` in ./keymapHarness.ts, the same trick the keymap
+// harness uses on `registerLocalizedActions` — so what is asserted is the edit
+// they really produce rather than the shape of the source that produces it. The
+// list module in scope there is the REAL one.
+//
+// Tab needs its collaborators named because it dispatches through them: the
+// table branch comes first, and a run without `stepTableCell` in scope would be
+// checking a handler the app does not have.
 
 const EDITOR = 'src/lib/components/Editor.svelte';
 
-type Recorded = {
-	triggers: string[];
-	edits: Array<{ range: number[]; text: string; cursor: number[] }>;
-	undoStops: number;
-};
-
-class FakeRange {
-	constructor(
-		readonly startLineNumber: number,
-		readonly startColumn: number,
-		readonly endLineNumber: number,
-		readonly endColumn: number,
-	) {}
-	isEmpty() {
-		return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
-	}
-	numbers() {
-		return [this.startLineNumber, this.startColumn, this.endLineNumber, this.endColumn];
-	}
-}
-
-/**
- * One of the two component handlers, extracted and evaluated with a stub editor.
- *
- * The list logic in scope is the REAL module, so a handler that stopped calling
- * it — or called it with the wrong column — fails here rather than passing
- * against a second, more agreeable copy.
- */
-function runHandler(
-	name: string,
-	options: { lines: string[]; selections: number[][]; eol?: string },
-): Recorded {
-	const recorded: Recorded = { triggers: [], edits: [], undoStops: 0 };
-	const eol = options.eol ?? '\n';
-	const selections = options.selections.map((s) => new FakeRange(s[0], s[1], s[2], s[3]));
-
-	const model = {
-		getLineContent: (line: number) => options.lines[line - 1],
-		getLineMaxColumn: (line: number) => options.lines[line - 1].length + 1,
-		getEOL: () => eol,
-	};
-
-	const scope: Record<string, unknown> = {
-		listEnter,
-		parseListItem,
-		monaco: { Range: FakeRange, Selection: FakeRange },
-		editor: {
-			getModel: () => model,
-			getSelections: () => selections,
-			pushUndoStop: () => {
-				recorded.undoStops += 1;
-			},
-			trigger: (_source: string, handlerId: string, payload: { text?: string } | null) => {
-				recorded.triggers.push(payload?.text ? `${handlerId}:${JSON.stringify(payload.text)}` : handlerId);
-			},
-			executeEdits: (
-				_source: string,
-				edits: Array<{ range: FakeRange; text: string }>,
-				cursor: FakeRange[],
-			) => {
-				for (const [index, edit] of edits.entries()) {
-					recorded.edits.push({
-						range: edit.range.numbers(),
-						text: edit.text,
-						cursor: cursor[index].numbers(),
-					});
-				}
-			},
-		},
-	};
-
-	const js = ts.transpileModule(`const handler = ${functionSource(readSource(EDITOR), name)};`, {
-		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-	}).outputText;
-	const build = new Function('scope', `with (scope) { ${js}\nreturn handler; }`) as (
-		s: unknown,
-	) => () => void;
-	build(new Proxy(scope, { has: () => true }))();
-
-	return recorded;
-}
+const TAB_HANDLER = ['soleCaret', 'applyTableEdit', 'stepTableCell', 'handleTabKey'];
 
 test('Enter on a list item inserts the line break and the next marker in one edit', () => {
-	const run = runHandler('continueListOnEnter', { lines: ['- item'], selections: [[1, 7, 1, 7]] });
+	const run = runEditorHandler(['continueListOnEnter'], { lines: ['- item'], selections: [[1, 7, 1, 7]] });
 
 	assert.deepEqual(run.triggers, [], 'the plain Enter must not fire as well');
 	assert.deepEqual(run.edits, [
@@ -252,7 +182,7 @@ test('the line break is the document\'s, not a hard-coded \\n', () => {
 	// The CRLF class of defect this repo has been bitten by before (#148): a
 	// handler that writes '\n' into a CRLF document leaves one mixed line
 	// behind, and nothing downstream reports it.
-	const run = runHandler('continueListOnEnter', {
+	const run = runEditorHandler(['continueListOnEnter'], {
 		lines: ['1. item'],
 		selections: [[1, 8, 1, 8]],
 		eol: '\r\n',
@@ -261,7 +191,7 @@ test('the line break is the document\'s, not a hard-coded \\n', () => {
 });
 
 test('Enter on an empty item replaces the line instead of breaking it', () => {
-	const run = runHandler('continueListOnEnter', { lines: ['- ', 'x'], selections: [[1, 3, 1, 3]] });
+	const run = runEditorHandler(['continueListOnEnter'], { lines: ['- ', 'x'], selections: [[1, 3, 1, 3]] });
 
 	assert.deepEqual(run.triggers, []);
 	assert.deepEqual(run.edits, [
@@ -274,7 +204,7 @@ test('Enter on an empty item replaces the line instead of breaking it', () => {
 
 test('Enter anywhere else is a plain Enter', () => {
 	for (const lines of [['plain text'], ['---'], ['']]) {
-		const run = runHandler('continueListOnEnter', {
+		const run = runEditorHandler(['continueListOnEnter'], {
 			lines,
 			selections: [[1, lines[0].length + 1, 1, lines[0].length + 1]],
 		});
@@ -286,14 +216,14 @@ test('Enter anywhere else is a plain Enter', () => {
 test('a selection, or a second caret, gets the plain Enter', () => {
 	// One edit at the primary selection would silently discard what the other
 	// carets were about to do.
-	const spanning = runHandler('continueListOnEnter', {
+	const spanning = runEditorHandler(['continueListOnEnter'], {
 		lines: ['- item'],
 		selections: [[1, 3, 1, 7]],
 	});
 	assert.deepEqual(spanning.edits, []);
 	assert.deepEqual(spanning.triggers, ['type:"\\n"']);
 
-	const multi = runHandler('continueListOnEnter', {
+	const multi = runEditorHandler(['continueListOnEnter'], {
 		lines: ['- one', '- two'],
 		selections: [
 			[1, 6, 1, 6],
@@ -309,19 +239,19 @@ test('Tab on a list item indents the line; Tab anywhere else is a Tab', () => {
 	// caret is on it; the core `tab` command inserts indentation AT the caret,
 	// which inside an item's text would be a tab character in the sentence.
 	for (const line of ['- item', '  1. item', '> - [x] item', '- ']) {
-		const run = runHandler('indentListItemOnTab', { lines: [line], selections: [[1, 3, 1, 3]] });
+		const run = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 3, 1, 3]] });
 		assert.deepEqual(run.triggers, ['editor.action.indentLines'], line);
 		assert.deepEqual(run.edits, [], line);
 	}
 
 	for (const line of ['plain text', '# heading', '']) {
-		const run = runHandler('indentListItemOnTab', { lines: [line], selections: [[1, 1, 1, 1]] });
+		const run = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 1, 1, 1]] });
 		assert.deepEqual(run.triggers, ['tab'], JSON.stringify(line));
 	}
 
 	// A selection spans lines on purpose or by accident; Monaco's own Tab
 	// already indents every line of it.
-	const selected = runHandler('indentListItemOnTab', {
+	const selected = runEditorHandler(TAB_HANDLER, {
 		lines: ['- one', '- two'],
 		selections: [[1, 1, 2, 6]],
 	});
@@ -330,80 +260,20 @@ test('Tab on a list item indents the line; Tab anywhere else is a Tab', () => {
 
 // ------------------------------------------------------------- the when clauses
 
-/**
- * Every `editor.addCommand(binding, handler, when)` the component registers, as
- * the values Monaco is handed.
- *
- * The arguments are EVALUATED, not matched as text: the keybinding numbers come
- * from Monaco's real `KeyMod`/`KeyCode` and the `when` expression is the string
- * the component computes, template literal and shared constant included. So
- * renaming the constant or reflowing the call changes nothing here; changing a
- * key or dropping a guard changes everything.
- */
-function addCommandCalls(): Array<{ binding: number; handler: string; when: string }> {
-	const text = readSource(EDITOR);
-	const script = text.slice(text.indexOf('>', text.indexOf('<script')) + 1, text.indexOf('</script>'));
-	const file = ts.createSourceFile('editor.ts', script, ts.ScriptTarget.ES2022, true);
-
-	const constants: Record<string, string> = {};
-	const calls: Array<{ binding: number; handler: string; when: string }> = [];
-
-	const evaluate = (expression: string): unknown =>
-		new Function('monaco', 'constants', `with (constants) { return (${expression}); }`)(
-			{ KeyMod, KeyCode },
-			constants,
-		);
-
-	const visit = (node: ts.Node) => {
-		if (
-			ts.isVariableDeclaration(node) &&
-			ts.isIdentifier(node.name) &&
-			node.initializer &&
-			(ts.isStringLiteral(node.initializer) || ts.isTemplateExpression(node.initializer))
-		) {
-			// Best effort: the component is full of template literals built from
-			// component state (`${label}px`), and none of them is a `when` clause.
-			// One that fails to evaluate here is simply not a constant the calls
-			// below can be reading, and an argument that turns out to need it
-			// fails loudly at its own `evaluate`.
-			try {
-				constants[node.name.text] = String(evaluate(node.initializer.getText()));
-			} catch {
-				/* not a constant */
-			}
-		}
-
-		if (
-			ts.isCallExpression(node) &&
-			node.expression.getText() === 'editor.addCommand' &&
-			node.arguments.length === 3
-		) {
-			calls.push({
-				binding: evaluate(node.arguments[0].getText()) as number,
-				handler: node.arguments[1].getText(),
-				when: String(evaluate(node.arguments[2].getText())),
-			});
-		}
-
-		ts.forEachChild(node, visit);
-	};
-	visit(file);
-
-	assert.ok(calls.length >= 4, `found ${calls.length} addCommand calls; the extraction is not running`);
-	return calls;
-}
-
-/** Guards that must stand in front of BOTH keys, and what owns the key without them. */
+/** Guards that must stand in front of all three keys, and what owns the key without them. */
 const SHARED_GUARDS: Record<string, string> = {
 	editorTextFocus: 'the find box and the rename input both take Enter, and neither is the text',
 	'!editorReadonly': 'reading mode types nothing',
 	'!suggestWidgetVisible':
 		'Enter accepts a completion and Tab accepts a completion; this app has two completion providers, so the popup is a live case',
-	'!inSnippetMode': 'Tab jumps to the next snippet placeholder',
+	'!inSnippetMode': 'Tab jumps to the next snippet placeholder, and so does Shift+Tab backwards',
 };
 
-test('the list keys are registered, and behind every guard that owns them first', () => {
-	const calls = addCommandCalls();
+test('the editing keys are registered, and behind every guard that owns them first', () => {
+	// `bareCommands()` in ./keymapHarness.ts EVALUATES each `addCommand`
+	// argument, so the keybinding numbers are Monaco's own and the `when` string
+	// is the one the component computes.
+	const calls = bareCommands();
 
 	const enter = calls.filter((call) => call.binding === KeyCode.Enter);
 	assert.equal(enter.length, 1, 'exactly one Enter binding');
@@ -411,9 +281,13 @@ test('the list keys are registered, and behind every guard that owns them first'
 
 	const tab = calls.filter((call) => call.binding === KeyCode.Tab);
 	assert.equal(tab.length, 1, 'exactly one plain-Tab binding');
-	assert.equal(tab[0].handler, 'indentListItemOnTab');
+	assert.equal(tab[0].handler, 'handleTabKey');
 
-	for (const call of [enter[0], tab[0]]) {
+	const shiftTab = calls.filter((call) => call.binding === (KeyMod.Shift | KeyCode.Tab));
+	assert.equal(shiftTab.length, 1, 'exactly one Shift+Tab binding');
+	assert.equal(shiftTab[0].handler, 'handleShiftTabKey');
+
+	for (const call of [enter[0], tab[0], shiftTab[0]]) {
 		for (const [guard, why] of Object.entries(SHARED_GUARDS)) {
 			assert.ok(
 				call.when.split('&&').some((clause) => clause.trim() === guard),
@@ -422,26 +296,42 @@ test('the list keys are registered, and behind every guard that owns them first'
 		}
 	}
 
-	// Tab's own extra guard: the accessibility toggle exists so that Tab leaves
-	// the editor, and a binding at weight 1000 would take that away.
-	assert.ok(
-		tab[0].when.includes('!editorTabMovesFocus'),
-		`Tab is bound without !editorTabMovesFocus: ${tab[0].when}`,
-	);
+	// The extra guard both Tab keys need: the accessibility toggle exists so that
+	// Tab leaves the editor, and a binding at weight 1000 would take that away.
+	for (const call of [tab[0], shiftTab[0]]) {
+		assert.ok(
+			call.when.includes('!editorTabMovesFocus'),
+			`${call.handler} is bound without !editorTabMovesFocus: ${call.when}`,
+		);
+	}
 });
 
-test('Shift+Tab is left to Monaco, which already outdents the line', () => {
-	// The deliberate omission, stated rather than left implicit. A wrapper in
-	// front of `outdent` would be a second name for a key that is already right.
-	const shiftTab = KeyMod.Shift | KeyCode.Tab;
-	assert.ok(
-		!addCommandCalls().some((call) => call.binding === shiftTab),
-		'a Shift+Tab command has appeared; either it does more than outdent, or it should go',
+test('Shift+Tab still means outdent everywhere except inside a table', () => {
+	// THE DECISION THIS TEST GUARDS, AND HOW IT CHANGED.
+	//
+	// When the list keys landed, Shift+Tab was deliberately left unbound: Monaco's
+	// `outdent` already had the chord and already did the right thing, so a
+	// wrapper in front of it would have been a second name for a key that was
+	// already right. This test then asserted that no Shift+Tab command existed,
+	// and said in its own failure message that one may only appear if it does more
+	// than outdent.
+	//
+	// Tables are that "more": there is no core command for "previous cell". So the
+	// binding exists now, and what is pinned instead is the SAME decision one
+	// level in — the handler's non-table path re-sends `outdent` rather than
+	// reimplementing it, so a list item, a code block and a paragraph all still
+	// get exactly Monaco's own behaviour.
+	const handler = functionSource(readSource(EDITOR), 'handleShiftTabKey');
+	assert.match(
+		handler,
+		/trigger\([^)]*"outdent"/,
+		'the Shift+Tab handler no longer falls through to Monaco\'s outdent',
 	);
 
-	// …and the claim it rests on, pinned against the installed Monaco rather
-	// than assumed: `outdent` is bound to Shift+Tab, in the editor, when Tab is
-	// not moving focus.
+	// …and the claim that rests on, pinned against the installed Monaco rather
+	// than assumed: `outdent` is the command Shift+Tab means, in the editor, when
+	// Tab is not moving focus. If Monaco ever renames or re-chords it, the
+	// fall-through above becomes a no-op and this is what says so.
 	const core = readSource(
 		new URL('../node_modules/monaco-editor/esm/vs/editor/browser/coreCommands.js', import.meta.url),
 	);

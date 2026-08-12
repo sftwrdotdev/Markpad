@@ -148,6 +148,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Green'
         },
+        keys: {
+            group: 'Editing Keys',
+            enter: 'List: continue · Empty item: end',
+            tab: 'Table: next cell · List: indent',
+            shiftTab: 'Table: previous cell · Else: outdent',
+            modEnter: 'Table: row below · Else: line below',
+            modShiftEnter: 'Table: row above · Else: line above'
+        },
         menu: {
             file: 'File',
             edit: 'Edit',
@@ -220,6 +228,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Underline',
             strikethrough: 'Strikethrough',
             insertTable: 'Insert Table',
+            insertTableRow: 'Insert Row Below',
+            deleteTableRow: 'Delete Row',
+            insertTableColumn: 'Insert Column Right',
+            deleteTableColumn: 'Delete Column',
             inlineCode: 'Inline Code',
             codeBlock: 'Code Block',
             quote: 'Quote',
@@ -491,6 +503,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: '青色',
             green: '绿色'
         },
+        keys: {
+            group: '编辑按键',
+            enter: '列表：续写下一项 · 空项：结束列表',
+            tab: '表格：下一格 · 列表：加一级',
+            shiftTab: '表格：上一格 · 其他：减少缩进',
+            modEnter: '表格：下方加一行 · 其他：下方加空行',
+            modShiftEnter: '表格：上方加一行 · 其他：上方加空行'
+        },
         menu: {
             file: '文件',
             edit: '编辑',
@@ -562,6 +582,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: '下划线',
             strikethrough: '删除线',
             insertTable: '插入表格',
+            insertTableRow: '在下方插入行',
+            deleteTableRow: '删除行',
+            insertTableColumn: '在右侧插入列',
+            deleteTableColumn: '删除列',
             inlineCode: '行内代码',
             codeBlock: '代码块',
             quote: '引用',
@@ -818,6 +842,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'シアン',
             green: '緑'
         },
+        keys: {
+            group: '編集キー',
+            enter: 'リスト: 続ける · 空項目: 終了',
+            tab: '表: 次のセル · リスト: レベルを上げる',
+            shiftTab: '表: 前のセル · その他: インデント減',
+            modEnter: '表: 下に行を追加 · その他: 下に空行',
+            modShiftEnter: '表: 上に行を追加 · その他: 上に空行'
+        },
         menu: {
             file: 'ファイル',
             edit: '編集',
@@ -873,6 +905,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: '下線',
             strikethrough: '取り消し線',
             insertTable: '表を挿入',
+            insertTableRow: '下に行を挿入',
+            deleteTableRow: '行を削除',
+            insertTableColumn: '右に列を挿入',
+            deleteTableColumn: '列を削除',
             inlineCode: 'インラインコード',
             codeBlock: 'コードブロック',
             quote: '引用',
@@ -1090,6 +1126,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: '青色',
             green: '綠色'
         },
+        keys: {
+            group: '編輯按鍵',
+            enter: '清單：接續下一項 · 空項目：結束清單',
+            tab: '表格：下一格 · 清單：加一級',
+            shiftTab: '表格：上一格 · 其他：減少縮排',
+            modEnter: '表格：下方加一列 · 其他：下方加空行',
+            modShiftEnter: '表格：上方加一列 · 其他：上方加空行'
+        },
         menu: {
             file: '檔案',
             edit: '編輯',
@@ -1162,6 +1206,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: '底線',
             strikethrough: '刪除線',
             insertTable: '插入表格',
+            insertTableRow: '在下方插入列',
+            deleteTableRow: '刪除列',
+            insertTableColumn: '在右側插入欄',
+            deleteTableColumn: '刪除欄',
             inlineCode: '行內程式碼',
             codeBlock: '程式碼區塊',
             quote: '引用',
@@ -1429,6 +1477,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: '청록색',
             green: '초록색'
         },
+        keys: {
+            group: '편집 키',
+            enter: '목록: 계속 · 빈 항목: 종료',
+            tab: '표: 다음 셀 · 목록: 수준 올리기',
+            shiftTab: '표: 이전 셀 · 그 외: 들여쓰기 감소',
+            modEnter: '표: 아래에 행 추가 · 그 외: 아래에 빈 줄',
+            modShiftEnter: '표: 위에 행 추가 · 그 외: 위에 빈 줄'
+        },
         menu: {
             file: '파일',
             edit: '편집',
@@ -1491,6 +1547,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: '밑줄',
             strikethrough: '취소선',
             insertTable: '표 삽입',
+            insertTableRow: '아래에 행 삽입',
+            deleteTableRow: '행 삭제',
+            insertTableColumn: '오른쪽에 열 삽입',
+            deleteTableColumn: '열 삭제',
             inlineCode: '인라인 코드',
             codeBlock: '코드 블록',
             quote: '인용',
@@ -1739,6 +1799,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Голубой',
             green: 'Зелёный'
         },
+        keys: {
+            group: 'Клавиши редактирования',
+            enter: 'Список: продолжить · Пустой пункт: завершить',
+            tab: 'Таблица: следующая ячейка · Список: уровень выше',
+            shiftTab: 'Таблица: предыдущая ячейка · Иначе: уменьшить отступ',
+            modEnter: 'Таблица: строка ниже · Иначе: пустая строка ниже',
+            modShiftEnter: 'Таблица: строка выше · Иначе: пустая строка выше'
+        },
         menu: {
             file: 'Файл',
             edit: 'Редактирование',
@@ -1794,6 +1862,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Подчёркнутый',
             strikethrough: 'Зачёркнутый',
             insertTable: 'Вставить таблицу',
+            insertTableRow: 'Вставить строку ниже',
+            deleteTableRow: 'Удалить строку',
+            insertTableColumn: 'Вставить столбец справа',
+            deleteTableColumn: 'Удалить столбец',
             inlineCode: 'Встроенный код',
             codeBlock: 'Блок кода',
             quote: 'Цитата',
@@ -1970,6 +2042,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cian',
             green: 'Verde'
         },
+        keys: {
+            group: 'Teclas de edición',
+            enter: 'Lista: continuar · Elemento vacío: terminar',
+            tab: 'Tabla: celda siguiente · Lista: aumentar nivel',
+            shiftTab: 'Tabla: celda anterior · Si no: reducir sangría',
+            modEnter: 'Tabla: fila debajo · Si no: línea debajo',
+            modShiftEnter: 'Tabla: fila encima · Si no: línea encima'
+        },
         menu: {
             file: 'Archivo',
             edit: 'Editar',
@@ -2025,6 +2105,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Subrayado',
             strikethrough: 'Tachado',
             insertTable: 'Insertar tabla',
+            insertTableRow: 'Insertar fila debajo',
+            deleteTableRow: 'Eliminar fila',
+            insertTableColumn: 'Insertar columna a la derecha',
+            deleteTableColumn: 'Eliminar columna',
             inlineCode: 'Código en línea',
             codeBlock: 'Bloque de código',
             quote: 'Cita',
@@ -2197,6 +2281,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Vert'
         },
+        keys: {
+            group: 'Touches d\'édition',
+            enter: 'Liste : continuer · Élément vide : terminer',
+            tab: 'Tableau : cellule suivante · Liste : augmenter le niveau',
+            shiftTab: 'Tableau : cellule précédente · Sinon : réduire le retrait',
+            modEnter: 'Tableau : ligne en dessous · Sinon : ligne vide en dessous',
+            modShiftEnter: 'Tableau : ligne au-dessus · Sinon : ligne vide au-dessus'
+        },
         menu: {
             file: 'Fichier',
             edit: 'Édition',
@@ -2252,6 +2344,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Souligné',
             strikethrough: 'Barré',
             insertTable: 'Insérer un tableau',
+            insertTableRow: 'Insérer une ligne en dessous',
+            deleteTableRow: 'Supprimer la ligne',
+            insertTableColumn: 'Insérer une colonne à droite',
+            deleteTableColumn: 'Supprimer la colonne',
             inlineCode: 'Code en ligne',
             codeBlock: 'Bloc de code',
             quote: 'Citation',
@@ -2424,6 +2520,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grün'
         },
+        keys: {
+            group: 'Bearbeitungstasten',
+            enter: 'Liste: fortsetzen · Leerer Eintrag: beenden',
+            tab: 'Tabelle: nächste Zelle · Liste: Ebene erhöhen',
+            shiftTab: 'Tabelle: vorherige Zelle · Sonst: Einzug verringern',
+            modEnter: 'Tabelle: Zeile darunter · Sonst: Leerzeile darunter',
+            modShiftEnter: 'Tabelle: Zeile darüber · Sonst: Leerzeile darüber'
+        },
         menu: {
             file: 'Datei',
             edit: 'Bearbeiten',
@@ -2479,6 +2583,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Unterstrichen',
             strikethrough: 'Durchgestrichen',
             insertTable: 'Tabelle einfügen',
+            insertTableRow: 'Zeile unten einfügen',
+            deleteTableRow: 'Zeile löschen',
+            insertTableColumn: 'Spalte rechts einfügen',
+            deleteTableColumn: 'Spalte löschen',
             inlineCode: 'Inline-Code',
             codeBlock: 'Codeblock',
             quote: 'Zitat',
@@ -2651,6 +2759,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Ciano',
             green: 'Verde'
         },
+        keys: {
+            group: 'Teclas de edição',
+            enter: 'Lista: continuar · Item vazio: terminar',
+            tab: 'Tabela: próxima célula · Lista: aumentar nível',
+            shiftTab: 'Tabela: célula anterior · Senão: reduzir indentação',
+            modEnter: 'Tabela: linha abaixo · Senão: linha vazia abaixo',
+            modShiftEnter: 'Tabela: linha acima · Senão: linha vazia acima'
+        },
         menu: {
             file: 'Arquivo',
             edit: 'Editar',
@@ -2706,6 +2822,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Sublinhado',
             strikethrough: 'Tachado',
             insertTable: 'Inserir tabela',
+            insertTableRow: 'Inserir linha abaixo',
+            deleteTableRow: 'Excluir linha',
+            insertTableColumn: 'Inserir coluna à direita',
+            deleteTableColumn: 'Excluir coluna',
             inlineCode: 'Código em linha',
             codeBlock: 'Bloco de código',
             quote: 'Citação',
@@ -2878,6 +2998,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Ciano',
             green: 'Verde'
         },
+        keys: {
+            group: 'Tasti di modifica',
+            enter: 'Elenco: continuare · Voce vuota: terminare',
+            tab: 'Tabella: cella successiva · Elenco: aumentare livello',
+            shiftTab: 'Tabella: cella precedente · Altrimenti: ridurre rientro',
+            modEnter: 'Tabella: riga sotto · Altrimenti: riga vuota sotto',
+            modShiftEnter: 'Tabella: riga sopra · Altrimenti: riga vuota sopra'
+        },
         menu: {
             file: 'File',
             edit: 'Modifica',
@@ -2933,6 +3061,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Sottolineato',
             strikethrough: 'Barrato',
             insertTable: 'Inserisci tabella',
+            insertTableRow: 'Inserisci riga sotto',
+            deleteTableRow: 'Elimina riga',
+            insertTableColumn: 'Inserisci colonna a destra',
+            deleteTableColumn: 'Elimina colonna',
             inlineCode: 'Codice inline',
             codeBlock: 'Blocco di codice',
             quote: 'Citazione',
@@ -3117,6 +3249,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyjan',
             green: 'Zielony'
         },
+        keys: {
+            group: 'Klawisze edycji',
+            enter: 'Lista: kontynuuj · Pusty element: zakończ',
+            tab: 'Tabela: następna komórka · Lista: zwiększ poziom',
+            shiftTab: 'Tabela: poprzednia komórka · Poza nią: zmniejsz wcięcie',
+            modEnter: 'Tabela: wiersz poniżej · Poza nią: pusty wiersz poniżej',
+            modShiftEnter: 'Tabela: wiersz powyżej · Poza nią: pusty wiersz powyżej'
+        },
         menu: {
             file: 'Plik',
             edit: 'Edycja',
@@ -3177,6 +3317,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Podkreślenie',
             strikethrough: 'Przekreślenie',
             insertTable: 'Wstaw tabelę',
+            insertTableRow: 'Wstaw wiersz poniżej',
+            deleteTableRow: 'Usuń wiersz',
+            insertTableColumn: 'Wstaw kolumnę z prawej',
+            deleteTableColumn: 'Usuń kolumnę',
             inlineCode: 'Kod w wierszu',
             codeBlock: 'Blok kodu',
             quote: 'Cytat',
@@ -3354,6 +3498,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyaan',
             green: 'Groen'
         },
+        keys: {
+            group: 'Bewerkingstoetsen',
+            enter: 'Lijst: doorgaan · Leeg item: beëindigen',
+            tab: 'Tabel: volgende cel · Lijst: niveau verhogen',
+            shiftTab: 'Tabel: vorige cel · Anders: inspringing verkleinen',
+            modEnter: 'Tabel: rij eronder · Anders: lege regel eronder',
+            modShiftEnter: 'Tabel: rij erboven · Anders: lege regel erboven'
+        },
         menu: {
             file: 'Bestand',
             edit: 'Bewerken',
@@ -3409,6 +3561,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Onderstreept',
             strikethrough: 'Doorgehaald',
             insertTable: 'Tabel invoegen',
+            insertTableRow: 'Rij eronder invoegen',
+            deleteTableRow: 'Rij verwijderen',
+            insertTableColumn: 'Kolom rechts invoegen',
+            deleteTableColumn: 'Kolom verwijderen',
             inlineCode: 'Inline-code',
             codeBlock: 'Codeblok',
             quote: 'Citaat',
@@ -3581,6 +3737,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grön'
         },
+        keys: {
+            group: 'Redigeringstangenter',
+            enter: 'Lista: fortsätt · Tomt objekt: avsluta',
+            tab: 'Tabell: nästa cell · Lista: öka nivån',
+            shiftTab: 'Tabell: föregående cell · Annars: minska indraget',
+            modEnter: 'Tabell: rad under · Annars: tom rad under',
+            modShiftEnter: 'Tabell: rad över · Annars: tom rad över'
+        },
         menu: {
             file: 'Arkiv',
             edit: 'Redigera',
@@ -3636,6 +3800,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Understruken',
             strikethrough: 'Genomstruken',
             insertTable: 'Infoga tabell',
+            insertTableRow: 'Infoga rad nedanför',
+            deleteTableRow: 'Ta bort rad',
+            insertTableColumn: 'Infoga kolumn till höger',
+            deleteTableColumn: 'Ta bort kolumn',
             inlineCode: 'Infogad kod',
             codeBlock: 'Kodblock',
             quote: 'Citat',
@@ -3808,6 +3976,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Xanh lam',
             green: 'Xanh lá'
         },
+        keys: {
+            group: 'Phím chỉnh sửa',
+            enter: 'Danh sách: tiếp tục · Mục trống: kết thúc',
+            tab: 'Bảng: ô kế tiếp · Danh sách: tăng cấp',
+            shiftTab: 'Bảng: ô trước · Nơi khác: giảm thụt lề',
+            modEnter: 'Bảng: thêm hàng dưới · Nơi khác: dòng trống dưới',
+            modShiftEnter: 'Bảng: thêm hàng trên · Nơi khác: dòng trống trên'
+        },
         menu: {
             file: 'Tệp',
             edit: 'Chỉnh sửa',
@@ -3863,6 +4039,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Gạch chân',
             strikethrough: 'Gạch ngang',
             insertTable: 'Chèn bảng',
+            insertTableRow: 'Chèn hàng bên dưới',
+            deleteTableRow: 'Xóa hàng',
+            insertTableColumn: 'Chèn cột bên phải',
+            deleteTableColumn: 'Xóa cột',
             inlineCode: 'Mã nội dòng',
             codeBlock: 'Khối mã',
             quote: 'Trích dẫn',
@@ -4035,6 +4215,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Ciano',
             green: 'Verde'
         },
+        keys: {
+            group: 'Teclas de edição',
+            enter: 'Lista: continuar · Item vazio: terminar',
+            tab: 'Tabela: célula seguinte · Lista: aumentar nível',
+            shiftTab: 'Tabela: célula anterior · Senão: reduzir indentação',
+            modEnter: 'Tabela: linha abaixo · Senão: linha vazia abaixo',
+            modShiftEnter: 'Tabela: linha acima · Senão: linha vazia acima'
+        },
         menu: {
             file: 'Ficheiro',
             edit: 'Editar',
@@ -4090,6 +4278,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Sublinhado',
             strikethrough: 'Rasurado',
             insertTable: 'Inserir tabela',
+            insertTableRow: 'Inserir linha abaixo',
+            deleteTableRow: 'Eliminar linha',
+            insertTableColumn: 'Inserir coluna à direita',
+            deleteTableColumn: 'Eliminar coluna',
             inlineCode: 'Código inline',
             codeBlock: 'Bloco de código',
             quote: 'Citação',
@@ -4262,6 +4454,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Verde'
         },
+        keys: {
+            group: 'Taste de editare',
+            enter: 'Listă: continuă · Element gol: încheie',
+            tab: 'Tabel: celula următoare · Listă: crește nivelul',
+            shiftTab: 'Tabel: celula anterioară · În rest: reduce indentarea',
+            modEnter: 'Tabel: rând dedesubt · În rest: rând gol dedesubt',
+            modShiftEnter: 'Tabel: rând deasupra · În rest: rând gol deasupra'
+        },
         menu: {
             file: 'Fișier',
             edit: 'Editare',
@@ -4317,6 +4517,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Subliniat',
             strikethrough: 'Tăiat',
             insertTable: 'Inserare tabel',
+            insertTableRow: 'Inserare rând dedesubt',
+            deleteTableRow: 'Ștergere rând',
+            insertTableColumn: 'Inserare coloană la dreapta',
+            deleteTableColumn: 'Ștergere coloană',
             inlineCode: 'Cod în linie',
             codeBlock: 'Bloc de cod',
             quote: 'Citat',
@@ -4489,6 +4693,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cián',
             green: 'Zöld'
         },
+        keys: {
+            group: 'Szerkesztőbillentyűk',
+            enter: 'Lista: folytatás · Üres elem: befejezés',
+            tab: 'Táblázat: következő cella · Lista: szint növelése',
+            shiftTab: 'Táblázat: előző cella · Egyébként: behúzás csökkentése',
+            modEnter: 'Táblázat: sor alá · Egyébként: üres sor alá',
+            modShiftEnter: 'Táblázat: sor fölé · Egyébként: üres sor fölé'
+        },
         menu: {
             file: 'Fájl',
             edit: 'Szerkesztés',
@@ -4544,6 +4756,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Aláhúzott',
             strikethrough: 'Áthúzott',
             insertTable: 'Táblázat beszúrása',
+            insertTableRow: 'Sor beszúrása alá',
+            deleteTableRow: 'Sor törlése',
+            insertTableColumn: 'Oszlop beszúrása jobbra',
+            deleteTableColumn: 'Oszlop törlése',
             inlineCode: 'Beágyazott kód',
             codeBlock: 'Kódblokk',
             quote: 'Idézet',
@@ -4716,6 +4932,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Azurová',
             green: 'Zelená'
         },
+        keys: {
+            group: 'Klávesy pro úpravy',
+            enter: 'Seznam: pokračovat · Prázdná položka: ukončit',
+            tab: 'Tabulka: další buňka · Seznam: zvýšit úroveň',
+            shiftTab: 'Tabulka: předchozí buňka · Jinde: zmenšit odsazení',
+            modEnter: 'Tabulka: řádek pod · Jinde: prázdný řádek pod',
+            modShiftEnter: 'Tabulka: řádek nad · Jinde: prázdný řádek nad'
+        },
         menu: {
             file: 'Soubor',
             edit: 'Upravit',
@@ -4771,6 +4995,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Podtržené',
             strikethrough: 'Přeškrtnuté',
             insertTable: 'Vložit tabulku',
+            insertTableRow: 'Vložit řádek níže',
+            deleteTableRow: 'Odstranit řádek',
+            insertTableColumn: 'Vložit sloupec vpravo',
+            deleteTableColumn: 'Odstranit sloupec',
             inlineCode: 'Vložený kód',
             codeBlock: 'Blok kódu',
             quote: 'Citace',
@@ -4949,6 +5177,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Azúrová',
             green: 'Zelená'
         },
+        keys: {
+            group: 'Klávesy na úpravy',
+            enter: 'Zoznam: pokračovať · Prázdna položka: ukončiť',
+            tab: 'Tabuľka: ďalšia bunka · Zoznam: zvýšiť úroveň',
+            shiftTab: 'Tabuľka: predchádzajúca bunka · Inde: zmenšiť odsadenie',
+            modEnter: 'Tabuľka: riadok pod · Inde: prázdny riadok pod',
+            modShiftEnter: 'Tabuľka: riadok nad · Inde: prázdny riadok nad'
+        },
         menu: {
             file: 'Súbor',
             edit: 'Upraviť',
@@ -5004,6 +5240,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Podčiarknuté',
             strikethrough: 'Prečiarknuté',
             insertTable: 'Vložiť tabuľku',
+            insertTableRow: 'Vložiť riadok nižšie',
+            deleteTableRow: 'Odstrániť riadok',
+            insertTableColumn: 'Vložiť stĺpec vpravo',
+            deleteTableColumn: 'Odstrániť stĺpec',
             inlineCode: 'Vložený kód',
             codeBlock: 'Blok kódu',
             quote: 'Citácia',
@@ -5176,6 +5416,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Κυανό',
             green: 'Πράσινο'
         },
+        keys: {
+            group: 'Πλήκτρα επεξεργασίας',
+            enter: 'Λίστα: συνέχεια · Κενό στοιχείο: τερματισμός',
+            tab: 'Πίνακας: επόμενο κελί · Λίστα: αύξηση επιπέδου',
+            shiftTab: 'Πίνακας: προηγούμενο κελί · Αλλού: μείωση εσοχής',
+            modEnter: 'Πίνακας: γραμμή κάτω · Αλλού: κενή γραμμή κάτω',
+            modShiftEnter: 'Πίνακας: γραμμή πάνω · Αλλού: κενή γραμμή πάνω'
+        },
         menu: {
             file: 'Αρχείο',
             edit: 'Επεξεργασία',
@@ -5231,6 +5479,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Υπογράμμιση',
             strikethrough: 'Διακριτή διαγραφή',
             insertTable: 'Εισαγωγή πίνακα',
+            insertTableRow: 'Εισαγωγή γραμμής παρακάτω',
+            deleteTableRow: 'Διαγραφή γραμμής',
+            insertTableColumn: 'Εισαγωγή στήλης δεξιά',
+            deleteTableColumn: 'Διαγραφή στήλης',
             inlineCode: 'Ενσωματωμένος κώδικας',
             codeBlock: 'Μπλοκ κώδικα',
             quote: 'Παράθεση',
@@ -5403,6 +5655,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Syaani',
             green: 'Vihreä'
         },
+        keys: {
+            group: 'Muokkausnäppäimet',
+            enter: 'Luettelo: jatka · Tyhjä kohta: lopeta',
+            tab: 'Taulukko: seuraava solu · Luettelo: kasvata tasoa',
+            shiftTab: 'Taulukko: edellinen solu · Muualla: pienennä sisennystä',
+            modEnter: 'Taulukko: rivi alle · Muualla: tyhjä rivi alle',
+            modShiftEnter: 'Taulukko: rivi ylle · Muualla: tyhjä rivi ylle'
+        },
         menu: {
             file: 'Tiedosto',
             edit: 'Muokkaa',
@@ -5458,6 +5718,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Alleviivaa',
             strikethrough: 'Yliviivaus',
             insertTable: 'Lisää taulukko',
+            insertTableRow: 'Lisää rivi alle',
+            deleteTableRow: 'Poista rivi',
+            insertTableColumn: 'Lisää sarake oikealle',
+            deleteTableColumn: 'Poista sarake',
             inlineCode: 'Rivinsisäinen koodi',
             codeBlock: 'Koodilohko',
             quote: 'Lainaus',
@@ -5630,6 +5894,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grøn'
         },
+        keys: {
+            group: 'Redigeringstaster',
+            enter: 'Liste: fortsæt · Tomt punkt: afslut',
+            tab: 'Tabel: næste celle · Liste: øg niveauet',
+            shiftTab: 'Tabel: forrige celle · Ellers: formindsk indrykning',
+            modEnter: 'Tabel: række under · Ellers: tom linje under',
+            modShiftEnter: 'Tabel: række over · Ellers: tom linje over'
+        },
         menu: {
             file: 'Fil',
             edit: 'Rediger',
@@ -5685,6 +5957,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Understreget',
             strikethrough: 'Gennemstreget',
             insertTable: 'Indsæt tabel',
+            insertTableRow: 'Indsæt række nedenfor',
+            deleteTableRow: 'Slet række',
+            insertTableColumn: 'Indsæt kolonne til højre',
+            deleteTableColumn: 'Slet kolonne',
             inlineCode: 'Indlejret kode',
             codeBlock: 'Kodeblok',
             quote: 'Citat',
@@ -5857,6 +6133,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Cyan',
             green: 'Grønn'
         },
+        keys: {
+            group: 'Redigeringstaster',
+            enter: 'Liste: fortsett · Tomt punkt: avslutt',
+            tab: 'Tabell: neste celle · Liste: øk nivået',
+            shiftTab: 'Tabell: forrige celle · Ellers: reduser innrykk',
+            modEnter: 'Tabell: rad under · Ellers: tom linje under',
+            modShiftEnter: 'Tabell: rad over · Ellers: tom linje over'
+        },
         menu: {
             file: 'Fil',
             edit: 'Rediger',
@@ -5912,6 +6196,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Understreking',
             strikethrough: 'Gjennomstreking',
             insertTable: 'Sett inn tabell',
+            insertTableRow: 'Sett inn rad under',
+            deleteTableRow: 'Slett rad',
+            insertTableColumn: 'Sett inn kolonne til høyre',
+            deleteTableColumn: 'Slett kolonne',
             inlineCode: 'Innebygd kode',
             codeBlock: 'Kodeblokk',
             quote: 'Sitat',
@@ -6084,6 +6372,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Sian',
             green: 'Hijau'
         },
+        keys: {
+            group: 'Tombol pengeditan',
+            enter: 'Daftar: lanjutkan · Item kosong: akhiri',
+            tab: 'Tabel: sel berikutnya · Daftar: naikkan tingkat',
+            shiftTab: 'Tabel: sel sebelumnya · Selain itu: kurangi indentasi',
+            modEnter: 'Tabel: baris di bawah · Selain itu: baris kosong di bawah',
+            modShiftEnter: 'Tabel: baris di atas · Selain itu: baris kosong di atas'
+        },
         menu: {
             file: 'Berkas',
             edit: 'Edit',
@@ -6139,6 +6435,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Garis Bawah',
             strikethrough: 'Coret',
             insertTable: 'Sisipkan Tabel',
+            insertTableRow: 'Sisipkan baris di bawah',
+            deleteTableRow: 'Hapus baris',
+            insertTableColumn: 'Sisipkan kolom di kanan',
+            deleteTableColumn: 'Hapus kolom',
             inlineCode: 'Kode Sebaris',
             codeBlock: 'Blok Kode',
             quote: 'Kutipan',
@@ -6311,6 +6611,14 @@ export const translations: Record<LanguageCode, Translation> = {
             cyan: 'Camgöbeği',
             green: 'Yeşil'
         },
+        keys: {
+            group: 'Düzenleme tuşları',
+            enter: 'Liste: devam et · Boş öğe: bitir',
+            tab: 'Tablo: sonraki hücre · Liste: seviyeyi artır',
+            shiftTab: 'Tablo: önceki hücre · Başka yerde: girintiyi azalt',
+            modEnter: 'Tablo: alta satır · Başka yerde: alta boş satır',
+            modShiftEnter: 'Tablo: üste satır · Başka yerde: üste boş satır'
+        },
         menu: {
             file: 'Dosya',
             edit: 'Düzenle',
@@ -6366,6 +6674,10 @@ export const translations: Record<LanguageCode, Translation> = {
             underline: 'Altı Çizili',
             strikethrough: 'Üstü Çizili',
             insertTable: 'Tablo Ekle',
+            insertTableRow: 'Aşağıya satır ekle',
+            deleteTableRow: 'Satırı sil',
+            insertTableColumn: 'Sağa sütun ekle',
+            deleteTableColumn: 'Sütunu sil',
             inlineCode: 'Satır İçi Kod',
             codeBlock: 'Kod Bloğu',
             quote: 'Alıntı',

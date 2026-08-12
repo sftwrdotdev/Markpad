@@ -6,6 +6,8 @@ import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standalon
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 import ts from 'typescript';
 
+import { listEnter, parseListItem } from '../src/lib/utils/listEditing.js';
+import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { readSource, functionSource } from './sourceTree.js';
 
 /*
@@ -66,7 +68,7 @@ export function label(parts: {
 }
 
 /** A Monaco keybinding number, as the chord (or chord sequence) Monaco resolves it to. */
-function chordOf(binding: number, os: OperatingSystemValue): Chord {
+export function chordOf(binding: number, os: OperatingSystemValue): Chord {
 	const decoded = decodeKeybinding(binding, os);
 	assert.ok(decoded, `Monaco could not decode keybinding ${binding}`);
 	return decoded.chords.map((chord) => label(chord as KeyCodeChord)).join(' ');
@@ -343,4 +345,185 @@ export function documentKeymap(osType: string): Map<Chord, string[]> {
 		`the document handler answered ${map.size} chords; the harness is not running the real function`,
 	);
 	return map;
+}
+
+// ------------------------------------- the nameless commands, and their handlers
+
+const EDITOR = 'src/lib/components/Editor.svelte';
+
+/** One `editor.addCommand(binding, handler, when)` call, as Monaco is handed it. */
+export type BareCommand = { binding: number; handler: string; when: string };
+
+/**
+ * Every bare `addCommand` the editor registers: a keybinding number, the name of
+ * the handler, and the `when` clause.
+ *
+ * These are the keys with no action id — Enter, Tab, Shift+Tab, the clipboard
+ * chords — so `registeredActions` above cannot see them at all, and neither can
+ * anything built on it. Two files need them for different reasons
+ * (`listContinuation.test.ts` checks the guards, `shortcutRegistry.test.ts`
+ * checks the panel's claims), which is why the extraction lives here rather than
+ * in either of them.
+ *
+ * The arguments are EVALUATED, not matched as text: the keybinding numbers come
+ * from Monaco's real `KeyMod`/`KeyCode` and the `when` expression is the string
+ * the component computes, template literal and shared constant included. So
+ * renaming the constant or reflowing the call changes nothing; changing a key or
+ * dropping a guard changes everything.
+ */
+export function bareCommands(): BareCommand[] {
+	const text = readSource(EDITOR);
+	const script = text.slice(text.indexOf('>', text.indexOf('<script')) + 1, text.indexOf('</script>'));
+	const file = ts.createSourceFile('editor.ts', script, ts.ScriptTarget.ES2022, true);
+
+	const constants: Record<string, string> = {};
+	const calls: BareCommand[] = [];
+
+	const evaluate = (expression: string): unknown =>
+		new Function('monaco', 'constants', `with (constants) { return (${expression}); }`)(
+			{ KeyMod, KeyCode },
+			constants,
+		);
+
+	const visit = (node: ts.Node) => {
+		if (
+			ts.isVariableDeclaration(node) &&
+			ts.isIdentifier(node.name) &&
+			node.initializer &&
+			(ts.isStringLiteral(node.initializer) || ts.isTemplateExpression(node.initializer))
+		) {
+			// Best effort: the component is full of template literals built from
+			// component state (`${label}px`), and none of them is a `when` clause.
+			// One that fails to evaluate here is simply not a constant the calls
+			// below can be reading, and an argument that turns out to need it fails
+			// loudly at its own `evaluate`.
+			try {
+				constants[node.name.text] = String(evaluate(node.initializer.getText()));
+			} catch {
+				/* not a constant */
+			}
+		}
+
+		if (
+			ts.isCallExpression(node) &&
+			node.expression.getText() === 'editor.addCommand' &&
+			node.arguments.length === 3
+		) {
+			calls.push({
+				binding: evaluate(node.arguments[0].getText()) as number,
+				handler: node.arguments[1].getText(),
+				when: String(evaluate(node.arguments[2].getText())),
+			});
+		}
+
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+
+	assert.ok(calls.length >= 5, `found ${calls.length} addCommand calls; the extraction is not running`);
+	return calls;
+}
+
+/** What a handler did to the stub editor it was handed. */
+export type RecordedEdits = {
+	triggers: string[];
+	edits: Array<{ range: number[]; text: string; cursor: number[] }>;
+	/** `setSelection` calls: a caret moved without an edit. */
+	selections: number[][];
+	undoStops: number;
+};
+
+class FakeRange {
+	constructor(
+		readonly startLineNumber: number,
+		readonly startColumn: number,
+		readonly endLineNumber: number,
+		readonly endColumn: number,
+	) {}
+	isEmpty() {
+		return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
+	}
+	numbers() {
+		return [this.startLineNumber, this.startColumn, this.endLineNumber, this.endColumn];
+	}
+}
+
+/**
+ * Component handlers, extracted by name and evaluated against a stub editor.
+ *
+ * `names` is every function the run needs, entry point LAST — a handler that
+ * dispatches through helpers needs the helpers in scope, and naming them makes
+ * the dependency visible instead of resolving it with a stub that would happily
+ * pass.
+ *
+ * The list and table modules in scope are the REAL ones, so a handler that
+ * stopped calling them — or called them with the wrong column — fails here
+ * rather than passing against a second, more agreeable copy.
+ */
+export function runEditorHandler(
+	names: string[],
+	options: { lines: string[]; selections: number[][]; eol?: string },
+): RecordedEdits {
+	const recorded: RecordedEdits = { triggers: [], edits: [], selections: [], undoStops: 0 };
+	const eol = options.eol ?? '\n';
+	const selections = options.selections.map((s) => new FakeRange(s[0], s[1], s[2], s[3]));
+
+	const model = {
+		getLineContent: (line: number) => options.lines[line - 1],
+		getLineCount: () => options.lines.length,
+		getLineMaxColumn: (line: number) => options.lines[line - 1].length + 1,
+		getEOL: () => eol,
+		getValueInRange: (range: FakeRange) => {
+			const span = options.lines.slice(range.startLineNumber - 1, range.endLineNumber);
+			span[span.length - 1] = span[span.length - 1].slice(0, range.endColumn - 1);
+			span[0] = span[0].slice(range.startColumn - 1);
+			return span.join(eol);
+		},
+	};
+
+	const scope: Record<string, unknown> = {
+		listEnter,
+		parseListItem,
+		tableStep,
+		tableOperation,
+		monaco: { Range: FakeRange, Selection: FakeRange },
+		editor: {
+			getModel: () => model,
+			getSelections: () => selections,
+			pushUndoStop: () => {
+				recorded.undoStops += 1;
+			},
+			setSelection: (selection: FakeRange) => {
+				recorded.selections.push(selection.numbers());
+			},
+			trigger: (_source: string, handlerId: string, payload: { text?: string } | null) => {
+				recorded.triggers.push(payload?.text ? `${handlerId}:${JSON.stringify(payload.text)}` : handlerId);
+			},
+			executeEdits: (
+				_source: string,
+				edits: Array<{ range: FakeRange; text: string }>,
+				cursor: FakeRange[],
+			) => {
+				for (const [index, edit] of edits.entries()) {
+					recorded.edits.push({
+						range: edit.range.numbers(),
+						text: edit.text,
+						cursor: cursor[index].numbers(),
+					});
+				}
+			},
+		},
+	};
+
+	const source = readSource(EDITOR);
+	const declarations = names.map((name) => `const ${name} = ${functionSource(source, name)};`).join('\n');
+	const js = ts.transpileModule(declarations, {
+		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+	}).outputText;
+	const build = new Function('scope', `with (scope) { ${js}\nreturn ${names[names.length - 1]}; }`) as (
+		s: unknown,
+	) => () => void;
+	build(new Proxy(scope, { has: () => true }))();
+
+	return recorded;
 }

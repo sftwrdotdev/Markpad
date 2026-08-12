@@ -16,7 +16,16 @@ import {
 	type ShortcutEntry,
 } from '../src/lib/utils/shortcuts.js';
 import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
-import { OperatingSystem, PLATFORMS, documentKeymap, editorKeymap, type Chord } from './keymapHarness.js';
+import {
+	OperatingSystem,
+	PLATFORMS,
+	bareCommands,
+	chordOf,
+	documentKeymap,
+	editorKeymap,
+	registeredActions,
+	type Chord,
+} from './keymapHarness.js';
 import { functionSource, readRustBackend, readSource, readSourceFiles } from './sourceTree.js';
 
 /*
@@ -104,7 +113,9 @@ test('the chord translator agrees with the harness on chords both already know',
 	assert.equal(toMonacoLabel('Alt+Left', false), 'Alt+LeftArrow');
 
 	assert.deepEqual(mac.get('fmt-inline-code'), ['Shift+Meta+E']);
-	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+K T']);
+	// Two keybindings, one action: the second is the same chord with the modifier
+	// still held for the second key. See the modifier-held test further down.
+	assert.deepEqual(win.get('insert-table-simple'), ['Ctrl+K T', 'Ctrl+K Ctrl+T']);
 });
 
 // ------------------------------------------------------------- sanity guards
@@ -135,7 +146,7 @@ test('no registry entry is unverifiable', () => {
 	// that implements it, or it cannot be checked and must not be advertised.
 	for (const entry of SHORTCUTS) {
 		assert.ok(
-			entry.editorAction || entry.documentCall || entry.nativeMenuAccelerator,
+			entry.editorAction || entry.editorCommand || entry.documentCall || entry.nativeMenuAccelerator,
 			`${entry.id} names no implementation, so nothing here can confirm its chord fires`,
 		);
 	}
@@ -607,6 +618,172 @@ test('every keybinding the editor registers is either advertised or consciously 
 	}
 });
 
+// ---------------------------------------- the Mod+K chords, with Mod held down
+
+/**
+ * `Mod+K <key>` chords that deliberately do NOT also take `Mod+K Mod+<key>`.
+ *
+ * The exemption is a collision, not a preference: `addAction` registers at
+ * weight 1000, above every Monaco default, so taking one of these would not fill
+ * an empty slot — it would silently delete a command that works today.
+ */
+const MODIFIER_HELD_EXEMPT: Record<string, string> = {
+	'table-insert-column':
+		"Mod+K Mod+C is Monaco's own editor.action.addCommentLine " +
+		'(contrib/comment/browser/comment.js), and it is not a dead binding in Markdown: with no ' +
+		'line-comment token the command falls back to wrapping the line in <!-- -->. Mod+K C, ' +
+		'released, is unclaimed and stays the chord for Insert Column.',
+};
+
+test('every Mod+K chord also answers with the modifier still held', () => {
+	// HOW PEOPLE ACTUALLY PRESS THESE. "Cmd+K T" reads as one gesture, so the Cmd
+	// stays down for the T — and `Cmd+K` then `Cmd+T` matched nothing here, fell
+	// through, and reached the app's own new-tab chord: asking for Insert Table
+	// opened a tab. VS Code registers both forms of every Mod+K chord it ships for
+	// exactly this reason.
+	let checked = 0;
+	for (const platform of PLATFORMS) {
+		const modifier = platform.mac ? 'Meta' : 'Ctrl';
+		for (const [id, chords] of editorKeymap(platform.mac, platform.os)) {
+			if (id in MODIFIER_HELD_EXEMPT) continue;
+			for (const chord of chords) {
+				const [first, second] = chord.split(' ');
+				if (!second || first !== `${modifier}+K` || second.startsWith(`${modifier}+`)) continue;
+				assert.ok(
+					chords.includes(`${first} ${modifier}+${second}`),
+					`${platform.name}: ${id} answers ${chord}, but not the same chord with ${modifier} ` +
+						'still held for the second key — which is how the chord is pressed',
+				);
+				checked++;
+			}
+		}
+	}
+	assert.ok(checked >= 3, `only ${checked} Mod+K chords were checked`);
+
+	// The exemption list must not rot either: an id that stopped binding a Mod+K
+	// chord has no collision left to be excused from.
+	const bound = editorKeymap(false, OperatingSystem.Windows);
+	for (const id of Object.keys(MODIFIER_HELD_EXEMPT)) {
+		assert.ok(
+			bound.get(id)?.some((chord) => chord.startsWith('Ctrl+K ')),
+			`${id} no longer binds a Mod+K chord — drop it from MODIFIER_HELD_EXEMPT`,
+		);
+	}
+});
+
+/**
+ * Table verbs that are commands with no key, and the reason each one lost it.
+ *
+ * Dropping a CHORD is not dropping a command: `addAction` without `keybindings`
+ * still puts the verb in the command palette (`Mod+P`, which runs Monaco's
+ * `editor.action.quickCommand`), which is where a rarely-used destructive edit
+ * belongs.
+ */
+const TABLE_VERBS_WITHOUT_A_CHORD: Record<string, string> = {
+	'table-insert-row':
+		'Mod+Enter owns it now — inside a table, "insert a line below" already means "insert a row below"',
+	'table-delete-row':
+		"Mod+K Shift+R sat one slip from Monaco's own Mod+Shift+K (delete line), and a mis-fired " +
+		'destructive table edit is much worse than a mis-fired insert',
+	'table-delete-column': 'the same, one key over',
+};
+
+test('the table verbs with no chord are still commands, and advertise nothing', () => {
+	const actions = new Map(registeredActions(false).actions.map((action) => [action.id, action]));
+	for (const [id, why] of Object.entries(TABLE_VERBS_WITHOUT_A_CHORD)) {
+		const action = actions.get(id);
+		assert.ok(action, `${id} must stay registered — the key went away, not the command (${why})`);
+		assert.deepEqual(action.keybindings ?? [], [], `${id} has a keybinding again; it was dropped because ${why}`);
+		assert.equal(
+			SHORTCUTS.find((entry) => entry.id === id),
+			undefined,
+			`${id} has no chord, so the panel must not claim one`,
+		);
+	}
+});
+
+// ------------------------------------- the contextual keys (the `keys` group)
+//
+// Enter, Tab and Shift+Tab are bound with a bare `editor.addCommand`: no action
+// id, no label, no menu entry. That is right — they are not commands a user
+// invokes, they are what those keys already mean one Markdown rule further on —
+// but it also made them INVISIBLE. #636 shipped Enter continuing a list and
+// nothing in the app said so anywhere; the `keys` group in the registry is that
+// omission being fixed, and this section is what keeps the fix honest.
+//
+// `editorAction` cannot carry these rows, because `editorKeymap` is built from
+// `addAction` descriptors and a nameless command has none. So the row names the
+// HANDLER instead, and the handler is looked up in the component's real
+// `addCommand` calls with the keybinding evaluated by Monaco's own `KeyMod`.
+
+/**
+ * Nameless commands the editor binds that are deliberately not advertised.
+ *
+ * The two clipboard chords, for the reason `NOT_ADVERTISED` already gives for
+ * their `custom-copy` twin: they are OS conventions rather than app shortcuts.
+ * Everything else the editor binds without a name has to be in the panel.
+ */
+const BARE_NOT_ADVERTISED: Record<string, string> = {
+	cutToClipboard:
+		'the OS clipboard convention, not an app shortcut; bound only because Monaco leaves cut/paste unbound in a browser',
+	pasteFromClipboard: 'the same, one key over',
+};
+
+test('every contextual key the registry advertises is bound to the handler it names', () => {
+	const advertised = SHORTCUTS.filter((entry) => entry.editorCommand);
+	assert.ok(advertised.length >= 3, `${advertised.length} rows name a bare command`);
+
+	for (const platform of PLATFORMS) {
+		const bound = new Map(bareCommands().map((call) => [chordOf(call.binding, platform.os), call.handler]));
+		for (const entry of advertised) {
+			for (const chord of entry.chords) {
+				const want = toMonacoLabel(chord, platform.mac);
+				assert.equal(
+					bound.get(want),
+					entry.editorCommand,
+					`${platform.name}: the panel would show ${formatChord(chord, platform.mac ? 'Cmd' : 'Ctrl')} ` +
+						`for ${entry.id} (${entry.editorCommand}), but that chord is bound to ${bound.get(want) ?? 'nothing'}`,
+				);
+			}
+		}
+	}
+});
+
+test('every nameless command the editor binds is advertised, or consciously not', () => {
+	// The completeness direction, which is the one that would have caught #636
+	// shipping unannounced: a new bare binding has to be shown or explained.
+	const advertised = new Set(SHORTCUTS.map((entry) => entry.editorCommand).filter(Boolean));
+	const bound = bareCommands().map((call) => call.handler);
+
+	const unexplained = bound.filter((handler) => !advertised.has(handler) && !(handler in BARE_NOT_ADVERTISED));
+	assert.deepEqual(
+		unexplained,
+		[],
+		'these keys do something extra in the editor and the shortcuts panel never mentions it; ' +
+			'add a row to SHORTCUTS (group `keys`) or a reason to BARE_NOT_ADVERTISED',
+	);
+
+	for (const handler of Object.keys(BARE_NOT_ADVERTISED)) {
+		assert.ok(bound.includes(handler), `${handler} is no longer bound — drop it from BARE_NOT_ADVERTISED`);
+	}
+});
+
+test('the contextual keys are shown as single keystrokes, never as chord sequences', () => {
+	// What separates this group from the four menu groups is not the absence of a
+	// modifier — Mod+Enter is in it — but that each row is ONE keystroke whose
+	// meaning depends on where the caret is. A two-part `Mod+K …` sequence is a
+	// command being invoked by name and belongs under the menu it lives in.
+	const shown = shortcutSections('macos').find((section) => section.group === 'keys');
+	assert.ok(shown, 'the panel renders the keys group');
+	assert.deepEqual(
+		shown.entries.flatMap((entry) => entry.chords),
+		['Enter', 'Tab', 'Shift+Tab', 'Cmd+Enter', 'Cmd+Shift+Enter'],
+	);
+	for (const chord of shown.entries.flatMap((entry) => entry.chords)) {
+		assert.ok(!chord.includes(' '), `${chord} is a chord sequence, not a key`);
+	}
+});
+
 // ------------------------------------------------------------------- i18n
 
 test('every label the registry names is a key English already defines', () => {
@@ -711,6 +888,33 @@ test('the panel renders the platform modifier the user is on', () => {
 
 	assert.equal(shortcutLabel('fmt-quote', 'Cmd'), 'Cmd+Shift+.');
 	assert.equal(shortcutLabel('no-such-command', 'Cmd'), undefined);
+});
+
+test('the panel’s groups are visibly separated, not run together', () => {
+	// The five sections stacked with nothing between them, so each heading sat
+	// flush against the last row of the group above and read as belonging to it —
+	// the whole pane looked like one undifferentiated list.
+	//
+	// A source-shape assertion, because the subject is CSS and there is no DOM
+	// here. What it pins is the part that can silently regress: that consecutive
+	// groups get a rule and space at all, and that the rule's colour is a theme
+	// token rather than a literal, so it survives the light/dark switch.
+	const text = readSource('src/lib/components/Settings.svelte');
+	assert.match(
+		text,
+		/class="settings-group shortcut-group"/,
+		'the shortcut sections need a class of their own: `.settings-group` is shared with every other pane',
+	);
+
+	const rule = /\.shortcut-group\s*\+\s*\.shortcut-group\s*\{([^}]*)\}/.exec(text);
+	assert.ok(rule, 'nothing separates one shortcut group from the next');
+	assert.match(
+		rule[1],
+		/border-top:[^;]*var\(--color-border-[a-z]+\)/,
+		'the separator must take its colour from a theme variable, so both themes get it',
+	);
+	assert.match(rule[1], /padding-top:\s*\d/, 'a rule with no space under it still reads as part of the row above');
+	assert.match(rule[1], /margin-top:\s*\d/, 'and no space above it still reads as part of the row above');
 });
 
 // ------------------------------------------- reality -> registry (completeness)

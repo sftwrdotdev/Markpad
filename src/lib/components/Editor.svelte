@@ -11,6 +11,7 @@
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
 	import { listEnter, parseListItem } from '../utils/listEditing.js';
+	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
@@ -715,10 +716,16 @@
 		// re-register on a language change.
 		editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, pasteFromClipboard, "editorTextFocus");
 
-		// Enter and Tab on a list item (#604). Bare commands rather than actions
-		// for the same reason Ctrl+V is one: they carry no label, appear in no
-		// menu and are not chords a user is told about — they are what those two
-		// keys already mean, one Markdown rule further on.
+		// Enter, Tab and Shift+Tab inside a list item or a table (#604). Bare
+		// commands rather than actions for the same reason Ctrl+V is one: they
+		// carry no label and appear in no menu — they are what those three keys
+		// already mean, one Markdown rule further on. The shortcuts panel does
+		// list them (group `context` in utils/shortcuts.ts), because a behaviour
+		// nobody is told about is a behaviour nobody uses.
+		//
+		// ONE HANDLER PER KEY, dispatching inside. Tab is a table key, a list key
+		// and a Tab, in that order of specificity; two commands on one chord would
+		// leave which of them wins to Monaco's registration order.
 		//
 		// THE `when` CLAUSES ARE THE WHOLE RISK HERE.
 		//
@@ -749,13 +756,32 @@
 		// line) runs and this command never sees the key; in insert mode vim
 		// passes the key through and continuation happens, which is what a vim
 		// user writing a list wants. The order is DOM nesting, not luck.
-		const LIST_KEY_CONTEXT =
+		const EDITING_KEY_CONTEXT =
 			"editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inSnippetMode";
-		editor.addCommand(monaco.KeyCode.Enter, continueListOnEnter, LIST_KEY_CONTEXT);
+		editor.addCommand(monaco.KeyCode.Enter, continueListOnEnter, EDITING_KEY_CONTEXT);
 		editor.addCommand(
 			monaco.KeyCode.Tab,
-			indentListItemOnTab,
-			`${LIST_KEY_CONTEXT} && !editorTabMovesFocus`,
+			handleTabKey,
+			`${EDITING_KEY_CONTEXT} && !editorTabMovesFocus`,
+		);
+		editor.addCommand(
+			monaco.KeyMod.Shift | monaco.KeyCode.Tab,
+			handleShiftTabKey,
+			`${EDITING_KEY_CONTEXT} && !editorTabMovesFocus`,
+		);
+		// The same two keys Monaco binds to Insert Line Below / Above, which is why
+		// they need no guard of their own beyond the shared one: the only other
+		// claimants on Mod+Enter in the bundle are the find widget's Replace All and
+		// the references peek, and `editorTextFocus` is false in both.
+		editor.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+			handleModEnterKey,
+			EDITING_KEY_CONTEXT,
+		);
+		editor.addCommand(
+			monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Enter,
+			handleModShiftEnterKey,
+			EDITING_KEY_CONTEXT,
 		);
 
 		editorReady = true;
@@ -928,28 +954,134 @@
 	};
 
 	/**
-	 * Tab on a list item raises its nesting level; anywhere else it is a Tab.
+	 * The single collapsed caret these keys claim, or null.
 	 *
-	 * SHIFT+TAB IS DELIBERATELY NOT BOUND. Monaco's own `outdent` command already
-	 * has that chord and already takes one indent level off the current line
-	 * wherever the caret sits on it — which is precisely "lower the level". A
-	 * command of ours in front of it would be a second name for a key that is
-	 * already right, and one more `when` clause to get wrong.
-	 *
-	 * `editor.action.indentLines` rather than a hand-written edit for the same
-	 * reason, and it is also what makes Tab mean the level and not the caret: the
-	 * core `tab` command inserts indentation AT the caret, so a Tab in the middle
-	 * of an item's text would drop a tab character into the sentence.
+	 * A selection, or several carets, is handed back to the key's ordinary
+	 * meaning everywhere below: one edit at the primary selection would silently
+	 * drop what the other carets were about to do, and Monaco's own Tab already
+	 * indents every line of a multi-line selection.
 	 */
-	const indentListItemOnTab = () => {
+	const soleCaret = () => {
 		const model = editor.getModel();
 		const selections = editor.getSelections();
-		const onListItem =
-			!!model &&
-			selections?.length === 1 &&
-			selections[0].isEmpty() &&
-			parseListItem(model.getLineContent(selections[0].startLineNumber)) !== null;
+		if (!model || selections?.length !== 1 || !selections[0].isEmpty()) return null;
+		return { model, line: selections[0].startLineNumber, column: selections[0].startColumn };
+	};
+
+	/**
+	 * Replace a table with its re-aligned self and put the caret in the cell the
+	 * edit names. Every table operation ends here, because every one of them
+	 * changes a column's width and therefore has to redraw the pipes.
+	 *
+	 * An edit that changes nothing but the caret — Shift+Tab in the first cell of
+	 * an already-aligned table — moves the caret WITHOUT an edit, so it does not
+	 * push an undo step that undoes nothing.
+	 */
+	const applyTableEdit = (edit: TableEdit, source: string) => {
+		const model = editor.getModel();
+		if (!model) return;
+
+		const range = new monaco.Range(
+			edit.startLine,
+			1,
+			edit.endLine,
+			model.getLineMaxColumn(edit.endLine),
+		);
+		const text = edit.lines.join(model.getEOL());
+		const caret = new monaco.Selection(
+			edit.caretLine,
+			edit.caretColumn,
+			edit.caretLine,
+			edit.caretColumn,
+		);
+
+		if (model.getValueInRange(range) === text) {
+			editor.setSelection(caret);
+			return;
+		}
+		editor.pushUndoStop();
+		editor.executeEdits(source, [{ range, text }], [caret]);
+	};
+
+	/** Tab / Shift+Tab inside a table. False when the caret is not in one. */
+	const stepTableCell = (back: boolean) => {
+		const caret = soleCaret();
+		if (!caret) return false;
+		const step = tableStep(caret.model, caret.line, caret.column, back);
+		if (!step) return false;
+		applyTableEdit(step, "table-step");
+		return true;
+	};
+
+	/**
+	 * The row and column commands, which are the same edit one level up. False
+	 * when the caret is not in a table, or when the table refuses the edit — which
+	 * is what lets the two Enter keys hand themselves back to Monaco.
+	 */
+	const editTable = (operation: TableOperation) => {
+		const caret = soleCaret();
+		if (!caret) return false;
+		const edit = tableOperation(caret.model, caret.line, caret.column, operation);
+		if (!edit) return false;
+		applyTableEdit(edit, `table-${operation}`);
+		return true;
+	};
+
+	/**
+	 * Tab: the next cell of a table, else a list item's nesting level, else a Tab.
+	 *
+	 * `editor.action.indentLines` rather than a hand-written edit, and that is
+	 * also what makes Tab mean the level and not the caret: the core `tab` command
+	 * inserts indentation AT the caret, so a Tab in the middle of an item's text
+	 * would drop a tab character into the sentence.
+	 */
+	const handleTabKey = () => {
+		if (stepTableCell(false)) return;
+		const caret = soleCaret();
+		const onListItem = !!caret && parseListItem(caret.model.getLineContent(caret.line)) !== null;
 		editor.trigger("keyboard", onListItem ? "editor.action.indentLines" : "tab", null);
+	};
+
+	/**
+	 * Shift+Tab: the previous cell of a table, else Monaco's own `outdent`.
+	 *
+	 * THE FALL-THROUGH IS THE POINT. Shift+Tab was left unbound on purpose when
+	 * the list keys landed, because `outdent` already had the chord and already
+	 * took one indent level off the current line wherever the caret sat on it —
+	 * a command of ours in front of it would have been a second name for a key
+	 * that was already right. Tables need the chord for something `outdent` does
+	 * not do, so this handler takes it and hands it straight back everywhere
+	 * except inside a table: `outdent` remains what Shift+Tab means, including on
+	 * a list item, and `scripts/listContinuation.test.ts` still pins that against
+	 * the installed Monaco rather than against this comment.
+	 */
+	const handleShiftTabKey = () => {
+		if (stepTableCell(true)) return;
+		editor.trigger("keyboard", "outdent", null);
+	};
+
+	/**
+	 * Mod+Enter: a row below in a table, else Monaco's own "Insert Line Below".
+	 *
+	 * THE KEY IS NOT BEING TAKEN, IT IS BEING SPECIALISED. Monaco already binds
+	 * `Mod+Enter` to `editor.action.insertLineAfter` and `Mod+Shift+Enter` to
+	 * `insertLineBefore`, and inside a table "the line below" IS "the row below" —
+	 * so these two handlers are the same shape as Shift+Tab's above: take the key,
+	 * and hand it straight back everywhere the table branch declines.
+	 *
+	 * The rows used to be on `Mod+K R`, and a two-key chord for the commonest edit
+	 * a table gets is a chord nobody presses. Columns keep theirs: they are rarer,
+	 * and no unmodified key means "insert a column" in any editor.
+	 */
+	const handleModEnterKey = () => {
+		if (editTable("insert-row")) return;
+		editor.trigger("keyboard", "editor.action.insertLineAfter", null);
+	};
+
+	/** Mod+Shift+Enter: a row above in a table, else "Insert Line Above". */
+	const handleModShiftEnterKey = () => {
+		if (editTable("insert-row-above")) return;
+		editor.trigger("keyboard", "editor.action.insertLineBefore", null);
 	};
 
 	const wrapAsCodeBlock = () => {
@@ -1270,10 +1402,19 @@
 			editor.addAction({
 				id: "insert-table-simple",
 				label: t('menu.insertTable', lang),
+				// BOTH FORMS OF THE CHORD, which is what VS Code registers for every
+				// one of its own `Mod+K` chords and for the same reason: "Cmd+K T"
+				// reads as one gesture, so the Cmd stays down for the T. Without the
+				// second entry `Cmd+K` then `Cmd+T` matched nothing, fell through, and
+				// reached `file-new` — asking for a table opened a tab.
 				keybindings: [
 					monaco.KeyMod.chord(
 						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
 						monaco.KeyCode.KeyT,
+					),
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT,
 					),
 				],
 				run: () => {
@@ -1297,6 +1438,66 @@
 							forceMoveMarkers: true,
 						},
 					]);
+				},
+			}),
+
+			// The rest of the table verbs. They are actions rather than bare
+			// commands because a user has to be able to FIND them — in the command
+			// palette, in the shortcuts panel — which a nameless `addCommand`
+			// cannot be. Three of the four carry no keybinding at all, and an
+			// action with no keybinding is still a command palette entry, which is
+			// where a verb you reach for twice a year belongs.
+			//
+			// WHY THE DESTRUCTIVE PAIR HAS NO CHORD. They were on `Mod+K Shift+R`
+			// and `Mod+K Shift+C`, one slip from Monaco's own `Mod+Shift+K` —
+			// delete line. A mis-fired insert is an undo; a mis-fired delete of the
+			// row you were reading is the kind of thing that gets noticed three
+			// edits later. Insert keeps a chord; delete does not get one.
+			//
+			// WHY INSERT ROW HAS NO CHORD EITHER: `Mod+Enter` owns it now, one
+			// keystroke instead of two, and Tab at the end of the table appends one.
+			editor.addAction({
+				id: "table-insert-row",
+				label: t('menu.insertTableRow', lang),
+				run: () => {
+					editTable("insert-row");
+				},
+			}),
+
+			editor.addAction({
+				id: "table-delete-row",
+				label: t('menu.deleteTableRow', lang),
+				run: () => {
+					editTable("delete-row");
+				},
+			}),
+
+			// The one table verb still on the chord, in the namespace `Mod+K`
+			// already opened for Insert Table. `C` for column, and only the
+			// released form: `Mod+K Mod+C` is Monaco's own
+			// `editor.action.addCommentLine`, which is live in Markdown — with no
+			// line-comment token it falls back to wrapping the line in `<!-- -->`.
+			// `addAction` registers at weight 1000 and would win, so claiming it
+			// would delete a working command rather than fill an empty slot.
+			editor.addAction({
+				id: "table-insert-column",
+				label: t('menu.insertTableColumn', lang),
+				keybindings: [
+					monaco.KeyMod.chord(
+						monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK,
+						monaco.KeyCode.KeyC,
+					),
+				],
+				run: () => {
+					editTable("insert-column");
+				},
+			}),
+
+			editor.addAction({
+				id: "table-delete-column",
+				label: t('menu.deleteTableColumn', lang),
+				run: () => {
+					editTable("delete-column");
 				},
 			}),
 
