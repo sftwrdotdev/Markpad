@@ -76,7 +76,7 @@ sudo snap install markpad
 
 > 通过 `.dmg`（macOS）、`*-setup.exe`（Windows NSIS）或 `.AppImage`（Linux）直接安装之后，Markpad 会通过应用内的 *检查更新…*（macOS 在应用菜单，其它平台在设置里）从 GitHub 发行版自更新。Snap 和 Chocolatey 的更新由这两个包管理器负责。
 >
-> **`.deb` 和 `.rpm` 是一次性安装。** `tauri-plugin-updater` 替换不了由包管理器装上的文件，也没有 apt 或 dnf 源可以更新 —— 升级要去发行页面下载新的安装包。*检查更新…* 会认出这类安装，直接告诉你更新从哪来，而不是给你一个装不上的更新（[#570](https://github.com/sftwrdotdev/Markpad/issues/570)）。
+> **`.deb` 和 `.rpm` 是一次性安装。** `tauri-plugin-updater` 替换不了由包管理器装上的文件，也没有 apt 或 dnf 源可以更新 —— 升级要去发行页面下载新的安装包。*检查更新…* 会认出这类安装并直接告诉你。
 
 ## Markpad 能渲染什么
 
