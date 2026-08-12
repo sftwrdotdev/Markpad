@@ -584,6 +584,50 @@ test('a close chord wearing an extra modifier destroys nothing', () => {
 	assert.ok(plainClosesFound >= 3, `only ${plainClosesFound} unmodified close chords fire; the harness found nothing to guard`);
 });
 
+test('Mod+F4 closes a document on Windows, the one platform it was scoped to', () => {
+	// The scope is not a judgement call made here — it is the requirement the
+	// binding shipped with and then exceeded. `docs/requirements/157-ctrl-f4-
+	// close-tab.md`, added by the same commit that added the branch (4670743,
+	// "add Ctrl+F4 shortcut to close active tab on Windows"), lists under "Out of
+	// scope": "macOS / Linux (dort ist Ctrl+F4 kein Standard)". The handler bound
+	// it on all three anyway. The doc was later swept away with the rest of
+	// docs/ (d69c181), which is how the intent stopped being checkable — so it is
+	// restated here, where it now fails if it is exceeded again.
+	//
+	// The convention argument agrees and is why the doc says what it says:
+	// Ctrl+F4 closes a document window on Windows, an MDI-era convention still
+	// live in Office and the IDEs. macOS has none — Cmd+F4 means nothing, and
+	// with "Use F1, F2, etc. as standard function keys" off, which is the
+	// default, F4 runs a system function and the app never receives the event.
+	//
+	// What this is NOT is a rule about odd-looking chords. `Cmd+Shift+=` stays on
+	// every platform though it looks similarly strange: it is not a platform
+	// convention at all, it is how "Cmd plus" is typed — `+` is the shifted `=`
+	// on every layout — so Mac users press it as much as anyone. The question is
+	// "does anyone on this platform actually press this?", not "does it carry a
+	// Shift?".
+	for (const platform of PLATFORMS) {
+		const keymap = documentKeymap(platform.osType);
+		// Both spellings on every platform: `cmdOrCtrl` is `ctrlKey || metaKey`
+		// everywhere, so a Mac or a Linux box answering EITHER one is the defect.
+		for (const spelling of documentSpellings('Mod+F4', platform.mac)) {
+			const fired = keymap.get(spelling) ?? [];
+			if (platform.osType === 'windows') {
+				assert.ok(
+					fired.includes('closeFile'),
+					`${platform.name}: ${spelling} runs ${fired.join(', ') || 'nothing'} instead of closeFile`,
+				);
+			} else {
+				assert.deepEqual(
+					fired,
+					[],
+					`${platform.name}: ${spelling} still runs ${fired.join(', ')} — requirement 157 puts this platform out of scope`,
+				);
+			}
+		}
+	}
+});
+
 // -------------------------------------------------- editor bindings vs panel
 
 /**
@@ -1014,8 +1058,10 @@ function documentSpellings(chord: string, mac: boolean): Chord[] {
  */
 const DOCUMENT_CHORDS_NOT_ADVERTISED: Record<string, string> = {
 	'Mod+F4':
-		'The Windows document-close convention, kept as a second way to reach file-close. Not shown because ' +
-		'the panel already prints Mod+W for that command and a second row would read as a second command.',
+		'The Windows document-close convention, kept there as a second way to reach file-close and gated off ' +
+		'macOS and Linux, which requirement 157 put out of scope from the start (see the per-platform test ' +
+		'above). Not shown because the panel already prints Mod+W for that command and a second row would read ' +
+		'as a second command — and a row true on one platform of three would have to say so.',
 	'Mod+PageUp':
 		'Tab cycling as browsers and editors bind it. tab-prev advertises Ctrl+Shift+Tab; this is the same ' +
 		'command under the chord the muscle memory reaches for.',
