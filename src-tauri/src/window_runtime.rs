@@ -1,3 +1,4 @@
+use crate::fs_safety::atomic_write;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
 use std::fs;
@@ -189,7 +190,7 @@ fn update_pinned_tags(
     let mut tags = read_pinned_tags_at(path);
     edit(&mut tags);
     let json = serde_json::to_string(&tags)?;
-    crate::atomic_write(path, json.as_bytes())?;
+    atomic_write(path, json.as_bytes())?;
     Ok(())
 }
 
@@ -364,7 +365,7 @@ fn window_state_path(app: &AppHandle) -> Result<std::path::PathBuf, crate::error
 /// session or entirely the new one.
 #[tauri::command]
 pub fn save_window_state(app: AppHandle, json: String) -> Result<(), String> {
-    crate::atomic_write(&window_state_path(&app)?, json.as_bytes()).map_err(|e| e.to_string())
+    atomic_write(&window_state_path(&app)?, json.as_bytes()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

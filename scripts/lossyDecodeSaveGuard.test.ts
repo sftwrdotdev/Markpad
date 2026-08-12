@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload } from '../src/lib/utils/tabTransfer.js';
-import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
+import { offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 // Every read path decodes leniently (#371): a file it cannot read opens with
 // U+FFFD substituted for the bytes it could not, instead of failing. U+FFFD is
@@ -28,7 +28,7 @@ import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
 const session = readSource('src/lib/sessions/documentSession.svelte.ts');
 const windowSession = readSource('src/lib/sessions/windowSession.svelte.ts');
 const tabs = readSource('src/lib/stores/tabs.svelte.ts');
-const rust = readSource('src-tauri/src/lib.rs');
+const rust = readRustBackend();
 
 const loadMarkdown = () => sliceBetween(session, 'async function loadMarkdown', 'async function saveContent');
 const saveContent = () => sliceBetween(session, 'async function saveContent(', 'async function saveContentAs');

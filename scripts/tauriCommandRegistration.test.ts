@@ -1,21 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
-
-const RUST_SOURCES = [
-	'src-tauri/src/lib.rs',
-	'src-tauri/src/window_runtime.rs',
-	'src-tauri/src/tab_transfer.rs',
-	'src-tauri/src/asset_protocol.rs',
-	'src-tauri/src/error.rs',
-	'src-tauri/src/main.rs',
-];
+import { readSource, rustSourceFiles, sliceBetween } from './sourceTree.js';
 
 /** Every `#[tauri::command]` function name in the Rust sources. */
 function declaredCommands(): { name: string; file: string }[] {
 	const out: { name: string; file: string }[] = [];
-	for (const file of RUST_SOURCES) {
+	for (const file of rustSourceFiles()) {
 		const text = readSource(file);
 		// The attribute, any further attributes stacked under it, then the fn.
 		for (const m of text.matchAll(
@@ -31,7 +22,7 @@ function declaredCommands(): { name: string; file: string }[] {
 function registeredCommands(): Set<string> {
 	// `sliceBetween` keeps its start anchor, so the first comma-separated entry
 	// would otherwise be `generate_handler![\n  clipboard_write_text`.
-	const handler = sliceBetween(readSource('src-tauri/src/lib.rs'), 'generate_handler![', '])').replace(
+	const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'generate_handler![', '])').replace(
 		'generate_handler![',
 		'',
 	);

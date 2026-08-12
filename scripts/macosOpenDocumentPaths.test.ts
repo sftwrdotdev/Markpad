@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
 const runtime = readSource('src-tauri/src/window_runtime.rs');
-const tauriLib = readSource('src-tauri/src/lib.rs');
+const tauriLib = readRustBackend();
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 test('macOS open-document events preserve every delivered file path', () => {

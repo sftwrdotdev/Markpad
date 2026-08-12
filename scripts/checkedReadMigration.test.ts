@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { offsetOf, readSource, readSourceFiles, sliceBetween } from './sourceTree.js';
+import { offsetOf, readRustBackend, readSource, readSourceFiles, sliceBetween } from './sourceTree.js';
 
 // Runes and the Tauri bridge, shimmed the way truncatedBufferGuard.test.ts
 // shims them: the stores are runes modules, and Node's test runner gives every
@@ -168,7 +168,7 @@ test('the unchecked read command is gone, and nothing calls it', () => {
 		.map(({ path }) => path);
 	assert.deepEqual(offenders, [], 'read_file_content no longer exists; read_file_content_checked is the read');
 
-	const rust = readSource('src-tauri/src/lib.rs');
+	const rust = readRustBackend();
 	assert.doesNotMatch(rust, /\basync fn read_file_content\(/, 'the unchecked command must stay deleted');
 	assert.doesNotMatch(rust, /^\s*read_file_content,\s*$/m, 'and must not be registered again');
 });

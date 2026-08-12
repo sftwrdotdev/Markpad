@@ -12,7 +12,7 @@ import {
 	type ShortcutEntry,
 } from '../src/lib/utils/shortcuts.js';
 import { OperatingSystem, PLATFORMS, documentKeymap, editorKeymap, type Chord } from './keymapHarness.js';
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
 /*
  * THE CONTRACT: every chord the shortcuts panel shows is a chord that actually
@@ -202,7 +202,7 @@ test('the native accelerator the registry defers to is the one the Rust menu cla
 	// Quit is the one entry whose chord is answered neither by Monaco nor by the
 	// document handler on macOS. Saying so in the registry is only honest if the
 	// menu really does claim it.
-	const rust = readSource('src-tauri/src/lib.rs');
+	const rust = readRustBackend();
 	const accelerators = new Set([...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]));
 	assert.ok(accelerators.size > 0, 'the native menu accelerators were found');
 
@@ -514,7 +514,7 @@ test('every command the document handler can reach is advertised, or consciously
 test('every native menu accelerator is advertised, or consciously not', () => {
 	// The macOS menu is a third layer above the other two, and #392 was in part a
 	// chord it owned that nothing else knew about.
-	const rust = readSource('src-tauri/src/lib.rs');
+	const rust = readRustBackend();
 	const accelerators = [...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]);
 	assert.ok(accelerators.length > 0, 'the native menu accelerators were found');
 

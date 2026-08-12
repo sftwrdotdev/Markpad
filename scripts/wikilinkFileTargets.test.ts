@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
 import {
 	getMarkdownLinkTarget,
@@ -26,7 +26,7 @@ import {
 // only prove the href is recognized as a local markdown target and decodes
 // back to the path and anchor the document asked for.
 
-const rustSource = readSource(new URL('../src-tauri/src/lib.rs', import.meta.url));
+const rustSource = readRustBackend();
 const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 const referenceSource = readSource(new URL('../src/lib/utils/headingReference.ts', import.meta.url));
 

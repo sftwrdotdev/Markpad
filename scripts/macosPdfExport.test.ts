@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 test('all Markpad webviews may invoke Tauri native printing', () => {
 	const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
@@ -25,7 +25,7 @@ test('all Markpad webviews may invoke Tauri native printing', () => {
 // and total at runtime: "Export PDF" does nothing at all.
 test('both PDF commands the exporter invokes are registered with Tauri', () => {
 	const exporter = readSource('src/lib/utils/export.ts');
-	const tauriLib = readSource('src-tauri/src/lib.rs');
+	const tauriLib = readRustBackend();
 
 	const registered = new Set(
 		sliceBetween(tauriLib, 'tauri::generate_handler![', ']')
@@ -42,7 +42,7 @@ test('both PDF commands the exporter invokes are registered with Tauri', () => {
 		assert.ok(registered.has(command), `export.ts invokes '${command}', which lib.rs must register`);
 		assert.match(
 			tauriLib,
-			new RegExp(`#\\[tauri::command\\]\\n(?:async )?fn ${command}\\(`),
+			new RegExp(`#\\[tauri::command\\]\\n(?:pub )?(?:async )?fn ${command}\\(`),
 			`${command} must be defined as a Tauri command`,
 		);
 	}

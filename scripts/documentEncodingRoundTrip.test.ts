@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { functionSource, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 /*
  * #372: a document in a legacy encoding (GBK, Big5, Shift-JIS, CP-1252 …) is
@@ -239,7 +239,7 @@ test('no locale still translates a hardcoded UTF-8 label', () => {
 // failures, which the user cannot act on beyond reading the OS.
 
 test('the unmappable-character refusal crosses as a code, not as English prose', () => {
-	const rust = readSource('src-tauri/src/lib.rs');
+	const rust = readRustBackend();
 	assert.match(rust, /const UNMAPPABLE_CODE: &str = "ENCODING_UNMAPPABLE";/);
 	assert.match(rust, /return Err\(UNMAPPABLE_CODE\.to_owned\(\)\)/, 'a marker, carrying nothing');
 

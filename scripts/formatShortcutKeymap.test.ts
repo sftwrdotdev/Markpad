@@ -10,7 +10,7 @@ import {
 	registeredActions,
 	type Chord,
 } from './keymapHarness.js';
-import { readSource } from './sourceTree.js';
+import { readRustBackend, readSource } from './sourceTree.js';
 
 /*
  * Issues #121 (six formatting commands with no shortcut) and #392 (Ctrl+T means
@@ -168,7 +168,7 @@ test('the native macOS menu claims exactly two accelerators, and T is not one', 
 	// The third code path in #392. The menu was trimmed to Settings and Quit
 	// (#281); anything added back that takes Cmd+T would reintroduce a fourth
 	// meaning, above both layers above, and neither of them could see it.
-	const rust = readSource('src-tauri/src/lib.rs');
+	const rust = readRustBackend();
 	const accelerators = [...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]).sort();
 	assert.deepEqual(accelerators, ['CmdOrCtrl+,', 'CmdOrCtrl+Q']);
 });

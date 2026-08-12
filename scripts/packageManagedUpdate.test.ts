@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 const store = readSource('src/lib/stores/update.svelte.ts');
 const dialog = readSource('src/lib/components/UpdateDialog.svelte');
-const rust = readSource('src-tauri/src/lib.rs');
+const rust = readRustBackend();
 const i18n = readSource('src/lib/utils/i18n.ts');
 
 // A `.deb`, `.rpm` or snap install cannot replace its own binary, but it used
@@ -44,7 +44,7 @@ test('only Linux is gated', () => {
 	// anything in place, and macOS is the one platform where bundle_type()
 	// answers without the build-time patch. Gating either would break a working
 	// updater for 95% of downloads.
-	const command = sliceBetween(rust, 'fn self_update_supported', '\nfn get_os_type');
+	const command = sliceBetween(rust, 'fn self_update_supported', '\npub fn get_os_type');
 	assert.match(command, /#\[cfg\(target_os = "linux"\)\]/);
 	assert.match(command, /appimage\.is_some\(\)/);
 	assert.match(command, /#\[cfg\(not\(target_os = "linux"\)\)\]/);
