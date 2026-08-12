@@ -24,6 +24,31 @@ test('new file tabs start history with their path', () => {
 	});
 });
 
+// Entries exist to be re-opened, and an untitled buffer cannot be. See the
+// behaviour this protects in scripts/tabNavigationHistory.spec.ts.
+test('an untitled tab starts with no history entry at all', () => {
+	assert.deepEqual(createFileHistory(''), {
+		history: [],
+		historyIndex: 0,
+	});
+});
+
+test('navigating out of an untitled tab leaves nothing to go back to', () => {
+	// Both shapes an untitled tab can arrive in: no entry, and — for a tab
+	// transferred from an older window — the `''` its source seeded.
+	for (const history of [[], ['']]) {
+		assert.deepEqual(
+			navigateFileHistory({
+				currentPath: '',
+				targetPath: '/notes/a.md',
+				history,
+				historyIndex: 0,
+			}),
+			{ history: ['/notes/a.md'], historyIndex: 0 }
+		);
+	}
+});
+
 // History is a list of PATHS. `createFileHistory` used to take the tab's
 // initial content as an ignored second parameter, and all three callers passed
 // one — which is how `addNewTab` came to seed a history with a content string
@@ -94,7 +119,7 @@ test('replacing current history entry keeps file history path-based', () => {
 	assert.deepEqual(
 		replaceCurrentHistoryEntry({
 			targetPath: '/notes/saved.md',
-			history: [''],
+			history: [],
 			historyIndex: 0,
 		}),
 		{

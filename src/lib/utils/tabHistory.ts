@@ -24,7 +24,9 @@ type FileHistoryNavigationResult = {
 
 export function createFileHistory(path: string): FileHistoryState {
 	return {
-		history: [path],
+		// An untitled tab is opened with `''`, and `''` is not a path — see
+		// `navigateFileHistory` for what an entry nobody can re-open costs.
+		history: path === '' ? [] : [path],
 		historyIndex: 0,
 	};
 }
@@ -64,7 +66,21 @@ export function navigateFileHistory({
 	}
 
 	const baseHistory = history.length > 0 ? history : [currentPath];
-	const nextHistory = baseHistory.slice(0, historyIndex + 1);
+	// Only real paths, because that is the only thing an entry is for: `goBack`
+	// hands its entry to the caller to re-open, and there is no re-opening an
+	// untitled buffer — it has no file, and the load that follows this
+	// navigation has already replaced the text that was in it. Left in, the
+	// tab sits at index 1 of `['', '/target.md']`, `canGoBack` reports true and
+	// enables the button, and `goBack` rejects the `''` it gets as falsy and
+	// returns null without moving the index: enabled and dead, permanently.
+	//
+	// Filtered here, at the one function that GROWS a history, rather than at
+	// each seed. `''` reaches this line from four of them — `addNewTab`, an
+	// untitled `addTab`, the tab that gives up its path in `claimPath`, and the
+	// `[currentPath]` fallback on the line above — and a tab transferred from an
+	// older window arrives carrying whatever its source seeded. The index is
+	// recomputed from the length below, so removing an entry cannot desync it.
+	const nextHistory = baseHistory.slice(0, historyIndex + 1).filter((entry) => entry !== '');
 	nextHistory.push(targetPath);
 
 	return {

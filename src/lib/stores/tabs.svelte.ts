@@ -483,7 +483,9 @@ class TabManager {
 			// The title still names the file the buffer came from — that is what
 			// makes the tab recognizable, and `saveContent` offers it as the
 			// default filename when the user places it.
-			other.history = [''];
+			// It has no path now, so it has no history entry: the tab is untitled,
+			// and `''` is not somewhere Back can take the reader.
+			other.history = [];
 			other.historyIndex = 0;
 		}
 	}
@@ -570,7 +572,11 @@ class TabManager {
 				return this.rawContent !== this.originalContent;
 			},
 			isEditing: settings.newFileDefaultMode,
-			history: [content],
+			// Empty, as `addHomeTab` below already had it. This used to be
+			// `[content]` — a PATH list seeded with the new buffer's text, which
+			// is `''` and so looked harmless, and was not: see
+			// `navigateFileHistory`.
+			history: [],
 			historyIndex: 0,
 			editorViewState: null,
 			scrollPercentage: 0,
