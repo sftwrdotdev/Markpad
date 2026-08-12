@@ -4,6 +4,7 @@ import test from 'node:test';
 import { readSource, sliceBetween } from './sourceTree.js';
 
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import {
 	buildTransferredTab,
 	snapshotTab,
@@ -34,7 +35,7 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
 		historyIndex: 1,
 		editorViewState: { cursorState: 'monaco-live-object' },
 		scrollPercentage: 0.42,
-		anchorLine: 7,
+		anchorLine: asRendererLine(7),
 		isSplit: true,
 		splitRatio: 0.3,
 		isScrollSynced: true,

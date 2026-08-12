@@ -5,6 +5,7 @@ import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { HOME_TAB_PATH, isHomePath } from '../utils/homeTab.js';
 import { buildTransferredTab, type TransferableTab } from '../utils/tabTransfer.js';
 import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
+import { asRendererLine, type RendererLine } from '../utils/lineCoordinates.js';
 import { retainTabModels } from '../utils/tabModels.js';
 import {
 	canGoBackInHistory,
@@ -131,6 +132,15 @@ export interface Tab {
 	 * anything once the layout changes — a re-render, a fold, a resize, a swap
 	 * between the two panes. Reach for it first.
 	 *
+	 * A RENDERER line specifically, which is why it carries the brand. It is
+	 * written by `getPreviewScrollAnchor`, whose numbers come straight off
+	 * `data-sourcepos`, and read back by `findAnchorElement` against the same
+	 * attributes — both sides count from the first line of the BODY, not of the
+	 * file. Anything that wants to aim the EDITOR with it owes a
+	 * `lineCoordinates(raw).toBufferLine(...)` first, and the brand is what
+	 * makes forgetting that a type error instead of a document that opens the
+	 * height of its own front matter off (#607).
+	 *
 	 * `scrollPercentage` is a 0-1 fraction of the scrollable range. It survives
 	 * a container of some other height, but it drifts with the content: the
 	 * "rough percentage of the document instead of where you left off" that
@@ -152,7 +162,7 @@ export interface Tab {
 	 * them, and `editorViewState`, through `clearReadingPosition`.
 	 */
 	scrollPercentage: number;
-	anchorLine: number;
+	anchorLine: RendererLine;
 	isSplit: boolean;
 	splitRatio: number;
 	isScrollSynced: boolean;
@@ -404,7 +414,10 @@ class TabManager {
 					historyIndex: fileHistory.historyIndex,
 					editorViewState: null,
 					scrollPercentage: typeof saved.scrollPercentage === 'number' ? saved.scrollPercentage : 0,
-					anchorLine: typeof saved.anchorLine === 'number' ? saved.anchorLine : 0,
+					// The brand is phantom, so nothing of it survives JSON — which is
+					// exactly why the read side has to re-declare what came back.
+					// `serializeState` wrote a renderer line; this says so again.
+					anchorLine: asRendererLine(typeof saved.anchorLine === 'number' ? saved.anchorLine : 0),
 					isSplit: saved.isSplit === true,
 					splitRatio: typeof saved.splitRatio === 'number' ? saved.splitRatio : 0.5,
 					isScrollSynced: saved.isScrollSynced === true,
@@ -545,7 +558,7 @@ class TabManager {
 			historyIndex: fileHistory.historyIndex,
 			editorViewState: null,
 			scrollPercentage: 0,
-			anchorLine: 0,
+			anchorLine: asRendererLine(0),
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -586,7 +599,7 @@ class TabManager {
 			historyIndex: 0,
 			editorViewState: null,
 			scrollPercentage: 0,
-			anchorLine: 0,
+			anchorLine: asRendererLine(0),
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -623,7 +636,7 @@ class TabManager {
 			historyIndex: 0,
 			editorViewState: null,
 			scrollPercentage: 0,
-			anchorLine: 0,
+			anchorLine: asRendererLine(0),
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -856,10 +869,28 @@ class TabManager {
 		}
 	}
 
+	/**
+	 * The one place a bare number becomes this tab's anchor.
+	 *
+	 * `line` is a plain `number` and not a `RendererLine`, which is the ONE
+	 * unbranded claim left on this field, and it is deliberate rather than an
+	 * oversight. Two components write here and they do not agree on what they
+	 * are writing: `MarkdownViewer.svelte` hands over `getPreviewScrollAnchor`,
+	 * a renderer line off `data-sourcepos`; `components/Editor.svelte` hands
+	 * over `ranges[0].startLineNumber + 2`, a MONACO line, which is a buffer
+	 * line. Branding this parameter turns that second call into the type error
+	 * it deserves to be — and there is no conversion to write there without
+	 * settling which of the two numberings the field is (it is the renderer's:
+	 * `findAnchorElement` reads it back against `data-sourcepos`).
+	 *
+	 * So the assertion sits here, where it is visible, instead of at four call
+	 * sites where it would not be. Whoever fixes the editor's half takes this
+	 * parameter to `RendererLine` and deletes this comment.
+	 */
 	updateTabAnchorLine(id: string, line: number) {
 		const tab = this.tabs.find((t) => t.id === id);
 		if (tab) {
-			tab.anchorLine = line;
+			tab.anchorLine = asRendererLine(line);
 		}
 	}
 
@@ -1036,7 +1067,7 @@ class TabManager {
 	 */
 	private clearReadingPosition(tab: Tab) {
 		tab.editorViewState = null;
-		tab.anchorLine = 0;
+		tab.anchorLine = asRendererLine(0);
 		tab.scrollPercentage = 0;
 		tab.scrollTop = 0;
 	}
