@@ -1,3 +1,10 @@
+import {
+	BULLET_MARKER,
+	LIST_MARKER,
+	LIST_MARKER_PREFIX,
+	ORDERED_MARKER,
+	TASK_BOX,
+} from './listSyntax.js';
 import { shortcutLabel } from './shortcuts.js';
 
 type EditorToolbarGroup = 'inline' | 'block' | 'list' | 'insert';
@@ -53,7 +60,8 @@ const EDITOR_TOOLBAR_TOOLS: EditorToolbarTool[] = BASE_TOOLBAR_TOOLS.map((tool) 
 
 export const DEFAULT_EDITOR_TOOLBAR_ORDER = EDITOR_TOOLBAR_TOOLS.map((tool) => tool.id);
 
-const TASK_BOX = String.raw`\[[ xX]\]\s+`;
+/** The box and the space after it, which travel together. */
+const TASK_BOX_MARKER = String.raw`${TASK_BOX}\s+`;
 
 /**
  * A bullet, an ordered number and a task box all claim the same slot at the
@@ -65,12 +73,37 @@ const TASK_BOX = String.raw`\[[ xX]\]\s+`;
  * more. The ordered-plus-box form is matched too, so the `1. [ ] foo` that the
  * old numbered-list toggle used to produce normalises on the next toggle
  * instead of round-tripping to an orphan box.
+ *
+ * The marker vocabulary itself comes from ./listSyntax.ts, shared with the
+ * renderer's side of the same grammar. It used to be spelled here as
+ * `(?:[-*+]|\d+\.)`, which is the same defect one delimiter over: `1) foo`
+ * became `- 1) foo`.
  */
-const ANY_LIST_MARKER = new RegExp(String.raw`^(?:[-*+]|\d+\.)\s+(?:${TASK_BOX})?`);
+const ANY_LIST_MARKER = new RegExp(String.raw`^${LIST_MARKER}\s+(?:${TASK_BOX_MARKER})?`);
 
 const ANY_HEADING = /^#{1,6}\s+/;
 
+/** Leading indentation, which every tool preserves. */
+const INDENT = /^[ \t]*/;
+
+/**
+ * Indentation plus block-quote nesting: the prefix the *list* tools preserve.
+ *
+ * A quoted list item (`> - item`) is a list item — it is what the renderer reads
+ * as one — so the list buttons have to find the marker behind the quote markers
+ * rather than write a second marker in front of them. The quote and heading
+ * tools keep `INDENT` instead: Quote's whole job is to add a `>` in front of
+ * whatever is there, including another `>`.
+ */
+const QUOTED_INDENT = new RegExp(String.raw`^${LIST_MARKER_PREFIX}`);
+
 type LineMarker = {
+	/**
+	 * What this tool leaves untouched at the head of the line. Matched first, and
+	 * put back afterwards: it is the difference between un-bulleting a nested item
+	 * and flattening it to the top level.
+	 */
+	readonly prefix: RegExp;
 	/** Matches the marker this tool owns; deciding when a toggle un-toggles. */
 	readonly own: RegExp;
 	/** The marker text. The argument counts content lines, for `1.`, `2.`, … */
@@ -84,28 +117,31 @@ type LineMarker = {
 };
 
 const LINE_MARKERS = {
-	'fmt-quote': { own: /^>\s+/, render: () => '> ', competing: null },
+	'fmt-quote': { prefix: INDENT, own: /^>\s+/, render: () => '> ', competing: null },
 	// The list toggles exclude a following task box from `own` so that they add
 	// their marker to a checklist item instead of un-toggling it and leaving the
 	// box behind.
 	'fmt-bullet-list': {
-		own: new RegExp(String.raw`^[-*+]\s+(?!${TASK_BOX})`),
+		prefix: QUOTED_INDENT,
+		own: new RegExp(String.raw`^${BULLET_MARKER}\s+(?!${TASK_BOX_MARKER})`),
 		render: () => '- ',
 		competing: ANY_LIST_MARKER,
 	},
 	'fmt-numbered-list': {
-		own: new RegExp(String.raw`^\d+\.\s+(?!${TASK_BOX})`),
+		prefix: QUOTED_INDENT,
+		own: new RegExp(String.raw`^${ORDERED_MARKER}\s+(?!${TASK_BOX_MARKER})`),
 		render: (itemIndex: number) => `${itemIndex}. `,
 		competing: ANY_LIST_MARKER,
 	},
 	'fmt-checklist': {
-		own: new RegExp(String.raw`^[-*+]\s+${TASK_BOX}`),
+		prefix: QUOTED_INDENT,
+		own: new RegExp(String.raw`^${BULLET_MARKER}\s+${TASK_BOX_MARKER}`),
 		render: () => '- [ ] ',
 		competing: ANY_LIST_MARKER,
 	},
-	'fmt-heading-1': { own: /^#\s+/, render: () => '# ', competing: ANY_HEADING },
-	'fmt-heading-2': { own: /^##\s+/, render: () => '## ', competing: ANY_HEADING },
-	'fmt-heading-3': { own: /^###\s+/, render: () => '### ', competing: ANY_HEADING },
+	'fmt-heading-1': { prefix: INDENT, own: /^#\s+/, render: () => '# ', competing: ANY_HEADING },
+	'fmt-heading-2': { prefix: INDENT, own: /^##\s+/, render: () => '## ', competing: ANY_HEADING },
+	'fmt-heading-3': { prefix: INDENT, own: /^###\s+/, render: () => '### ', competing: ANY_HEADING },
 } satisfies Record<string, LineMarker>;
 
 export type LineMarkerToolId = keyof typeof LINE_MARKERS;
@@ -119,18 +155,35 @@ export const LINE_MARKER_TOOL_IDS = Object.keys(LINE_MARKERS) as LineMarkerToolI
  * marker; otherwise the marker is applied to all of them, which is what makes a
  * mixed selection converge on one list type instead of stacking markers.
  * Blank lines are left exactly as they are and are not numbered.
+ *
+ * The caller hands over whole lines, untrimmed (`Editor.svelte` reads the
+ * selection from column 1), so every line arrives with whatever puts it where it
+ * is: the indentation of a nested item, the `>` of a quoted one. That prefix is
+ * split off, held, and put back — the markers below are matched against the rest
+ * of the line and never see it. Matching them against the whole line instead is
+ * what made a nested bullet unrecognisable, and stripping the prefix along with
+ * the marker is what would have flattened the item to the top level.
  */
 export function toggleLineMarker(id: LineMarkerToolId, lines: readonly string[]): string[] {
 	const marker = LINE_MARKERS[id];
+	// Both patterns can match the empty string, so `exec` never returns null —
+	// the fallback is there for the type, not for a case.
+	const split = (line: string) => {
+		const prefix = (marker.prefix.exec(line) ?? [''])[0];
+		return { prefix, rest: line.slice(prefix.length) };
+	};
+
 	const contentLines = lines.filter((line) => line.trim().length > 0);
-	const shouldRemove = contentLines.length > 0 && contentLines.every((line) => marker.own.test(line));
+	const shouldRemove =
+		contentLines.length > 0 && contentLines.every((line) => marker.own.test(split(line).rest));
 
 	let itemIndex = 1;
 	return lines.map((line) => {
 		if (!line.trim()) return line;
-		if (shouldRemove) return line.replace(marker.own, '');
-		const body = marker.competing ? line.replace(marker.competing, '') : line;
-		return `${marker.render(itemIndex++)}${body}`;
+		const { prefix, rest } = split(line);
+		if (shouldRemove) return `${prefix}${rest.replace(marker.own, '')}`;
+		const body = marker.competing ? rest.replace(marker.competing, '') : rest;
+		return `${prefix}${marker.render(itemIndex++)}${body}`;
 	});
 }
 
