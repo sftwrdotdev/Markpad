@@ -1,18 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import ts from 'typescript';
+
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
+import { isHomePath } from '../src/lib/utils/homeTab.js';
 import { getSupportedLanguages, t, translations, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
 import {
 	SHORTCUTS,
 	SHORTCUT_GROUPS,
 	formatChord,
+	modifierFor,
 	shortcutLabel,
 	shortcutSections,
 	type ShortcutEntry,
 } from '../src/lib/utils/shortcuts.js';
+import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
 import { OperatingSystem, PLATFORMS, documentKeymap, editorKeymap, type Chord } from './keymapHarness.js';
-import { readRustBackend, readSource } from './sourceTree.js';
+import { functionSource, readRustBackend, readSource, readSourceFiles } from './sourceTree.js';
 
 /*
  * THE CONTRACT: every chord the shortcuts panel shows is a chord that actually
@@ -301,6 +306,207 @@ test('the app menu prints no shortcut literal of its own', () => {
 	// than a chord.
 	const offRegistry = spans.filter((body) => !body.includes('shortcutLabel(') && !body.includes("t('tooltip.reset'"));
 	assert.deepEqual(offRegistry, [], 'every menu chord comes from shortcutLabel()');
+});
+
+/**
+ * A chord as a user reads it: a modifier word, a `+`, and something to press.
+ *
+ * `Mod+…` is deliberately absent — that is the registry's own spelling and is
+ * not a claim about any one platform.
+ */
+const CHORD_LITERAL = /\b(?:Ctrl|Cmd|Command|Meta|Super)\+(?:(?:Shift|Alt|Option|Ctrl|Cmd)\+)*[A-Za-z0-9\\[\]`,.\-=]/g;
+
+/**
+ * Whether the match at `index` is inside a comment.
+ *
+ * Judged from the text before it ON ITS OWN LINE, never by stripping comments
+ * out of the file first: a stripper that mistakes a block-comment opener inside
+ * a string literal for a real one swallows everything up to the next closer, and
+ * a chord hidden that way is a guard that quietly stopped guarding. This can
+ * only ever
+ * miss a literal that shares a line with an earlier `//`, which no display code
+ * in `src/` is written as.
+ */
+function inComment(text: string, index: number): boolean {
+	return /^\s*\*|\/\/|\/\*|<!--/.test(text.slice(text.lastIndexOf('\n', index) + 1, index));
+}
+
+/**
+ * Files allowed to spell a chord out.
+ *
+ * One, and it is the registry: `Ctrl+Tab` and `Ctrl+Shift+Tab` are a literal
+ * Ctrl on macOS too (Cmd+Tab is the system application switcher), so the table
+ * has to be able to say so. Everything else asks `shortcutLabel()`.
+ *
+ * NOT exempted, though the shapes are different: a `title=` tooltip is as
+ * user-visible as a menu row, and the two that read `(Ctrl+W)` and `(Ctrl+T)`
+ * were as wrong on macOS as the menu rows beside them. Comments are excluded by
+ * `inComment` rather than listed here — a comment discussing Cmd+S is prose, not
+ * a label.
+ */
+const CHORD_LITERAL_EXEMPT: Record<string, string> = {
+	'src/lib/utils/shortcuts.ts':
+		'the registry itself: the one file whose job is to spell chords, and the only place a literal Ctrl (Ctrl+Tab) is a deliberate cross-platform claim',
+};
+
+test('no chord is spelled by hand anywhere in src, in any shape', () => {
+	// The widening of the guard above, which only ever read
+	// `<span class="menu-shortcut">` bodies in `TitleBar.svelte`. Six live
+	// literals were invisible to it: three `shortcut:` properties in `Tab.svelte`,
+	// two in `TabList.svelte`, and two `title=` tooltips — a different shape in a
+	// different file, printed into the same span by `ContextMenu.svelte`. This
+	// sweep is shape-agnostic on purpose, so the next one does not need a seventh
+	// pattern written for it.
+	const files = readSourceFiles('src');
+	assert.ok(files.length > 50, `swept ${files.length} files`);
+
+	// Not vacuous: the pattern really does find chords in the file that has them.
+	const registry = readSource('src/lib/utils/shortcuts.ts');
+	assert.ok(
+		[...registry.matchAll(CHORD_LITERAL)].some((m) => !inComment(registry, m.index)),
+		'the chord pattern matches nothing even in the registry, so this sweep proves nothing',
+	);
+
+	const offenders: string[] = [];
+	for (const { path, text } of files) {
+		if (path in CHORD_LITERAL_EXEMPT) continue;
+		for (const match of text.matchAll(CHORD_LITERAL)) {
+			if (inComment(text, match.index)) continue;
+			offenders.push(`${path}:${text.slice(0, match.index).split('\n').length}: ${match[0]}…`);
+		}
+	}
+	assert.deepEqual(
+		offenders,
+		[],
+		'a keyboard chord is written out by hand here; it belongs in src/lib/utils/shortcuts.ts, ' +
+			'read back with shortcutLabel(id, modifierFor(settings.osType)) so macOS reads Cmd',
+	);
+
+	for (const path of Object.keys(CHORD_LITERAL_EXEMPT)) {
+		assert.ok(files.some((file) => file.path === path), `${path} is gone — drop it from CHORD_LITERAL_EXEMPT`);
+	}
+});
+
+// ------------------------------------------- the context menus, actually run
+
+/*
+ * `ContextMenu.svelte` prints `item.shortcut` into the SAME
+ * `<span class="menu-shortcut">` the app menu uses, so a chord handed to it sits
+ * in the same visual slot as a chord the app menu derived from the registry —
+ * and the tab menus handed it `'Ctrl+T'`, `'Ctrl+Shift+T'` and `'Ctrl+W'` as
+ * literals. On macOS that printed "New File · Ctrl+T" one keystroke away from
+ * the File menu's "Cmd+T", and Ctrl+T is not bound there at all: `Editor.svelte`
+ * binds `monaco.KeyMod.CtrlCmd`, which is ⌘ on a Mac.
+ *
+ * The guard above could not see it. It reads the `<span>` bodies of
+ * `TitleBar.svelte`, and these were `shortcut:` object properties in two other
+ * components — a different shape in a different file. Same for the two `title=`
+ * tooltips on the `+` button and the tab close button.
+ *
+ * So the menus are RUN here rather than read: the builder function is lifted out
+ * of its component (the same trick `keymapHarness.ts` uses on `handleKeyDown`)
+ * and evaluated with a `settings` store that says macOS, then one that says
+ * Windows. What comes back is the array `ContextMenu` would render, so the
+ * assertion is about the string the user sees rather than about the shape of the
+ * source that produced it.
+ */
+
+type MenuItem = { label?: string; shortcut?: string; separator?: true };
+
+/** The items `fn` in `file` builds, on `osType`. */
+async function contextMenuItems(file: string, fn: string, osType: string): Promise<MenuItem[]> {
+	const js = ts.transpileModule(functionSource(readSource(file), fn), {
+		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+	}).outputText;
+
+	let menu: { items?: MenuItem[] } | undefined;
+	const known: Record<string, unknown> = {
+		// The real store field the component has to consult, and the real
+		// translator and registry functions — a stub for any of these would let a
+		// component that asked the wrong question still look right.
+		settings: { osType, language: 'en' },
+		t,
+		shortcutLabel,
+		modifierFor,
+		getTabFileActions,
+		hasRealFilePath,
+		isHomePath,
+		tab: { id: 'tab-1', path: '/notes/a.md', title: 'a.md' },
+		tabManager: { tabs: [{ id: 'tab-1' }, { id: 'tab-2' }] },
+		getCurrentWindow: () => ({ label: 'main' }),
+		emitTo: () => {},
+		// The only other window is this one, so the "move to window" section is
+		// empty and the shortcut-bearing rows are undisturbed.
+		invoke: async () => [],
+		console,
+	};
+
+	const scope = new Proxy(known, {
+		has: () => true,
+		get: (target, property) =>
+			typeof property === 'string' && property in target ? target[property] : () => undefined,
+		set: (target, property, value) => {
+			const items = (value as { items?: unknown })?.items;
+			if (Array.isArray(items)) menu = value as { items: MenuItem[] };
+			target[property as string] = value;
+			return true;
+		},
+	});
+
+	const build = new Function('scope', `with (scope) { ${js}\nreturn ${fn}; }`) as (
+		s: unknown,
+	) => (e: unknown) => unknown;
+
+	// `handleContainerContextMenu` returns early unless the event landed on the
+	// container itself, so target and currentTarget are the same object.
+	const el = { classList: { contains: () => false } };
+	await build(scope)({ preventDefault() {}, stopPropagation() {}, clientX: 10, clientY: 20, target: el, currentTarget: el });
+
+	assert.ok(menu?.items?.length, `${fn} in ${file} produced no menu at all; the harness is not running the real function`);
+	return menu!.items!;
+}
+
+/** file -> builder, and the labelled chords it must show on each platform. */
+const TAB_MENUS: Array<{ file: string; fn: string; macos: Array<[string, string]> }> = [
+	{
+		file: 'src/lib/components/Tab.svelte',
+		fn: 'handleContextMenu',
+		macos: [
+			['menu.newFile', 'Cmd+T'],
+			['menu.undoCloseTab', 'Cmd+Shift+T'],
+			['menu.closeFile', 'Cmd+W'],
+		],
+	},
+	{
+		file: 'src/lib/components/TabList.svelte',
+		fn: 'handleContainerContextMenu',
+		macos: [
+			['menu.newFile', 'Cmd+T'],
+			['menu.undoCloseTab', 'Cmd+Shift+T'],
+		],
+	},
+];
+
+test('the tab context menus print the modifier the user is on, not a hard-coded Ctrl', async () => {
+	for (const { file, fn, macos } of TAB_MENUS) {
+		for (const platform of ['macos', 'windows'] as const) {
+			const shown = (await contextMenuItems(file, fn, platform))
+				.filter((item) => item.shortcut)
+				.map((item) => [item.label, item.shortcut]);
+
+			const want = macos.map(([labelKey, chord]) => [
+				t(labelKey, 'en'),
+				platform === 'macos' ? chord : chord.replaceAll('Cmd', 'Ctrl'),
+			]);
+
+			assert.deepEqual(
+				shown,
+				want,
+				`${file}: the ${platform} tab context menu shows ${JSON.stringify(shown)}; ` +
+					'every chord in it must come from shortcutLabel() so it agrees with the app menu',
+			);
+		}
+	}
 });
 
 test('Save As runs Save As, and not a plain Save', () => {

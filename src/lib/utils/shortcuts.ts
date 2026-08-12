@@ -313,8 +313,15 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	},
 ];
 
-/** The modifier word each platform spells `Mod` with. */
-function modifierFor(platform: ShortcutPlatform): 'Cmd' | 'Ctrl' {
+/**
+ * The modifier word each platform spells `Mod` with.
+ *
+ * Takes the raw `settings.osType` rather than `ShortcutPlatform`, because that
+ * store field also carries `'unknown'` while the Tauri call that resolves it is
+ * still in flight. Every caller that has an os type and needs a modifier goes
+ * through here, so `=== 'macos' ? 'Cmd' : 'Ctrl'` is written once.
+ */
+export function modifierFor(platform: string): 'Cmd' | 'Ctrl' {
 	return platform === 'macos' ? 'Cmd' : 'Ctrl';
 }
 

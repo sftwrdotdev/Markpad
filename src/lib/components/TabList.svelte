@@ -6,6 +6,7 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 
 	import { flip } from 'svelte/animate';
 	import { tick } from 'svelte';
@@ -163,13 +164,14 @@
 		e.preventDefault();
 
 		const currentLang = settings.language;
+		const modifier = modifierFor(settings.osType);
 		tabListContextMenu = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
 			items: [
-				{ label: t('menu.newFile', currentLang), shortcut: 'Ctrl+T', onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
-				{ label: t('menu.undoCloseTab', currentLang), shortcut: 'Ctrl+Shift+T', onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
+				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
+				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
 			]
 		};
 	}
@@ -223,7 +225,7 @@
 		<div class="scroll-shadow right" class:visible={showRightArrow}></div>
 	</div>
 
-	<button class="new-tab-btn" onclick={onnewTab} onmousedown={(e) => e.preventDefault()} title={`${t('tooltip.newTab', settings.language)} (Ctrl+T)`}>
+	<button class="new-tab-btn" onclick={onnewTab} onmousedown={(e) => e.preventDefault()} title={`${t('tooltip.newTab', settings.language)} (${shortcutLabel('file-new', modifierFor(settings.osType))})`}>
 		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 			><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 	</button>
