@@ -274,7 +274,7 @@ An empty cell is written with two pipes — `| 1 || 3 |` — which is why the sp
 | `Ctrl`/`Cmd` + `Shift` + `Backspace` | delete the column |
 | `Ctrl`/`Cmd` + `Alt`/`Option` + `T` | insert a table to begin with |
 
-Every edit reformats the table, so the pipes stay lined up — including in CJK text, where a character is two columns wide. Deleting a row has no key on purpose: putting the caret on the line and deleting it already does that, while editing the pipes on every row to remove a column does not have a by-hand equivalent worth using. Both, and the rest, are in the command palette (`F1`).
+Every edit reformats the table, so the pipes stay lined up — including in CJK text, where a character is two columns wide. To delete a row, delete its line. The rest of the table commands are in the command palette (`F1`).
 
 ## 7. Thematic breaks
 
@@ -301,7 +301,7 @@ The [CommonMark spec][spec] and the [GFM spec][gfm] disagree in about twenty pla
 
 A link to a heading in this document: [back to the table](#what-is-supported-and-what-travels). Type `](#` in the editor and Markpad completes the headings for you.
 
-`Ctrl`/`Cmd` + `K` inserts a link around whatever is selected — the chord four other Markdown editors use for it.
+`Ctrl`/`Cmd` + `K` inserts a link around whatever is selected.
 
 ### Wikilinks
 
