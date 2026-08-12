@@ -11,8 +11,8 @@ export type MarkdownLinkTarget = {
 // documented as a copy and pinned by a test; a list is cheaper to share than to
 // police.
 //
-// The Rust renderer keeps the sixth copy, in `MARKDOWN_LINK_EXTENSIONS` in
-// src-tauri/src/markdown.rs, because no import crosses that boundary. It is
+// The Rust renderer keeps the only other copy, in `MARKDOWN_LINK_EXTENSIONS`
+// in src-tauri/src/markdown.rs, because no import crosses that boundary. It is
 // pinned against this one by `the extension list the rewriter mirrors still
 // matches markdownLinks.ts` in scripts/wikilinkFileTargets.test.ts.
 export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];

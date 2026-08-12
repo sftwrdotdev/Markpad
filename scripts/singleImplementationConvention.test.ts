@@ -79,6 +79,23 @@ const RULES: Rule[] = [
 		dir: 'src/lib/utils',
 	},
 	{
+		name: 'the markdown extension list has one implementation in src',
+		why:
+			'There were five copies of `md | markdown | mdown | mkd | txt` in the frontend. #611 collapsed four of them into markdownLinks.ts; the fifth was an inline array in TitleBar.svelte deciding whether the outline and full-width buttons belong on the toolbar, which is exactly the kind of copy that goes stale when an extension is added. The Rust renderer keeps its own, pinned against this one by wikilinkFileTargets.test.ts, because no import crosses that boundary.',
+		// `mdown` rather than `md`: it is distinctive enough that prose and other
+		// identifiers cannot match it by accident.
+		//
+		// MarkdownViewer.svelte is allowed because its list answers a different
+		// question. `getLanguage` maps an extension to a *Monaco grammar id*, and
+		// it deliberately leaves `txt` out — a .txt file gets plaintext
+		// highlighting even though this app renders it as Markdown. Folding the
+		// two together would have to pick one of those answers and be wrong about
+		// the other. That table has its own guard, the `return 'plaintext'` rule
+		// below.
+		marker: /['"]mdown['"]/g,
+		allowed: ['src/lib/utils/markdownLinks.ts', 'src/lib/MarkdownViewer.svelte'],
+	},
+	{
 		name: 'YouTube links never become embedded frames',
 		why: 'The app dropped frame-src from its CSP and renders YouTube as a thumbnail anchor that opens the browser; an iframe path is the pre-fix version and cannot load.',
 		marker: /createElement\((['"])iframe\1\)/g,
