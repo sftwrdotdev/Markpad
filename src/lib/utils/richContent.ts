@@ -6,6 +6,7 @@ import {
 	templateDiagramSvg,
 } from './diagramCache.js';
 import { rememberDiagramSource } from './mermaidPrint.js';
+import { highlightedCode, renderedMath } from './richContentCache.js';
 
 /**
  * The one implementation of "turn rendered Markdown into the thing the user
@@ -194,6 +195,8 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	const doc = root.ownerDocument ?? document;
 	const idFactory = options.idFactory ?? defaultIdFactory;
 
+	const codeBlocks = Array.from(root.querySelectorAll('pre code'));
+
 	// `htmlLabels: false` is what keeps a diagram's text in the picture. With
 	// Mermaid's default (`true`) every label is an HTML `<div>`/`<span>` inside a
 	// `<foreignObject>`, and `sanitizeDiagramSvg` — like any DOMPurify — deletes
@@ -202,9 +205,20 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	// objects to. Measured against mermaid 11.16.0: this one root-level key is
 	// enough for every diagram type it ships (the per-diagram `htmlLabels` keys
 	// are deprecated in 11.x and the root one takes precedence over them).
-	mermaid.initialize({ startOnLoad: false, theme: options.mermaidTheme, htmlLabels: false });
+	//
+	// Only when there is something to draw: `initialize` deep-merges and installs
+	// a site config, which measures at ~2.5ms in Chromium, and this function runs
+	// once per keystroke. A document with no diagram in it was paying that on
+	// every character. Asking first is one selector over a list already in hand.
+	// Configuring per pass, rather than remembering the last theme, is
+	// deliberate — `mermaidPrint.ts` reconfigures the same singleton to print a
+	// diagram on paper and configures it back, so a remembered theme here would
+	// be a claim about a global another module also writes to.
+	const hasDiagram = codeBlocks.some((block) => block.classList.contains('language-mermaid'));
+	if (hasDiagram) {
+		mermaid.initialize({ startOnLoad: false, theme: options.mermaidTheme, htmlLabels: false });
+	}
 
-	const codeBlocks = Array.from(root.querySelectorAll('pre code'));
 	let diagramIndex = 0;
 	for (const block of codeBlocks) {
 		const codeEl = block as HTMLElement;
@@ -257,19 +271,38 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		}
 
 		// Check if language was explicitly specified BEFORE highlight.js runs
-		const hasExplicitLang = Array.from(codeEl.classList).some((c) => c.startsWith('language-'));
+		const langClass = Array.from(codeEl.classList).find((c) => c.startsWith('language-'));
+		const hasExplicitLang = langClass !== undefined;
+		const language = langClass?.replace('language-', '') ?? '';
 
-		// Only highlight if explicit language is specified
-		if (hasExplicitLang) {
+		// Only highlight if explicit language is specified, and only if it names a
+		// grammar highlight.js has. `highlightElement` used to decide that itself:
+		// for an unknown language its `blockLanguage` falls back to "no-highlight"
+		// and it returns having touched nothing. `hljs.highlight` instead throws,
+		// so the same question has to be asked out here — and asking it is also
+		// what keeps a fenced `admonition` block from throwing an exception on
+		// every keystroke, since a throw is the one result the memo cannot store.
+		if (language && hljs.getLanguage(language)) {
 			try {
-				hljs.highlightElement(codeEl);
+				// `hljs.highlight(code, …)` rather than `hljs.highlightElement(el)`:
+				// the element form has no result to keep, and this pass runs over
+				// every block in the document on every keystroke. What the element
+				// form did around the highlighting itself is done here — the `hljs`
+				// class the stylesheet's rules hang off, and nothing else. It also
+				// added the canonical `language-<name>` for an alias
+				// (`language-js` → `language-javascript`); no stylesheet, export or
+				// test reads that class, and the label below deliberately shows the
+				// name the author wrote.
+				const code = codeEl.textContent || '';
+				codeEl.innerHTML = highlightedCode(language, code, () =>
+					hljs.highlight(code, { language, ignoreIllegals: true }).value,
+				);
+				codeEl.classList.add('hljs');
 			} catch (error) {
 				options.onError?.(error);
 				console.error('Failed to highlight code block:', error);
 			}
 		}
-
-		const langClass = Array.from(codeEl.classList).find((c) => c.startsWith('language-'));
 
 		if (preEl && preEl.tagName === 'PRE') {
 			preEl.querySelectorAll('.lang-label').forEach((l) => l.remove());
@@ -308,10 +341,15 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			const isDisplay = el.getAttribute('data-math') === 'display';
 			const mathSource = el.getAttribute('data-math-source') || el.textContent || '';
 			try {
-				katex.render(mathSource, el as HTMLElement, {
-					displayMode: isDisplay,
-					throwOnError: false,
-				});
+				// `renderToString` rather than `render`, for the memo: the string is
+				// the whole result, and typing a character somewhere else in the
+				// document leaves every formula's source exactly as it was.
+				el.innerHTML = renderedMath(mathSource, isDisplay, () =>
+					katex.renderToString(mathSource, {
+						displayMode: isDisplay,
+						throwOnError: false,
+					}),
+				);
 			} catch (e) {
 				options.onError?.(e);
 				console.error('KaTeX rendering error:', e);

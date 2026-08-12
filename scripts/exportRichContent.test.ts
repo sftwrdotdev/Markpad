@@ -84,15 +84,15 @@ const KATEX_CSS = `
 function fakeLibraries(record: { mermaidThemes: string[]; mathCalls: string[] }) {
 	return {
 		hljs: {
-			highlightElement(element: any) {
-				element.classList.add('hljs');
-				element.innerHTML = `<span class="hljs-keyword">${element.textContent}</span>`;
+			getLanguage: (name: string) => (name === 'js' ? { name } : null),
+			highlight(code: string, options: { language: string }) {
+				return { value: `<span class="hljs-keyword">${code}</span>`, language: options.language };
 			},
 		},
 		katex: {
-			render(source: string, element: any, options: any) {
+			renderToString(source: string, options: any) {
 				record.mathCalls.push(`${options.displayMode ? 'display' : 'inline'}:${source}`);
-				element.innerHTML = `<span class="katex"><span class="mord mathnormal">${source}</span></span>`;
+				return `<span class="katex"><span class="mord mathnormal">${source}</span></span>`;
 			},
 		},
 		renderMathInElement(root: any) {

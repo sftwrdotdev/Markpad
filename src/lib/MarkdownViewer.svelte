@@ -2623,6 +2623,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const rawContent = tab.rawContent;
 			if (tab.previewedRawContent === rawContent) return;
 
+			// 120ms, and the reason is arithmetic rather than taste. This is a
+			// trailing debounce in front of the whole preview pipeline — one
+			// `render_markdown` round trip to Rust, `processMarkdownHtml`,
+			// DOMPurify, `{@html}` reparsing the article, then KaTeX, highlight.js
+			// and Mermaid over the result — and it arrived at 16ms with the split
+			// view (ef219cf), unexplained. 16ms merges nothing a human types: even
+			// inside a fast burst keystrokes land 60–80ms apart, and at a normal
+			// pace roughly 125ms apart. Every character therefore started its own
+			// pipeline, and since the pipeline is async and only its *result* is
+			// dropped by the revision check below, several ran at once and all of
+			// the work was done regardless.
+			//
+			// 120ms sits above the burst interval, so a word typed at speed costs
+			// one render rather than five, and below the pause someone takes to
+			// look at what they wrote — the preview catches up about an eighth of a
+			// second after the last key. Much larger reads as the preview lagging
+			// the cursor; much smaller is the 16ms case again.
 			const timer = setTimeout(() => {
 				renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides)
 					.then((processed) => {
@@ -2637,7 +2654,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						tick().then(renderRichContent);
 					})
 					.catch(console.error);
-			}, 16);
+			}, 120);
 
 			return () => clearTimeout(timer);
 		}

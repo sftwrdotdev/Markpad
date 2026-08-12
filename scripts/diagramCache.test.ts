@@ -69,10 +69,10 @@ function svgFor(id: string, source: string, theme: string, extra = ''): string {
 function libraries(record: Recorder, extraFor: (source: string, id: string) => string = () => '') {
 	let theme = 'neutral';
 	return {
-		hljs: { highlightElement() {} },
+		hljs: { getLanguage: () => null },
 		// The renderer refuses to run without these; the diagrams are what is
 		// under test, so they do nothing.
-		katex: { render() {} },
+		katex: { renderToString: () => '' },
 		renderMathInElement() {},
 		mermaid: {
 			initialize(config: { theme: string }) {
