@@ -135,7 +135,8 @@ export const translations: Record<LanguageCode, Translation> = {
             themeDefault: 'Default',
             themeDefaultLight: 'Default Light',
             themeDefaultDark: 'Default Dark',
-            themeFollowSystem: 'Follow System'
+            themeFollowSystem: 'Follow System',
+            resizeWindow: 'Resize settings window'
         },
         colors: {
             default: 'Default',
@@ -403,7 +404,8 @@ export const translations: Record<LanguageCode, Translation> = {
             find: 'Find'
         },
         toc: {
-            noHeadingsFound: 'No headings found'
+            noHeadingsFound: 'No headings found',
+            resizeTableOfContents: 'Resize table of contents'
         },
         dragAndDrop: {
             embed: 'Drop to Embed',
@@ -422,7 +424,9 @@ export const translations: Record<LanguageCode, Translation> = {
             close: 'Close',
             minimize: 'Minimize',
             maximize: 'Maximize',
-            loadingFullDocument: 'Loading full document...'
+            loadingFullDocument: 'Loading full document...',
+            decrease: 'Decrease',
+            increase: 'Increase'
         }
     },
     'zh-CN': {
@@ -490,7 +494,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: '跟随系统',
             files: '文件',
             fileSettings: '文件设置',
-            autoSave: '自动保存编辑'
+            autoSave: '自动保存编辑',
+            toolbarPlacement: '工具栏位置',
+            toolbarOnBar: '栏',
+            toolbarInMenu: '菜单',
+            resetToolbar: '重置工具栏',
+            move: '移动',
+            moveUp: '上移',
+            moveDown: '下移',
+            resizeWindow: '调整设置窗口大小'
         },
         colors: {
             default: '默认',
@@ -755,7 +767,8 @@ export const translations: Record<LanguageCode, Translation> = {
             find: '查找'
         },
         toc: {
-            noHeadingsFound: '未找到标题'
+            noHeadingsFound: '未找到标题',
+            resizeTableOfContents: '调整目录大小'
         },
         dragAndDrop: {
             embed: '拖放以嵌入',
@@ -774,7 +787,9 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '关闭',
             minimize: '最小化',
             maximize: '最大化',
-            loadingFullDocument: '正在加载完整文档…'
+            loadingFullDocument: '正在加载完整文档…',
+            decrease: '减少',
+            increase: '增加'
         }
     },
     ja: {
@@ -829,7 +844,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'システムに従う',
             files: 'ファイル',
             fileSettings: 'ファイル設定',
-            autoSave: '編集を自動保存'
+            autoSave: '編集を自動保存',
+            toolbarPlacement: 'ツールバーの配置',
+            toolbarOnBar: 'バー',
+            toolbarInMenu: 'メニュー',
+            resetToolbar: 'ツールバーをリセット',
+            move: '移動',
+            moveUp: '上へ移動',
+            moveDown: '下へ移動',
+            resizeWindow: '設定ウィンドウのサイズを変更'
         },
         colors: {
             default: 'デフォルト',
@@ -1020,7 +1043,8 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '閉じる'
         },
         toc: {
-            noHeadingsFound: '見出しが見つかりません'
+            noHeadingsFound: '見出しが見つかりません',
+            resizeTableOfContents: '目次のサイズを変更'
         },
         dragAndDrop: {
             embed: '埋め込むためにドロップ',
@@ -1038,7 +1062,9 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: '閉じる',
             minimize: '最小化',
-            maximize: '最大化'
+            maximize: '最大化',
+            decrease: '減らす',
+            increase: '増やす'
         }
     },
     'zh-TW': {
@@ -1100,7 +1126,7 @@ export const translations: Record<LanguageCode, Translation> = {
             editorToolbar: '編輯器工具列',
             applicationToolbar: '應用程式工具列',
             toolbarPlacement: '工具列位置',
-            toolbarOnBar: '列',
+            toolbarOnBar: '工具列',
             toolbarInMenu: '選單',
             resetToolbar: '重設工具列',
             move: '移動',
@@ -1113,7 +1139,8 @@ export const translations: Record<LanguageCode, Translation> = {
             themeDefault: '預設',
             themeDefaultLight: '預設淺色',
             themeDefaultDark: '預設深色',
-            themeFollowSystem: '跟隨系統'
+            themeFollowSystem: '跟隨系統',
+            resizeWindow: '調整設定視窗大小'
         },
         colors: {
             default: '預設',
@@ -1379,7 +1406,8 @@ export const translations: Record<LanguageCode, Translation> = {
             find: '尋找'
         },
         toc: {
-            noHeadingsFound: '找不到標題'
+            noHeadingsFound: '找不到標題',
+            resizeTableOfContents: '調整目錄大小'
         },
         dragAndDrop: {
             embed: '放開以嵌入',
@@ -1398,7 +1426,9 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '關閉',
             minimize: '最小化',
             maximize: '最大化',
-            loadingFullDocument: '正在讀取完整文件...'
+            loadingFullDocument: '正在讀取完整文件...',
+            decrease: '減少',
+            increase: '增加'
         }
     },
     ko: {
@@ -1456,15 +1486,17 @@ export const translations: Record<LanguageCode, Translation> = {
             toolbar: '툴바',
             editorToolbar: '편집기 툴바',
             applicationToolbar: '애플리케이션 툴바',
-            toolbarPlacement: '툴바 위치',
-            toolbarOnBar: '표시줄',
+            toolbarPlacement: '도구 모음 위치',
+            toolbarOnBar: '막대',
             toolbarInMenu: '메뉴',
-            resetToolbar: '툴바 초기화',
+            resetToolbar: '도구 모음 초기화',
             moveUp: '위로 이동',
             moveDown: '아래로 이동',
             files: '파일',
             fileSettings: '파일 설정',
-            autoSave: '편집 내용 자동 저장'
+            autoSave: '편집 내용 자동 저장',
+            move: '이동',
+            resizeWindow: '설정 창 크기 조정'
         },
         colors: {
             default: '기본',
@@ -1717,7 +1749,8 @@ export const translations: Record<LanguageCode, Translation> = {
             zoomOut: '축소'
         },
         toc: {
-            noHeadingsFound: '제목을 찾을 수 없습니다'
+            noHeadingsFound: '제목을 찾을 수 없습니다',
+            resizeTableOfContents: '목차 크기 조정'
         },
         dragAndDrop: {
             embed: '삽입하려면 놓으세요',
@@ -1731,7 +1764,9 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '닫기',
             minimize: '최소화',
             maximize: '최대화',
-            loadingFullDocument: '전체 문서를 불러오는 중...'
+            loadingFullDocument: '전체 문서를 불러오는 중...',
+            decrease: '줄이기',
+            increase: '늘리기'
         }
     },
     ru: {
@@ -1786,7 +1821,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeDefault: 'По умолчанию',
             themeDefaultLight: 'Светлая по умолчанию',
             themeDefaultDark: 'Тёмная по умолчанию',
-            themeFollowSystem: 'Системная'
+            themeFollowSystem: 'Системная',
+            toolbarPlacement: 'Расположение панели',
+            toolbarOnBar: 'Панель',
+            toolbarInMenu: 'Меню',
+            resetToolbar: 'Сбросить панель',
+            move: 'Переместить',
+            moveUp: 'Переместить вверх',
+            moveDown: 'Переместить вниз',
+            resizeWindow: 'Изменить размер окна настроек'
         },
         colors: {
             default: 'По умолчанию',
@@ -1974,7 +2017,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Закрыть',
             minimize: 'Свернуть',
-            maximize: 'Развернуть'
+            maximize: 'Развернуть',
+            decrease: 'Уменьшить',
+            increase: 'Увеличить'
+        },
+        toc: {
+            resizeTableOfContents: 'Изменить размер оглавления'
         }
     },
     es: {
@@ -2029,7 +2077,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Seguir sistema',
             files: 'Archivos',
             fileSettings: 'Configuración de archivos',
-            autoSave: 'Guardar cambios automáticamente'
+            autoSave: 'Guardar cambios automáticamente',
+            toolbarPlacement: 'Ubicación de la barra',
+            toolbarOnBar: 'Barra',
+            toolbarInMenu: 'Menú',
+            resetToolbar: 'Restablecer barra',
+            move: 'Mover',
+            moveUp: 'Mover arriba',
+            moveDown: 'Mover abajo',
+            resizeWindow: 'Cambiar tamaño de la ventana de ajustes'
         },
         colors: {
             default: 'Predeterminado',
@@ -2213,7 +2269,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Cerrar',
             minimize: 'Minimizar',
-            maximize: 'Maximizar'
+            maximize: 'Maximizar',
+            decrease: 'Disminuir',
+            increase: 'Aumentar'
+        },
+        toc: {
+            resizeTableOfContents: 'Cambiar tamaño de la tabla de contenido'
         }
     },
     fr: {
@@ -2268,7 +2329,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Suivre le système',
             files: 'Fichiers',
             fileSettings: 'Paramètres des fichiers',
-            autoSave: 'Enregistrement automatique des modifications'
+            autoSave: 'Enregistrement automatique des modifications',
+            toolbarPlacement: 'Emplacement de la barre',
+            toolbarOnBar: 'Barre',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Réinitialiser la barre',
+            move: 'Déplacer',
+            moveUp: 'Déplacer vers le haut',
+            moveDown: 'Déplacer vers le bas',
+            resizeWindow: 'Redimensionner la fenêtre des paramètres'
         },
         colors: {
             default: 'Par défaut',
@@ -2452,7 +2521,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Fermer',
             minimize: 'Réduire',
-            maximize: 'Agrandir'
+            maximize: 'Agrandir',
+            decrease: 'Diminuer',
+            increase: 'Augmenter'
+        },
+        toc: {
+            resizeTableOfContents: 'Redimensionner la table des matières'
         }
     },
     de: {
@@ -2507,7 +2581,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'System folgen',
             files: 'Dateien',
             fileSettings: 'Datei-Einstellungen',
-            autoSave: 'Änderungen automatisch speichern'
+            autoSave: 'Änderungen automatisch speichern',
+            toolbarPlacement: 'Position der Symbolleiste',
+            toolbarOnBar: 'Leiste',
+            toolbarInMenu: 'Menü',
+            resetToolbar: 'Symbolleiste zurücksetzen',
+            move: 'Verschieben',
+            moveUp: 'Nach oben verschieben',
+            moveDown: 'Nach unten verschieben',
+            resizeWindow: 'Einstellungsfenster vergrößern oder verkleinern'
         },
         colors: {
             default: 'Standard',
@@ -2691,7 +2773,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Schließen',
             minimize: 'Minimieren',
-            maximize: 'Maximieren'
+            maximize: 'Maximieren',
+            decrease: 'Verringern',
+            increase: 'Erhöhen'
+        },
+        toc: {
+            resizeTableOfContents: 'Inhaltsverzeichnis vergrößern oder verkleinern'
         }
     },
     'pt-BR': {
@@ -2746,7 +2833,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Seguir sistema',
             files: 'Arquivos',
             fileSettings: 'Configurações de arquivos',
-            autoSave: 'Salvar edições automaticamente'
+            autoSave: 'Salvar edições automaticamente',
+            toolbarPlacement: 'Posição da barra',
+            toolbarOnBar: 'Barra',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Redefinir barra',
+            move: 'Mover',
+            moveUp: 'Mover para cima',
+            moveDown: 'Mover para baixo',
+            resizeWindow: 'Redimensionar janela de configurações'
         },
         colors: {
             default: 'Padrão',
@@ -2930,7 +3025,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Fechar',
             minimize: 'Minimizar',
-            maximize: 'Maximizar'
+            maximize: 'Maximizar',
+            decrease: 'Diminuir',
+            increase: 'Aumentar'
+        },
+        toc: {
+            resizeTableOfContents: 'Redimensionar sumário'
         }
     },
     it: {
@@ -2985,7 +3085,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Segui sistema',
             files: 'File',
             fileSettings: 'Impostazioni file',
-            autoSave: 'Salvataggio automatico delle modifiche'
+            autoSave: 'Salvataggio automatico delle modifiche',
+            toolbarPlacement: 'Posizione barra',
+            toolbarOnBar: 'Barra',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Reimposta barra',
+            move: 'Sposta',
+            moveUp: 'Sposta su',
+            moveDown: 'Sposta giù',
+            resizeWindow: 'Ridimensiona finestra impostazioni'
         },
         colors: {
             default: 'Predefinito',
@@ -3169,7 +3277,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Chiudi',
             minimize: 'Minimizza',
-            maximize: 'Massimizza'
+            maximize: 'Massimizza',
+            decrease: 'Diminuisci',
+            increase: 'Aumenta'
+        },
+        toc: {
+            resizeTableOfContents: 'Ridimensiona indice'
         }
     },
     pl: {
@@ -3236,7 +3349,8 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Zgodny z systemem',
             files: 'Pliki',
             fileSettings: 'Ustawienia plików',
-            autoSave: 'Autozapis zmian'
+            autoSave: 'Autozapis zmian',
+            resizeWindow: 'Zmień rozmiar okna ustawień'
         },
         colors: {
             default: 'Domyślny',
@@ -3430,7 +3544,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Zamknij',
             minimize: 'Minimalizuj',
-            maximize: 'Maksymalizuj'
+            maximize: 'Maksymalizuj',
+            decrease: 'Zmniejsz',
+            increase: 'Zwiększ'
+        },
+        toc: {
+            resizeTableOfContents: 'Zmień rozmiar spisu treści'
         }
     },
     nl: {
@@ -3485,7 +3604,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Volg systeem',
             files: 'Bestanden',
             fileSettings: 'Bestandsinstellingen',
-            autoSave: 'Wijzigingen automatisch opslaan'
+            autoSave: 'Wijzigingen automatisch opslaan',
+            toolbarPlacement: 'Werkbalkpositie',
+            toolbarOnBar: 'Balk',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Werkbalk resetten',
+            move: 'Verplaatsen',
+            moveUp: 'Omhoog verplaatsen',
+            moveDown: 'Omlaag verplaatsen',
+            resizeWindow: 'Instellingenvenster vergroten of verkleinen'
         },
         colors: {
             default: 'Standaard',
@@ -3669,7 +3796,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Sluiten',
             minimize: 'Minimaliseren',
-            maximize: 'Maximaliseren'
+            maximize: 'Maximaliseren',
+            decrease: 'Verlagen',
+            increase: 'Verhogen'
+        },
+        toc: {
+            resizeTableOfContents: 'Inhoudsopgave vergroten of verkleinen'
         }
     },
     sv: {
@@ -3724,7 +3856,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Följ systemet',
             files: 'Filer',
             fileSettings: 'Filinställningar',
-            autoSave: 'Spara ändringar automatiskt'
+            autoSave: 'Spara ändringar automatiskt',
+            toolbarPlacement: 'Verktygsfältets placering',
+            toolbarOnBar: 'Fält',
+            toolbarInMenu: 'Meny',
+            resetToolbar: 'Återställ verktygsfält',
+            move: 'Flytta',
+            moveUp: 'Flytta upp',
+            moveDown: 'Flytta ned',
+            resizeWindow: 'Ändra storlek på inställningsfönster'
         },
         colors: {
             default: 'Standard',
@@ -3908,7 +4048,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Stäng',
             minimize: 'Minimera',
-            maximize: 'Maximera'
+            maximize: 'Maximera',
+            decrease: 'Minska',
+            increase: 'Öka'
+        },
+        toc: {
+            resizeTableOfContents: 'Ändra storlek på innehållsförteckning'
         }
     },
     vi: {
@@ -3963,7 +4108,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Theo hệ thống',
             files: 'Tệp',
             fileSettings: 'Cài đặt tệp',
-            autoSave: 'Tự động lưu chỉnh sửa'
+            autoSave: 'Tự động lưu chỉnh sửa',
+            toolbarPlacement: 'Vị trí thanh công cụ',
+            toolbarOnBar: 'Thanh',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Đặt lại thanh công cụ',
+            move: 'Di chuyển',
+            moveUp: 'Di chuyển lên',
+            moveDown: 'Di chuyển xuống',
+            resizeWindow: 'Đổi kích thước cửa sổ cài đặt'
         },
         colors: {
             default: 'Mặc định',
@@ -4147,7 +4300,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Đóng',
             minimize: 'Thu nhỏ',
-            maximize: 'Phóng to'
+            maximize: 'Phóng to',
+            decrease: 'Giảm',
+            increase: 'Tăng'
+        },
+        toc: {
+            resizeTableOfContents: 'Đổi kích thước mục lục'
         }
     },
     pt: {
@@ -4202,7 +4360,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Seguir sistema',
             files: 'Ficheiros',
             fileSettings: 'Definições de ficheiros',
-            autoSave: 'Guardar edições automaticamente'
+            autoSave: 'Guardar edições automaticamente',
+            toolbarPlacement: 'Posição da barra',
+            toolbarOnBar: 'Barra',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Repor barra',
+            move: 'Mover',
+            moveUp: 'Mover para cima',
+            moveDown: 'Mover para baixo',
+            resizeWindow: 'Redimensionar janela de definições'
         },
         colors: {
             default: 'Predefinição',
@@ -4386,7 +4552,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Fechar',
             minimize: 'Minimizar',
-            maximize: 'Maximizar'
+            maximize: 'Maximizar',
+            decrease: 'Diminuir',
+            increase: 'Aumentar'
+        },
+        toc: {
+            resizeTableOfContents: 'Redimensionar índice'
         }
     },
     ro: {
@@ -4441,7 +4612,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Urmează sistemul',
             files: 'Fișiere',
             fileSettings: 'Setări fișiere',
-            autoSave: 'Salvare automată a modificărilor'
+            autoSave: 'Salvare automată a modificărilor',
+            toolbarPlacement: 'Poziția barei',
+            toolbarOnBar: 'Bară',
+            toolbarInMenu: 'Meniu',
+            resetToolbar: 'Resetează bara',
+            move: 'Mută',
+            moveUp: 'Mută în sus',
+            moveDown: 'Mută în jos',
+            resizeWindow: 'Redimensionează fereastra de setări'
         },
         colors: {
             default: 'Implicit',
@@ -4625,7 +4804,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Închidere',
             minimize: 'Minimizare',
-            maximize: 'Maximizare'
+            maximize: 'Maximizare',
+            decrease: 'Micșorează',
+            increase: 'Mărește'
+        },
+        toc: {
+            resizeTableOfContents: 'Redimensionează cuprinsul'
         }
     },
     hu: {
@@ -4680,7 +4864,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Rendszer követése',
             files: 'Fájlok',
             fileSettings: 'Fájlbeállítások',
-            autoSave: 'Módosítások automatikus mentése'
+            autoSave: 'Módosítások automatikus mentése',
+            toolbarPlacement: 'Eszköztár helye',
+            toolbarOnBar: 'Sáv',
+            toolbarInMenu: 'Menü',
+            resetToolbar: 'Eszköztár visszaállítása',
+            move: 'Áthelyezés',
+            moveUp: 'Mozgatás felfelé',
+            moveDown: 'Mozgatás lefelé',
+            resizeWindow: 'Beállítások ablak átméretezése'
         },
         colors: {
             default: 'Alapértelmezett',
@@ -4864,7 +5056,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Bezárás',
             minimize: 'Minimalizálás',
-            maximize: 'Maximalizálás'
+            maximize: 'Maximalizálás',
+            decrease: 'Csökkentés',
+            increase: 'Növelés'
+        },
+        toc: {
+            resizeTableOfContents: 'Tartalomjegyzék átméretezése'
         }
     },
     cs: {
@@ -4919,7 +5116,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Podle systému',
             files: 'Soubory',
             fileSettings: 'Nastavení souborů',
-            autoSave: 'Automaticky ukládat úpravy'
+            autoSave: 'Automaticky ukládat úpravy',
+            toolbarPlacement: 'Umístění panelu',
+            toolbarOnBar: 'Panel',
+            toolbarInMenu: 'Nabídka',
+            resetToolbar: 'Obnovit panel',
+            move: 'Přesunout',
+            moveUp: 'Přesunout nahoru',
+            moveDown: 'Přesunout dolů',
+            resizeWindow: 'Změnit velikost okna nastavení'
         },
         colors: {
             default: 'Výchozí',
@@ -5106,10 +5311,13 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Zavřít',
             minimize: 'Minimalizovat',
-            maximize: 'Maximalizovat'
+            maximize: 'Maximalizovat',
+            decrease: 'Snížit',
+            increase: 'Zvýšit'
         },
         toc: {
-            noHeadingsFound: 'Nenalezen název'
+            noHeadingsFound: 'Nenalezen název',
+            resizeTableOfContents: 'Změnit velikost obsahu'
         }
     },
     sk: {
@@ -5164,7 +5372,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Podľa systému',
             files: 'Súbory',
             fileSettings: 'Nastavenia súborov',
-            autoSave: 'Automaticky ukladať úpravy'
+            autoSave: 'Automaticky ukladať úpravy',
+            toolbarPlacement: 'Umiestnenie panela',
+            toolbarOnBar: 'Panel',
+            toolbarInMenu: 'Ponuka',
+            resetToolbar: 'Obnoviť panel',
+            move: 'Presunúť',
+            moveUp: 'Presunúť hore',
+            moveDown: 'Presunúť dole',
+            resizeWindow: 'Zmeniť veľkosť okna nastavení'
         },
         colors: {
             default: 'Predvolené',
@@ -5348,7 +5564,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Zatvoriť',
             minimize: 'Minimalizovať',
-            maximize: 'Maximalizovať'
+            maximize: 'Maximalizovať',
+            decrease: 'Znížiť',
+            increase: 'Zvýšiť'
+        },
+        toc: {
+            resizeTableOfContents: 'Zmeniť veľkosť obsahu'
         }
     },
     el: {
@@ -5403,7 +5624,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Ακολούθηση συστήματος',
             files: 'Αρχεία',
             fileSettings: 'Ρυθμίσεις αρχείων',
-            autoSave: 'Αυτόματη αποθήκευση αλλαγών'
+            autoSave: 'Αυτόματη αποθήκευση αλλαγών',
+            toolbarPlacement: 'Θέση γραμμής εργαλείων',
+            toolbarOnBar: 'Γραμμή',
+            toolbarInMenu: 'Μενού',
+            resetToolbar: 'Επαναφορά γραμμής εργαλείων',
+            move: 'Μετακίνηση',
+            moveUp: 'Μετακίνηση πάνω',
+            moveDown: 'Μετακίνηση κάτω',
+            resizeWindow: 'Αλλαγή μεγέθους παραθύρου ρυθμίσεων'
         },
         colors: {
             default: 'Προεπιλογή',
@@ -5587,7 +5816,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Κλείσιμο',
             minimize: 'Ελαχιστοποίηση',
-            maximize: 'Μεγιστοποίηση'
+            maximize: 'Μεγιστοποίηση',
+            decrease: 'Μείωση',
+            increase: 'Αύξηση'
+        },
+        toc: {
+            resizeTableOfContents: 'Αλλαγή μεγέθους πίνακα περιεχομένων'
         }
     },
     fi: {
@@ -5642,7 +5876,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Seuraa järjestelmää',
             files: 'Tiedostot',
             fileSettings: 'Tiedostoasetukset',
-            autoSave: 'Tallenna muutokset automaattisesti'
+            autoSave: 'Tallenna muutokset automaattisesti',
+            toolbarPlacement: 'Työkalupalkin sijainti',
+            toolbarOnBar: 'Palkki',
+            toolbarInMenu: 'Valikko',
+            resetToolbar: 'Nollaa työkalupalkki',
+            move: 'Siirrä',
+            moveUp: 'Siirrä ylös',
+            moveDown: 'Siirrä alas',
+            resizeWindow: 'Muuta asetusikkunan kokoa'
         },
         colors: {
             default: 'Oletus',
@@ -5826,7 +6068,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Sulje',
             minimize: 'Pienennä',
-            maximize: 'Suurenna'
+            maximize: 'Suurenna',
+            decrease: 'Pienennä',
+            increase: 'Suurenna'
+        },
+        toc: {
+            resizeTableOfContents: 'Muuta sisällysluettelon kokoa'
         }
     },
     da: {
@@ -5881,7 +6128,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Følg system',
             files: 'Filer',
             fileSettings: 'Filindstillinger',
-            autoSave: 'Gem ændringer automatisk'
+            autoSave: 'Gem ændringer automatisk',
+            toolbarPlacement: 'Værktøjslinjens placering',
+            toolbarOnBar: 'Linje',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Nulstil værktøjslinje',
+            move: 'Flyt',
+            moveUp: 'Flyt op',
+            moveDown: 'Flyt ned',
+            resizeWindow: 'Tilpas størrelsen på indstillingsvinduet'
         },
         colors: {
             default: 'Standard',
@@ -6065,7 +6320,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Luk',
             minimize: 'Minimer',
-            maximize: 'Maksimer'
+            maximize: 'Maksimer',
+            decrease: 'Formindsk',
+            increase: 'Forøg'
+        },
+        toc: {
+            resizeTableOfContents: 'Tilpas størrelsen på indholdsfortegnelsen'
         }
     },
     no: {
@@ -6120,7 +6380,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Følg system',
             files: 'Filer',
             fileSettings: 'Filinnstillinger',
-            autoSave: 'Lagre endringer automatisk'
+            autoSave: 'Lagre endringer automatisk',
+            toolbarPlacement: 'Verktøylinjens plassering',
+            toolbarOnBar: 'Linje',
+            toolbarInMenu: 'Meny',
+            resetToolbar: 'Tilbakestill verktøylinje',
+            move: 'Flytt',
+            moveUp: 'Flytt opp',
+            moveDown: 'Flytt ned',
+            resizeWindow: 'Endre størrelse på innstillingsvindu'
         },
         colors: {
             default: 'Standard',
@@ -6304,7 +6572,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Lukk',
             minimize: 'Minimer',
-            maximize: 'Maksimer'
+            maximize: 'Maksimer',
+            decrease: 'Reduser',
+            increase: 'Øk'
+        },
+        toc: {
+            resizeTableOfContents: 'Endre størrelse på innholdsfortegnelsen'
         }
     },
     id: {
@@ -6359,7 +6632,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Ikuti Sistem',
             files: 'Berkas',
             fileSettings: 'Pengaturan berkas',
-            autoSave: 'Simpan otomatis perubahan'
+            autoSave: 'Simpan otomatis perubahan',
+            toolbarPlacement: 'Posisi bilah alat',
+            toolbarOnBar: 'Bilah',
+            toolbarInMenu: 'Menu',
+            resetToolbar: 'Atur ulang bilah alat',
+            move: 'Pindahkan',
+            moveUp: 'Pindahkan ke atas',
+            moveDown: 'Pindahkan ke bawah',
+            resizeWindow: 'Ubah ukuran jendela pengaturan'
         },
         colors: {
             default: 'Default',
@@ -6543,7 +6824,12 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Tutup',
             minimize: 'Perkecil',
-            maximize: 'Perbesar'
+            maximize: 'Perbesar',
+            decrease: 'Kurangi',
+            increase: 'Tambah'
+        },
+        toc: {
+            resizeTableOfContents: 'Ubah ukuran daftar isi'
         }
     },
     tr: {
@@ -6598,7 +6884,15 @@ export const translations: Record<LanguageCode, Translation> = {
             themeFollowSystem: 'Sistemi Takip Et',
             files: 'Dosyalar',
             fileSettings: 'Dosya ayarları',
-            autoSave: 'Düzenlemeleri otomatik kaydet'
+            autoSave: 'Düzenlemeleri otomatik kaydet',
+            toolbarPlacement: 'Araç çubuğu konumu',
+            toolbarOnBar: 'Çubuk',
+            toolbarInMenu: 'Menü',
+            resetToolbar: 'Araç çubuğunu sıfırla',
+            move: 'Taşı',
+            moveUp: 'Yukarı taşı',
+            moveDown: 'Aşağı taşı',
+            resizeWindow: 'Ayarlar penceresini yeniden boyutlandır'
         },
         colors: {
             default: 'Varsayılan',
@@ -6782,521 +7076,15 @@ export const translations: Record<LanguageCode, Translation> = {
         common: {
             close: 'Kapat',
             minimize: 'Küçült',
-            maximize: 'Büyüt'
-        }
-    }
-};
-
-type SupplementalTranslationSection = 'settings' | 'toc' | 'common';
-type SupplementalTranslations = Partial<Record<SupplementalTranslationSection, Record<string, string>>>;
-
-const interactiveLabelTranslations: Record<LanguageCode, SupplementalTranslations> = {
-    en: {
-        settings: {
-            toolbarPlacement: 'Toolbar placement',
-            toolbarOnBar: 'Bar',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Reset toolbar',
-            move: 'Move',
-            moveUp: 'Move up',
-            moveDown: 'Move down',
-            resizeWindow: 'Resize settings window'
-        },
-        toc: {
-            resizeTableOfContents: 'Resize table of contents'
-        },
-        common: {
-            decrease: 'Decrease',
-            increase: 'Increase'
-        }
-    },
-    ja: {
-        settings: {
-            toolbarPlacement: 'ツールバーの配置',
-            toolbarOnBar: 'バー',
-            toolbarInMenu: 'メニュー',
-            resetToolbar: 'ツールバーをリセット',
-            move: '移動',
-            moveUp: '上へ移動',
-            moveDown: '下へ移動',
-            resizeWindow: '設定ウィンドウのサイズを変更'
-        },
-        toc: {
-            resizeTableOfContents: '目次のサイズを変更'
-        },
-        common: {
-            decrease: '減らす',
-            increase: '増やす'
-        }
-    },
-    'zh-CN': {
-        settings: {
-            toolbarPlacement: '工具栏位置',
-            toolbarOnBar: '栏',
-            toolbarInMenu: '菜单',
-            resetToolbar: '重置工具栏',
-            move: '移动',
-            moveUp: '上移',
-            moveDown: '下移',
-            resizeWindow: '调整设置窗口大小'
-        },
-        toc: {
-            resizeTableOfContents: '调整目录大小'
-        },
-        common: {
-            decrease: '减少',
-            increase: '增加'
-        }
-    },
-    'zh-TW': {
-        settings: {
-            toolbarPlacement: '工具列位置',
-            toolbarOnBar: '工具列',
-            toolbarInMenu: '選單',
-            resetToolbar: '重設工具列',
-            move: '移動',
-            moveUp: '上移',
-            moveDown: '下移',
-            resizeWindow: '調整設定視窗大小'
-        },
-        toc: {
-            resizeTableOfContents: '調整目錄大小'
-        },
-        common: {
-            decrease: '減少',
-            increase: '增加'
-        }
-    },
-    ko: {
-        settings: {
-            toolbarPlacement: '도구 모음 위치',
-            toolbarOnBar: '막대',
-            toolbarInMenu: '메뉴',
-            resetToolbar: '도구 모음 초기화',
-            move: '이동',
-            moveUp: '위로 이동',
-            moveDown: '아래로 이동',
-            resizeWindow: '설정 창 크기 조정'
-        },
-        toc: {
-            resizeTableOfContents: '목차 크기 조정'
-        },
-        common: {
-            decrease: '줄이기',
-            increase: '늘리기'
-        }
-    },
-    ru: {
-        settings: {
-            toolbarPlacement: 'Расположение панели',
-            toolbarOnBar: 'Панель',
-            toolbarInMenu: 'Меню',
-            resetToolbar: 'Сбросить панель',
-            move: 'Переместить',
-            moveUp: 'Переместить вверх',
-            moveDown: 'Переместить вниз',
-            resizeWindow: 'Изменить размер окна настроек'
-        },
-        toc: {
-            resizeTableOfContents: 'Изменить размер оглавления'
-        },
-        common: {
-            decrease: 'Уменьшить',
-            increase: 'Увеличить'
-        }
-    },
-    es: {
-        settings: {
-            toolbarPlacement: 'Ubicación de la barra',
-            toolbarOnBar: 'Barra',
-            toolbarInMenu: 'Menú',
-            resetToolbar: 'Restablecer barra',
-            move: 'Mover',
-            moveUp: 'Mover arriba',
-            moveDown: 'Mover abajo',
-            resizeWindow: 'Cambiar tamaño de la ventana de ajustes'
-        },
-        toc: {
-            resizeTableOfContents: 'Cambiar tamaño de la tabla de contenido'
-        },
-        common: {
-            decrease: 'Disminuir',
-            increase: 'Aumentar'
-        }
-    },
-    fr: {
-        settings: {
-            toolbarPlacement: 'Emplacement de la barre',
-            toolbarOnBar: 'Barre',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Réinitialiser la barre',
-            move: 'Déplacer',
-            moveUp: 'Déplacer vers le haut',
-            moveDown: 'Déplacer vers le bas',
-            resizeWindow: 'Redimensionner la fenêtre des paramètres'
-        },
-        toc: {
-            resizeTableOfContents: 'Redimensionner la table des matières'
-        },
-        common: {
-            decrease: 'Diminuer',
-            increase: 'Augmenter'
-        }
-    },
-    de: {
-        settings: {
-            toolbarPlacement: 'Position der Symbolleiste',
-            toolbarOnBar: 'Leiste',
-            toolbarInMenu: 'Menü',
-            resetToolbar: 'Symbolleiste zurücksetzen',
-            move: 'Verschieben',
-            moveUp: 'Nach oben verschieben',
-            moveDown: 'Nach unten verschieben',
-            resizeWindow: 'Einstellungsfenster vergrößern oder verkleinern'
-        },
-        toc: {
-            resizeTableOfContents: 'Inhaltsverzeichnis vergrößern oder verkleinern'
-        },
-        common: {
-            decrease: 'Verringern',
-            increase: 'Erhöhen'
-        }
-    },
-    'pt-BR': {
-        settings: {
-            toolbarPlacement: 'Posição da barra',
-            toolbarOnBar: 'Barra',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Redefinir barra',
-            move: 'Mover',
-            moveUp: 'Mover para cima',
-            moveDown: 'Mover para baixo',
-            resizeWindow: 'Redimensionar janela de configurações'
-        },
-        toc: {
-            resizeTableOfContents: 'Redimensionar sumário'
-        },
-        common: {
-            decrease: 'Diminuir',
-            increase: 'Aumentar'
-        }
-    },
-    it: {
-        settings: {
-            toolbarPlacement: 'Posizione barra',
-            toolbarOnBar: 'Barra',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Reimposta barra',
-            move: 'Sposta',
-            moveUp: 'Sposta su',
-            moveDown: 'Sposta giù',
-            resizeWindow: 'Ridimensiona finestra impostazioni'
-        },
-        toc: {
-            resizeTableOfContents: 'Ridimensiona indice'
-        },
-        common: {
-            decrease: 'Diminuisci',
-            increase: 'Aumenta'
-        }
-    },
-    pl: {
-        settings: {
-            toolbarPlacement: 'Miejsce na pasku',
-            toolbarOnBar: 'Belka',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Resetuj pasek',
-            move: 'Przenieś',
-            moveUp: 'Przenieś wyżej',
-            moveDown: 'Przenieś niżej',
-            resizeWindow: 'Zmień rozmiar okna ustawień'
-        },
-        toc: {
-            resizeTableOfContents: 'Zmień rozmiar spisu treści'
-        },
-        common: {
-            decrease: 'Zmniejsz',
-            increase: 'Zwiększ'
-        }
-    },
-    nl: {
-        settings: {
-            toolbarPlacement: 'Werkbalkpositie',
-            toolbarOnBar: 'Balk',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Werkbalk resetten',
-            move: 'Verplaatsen',
-            moveUp: 'Omhoog verplaatsen',
-            moveDown: 'Omlaag verplaatsen',
-            resizeWindow: 'Instellingenvenster vergroten of verkleinen'
-        },
-        toc: {
-            resizeTableOfContents: 'Inhoudsopgave vergroten of verkleinen'
-        },
-        common: {
-            decrease: 'Verlagen',
-            increase: 'Verhogen'
-        }
-    },
-    sv: {
-        settings: {
-            toolbarPlacement: 'Verktygsfältets placering',
-            toolbarOnBar: 'Fält',
-            toolbarInMenu: 'Meny',
-            resetToolbar: 'Återställ verktygsfält',
-            move: 'Flytta',
-            moveUp: 'Flytta upp',
-            moveDown: 'Flytta ned',
-            resizeWindow: 'Ändra storlek på inställningsfönster'
-        },
-        toc: {
-            resizeTableOfContents: 'Ändra storlek på innehållsförteckning'
-        },
-        common: {
-            decrease: 'Minska',
-            increase: 'Öka'
-        }
-    },
-    vi: {
-        settings: {
-            toolbarPlacement: 'Vị trí thanh công cụ',
-            toolbarOnBar: 'Thanh',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Đặt lại thanh công cụ',
-            move: 'Di chuyển',
-            moveUp: 'Di chuyển lên',
-            moveDown: 'Di chuyển xuống',
-            resizeWindow: 'Đổi kích thước cửa sổ cài đặt'
-        },
-        toc: {
-            resizeTableOfContents: 'Đổi kích thước mục lục'
-        },
-        common: {
-            decrease: 'Giảm',
-            increase: 'Tăng'
-        }
-    },
-    pt: {
-        settings: {
-            toolbarPlacement: 'Posição da barra',
-            toolbarOnBar: 'Barra',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Repor barra',
-            move: 'Mover',
-            moveUp: 'Mover para cima',
-            moveDown: 'Mover para baixo',
-            resizeWindow: 'Redimensionar janela de definições'
-        },
-        toc: {
-            resizeTableOfContents: 'Redimensionar índice'
-        },
-        common: {
-            decrease: 'Diminuir',
-            increase: 'Aumentar'
-        }
-    },
-    ro: {
-        settings: {
-            toolbarPlacement: 'Poziția barei',
-            toolbarOnBar: 'Bară',
-            toolbarInMenu: 'Meniu',
-            resetToolbar: 'Resetează bara',
-            move: 'Mută',
-            moveUp: 'Mută în sus',
-            moveDown: 'Mută în jos',
-            resizeWindow: 'Redimensionează fereastra de setări'
-        },
-        toc: {
-            resizeTableOfContents: 'Redimensionează cuprinsul'
-        },
-        common: {
-            decrease: 'Micșorează',
-            increase: 'Mărește'
-        }
-    },
-    hu: {
-        settings: {
-            toolbarPlacement: 'Eszköztár helye',
-            toolbarOnBar: 'Sáv',
-            toolbarInMenu: 'Menü',
-            resetToolbar: 'Eszköztár visszaállítása',
-            move: 'Áthelyezés',
-            moveUp: 'Mozgatás felfelé',
-            moveDown: 'Mozgatás lefelé',
-            resizeWindow: 'Beállítások ablak átméretezése'
-        },
-        toc: {
-            resizeTableOfContents: 'Tartalomjegyzék átméretezése'
-        },
-        common: {
-            decrease: 'Csökkentés',
-            increase: 'Növelés'
-        }
-    },
-    cs: {
-        settings: {
-            toolbarPlacement: 'Umístění panelu',
-            toolbarOnBar: 'Panel',
-            toolbarInMenu: 'Nabídka',
-            resetToolbar: 'Obnovit panel',
-            move: 'Přesunout',
-            moveUp: 'Přesunout nahoru',
-            moveDown: 'Přesunout dolů',
-            resizeWindow: 'Změnit velikost okna nastavení'
-        },
-        toc: {
-            resizeTableOfContents: 'Změnit velikost obsahu'
-        },
-        common: {
-            decrease: 'Snížit',
-            increase: 'Zvýšit'
-        }
-    },
-    sk: {
-        settings: {
-            toolbarPlacement: 'Umiestnenie panela',
-            toolbarOnBar: 'Panel',
-            toolbarInMenu: 'Ponuka',
-            resetToolbar: 'Obnoviť panel',
-            move: 'Presunúť',
-            moveUp: 'Presunúť hore',
-            moveDown: 'Presunúť dole',
-            resizeWindow: 'Zmeniť veľkosť okna nastavení'
-        },
-        toc: {
-            resizeTableOfContents: 'Zmeniť veľkosť obsahu'
-        },
-        common: {
-            decrease: 'Znížiť',
-            increase: 'Zvýšiť'
-        }
-    },
-    el: {
-        settings: {
-            toolbarPlacement: 'Θέση γραμμής εργαλείων',
-            toolbarOnBar: 'Γραμμή',
-            toolbarInMenu: 'Μενού',
-            resetToolbar: 'Επαναφορά γραμμής εργαλείων',
-            move: 'Μετακίνηση',
-            moveUp: 'Μετακίνηση πάνω',
-            moveDown: 'Μετακίνηση κάτω',
-            resizeWindow: 'Αλλαγή μεγέθους παραθύρου ρυθμίσεων'
-        },
-        toc: {
-            resizeTableOfContents: 'Αλλαγή μεγέθους πίνακα περιεχομένων'
-        },
-        common: {
-            decrease: 'Μείωση',
-            increase: 'Αύξηση'
-        }
-    },
-    fi: {
-        settings: {
-            toolbarPlacement: 'Työkalupalkin sijainti',
-            toolbarOnBar: 'Palkki',
-            toolbarInMenu: 'Valikko',
-            resetToolbar: 'Nollaa työkalupalkki',
-            move: 'Siirrä',
-            moveUp: 'Siirrä ylös',
-            moveDown: 'Siirrä alas',
-            resizeWindow: 'Muuta asetusikkunan kokoa'
-        },
-        toc: {
-            resizeTableOfContents: 'Muuta sisällysluettelon kokoa'
-        },
-        common: {
-            decrease: 'Pienennä',
-            increase: 'Suurenna'
-        }
-    },
-    da: {
-        settings: {
-            toolbarPlacement: 'Værktøjslinjens placering',
-            toolbarOnBar: 'Linje',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Nulstil værktøjslinje',
-            move: 'Flyt',
-            moveUp: 'Flyt op',
-            moveDown: 'Flyt ned',
-            resizeWindow: 'Tilpas størrelsen på indstillingsvinduet'
-        },
-        toc: {
-            resizeTableOfContents: 'Tilpas størrelsen på indholdsfortegnelsen'
-        },
-        common: {
-            decrease: 'Formindsk',
-            increase: 'Forøg'
-        }
-    },
-    no: {
-        settings: {
-            toolbarPlacement: 'Verktøylinjens plassering',
-            toolbarOnBar: 'Linje',
-            toolbarInMenu: 'Meny',
-            resetToolbar: 'Tilbakestill verktøylinje',
-            move: 'Flytt',
-            moveUp: 'Flytt opp',
-            moveDown: 'Flytt ned',
-            resizeWindow: 'Endre størrelse på innstillingsvindu'
-        },
-        toc: {
-            resizeTableOfContents: 'Endre størrelse på innholdsfortegnelsen'
-        },
-        common: {
-            decrease: 'Reduser',
-            increase: 'Øk'
-        }
-    },
-    id: {
-        settings: {
-            toolbarPlacement: 'Posisi bilah alat',
-            toolbarOnBar: 'Bilah',
-            toolbarInMenu: 'Menu',
-            resetToolbar: 'Atur ulang bilah alat',
-            move: 'Pindahkan',
-            moveUp: 'Pindahkan ke atas',
-            moveDown: 'Pindahkan ke bawah',
-            resizeWindow: 'Ubah ukuran jendela pengaturan'
-        },
-        toc: {
-            resizeTableOfContents: 'Ubah ukuran daftar isi'
-        },
-        common: {
-            decrease: 'Kurangi',
-            increase: 'Tambah'
-        }
-    },
-    tr: {
-        settings: {
-            toolbarPlacement: 'Araç çubuğu konumu',
-            toolbarOnBar: 'Çubuk',
-            toolbarInMenu: 'Menü',
-            resetToolbar: 'Araç çubuğunu sıfırla',
-            move: 'Taşı',
-            moveUp: 'Yukarı taşı',
-            moveDown: 'Aşağı taşı',
-            resizeWindow: 'Ayarlar penceresini yeniden boyutlandır'
+            maximize: 'Büyüt',
+            decrease: 'Azalt',
+            increase: 'Artır'
         },
         toc: {
             resizeTableOfContents: 'İçindekiler tablosunu yeniden boyutlandır'
-        },
-        common: {
-            decrease: 'Azalt',
-            increase: 'Artır'
         }
     }
 };
-
-for (const [language, sections] of Object.entries(interactiveLabelTranslations) as [LanguageCode, SupplementalTranslations][]) {
-    for (const [section, values] of Object.entries(sections) as [SupplementalTranslationSection, Record<string, string>][]) {
-        const currentSection = translations[language][section];
-        if (currentSection && typeof currentSection === 'object') {
-            Object.assign(currentSection, values);
-        } else {
-            translations[language][section] = { ...values };
-        }
-    }
-}
 
 // `lang` is deliberately required. When it defaulted to 'en', a call site that
 // forgot to pass the language compiled, ran, and showed English in all 26

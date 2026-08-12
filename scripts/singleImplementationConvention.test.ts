@@ -281,6 +281,25 @@ const RULES: Rule[] = [
 		allowed: ['src/lib/utils/shortcuts.ts', 'src/lib/utils/platform.ts'],
 	},
 	{
+		name: 'the translation dictionary is one literal',
+		why:
+			"`translations` was a 6,700-line literal *plus* a second table, `interactiveLabelTranslations`, that a module-level loop merged in with Object.assign — so the object the app read was never the object the source declares. That gap is not cosmetic. 259 keys existed only after the merge, and four were declared twice with different values, where whichever table happened to run last silently won: zh-TW `settings.toolbarOnBar` ('列' lost to '工具列'), and ko `settings.toolbarPlacement`, `settings.toolbarOnBar` and `settings.resetToolbar` (all three lost their original wording). Two rows of source claiming the same key, one of them dead, is invisible in review across 26 locales — and a reader who greps the literal for the losing value finds it, believes it, and is wrong. #196 appended the table rather than editing 26 places in the literal; folding it back made a duplicate key a *duplicate key*, which the reader and the compiler can both see. Add new keys to `translations` itself.",
+		// `Object.assign(` unqualified rather than a pattern naming the
+		// dictionary, because the merge reached it through a local alias —
+		// `const currentSection = translations[language][section]` and then
+		// `Object.assign(currentSection, values)`. A marker spelling
+		// `translations` cannot see that, which is exactly how the mutation
+		// would come back. `src` held no other Object.assign when this rule was
+		// written, so the blanket ban costs nothing; a genuine unrelated use
+		// joins `allowed` with its reason, like any other row here.
+		//
+		// The second alternative catches the direct `translations[l][s] = …`
+		// spelling — the same loop's else-branch, which is how 20 locales got a
+		// `toc` section they did not previously have.
+		marker: /Object\.assign\(|\btranslations\b(?:\s*\[[^\]]*\])+\s*=(?!=)/g,
+		allowed: [],
+	},
+	{
 		name: 'this suite reads a file through one function',
 		why: "A test that reads source with its own readFileSync gets the bytes Git checked out, and on Windows `core.autocrlf` makes those CRLF. Every `\\n` in a pattern then matches nothing and every anchor containing one is 'not found' — fifteen files were red on the maintainer's Windows checkout while cutting v2.7.0 and were hand-patched assertion by assertion (#452). `readSource` in sourceTree.ts decides the line ending once, on read, so the assertions stay written against `\\n` and a new test cannot re-open the hole by accident. Read the file with `readSource(path)` from './sourceTree.js' — it takes a cwd-relative string or a `new URL(…, import.meta.url)` — and write the assertion against `\\n`.",
 		// The call, not the import: `import { readFileSync }` on its own reads
