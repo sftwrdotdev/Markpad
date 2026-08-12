@@ -436,6 +436,17 @@ export class SettingsStore {
 	occurrencesHighlight = $state(false);
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
+	/**
+	 * Whether a newly split tab starts with its panes scroll-locked.
+	 *
+	 * A preference, not a tab's state: `Tab.isScrollSynced` is the per-tab
+	 * answer, lives in the window-state snapshot, and is what the title bar
+	 * toggles. This is the sticky default the last toggle left behind, which
+	 * `TabManager.splitScrollSyncPreference` seeds the next split from — one
+	 * scalar shared by every tab and every window, so it belongs here with the
+	 * rest of them rather than in the tab store that reads it.
+	 */
+	splitScrollSync = $state(false);
 	openFileMode = $state<OpenFileMode>(DEFAULT_OPEN_FILE_MODE);
 	newFileDefaultMode = $state(true);
 	showRecentFiles = $state(true);
@@ -834,6 +845,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.occurrencesHighlight', (s) => s.occurrencesHighlight, (s, v) => { s.occurrencesHighlight = v; }),
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),
 		booleanSetting('editor.stickyScroll', (s) => s.stickyScroll, (s, v) => { s.stickyScroll = v; }),
+		booleanSetting('editor.splitScrollSync', (s) => s.splitScrollSync, (s, v) => { s.splitScrollSync = v; }),
 		booleanSetting('editor.showToc', (s) => s.showToc, (s, v) => { s.showToc = v; }),
 		stringSetting('editor.highlightColor', (s) => s.highlightColor, (s, v) => { s.highlightColor = v; }),
 		{
