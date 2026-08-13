@@ -12,6 +12,7 @@ import {
 	normalizeEditorToolbarHidden,
 	normalizeEditorToolbarOrder,
 	inlineWrapEdit,
+	inlineWrapSelectionEnd,
 	toggleInlineWrap,
 	toggleLineMarker,
 	type InlineWrapToolId,
@@ -447,6 +448,61 @@ test('reaching outside the selection never breaks a neighbouring pair', () => {
 	// Selecting the markers still works, and still gives the same answer as
 	// selecting only the word — the two paths must not disagree.
 	assert.equal(clickWith('fmt-strikethrough', '~~word~~', '~~word~~'), 'word');
+});
+
+/**
+ * The whole gesture again, but carrying the selection forward the way the
+ * editor does: the edit says what it wrote, and that is what stays selected.
+ */
+function clickTwice(id: InlineWrapToolId, buffer: string, selected: string): string {
+	let start = buffer.indexOf(selected);
+	assert.notEqual(start, -1, `${JSON.stringify(selected)} is not in ${JSON.stringify(buffer)}`);
+	let end = start + selected.length;
+	let text = buffer;
+
+	for (let click = 0; click < 2; click += 1) {
+		const edit = inlineWrapEdit(id, text.slice(0, start), text.slice(start, end), text.slice(end));
+		const from = start - edit.reach;
+		text = text.slice(0, from) + edit.text + text.slice(end + edit.reach);
+		// What the edit wrote is what is selected when the next click arrives.
+		start = from;
+		end = from + edit.text.length;
+	}
+	return text;
+}
+
+test('clicking the same button twice puts the line back', () => {
+	// Reported from a build: `~~word~~`, double-click `word`, press S — and the
+	// second press wrote `wo~~rd~~`. The edit had said nothing about where the
+	// selection goes, so Monaco clamped columns 3-7 against the shorter line and
+	// left `rd` selected. Nothing here could have caught it while the selection
+	// lived only in the editor.
+	const cases: [InlineWrapToolId, string, string][] = [
+		['fmt-strikethrough', '~~word~~', 'word'],
+		['fmt-bold', '**word**', 'word'],
+		['fmt-italic', '*word*', 'word'],
+		['fmt-inline-code', '`word`', 'word'],
+		// And from the other direction: wrap, then unwrap.
+		['fmt-strikethrough', 'word', 'word'],
+		['fmt-bold', 'word', 'word'],
+		// With neighbours, so a mistake in the column arithmetic shows up as
+		// text landing in the wrong place rather than a no-op.
+		['fmt-strikethrough', 'a ~~word~~ b', 'word'],
+		['fmt-bold', 'a word b', 'word'],
+	];
+	for (const [id, buffer, selected] of cases) {
+		assert.equal(clickTwice(id, buffer, selected), buffer, `${id} on ${JSON.stringify(buffer)}`);
+	}
+});
+
+test('the edit reports the end of what it wrote', () => {
+	// Single line: the column after the text. Columns are 1-based.
+	assert.deepEqual(inlineWrapSelectionEnd(3, 'word'), { lineOffset: 0, column: 7 });
+	assert.deepEqual(inlineWrapSelectionEnd(1, ''), { lineOffset: 0, column: 1 });
+
+	// A selection can span lines, and then the end column belongs to the last
+	// line of the replacement, not to the column the edit started at.
+	assert.deepEqual(inlineWrapSelectionEnd(5, '**one\ntwo**'), { lineOffset: 1, column: 6 });
 });
 
 test('a selection with nothing before it reaches nowhere', () => {

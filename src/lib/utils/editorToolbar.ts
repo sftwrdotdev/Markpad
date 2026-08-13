@@ -352,6 +352,37 @@ export function inlineWrapEdit(
 	return { reach, text };
 }
 
+/**
+ * Where `text` ends when it is written starting at `startColumn`, as a line
+ * offset from the start and a column — what the caller needs to leave exactly
+ * the written text selected.
+ *
+ * WHY THE EDIT HAS TO SAY. An `executeEdits` with no end-cursor state leaves
+ * the old selection to be adjusted against the new text, and once the replaced
+ * range is wider than the selection was, that adjustment is nonsense: taking
+ * `~~word~~` down to `word` clamps a selection of columns 3-7 to columns 3-5,
+ * which is `rd`. The next click on the same button then wraps `rd` and writes
+ * `wo~~rd~~`. Reported from a build, not caught here: the toggle itself is a
+ * pure function and cannot see a selection, which is the half of this feature
+ * only the editor holds.
+ *
+ * Selecting what was written keeps the two directions symmetric — strip and
+ * the word stays selected, wrap and the marked-up word does — so a second
+ * click on the same button is always the inverse of the first.
+ */
+export function inlineWrapSelectionEnd(
+	startColumn: number,
+	text: string,
+): { lineOffset: number; column: number } {
+	const lines = text.split('\n');
+	const lineOffset = lines.length - 1;
+	return {
+		lineOffset,
+		// Columns are 1-based, so the column after a line of length n is n + 1.
+		column: lineOffset === 0 ? startColumn + text.length : lines[lineOffset].length + 1,
+	};
+}
+
 const knownToolbarIds = new Set(DEFAULT_EDITOR_TOOLBAR_ORDER);
 
 export function normalizeEditorToolbarOrder(order: readonly string[] | null | undefined): string[] {

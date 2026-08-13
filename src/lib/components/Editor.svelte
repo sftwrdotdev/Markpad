@@ -7,6 +7,7 @@
 	import {
 		INLINE_WRAP_LOOKAROUND,
 		inlineWrapEdit,
+		inlineWrapSelectionEnd,
 		toggleLineMarker,
 		type InlineWrapToolId,
 		type LineMarkerToolId,
@@ -914,17 +915,36 @@
 			}),
 		);
 
-		editor.executeEdits("toggle-format", [
-			{
-				range: {
-					startLineNumber: selection.startLineNumber,
-					startColumn: selection.startColumn - reach,
-					endLineNumber: selection.endLineNumber,
-					endColumn: selection.endColumn + reach,
+		// The edit has to say where the selection goes. Left to Monaco, the old
+		// selection is adjusted against the new text, and that is wrong as soon
+		// as the range is wider than the selection was: `~~word~~` -> `word`
+		// clamps columns 3-7 to 3-5, leaving `rd` selected, and a second click
+		// wraps that instead — `wo~~rd~~`.
+		const startColumn = selection.startColumn - reach;
+		const end = inlineWrapSelectionEnd(startColumn, text);
+
+		editor.executeEdits(
+			"toggle-format",
+			[
+				{
+					range: {
+						startLineNumber: selection.startLineNumber,
+						startColumn,
+						endLineNumber: selection.endLineNumber,
+						endColumn: selection.endColumn + reach,
+					},
+					text,
 				},
-				text,
-			},
-		]);
+			],
+			[
+				new monaco.Selection(
+					selection.startLineNumber,
+					startColumn,
+					selection.startLineNumber + end.lineOffset,
+					end.column,
+				),
+			],
+		);
 	};
 
 	// Underline is an HTML tag rather than a Markdown marker, and its two ends
