@@ -345,6 +345,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isTocResizing = $state(false);
 	let tocWrapperEl = $state<HTMLElement | null>(null);
 	let tocToggleEl = $state<HTMLElement | null>(null);
+
+	/*
+	 * How tall the editor toolbar currently is, measured rather than assumed.
+	 *
+	 * The floating table-of-contents toggle is absolutely positioned against
+	 * `.layout-container`, and its `top` used to be the literal 48px — the 36px
+	 * title bar plus a 12px inset. That is the right answer only in preview,
+	 * where the title bar is the whole of the chrome above the document. In edit
+	 * mode the toolbar occupies exactly that strip, so the toggle landed on top
+	 * of its first button.
+	 *
+	 * Reading the height keeps one answer to "where does the chrome end": the
+	 * toolbar's own layout. A second literal here would have to be re-derived
+	 * every time its padding, border or font changed, and nothing would fail
+	 * when it was not — the toggle would just start overlapping again.
+	 *
+	 * The `{#if}` around the toolbar is mirrored rather than the height: a
+	 * `clientHeight` binding keeps its last value when the element it measured
+	 * goes away, so the toggle would stay pushed down after the toolbar was
+	 * hidden or the tab returned to preview.
+	 */
+	let editorToolbarHeight = $state(0);
+	let paneTopChrome = $derived(
+		(isEditing || isSplit) && settings.showEditorToolbar ? editorToolbarHeight : 0,
+	);
 	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
 	let isOverhanging = $derived(
 		isTocOverhanging({
@@ -3524,12 +3549,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					class:toc-on-left={isMarkdown && settings.tocSide === 'left'}
 					class:toc-on-right={isMarkdown && settings.tocSide === 'right'}
 					class:toc-resizing={isTocResizing}
-					style="--toc-width: {settings.tocWidth}px;">
+					style="--toc-width: {settings.tocWidth}px; --pane-top-chrome: {paneTopChrome}px;">
 					<!-- Editor Pane -->
 					<div bind:this={editorPaneEl} class="pane editor-pane" class:active={isEditing || isSplit} style="flex: {isSplit ? tabManager.activeTab.splitRatio : isEditing ? 1 : 0}">
 						{#if isEditing || isSplit}
 							{#if settings.showEditorToolbar}
-								<div transition:slide={{ duration: 150 }}>
+								<div bind:clientHeight={editorToolbarHeight} transition:slide={{ duration: 150 }}>
 									<EditorToolbar
 										modifier={modifierFor(settings.osType)}
 										toolbarOrder={settings.editorToolbarOrder}
@@ -3731,8 +3756,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							bind:this={tocToggleEl}
 							class="toc-toggle-floating {settings.showToc ? 'expanded' : ''}"
 							class:on-right={settings.tocSide === 'right'}
-							class:in-edit-mode={isEditing && !settings.showToc}
-							onclick={() => settings.toggleToc()}
+								onclick={() => settings.toggleToc()}
 							aria-label={settings.showToc ? t('tooltip.hideTableOfContents', settings.language) : t('tooltip.showTableOfContents', settings.language)}
 							onmouseenter={(e) => {
 								const rect = e.currentTarget.getBoundingClientRect();
@@ -4525,7 +4549,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	.toc-toggle-floating {
 		position: absolute;
-		top: 48px;
+		/*
+		 * 36px of title bar, a 12px inset, and however tall the editor toolbar
+		 * is right now — 0 when there isn't one. See `paneTopChrome`: the last
+		 * term is measured because the toolbar's height is the toolbar's to
+		 * decide, and a copy of it here would silently go stale.
+		 */
+		top: calc(48px + var(--pane-top-chrome, 0px));
 		left: 8px;
 		width: 28px;
 		height: 28px;

@@ -119,6 +119,42 @@ test('floating toc toggle keeps a visible translucent surface outside edit mode'
 	assert.doesNotMatch(viewer, /\.toc-toggle-floating\.in-edit-mode:not\(\.expanded\)/);
 });
 
+test('the floating toc toggle clears whatever chrome the pane puts above the document', () => {
+	// The toggle is positioned against `.layout-container`, whose top is the top
+	// of the window, so its `top` has to account for everything above the
+	// document. It used to be the literal 48px — title bar plus inset — which is
+	// only the whole story in preview. In edit mode the editor toolbar occupies
+	// that strip and the toggle sat on its first button, Bold.
+	//
+	// Both halves of `--pane-top-chrome` are pinned because neither side fails
+	// loudly on its own: a custom property nobody sets falls back to the `0px`
+	// in the `var()`, and a custom property nobody reads is just an unused
+	// declaration. Renaming one side would put the toggle back on top of Bold
+	// with every test still green.
+	assert.match(
+		viewer,
+		/--pane-top-chrome:\s*\{paneTopChrome\}px;/,
+		'the layout container publishes the measured height',
+	);
+	assert.match(
+		viewer,
+		/\.toc-toggle-floating\s*\{[\s\S]*?top:\s*calc\(48px \+ var\(--pane-top-chrome, 0px\)\);/,
+		'the toggle reads it',
+	);
+
+	// Measured, not assumed: a second copy of the toolbar's height would go
+	// stale the next time its padding or border changed, and nothing would say so.
+	assert.match(viewer, /bind:clientHeight=\{editorToolbarHeight\}/);
+
+	// And reset when there is no toolbar to measure — a `clientHeight` binding
+	// keeps its last value once the element is gone, which would leave the
+	// toggle pushed down in preview.
+	assert.match(
+		viewer,
+		/paneTopChrome = \$derived\([\s\S]*?showEditorToolbar \? editorToolbarHeight : 0,?\s*\)/,
+	);
+});
+
 test('print layout gives document content paper-specific rhythm and boundaries', () => {
 	const printStyles = sliceFrom(styles, '@media print {');
 
