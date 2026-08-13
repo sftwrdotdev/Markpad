@@ -11,6 +11,7 @@ import {
 	getVisibleEditorToolbarTools,
 	normalizeEditorToolbarHidden,
 	normalizeEditorToolbarOrder,
+	inlineWrapEdit,
 	toggleInlineWrap,
 	toggleLineMarker,
 	type InlineWrapToolId,
@@ -388,4 +389,73 @@ test('the italic button never turns bold text into italic text', () => {
 		const result = toggleInlineWrap('fmt-italic', bold);
 		assert.ok(result.includes(bold), `italic on ${bold} produced ${result}, which no longer contains it`);
 	}
+});
+
+/**
+ * The whole gesture: a buffer, the part of it the user selected, and one click.
+ * Spelled this way because the defects below are only visible from outside the
+ * selection — asserting on the selected text alone is what missed them.
+ */
+function clickWith(id: InlineWrapToolId, buffer: string, selected: string): string {
+	const start = buffer.indexOf(selected);
+	assert.notEqual(start, -1, `${JSON.stringify(selected)} is not in ${JSON.stringify(buffer)}`);
+	const end = start + selected.length;
+	const { reach, text } = inlineWrapEdit(id, buffer.slice(0, start), selected, buffer.slice(end));
+	return buffer.slice(0, start - reach) + text + buffer.slice(end + reach);
+}
+
+test('double-clicking a word and clicking the button again removes the format', () => {
+	// Double-click selects the word, not the markers around it. Reading only the
+	// selection, every one of these answered "there is no format here" and wrote
+	// a second pair.
+	const cases: [InlineWrapToolId, string][] = [
+		['fmt-strikethrough', '~~word~~'],
+		['fmt-strikethrough', '~word~'],
+		['fmt-bold', '**word**'],
+		['fmt-bold', '__word__'],
+		['fmt-italic', '*word*'],
+		['fmt-italic', '_word_'],
+		['fmt-inline-code', '`word`'],
+	];
+	for (const [id, buffer] of cases) {
+		assert.equal(clickWith(id, buffer, 'word'), 'word', `${id} on ${buffer}`);
+	}
+});
+
+test('a word struck through at the start of a line never becomes a code fence', () => {
+	// Why this one is worse than the others. Four tildes open a fenced code block
+	// whose info string is `word~~~~`, and nothing in the document closes it, so
+	// everything after the click renders as code. Verified against the renderer:
+	//   convert_markdown("~~~~word~~~~\n\nSecond paragraph.\n")
+	//     -> <pre><code class="language-word~~~~">\nSecond paragraph.\n</code></pre>
+	const after = clickWith('fmt-strikethrough', '~~word~~ and the rest of the line', 'word');
+	assert.ok(!/~~~/.test(after), `three or more tildes in a row: ${JSON.stringify(after)}`);
+});
+
+test('reaching outside the selection never breaks a neighbouring pair', () => {
+	// The reason this measures the whole run instead of matching one character.
+	// Italic sees an asterisk outside the selection either way; taking one from
+	// each end of bold's pair would have unbolded the word to italicise it.
+	assert.equal(clickWith('fmt-italic', '**word**', 'word'), '***word***');
+	assert.equal(clickWith('fmt-bold', '*word*', 'word'), '***word***');
+	assert.equal(clickWith('fmt-strikethrough', '**word**', 'word'), '**~~word~~**');
+
+	// Only one side has the marker, so this is not a pair to undo. Growing the
+	// range would delete a tilde the user typed and leave the other behind.
+	assert.equal(clickWith('fmt-strikethrough', '~~word and more', 'word'), '~~~~word~~ and more');
+
+	// Selecting the markers still works, and still gives the same answer as
+	// selecting only the word — the two paths must not disagree.
+	assert.equal(clickWith('fmt-strikethrough', '~~word~~', '~~word~~'), 'word');
+});
+
+test('a selection with nothing before it reaches nowhere', () => {
+	// `Editor.svelte` subtracts the reach from the selection's column, so a
+	// selection at the head of the line has to answer 0 rather than send the
+	// range off the front of it.
+	assert.deepEqual(inlineWrapEdit('fmt-strikethrough', '', 'word', '~~'), {
+		reach: 0,
+		text: '~~word~~',
+	});
+	assert.deepEqual(inlineWrapEdit('fmt-bold', '', 'word', ''), { reach: 0, text: '**word**' });
 });

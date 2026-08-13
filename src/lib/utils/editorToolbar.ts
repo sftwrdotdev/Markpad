@@ -278,6 +278,80 @@ export function toggleInlineWrap(id: InlineWrapToolId, text: string): string {
 	return `${write}${text}${write}`;
 }
 
+/** The longest run of `ch` at the end of `text`. */
+function trailingRun(text: string, ch: string): number {
+	let n = 0;
+	while (n < text.length && text[text.length - 1 - n] === ch) n += 1;
+	return n;
+}
+
+/** The longest run of `ch` at the start of `text`. */
+function leadingRun(text: string, ch: string): number {
+	let n = 0;
+	while (n < text.length && text[n] === ch) n += 1;
+	return n;
+}
+
+/**
+ * How far outside the selection this tool's own pair sits, or 0 for none.
+ *
+ * WHY IT MEASURES THE WHOLE RUN RATHER THAN MATCHING THE MARKER. Asking only
+ * "is the character outside the selection mine" says yes for Italic on
+ * `**word**` — that run does end in an asterisk — and taking one from each side
+ * would break bold's pair in half. Requiring the run to be exactly this marker's
+ * length is the same protection the longer-marker rule above gives, expressed on
+ * text the toggle cannot see: a run of two is bold's, so Italic leaves it alone
+ * and falls through to wrapping, which is `***word***` — asking for italic on
+ * bold text means both, exactly as it does when the markers are selected.
+ *
+ * Both sides must match, so a half-written `~~word~` is left alone rather than
+ * half unwrapped.
+ */
+function ownMarkerReach(id: InlineWrapToolId, before: string, after: string): number {
+	for (const marker of INLINE_WRAPS[id].strip) {
+		const ch = marker[0];
+		if (trailingRun(before, ch) !== marker.length) continue;
+		if (leadingRun(after, ch) !== marker.length) continue;
+		return marker.length;
+	}
+	return 0;
+}
+
+/** How far outside a selection any marker can reach — how much context a caller must read. */
+export const INLINE_WRAP_LOOKAROUND = Math.max(...ALL_WRAP_MARKERS.map((marker) => marker.length));
+
+/**
+ * One toolbar inline format applied to a selection *and its surroundings*: the
+ * replacement text, and how far the edit range has to grow on each side to
+ * cover markers the selection left out.
+ *
+ * WHY THE SELECTION ALONE IS NOT ENOUGH. `toggleInlineWrap` decides from the
+ * selected text, and the most ordinary way to undo a format does not select the
+ * markers: double-click the word. On `~~word~~` that selects `word`, the toggle
+ * sees no tildes, and wrapping is all it can do — leaving `~~~~word~~~~`, which
+ * at the start of a line is a four-tilde code fence whose info string is
+ * `word~~~~`. Nothing closes it, so the rest of the document renders as code.
+ * The same gesture answered `*word*` with `**word**`: the user asked to stop
+ * italicising and the text turned bold instead.
+ *
+ * The decision lives here rather than in the editor component so that it is
+ * reachable from a test that can spell the whole gesture — buffer, selection,
+ * click — instead of asserting on how the component is written.
+ */
+export function inlineWrapEdit(
+	id: InlineWrapToolId,
+	before: string,
+	selected: string,
+	after: string,
+): { reach: number; text: string } {
+	const reach = ownMarkerReach(id, before, after);
+	const text = toggleInlineWrap(
+		id,
+		before.slice(before.length - reach) + selected + after.slice(0, reach),
+	);
+	return { reach, text };
+}
+
 const knownToolbarIds = new Set(DEFAULT_EDITOR_TOOLBAR_ORDER);
 
 export function normalizeEditorToolbarOrder(order: readonly string[] | null | undefined): string[] {

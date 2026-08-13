@@ -5,7 +5,8 @@
 	import { t, type LanguageCode } from '../utils/i18n.js';
 	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
 	import {
-		toggleInlineWrap,
+		INLINE_WRAP_LOOKAROUND,
+		inlineWrapEdit,
 		toggleLineMarker,
 		type InlineWrapToolId,
 		type LineMarkerToolId,
@@ -892,10 +893,36 @@
 		const model = editor.getModel();
 		if (!selection || !model) return;
 
+		// Markers the user did not select are still the user's markers: double
+		// clicking a word inside `~~word~~` selects `word`. `inlineWrapEdit` reads
+		// the few characters on either side and says how far the edit has to grow
+		// to reach them — 0 whenever growing would break a neighbouring pair.
+		const { reach, text } = inlineWrapEdit(
+			id,
+			model.getValueInRange({
+				startLineNumber: selection.startLineNumber,
+				startColumn: Math.max(1, selection.startColumn - INLINE_WRAP_LOOKAROUND),
+				endLineNumber: selection.startLineNumber,
+				endColumn: selection.startColumn,
+			}),
+			model.getValueInRange(selection),
+			model.getValueInRange({
+				startLineNumber: selection.endLineNumber,
+				startColumn: selection.endColumn,
+				endLineNumber: selection.endLineNumber,
+				endColumn: selection.endColumn + INLINE_WRAP_LOOKAROUND,
+			}),
+		);
+
 		editor.executeEdits("toggle-format", [
 			{
-				range: selection,
-				text: toggleInlineWrap(id, model.getValueInRange(selection)),
+				range: {
+					startLineNumber: selection.startLineNumber,
+					startColumn: selection.startColumn - reach,
+					endLineNumber: selection.endLineNumber,
+					endColumn: selection.endColumn + reach,
+				},
+				text,
 			},
 		]);
 	};
