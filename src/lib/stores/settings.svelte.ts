@@ -468,6 +468,16 @@ export class SettingsStore {
 	openFileMode = $state<OpenFileMode>(DEFAULT_OPEN_FILE_MODE);
 	newFileDefaultMode = $state(true);
 	showRecentFiles = $state(true);
+	/*
+	 * Off, so a click on a relative link keeps navigating this tab.
+	 *
+	 * Following a link in place is the only thing that writes a tab's file
+	 * history, and Back and Forward read it — they sit on the title bar by
+	 * default. Turning this on by default would leave both of them permanently
+	 * inert for anyone who never opened this page, which is a capability to
+	 * take away deliberately rather than as the side effect of a new setting.
+	 */
+	linksOpenInNewTab = $state(false);
 	editorMaxWidth = $state(80);
 	previewMaxWidth = $state(DEFAULT_PREVIEW_MAX_WIDTH);
 	// Preview ignores previewMaxWidth and fills the pane.
@@ -601,6 +611,10 @@ export class SettingsStore {
 
 	toggleShowRecentFiles() {
 		this.showRecentFiles = !this.showRecentFiles;
+	}
+
+	toggleLinksOpenInNewTab() {
+		this.linksOpenInNewTab = !this.linksOpenInNewTab;
 	}
 
 	toggleZenMode() {
@@ -878,6 +892,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		},
 		booleanSetting('editor.newFileDefaultMode', (s) => s.newFileDefaultMode, (s, v) => { s.newFileDefaultMode = v; }),
 		booleanSetting('editor.showRecentFiles', (s) => s.showRecentFiles, (s, v) => { s.showRecentFiles = v; }),
+		booleanSetting('links.openInNewTab', (s) => s.linksOpenInNewTab, (s, v) => { s.linksOpenInNewTab = v; }),
 		numberSetting('editor.maxWidth', EDITOR_MAX_WIDTH_RANGE, (s) => s.editorMaxWidth, (s, v) => { s.editorMaxWidth = v; }),
 		{
 			key: 'preview.maxWidth',

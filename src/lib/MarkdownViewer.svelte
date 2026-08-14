@@ -113,7 +113,7 @@ import {
 } from './utils/scrollSync.js';
 import { resolveTheme, settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
-import { formatChord, modifierFor } from './utils/shortcuts.js';
+import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
@@ -1546,7 +1546,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (relativeMarkdownTarget) {
 				e.preventDefault();
 				e.stopPropagation();
-				await openRelativeMarkdownTarget(relativeMarkdownTarget);
+				// Which of the two this is depends on the setting and the chord
+				// together — the chord means "the other one". Opening a tab goes
+				// through `addTab`, which already resolves a file that is open to
+				// the tab holding it, so one gesture answers both halves of #661:
+				// a new tab, or the one that already has the file.
+				if (opensInNewTab(settings.osType, e, settings.linksOpenInNewTab)) {
+					await openMarkdownTargetInNewTab(relativeMarkdownTarget);
+				} else {
+					await openRelativeMarkdownTarget(relativeMarkdownTarget);
+				}
 				return;
 			}
 
