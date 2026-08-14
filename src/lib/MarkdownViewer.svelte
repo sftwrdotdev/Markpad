@@ -180,6 +180,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		cutToClipboard: () => Promise<void>;
 		copyToClipboard: () => Promise<void>;
 		pasteFromClipboard: () => Promise<void>;
+		/** Also the editor's menu, since #97 gave it the shared items. */
+		selectAll: () => void;
 	} | null>(null);
 	let liveMode = $state(false);
 
@@ -2439,6 +2441,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					shortcut: chord('Mod+F2'),
 					onClick: () => editorPane?.runEditorAction('editor.action.changeAll'),
 				},
+				// #97: in split view the two menus were different lists, and the
+				// three below were the difference that had nothing to do with
+				// which pane the click landed in. Select All acts on the text
+				// either pane is showing; the file ones act on the document that
+				// both of them are.
+				//
+				// The rest stays different on purpose. Cut and Paste need
+				// somewhere to type; the two Monaco entries above need Monaco;
+				// and the viewer's own — Open in New Tab, Copy Reference, Save
+				// Image As, Edit — each need a rendered element to have been
+				// clicked, which is not a thing that exists in the editor. Parity
+				// of the shared items, not of the lists.
+				{ separator: true },
+				{ label: t('menu.selectAll', settings.language), onClick: () => editorPane?.selectAll() },
+				{ separator: true },
+				{ label: t('menu.openLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
+				{ label: t('menu.closeFile', settings.language), onClick: closeFile },
 			],
 		};
 	}

@@ -2434,6 +2434,23 @@
 		editor.getAction(actionId)?.run();
 	}
 
+	/**
+	 * Select the whole document.
+	 *
+	 * Spelled out rather than sent through `runEditorAction`, which resolves an
+	 * id with `getAction(id)?.run()` — and `editor.action.selectAll` is a
+	 * `registerCommand` MultiCommand, not an editor action, so it is not in the
+	 * map `getAction` reads. The optional call would have made the menu entry
+	 * appear and do nothing. `editor.trigger` would reach it, by falling through
+	 * to the command service, but this is three lines that cannot miss.
+	 */
+	export function selectAll() {
+		const model = editor?.getModel();
+		if (!editor || !model) return;
+		editor.focus();
+		editor.setSelection(model.getFullModelRange());
+	}
+
 	export const getValue = () => editor?.getValue() || "";
 	export const setValue = (val: string) => editor?.setValue(val);
 	export const focus = () => editor?.focus();
