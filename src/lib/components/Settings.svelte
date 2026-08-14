@@ -1364,6 +1364,14 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="appearance-animate-jump">{t('settings.animateJumpScroll', settings.language)}</label>
+							<label class="toggle">
+								<input id="appearance-animate-jump" type="checkbox" checked={settings.animateJumpScroll} onchange={() => settings.toggleAnimateJumpScroll()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
 							<label for="appearance-links-new-tab">{t('settings.linksOpenInNewTab', settings.language)}</label>
 							<label class="toggle">
 								<input id="appearance-links-new-tab" type="checkbox" checked={settings.linksOpenInNewTab} onchange={() => settings.toggleLinksOpenInNewTab()} />

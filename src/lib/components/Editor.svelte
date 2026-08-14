@@ -369,7 +369,6 @@
 			...editorOptionsFromSettings(settings, 100),
 			scrollBeyondLastLine: true,
 			stickyScroll: { enabled: settings.stickyScroll },
-			smoothScrolling: true,
 			cursorSmoothCaretAnimation: 'on',
 			wordBasedSuggestions: "off",
 			quickSuggestions: false,

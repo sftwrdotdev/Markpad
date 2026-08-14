@@ -469,6 +469,21 @@ export class SettingsStore {
 	newFileDefaultMode = $state(true);
 	showRecentFiles = $state(true);
 	/*
+	 * On, so nothing about an existing install changes.
+	 *
+	 * It covers a jump in either pane — a heading from the table of contents, a
+	 * find match, back and forward — because they are one decision the user
+	 * makes once, not a preview one and an editor one. `utils/motion.ts` holds
+	 * that decision; the seven places that used to spell it themselves ask it.
+	 */
+	animateJumpScroll = $state(true);
+	/**
+	 * The system's own request for less motion. Not persisted and not a default
+	 * for `animateJumpScroll` — it is the OS answering, live, and a stored copy
+	 * would be wrong the moment the user changed it.
+	 */
+	systemReducedMotion = $state(false);
+	/*
 	 * Off, so a click on a relative link keeps navigating this tab.
 	 *
 	 * Following a link in place is the only thing that writes a tab's file
@@ -611,6 +626,10 @@ export class SettingsStore {
 
 	toggleShowRecentFiles() {
 		this.showRecentFiles = !this.showRecentFiles;
+	}
+
+	toggleAnimateJumpScroll() {
+		this.animateJumpScroll = !this.animateJumpScroll;
 	}
 
 	toggleLinksOpenInNewTab() {
@@ -892,6 +911,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		},
 		booleanSetting('editor.newFileDefaultMode', (s) => s.newFileDefaultMode, (s, v) => { s.newFileDefaultMode = v; }),
 		booleanSetting('editor.showRecentFiles', (s) => s.showRecentFiles, (s, v) => { s.showRecentFiles = v; }),
+		booleanSetting('motion.animateJumpScroll', (s) => s.animateJumpScroll, (s, v) => { s.animateJumpScroll = v; }),
 		booleanSetting('links.openInNewTab', (s) => s.linksOpenInNewTab, (s, v) => { s.linksOpenInNewTab = v; }),
 		numberSetting('editor.maxWidth', EDITOR_MAX_WIDTH_RANGE, (s) => s.editorMaxWidth, (s, v) => { s.editorMaxWidth = v; }),
 		{
