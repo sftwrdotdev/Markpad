@@ -1548,6 +1548,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function handleLinkClick(e: MouseEvent) {
 		const target = e.target as HTMLElement;
 
+		// The hover preview describes the element under the cursor, and only
+		// `mouseout` takes it down. A click that replaces the document removes
+		// that element while the cursor is still on it, and removing a node
+		// dispatches no `mouseout` — so the box was left on screen until the
+		// pointer happened to cross another link. Dropping it here, before any
+		// branch, is the same thing a browser does with its own link preview:
+		// the click is the moment the description stops being about anything.
+		tooltip.show = false;
+
 		// Fold toggle: the heading's chevron, or a foldable callout's whole title
 		// bar. One branch for both, because they are one feature — the callout's
 		// own branch used to toggle the classes and stop there, so a folded
@@ -2608,9 +2617,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				}
 			}
 
-			if (anchor.href) {
+			// `rawHref`, which the two branches above already use, rather than the
+			// anchor's resolved property. The DOM resolves that against the
+			// webview's own origin, so `[3.md](./3.md)` previewed as
+			// `tauri://localhost/3.md` — a scheme that is an implementation detail
+			// of the shell the app runs in, and a path that is not where the file
+			// is. Undoing the same resolution is what `resolveLocalFileLinkPath`
+			// exists for on the click side.
+			if (rawHref) {
 				const rect = anchor.getBoundingClientRect();
-				tooltip = { show: true, text: anchor.href, shortcut: '', html: '', isFootnote: false, x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
+				tooltip = { show: true, text: rawHref, shortcut: '', html: '', isFootnote: false, x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
 			}
 		}
 	}
