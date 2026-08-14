@@ -1,5 +1,7 @@
 import type { editor as MonacoEditor } from "monaco-editor";
 
+import { animatesJumpScroll } from "./motion.js";
+
 /**
  * The Monaco options derived from the settings store, in one place.
  *
@@ -45,6 +47,16 @@ export function editorOptionsFromSettings(
 		fontSize: settings.editorFontSize * (zoomPercent / 100),
 		fontFamily: settings.editorFont,
 		renderWhitespace: settings.showWhitespace ? "all" : "none",
+		// Monaco animates the scroll when it is sent to a position — a find
+		// match, a go-to-line, the scroll sync. That is the same jump the
+		// preview animates, so it answers the same preference rather than a
+		// second one of its own; `utils/motion.ts` is where the two meet.
+		//
+		// Here rather than in the creation literal, where it used to sit as a
+		// bare `true`: an option that a setting can now change has to be in the
+		// set `updateOptions` re-applies, or the toggle would take effect only
+		// on a new editor.
+		smoothScrolling: animatesJumpScroll(settings.animateJumpScroll, settings.systemReducedMotion),
 	};
 }
 
@@ -58,5 +70,7 @@ export type EditorOptionSettings = {
 	occurrencesHighlight: boolean;
 	editorFontSize: number;
 	editorFont: string;
+	animateJumpScroll: boolean;
+	systemReducedMotion: boolean;
 	showWhitespace: boolean;
 };

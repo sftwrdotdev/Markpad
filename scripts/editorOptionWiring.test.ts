@@ -40,7 +40,40 @@ const SETTINGS = {
 	editorFontSize: 14,
 	editorFont: 'Menlo',
 	showWhitespace: false,
+	animateJumpScroll: true,
+	systemReducedMotion: false,
 };
+
+test('the editor animates a jump on the same preference the preview does', () => {
+	// Monaco's `smoothScrolling` animates the scroll when the editor is sent to
+	// a position — a find match, a go-to-line, the scroll sync. The preview
+	// animates the same jump, so one preference answers both rather than the
+	// two panes each having their own.
+	assert.equal(editorOptionsFromSettings(SETTINGS, 100).smoothScrolling, true);
+	assert.equal(
+		editorOptionsFromSettings({ ...SETTINGS, animateJumpScroll: false }, 100).smoothScrolling,
+		false,
+	);
+
+	// And the system's request for less motion is enough on its own — the app's
+	// own setting does not have to be off as well.
+	assert.equal(
+		editorOptionsFromSettings({ ...SETTINGS, systemReducedMotion: true }, 100).smoothScrolling,
+		false,
+	);
+});
+
+test('an option a setting can change is one `updateOptions` re-applies', () => {
+	// `smoothScrolling` used to be a bare `true` in the creation literal, where
+	// options that are set once and never re-applied live. Left there, the
+	// toggle would have taken effect only on a newly created editor — the same
+	// shape as the `fontSize` divergence this file was written for.
+	assert.doesNotMatch(
+		editor,
+		/smoothScrolling/,
+		'smoothScrolling is spelled in the component again, outside the set the update effect re-applies',
+	);
+});
 
 test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
 	// The store holds 'line' / 'none'. Any non-empty string is truthy, so a
@@ -90,6 +123,7 @@ test('editor options are applied by a single updateOptions effect', () => {
 			'renderLineHighlight',
 			'renderWhitespace',
 			'selectionHighlight',
+			'smoothScrolling',
 			'wordWrap',
 			'wordWrapColumn',
 		],

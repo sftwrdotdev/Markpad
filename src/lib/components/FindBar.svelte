@@ -4,6 +4,14 @@
 	import { t } from '../utils/i18n.js';
 	import type { LanguageCode } from '../utils/i18n.js';
 	import { collapsedFoldsAround } from '../utils/foldState.js';
+	import { settings } from '../stores/settings.svelte.js';
+	import { jumpScrollBehavior } from '../utils/motion.js';
+
+	// Stepping between matches is a jump, so it answers the same preference the
+	// table of contents and back/forward do.
+	const jumpBehavior = $derived(
+		jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
+	);
 
 	let {
 		open = $bindable(false),
@@ -238,7 +246,7 @@
 		if (scroll) {
 			const target = marks[safe];
 			const revealed = revealFoldsAround(target);
-			target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+			target.scrollIntoView({ block: 'center', behavior: jumpBehavior });
 			if (revealed) {
 				// The fold animates its height open, so the scroll above aimed
 				// at a target that was still moving. Re-aim once it settles.
@@ -247,7 +255,7 @@
 				// preview for a search that is already gone.
 				setTimeout(() => {
 					if (!target.isConnected) return;
-					target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+					target.scrollIntoView({ block: 'center', behavior: jumpBehavior });
 				}, FOLD_TRANSITION_MS);
 			}
 		}

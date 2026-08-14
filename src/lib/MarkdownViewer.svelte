@@ -114,6 +114,7 @@ import {
 import { resolveTheme, settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
+import { jumpScrollBehavior, watchReducedMotion } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
@@ -182,6 +183,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		pasteFromClipboard: () => Promise<void>;
 	} | null>(null);
 	let liveMode = $state(false);
+
+	// One decision, asked by the four jumps below and handed to `FindBar` and
+	// `Editor` for theirs. See `utils/motion.ts`.
+	const jumpBehavior = $derived(
+		jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
+	);
 
 	let findOpen = $state(false);
 	let findBar = $state<{
@@ -406,6 +413,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	});
 
 	import { parseAndApplyVscodeTheme, clearVscodeTheme } from './utils/theme';
+
+	// The OS preference is live: someone turning "reduce motion" on mid-session
+	// gets the effect without restarting, and turning it off hands the app's own
+	// setting back. `$effect` rather than `onMount` so the teardown is the same
+	// statement as the subscription.
+	$effect(() => watchReducedMotion((reduced) => { settings.systemReducedMotion = reduced; }));
 
 	onMount(() => {
 		// Clear the forced background color from app.html
@@ -1495,7 +1508,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			(markdownBody?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
 		if (el && markdownBody) {
 			if (options.pushHistory !== false) pushScrollHistory();
-			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: 'smooth' });
+			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: jumpBehavior });
 			return true;
 		}
 		return false;
@@ -1523,7 +1536,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				await scrollToAnchorWhenReady(target.hash);
 			} else if (markdownBody) {
 				pushScrollHistory();
-				markdownBody.scrollTo({ top: 0, behavior: 'smooth' });
+				markdownBody.scrollTo({ top: 0, behavior: jumpBehavior });
 			}
 			return;
 		}
@@ -2927,7 +2940,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				scrollFuture.push(markdownBody.scrollTop);
 				const pos = scrollHistory.pop()!;
 				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: 'smooth' });
+				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
 			} else {
 				await navigateFileHistory('back');
 			}
@@ -2938,7 +2951,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				scrollHistory.push(markdownBody.scrollTop);
 				const pos = scrollFuture.pop()!;
 				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: 'smooth' });
+				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
 			} else {
 				await navigateFileHistory('forward');
 			}
