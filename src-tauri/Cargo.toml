@@ -1,6 +1,6 @@
 [package]
 name = "Markpad"
-version = "2.7.3"
+version = "2.7.4"
 description = "Simple Markdown viewer and text editor"
 authors = ["Alec Ames <dev@alecames.com>"]
 license = "BSD-3-Clause"
