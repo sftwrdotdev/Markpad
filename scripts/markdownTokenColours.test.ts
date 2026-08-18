@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+
+import { monacoTokenRules } from '../src/lib/utils/theme.js';
+
+// #676: an imported VS Code theme colours TextMate scopes, Monaco's markdown
+// tokenizer emits names of its own, and until now nothing renamed one into the
+// other — so `markup.bold` reached `defineTheme` and matched nothing.
+
+const rulesFor = (tokenColors: unknown) => monacoTokenRules(tokenColors);
+const tokens = (tokenColors: unknown) => rulesFor(tokenColors).map((rule) => rule.token);
+
+test('an emphasis scope also arrives under the token Monaco emits', () => {
+	const rules = rulesFor([
+		{ scope: 'markup.bold', settings: { foreground: '#ff0000', fontStyle: 'bold' } },
+		{ scope: 'markup.italic', settings: { foreground: '#00ff00' } },
+		{ scope: ['markup.inline.raw', 'markup.underline.link'], settings: { foreground: '#0000ff' } },
+	]);
+
+	const byToken = new Map(rules.map((rule) => [rule.token, rule]));
+	assert.deepEqual(byToken.get('strong'), { token: 'strong', foreground: 'ff0000', fontStyle: 'bold' });
+	assert.equal(byToken.get('emphasis')?.foreground, '00ff00');
+	assert.equal(byToken.get('variable')?.foreground, '0000ff');
+	assert.equal(byToken.get('string.link')?.foreground, '0000ff');
+
+	// The scope keeps its own rule too — it is inert, not wrong.
+	assert.ok(byToken.has('markup.bold'));
+});
+
+test('a language-qualified scope is renamed too, and a shorter neighbour is not', () => {
+	assert.ok(tokens([{ scope: 'markup.bold.markdown', settings: { foreground: '#ff0000' } }]).includes('strong'));
+	assert.ok(tokens([{ scope: 'markup.italic.markdown', settings: { foreground: '#ff0000' } }]).includes('emphasis'));
+
+	// `markup.underline` is underlined text, not a link, and must not take the
+	// link colour on the strength of a shared prefix.
+	assert.deepEqual(tokens([{ scope: 'markup.underline', settings: { foreground: '#ff0000' } }]), ['markup.underline']);
+});
+
+test('a colour-only rule leaves the base theme to keep bold and italic', () => {
+	// Monaco reads a missing `fontStyle` as NotSet and keeps what is already on
+	// the token — `vs`/`vs-dark` define `strong: bold` and `emphasis: italic`.
+	// Spelling it `regular` here instead would flatten the text the theme was
+	// only asked to colour.
+	const rule = rulesFor([{ scope: 'markup.bold', settings: { foreground: '#ff0000' } }]).find((r) => r.token === 'strong');
+	assert.ok(rule, 'the alias must exist before its fontStyle means anything');
+	assert.equal(rule.fontStyle, undefined);
+});
+
+test('scopes written as one comma-separated string are split', () => {
+	// Left whole, the comma is part of the token name and the entry colours
+	// nothing — the same silent miss as the missing rename.
+	assert.deepEqual(
+		tokens([{ scope: 'comment, markup.bold', settings: { foreground: '#ff0000' } }]),
+		['comment', 'markup.bold', 'strong'],
+	);
+});
+
+test('an unusable entry is dropped rather than passed to defineTheme', () => {
+	// A non-hex foreground makes `defineTheme` throw, which drops the whole
+	// editor theme, so it cannot reach it — alias or not.
+	assert.deepEqual(tokens([{ scope: 'markup.bold', settings: { foreground: 'red' } }]), []);
+	assert.deepEqual(tokens([{ scope: 'markup.bold', settings: {} }]), []);
+	assert.deepEqual(tokens([{ settings: { foreground: '#ff0000' } }]), []);
+	assert.deepEqual(tokens(undefined), []);
+});
