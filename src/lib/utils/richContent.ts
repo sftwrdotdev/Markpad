@@ -85,13 +85,19 @@ export function loadRichContentLibraries(): Promise<RichContentLibraries> {
 		}
 
 		const katex = (katexMainModule as any).default;
-		// mhchem and copy-tex are KaTeX extensions that bind to the global.
+		// mhchem is a KaTeX extension that binds to the global.
 		(window as any).katex = katex;
 
+		// `copy-tex` used to be loaded here too. It installs its own document
+		// `copy` listener, which fires only when the selection contains math and
+		// rewrites both clipboard flavours from a fragment of its own — undoing
+		// the preview's own copy handling for exactly those selections (#674).
+		// Its two worthwhile behaviours, whole-formula expansion and TeX as the
+		// plain text, are implemented in `utils/previewCopy.ts` instead, where
+		// they apply to one copy path rather than a second one.
 		const [autoRenderModule] = await Promise.all([
 			import('katex/dist/contrib/auto-render.js'),
 			import('katex/dist/contrib/mhchem.js'),
-			import('katex/dist/contrib/copy-tex.js'),
 		]);
 
 		return {
