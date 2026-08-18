@@ -13,7 +13,7 @@
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
 	import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
-	import { hasRealFilePath } from '../utils/tabFileActions.js';
+	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
 	let currentLanguage = $state(settings.language);
@@ -582,7 +582,7 @@
 						buffer that has never been rendered, so gating on it hid an export
 						that would have produced a file.
 					-->
-					{#if currentFile !== '' || (tabManager.activeTab && tabManager.activeTab.rawContent)}
+					{#if hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)}
 						<div class="home-menu-divider"></div>
 						<button
 						class="home-menu-item"
@@ -603,6 +603,7 @@
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 							><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="15" x2="15" y2="15"></line></svg>
 						{t('menu.exportPdf', currentLanguage)}
+						<span class="menu-shortcut">{shortcutLabel('file-export-pdf', modifier)}</span>
 					</button>
 					{/if}
 					<div class="home-menu-divider"></div>

@@ -72,6 +72,7 @@
 		onopen,
 		onclose,
 		onreveal,
+		onexportPdf,
 		ontoggleEdit,
 		ontoggleLive,
 		ontoggleSplit,
@@ -93,6 +94,7 @@
 		onopen?: () => void;
 		onclose?: () => void;
 		onreveal?: () => void;
+		onexportPdf?: () => void;
 		ontoggleEdit?: () => void;
 		ontoggleLive?: () => void;
 		ontoggleSplit?: () => void;
@@ -1696,6 +1698,15 @@
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyR,
 				],
 				run: () => onreveal?.(),
+			}),
+
+			editor.addAction({
+				id: "file-export-pdf",
+				label: t('menu.exportPdf', lang),
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP,
+				],
+				run: () => onexportPdf?.(),
 			}),
 
 			editor.addAction({

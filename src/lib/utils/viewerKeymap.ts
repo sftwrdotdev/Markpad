@@ -69,6 +69,7 @@ export type ViewerCommand =
 	| 'zoom-out'
 	| 'zoom-reset'
 	| 'open-settings'
+	| 'export-pdf'
 	| 'find';
 
 /**
@@ -274,6 +275,12 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	if (mod && key === '-') return 'zoom-out';
 	if (mod && key === '0') return 'zoom-reset';
 	if (mod && key === ',') return 'open-settings';
+	// Export as PDF. Not the `Mod+Shift+E` the request asked for: Inline Code has
+	// held that since the formatting chords were added, and the editor toolbar
+	// prints it. `P` is the print mnemonic every app shares, and the unshifted
+	// `Mod+P` is already the command palette — the same place Obsidian puts it,
+	// which is where this app's users are coming from.
+	if (modShift && key === 'p') return 'export-pdf';
 	// Ctrl/Cmd+F: route to either Monaco's built-in find or the preview
 	// FindBar depending on focus and which panes are visible. The caller only
 	// preventDefaults when it takes the action itself — otherwise Monaco's own

@@ -22,7 +22,7 @@
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath } from './utils/homeTab.js';
-	import { hasRealFilePath } from './utils/tabFileActions.js';
+	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { processMarkdownHtml } from './utils/markdown';
 import { MARKDOWN_LINK_EXTENSIONS, sanitizeMarkdownHtml } from './utils/sanitize.js';
@@ -2230,6 +2230,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	async function exportAsPdf() {
+		// The gate belongs here rather than at each caller: the menu hides its
+		// item behind the same condition, but the chord reaches this function
+		// through two different layers — the document handler in reading mode
+		// and the editor's own action in edit mode — and a guard on one of them
+		// still printed a blank page from the other (#673).
+		if (!hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)) return;
 		await syncPreviewForPrint();
 		const tab = tabManager.activeTab;
 		// Mermaid bakes the screen theme into the SVG it emits, so a dark
@@ -2913,6 +2919,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			case 'open-settings':
 				showSettings = true;
 				return;
+			case 'export-pdf':
+				return void exportAsPdf();
 			case 'find':
 				return triggerFindAction();
 		}
@@ -3626,6 +3634,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								onopen={selectFile}
 								onclose={closeFile}
 								onreveal={openFileLocation}
+								onexportPdf={exportAsPdf}
 								ontoggleEdit={() => toggleEditView()}
 								ontoggleLive={toggleLiveMode}
 								ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}

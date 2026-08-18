@@ -6,6 +6,7 @@ import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
+import { hasExportableDocument } from '../src/lib/utils/tabFileActions.js';
 import { readSource } from './sourceTree.js';
 
 /*
@@ -153,6 +154,10 @@ const exportsOffered = compileGate(
 		tabManager: () => tabManager,
 		// MarkdownViewer.svelte:229 — `$derived(tabManager.activeTab?.path ?? '')`.
 		currentFile: () => tabManager.activeTab?.path ?? '',
+		// The gate moved into a helper when the Export as PDF chord needed the
+		// same condition (#673). Supplied as the real function, so what these
+		// tests evaluate is still the shipped decision rather than a stand-in.
+		hasExportableDocument: () => hasExportableDocument,
 	},
 	'the export menu gate',
 );
