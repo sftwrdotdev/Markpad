@@ -180,6 +180,19 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		documentCommands: ['close-file'],
 	},
 	{
+		id: 'file-export-pdf',
+		labelKey: 'menu.exportPdf',
+		// `Mod+Shift+E`, as #673 suggested, is Inline Code — bound since the
+		// formatting chords went in, and printed on the editor toolbar. `P` is
+		// the print mnemonic, and the app's `Mod+P` is the command palette, so
+		// the shifted spelling is both free and the nearest thing to what every
+		// other app calls Print.
+		chords: ['Mod+Shift+P'],
+		group: 'file',
+		editorAction: true,
+		documentCommands: ['export-pdf'],
+	},
+	{
 		id: 'file-reveal',
 		labelKey: 'menu.openFileLocation',
 		chords: ['Mod+Shift+R'],
