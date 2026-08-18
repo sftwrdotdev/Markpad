@@ -22,6 +22,7 @@
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath } from './utils/homeTab.js';
+	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { processMarkdownHtml } from './utils/markdown';
@@ -2496,12 +2497,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * empty string. Monaco takes input through a hidden textarea and is covered by
 	 * the same test — as it should be, since the editor has its own path.
 	 */
-	function handleCopyPlainText(e: ClipboardEvent) {
+	function handleCopy(e: ClipboardEvent) {
 		const active = document.activeElement;
 		if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
 		const selection = window.getSelection();
-		if (!selection || selection.isCollapsed || !e.clipboardData) return;
-		e.clipboardData.setData('text/plain', selection.toString());
+		if (!selection || selection.isCollapsed || !selection.rangeCount || !e.clipboardData) return;
+		// The rich flavour #549 deliberately left out, now that "plain or rich"
+		// has an answer (#674): a preview is rendered content, and copying
+		// rendered content is expected to keep its formatting — it is what a
+		// browser and VS Code's own Markdown preview both do.
+		//
+		// Writing both ourselves is what keeps #549's result: the native copy is
+		// still cancelled, so WebKit never builds the WebArchive flavour that
+		// measured 19 MB for one selection. What lands on the clipboard is these
+		// two strings and nothing else.
+		const { text, html } = copyableFlavours(selection, currentFile);
+		e.clipboardData.setData('text/plain', text);
+		e.clipboardData.setData('text/html', html);
 		e.preventDefault();
 	}
 
@@ -3478,7 +3490,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 <svelte:document
 	onclick={handleDocumentClick}
-	oncopy={handleCopyPlainText}
+	oncopy={handleCopy}
 	oncontextmenu={handleContextMenu}
 	onmouseover={handleMouseOver}
 	onmouseout={handleMouseOut}
