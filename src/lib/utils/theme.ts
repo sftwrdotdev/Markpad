@@ -68,6 +68,91 @@ export function sanitizeThemeColors(colors: unknown): Record<string, string> {
 	return safe;
 }
 
+export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: string };
+
+/**
+ * The Monaco token names a TextMate scope has to be renamed to before it can
+ * colour anything in the editor.
+ *
+ * A VS Code theme colours scopes — `markup.bold`, `markup.italic` — and
+ * Monaco's markdown tokenizer emits names of its own: `strong`, `emphasis`,
+ * `variable` for inline code, `string.link`. Nothing maps the two together, so
+ * every emphasis rule an imported theme ships has been landing on a token that
+ * does not exist (#676). Headings, lists and tables took colour anyway because
+ * they tokenize as `keyword`, which themes also define under that exact name —
+ * which is why the reporter saw *some* of their theme arrive and concluded the
+ * rest was unstyleable.
+ *
+ * Only the four that Monaco actually emits are here. `~~strikethrough~~`,
+ * `==highlight==` and `++insert++` are absent from the tokenizer entirely
+ * (`basic-languages/markdown/markdown.js` never leaves `linecontent` for
+ * them), so no rename reaches them; colouring those means owning a fork of the
+ * grammar, and the preview renders all three today.
+ */
+const MARKDOWN_SCOPE_ALIASES: Record<string, string> = {
+	'markup.bold': 'strong',
+	'markup.italic': 'emphasis',
+	'markup.inline.raw': 'variable',
+	'markup.raw.inline': 'variable',
+	'markup.underline.link': 'string.link',
+};
+
+/**
+ * Scopes are matched by prefix because themes qualify them by language —
+ * `markup.bold.markdown` is the common spelling, and an exact-match table would
+ * miss most of the themes it exists for. The trailing dot keeps
+ * `markup.underline` from being read as `markup.underline.link`.
+ */
+function markdownTokenFor(scope: string): string | undefined {
+	for (const [tmScope, token] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
+		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) return token;
+	}
+	return undefined;
+}
+
+/**
+ * A VS Code theme's `tokenColors` as Monaco theme rules.
+ *
+ * The scope keeps its own rule as well as its alias: the original is inert
+ * rather than wrong, and dropping it would mean deciding here that no Monaco
+ * grammar will ever emit that name.
+ */
+export function monacoTokenRules(tokenColors: unknown): MonacoTokenRule[] {
+	if (!Array.isArray(tokenColors)) return [];
+	const rules: MonacoTokenRule[] = [];
+
+	for (const item of tokenColors) {
+		if (!item?.settings || (!item.settings.foreground && !item.settings.fontStyle)) continue;
+		if (item.settings.foreground && !isHexColor(item.settings.foreground)) continue;
+
+		const scopes = Array.isArray(item.scope) ? item.scope : [item.scope];
+		for (const scope of scopes) {
+			if (typeof scope !== 'string' || !scope.trim()) continue;
+			// A theme may write several scopes into one string. Left whole, the
+			// comma is part of the token name and the entry colours nothing —
+			// the same silent miss the aliases above are here to fix.
+			for (const piece of scope.split(',')) {
+				const trimmed = piece.trim();
+				if (!trimmed) continue;
+				const rule: MonacoTokenRule = {
+					token: trimmed,
+					foreground: item.settings.foreground?.trim().replace('#', ''),
+					fontStyle: item.settings.fontStyle,
+				};
+				rules.push(rule);
+				const alias = markdownTokenFor(trimmed);
+				// `fontStyle` is carried over, and its absence is not "regular":
+				// Monaco reads a missing one as NotSet and leaves the base
+				// theme's `strong: bold` / `emphasis: italic` standing, so a
+				// colour-only rule adds colour without flattening the text.
+				if (alias) rules.push({ ...rule, token: alias });
+			}
+		}
+	}
+
+	return rules;
+}
+
 export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: string) {
 	const cleanJson = themeJsonStr.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => (g ? '' : m));
 	let theme;
@@ -151,23 +236,7 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 		// editor, so the dynamic import resolves from cache).
 		const monaco = await import('monaco-editor');
 		if (monaco) {
-			const rules: any[] = [];
-			const tokenColors = theme.tokenColors || [];
-
-			for (const item of tokenColors) {
-				if (!item.settings || (!item.settings.foreground && !item.settings.fontStyle)) continue;
-				if (item.settings.foreground && !isHexColor(item.settings.foreground)) continue;
-
-				const scopes = Array.isArray(item.scope) ? item.scope : [item.scope];
-				for (const scope of scopes) {
-					if (!scope) continue;
-					rules.push({
-						token: scope,
-						foreground: item.settings.foreground?.trim().replace('#', ''),
-						fontStyle: item.settings.fontStyle,
-					});
-				}
-			}
+			const rules = monacoTokenRules(theme.tokenColors);
 
 			// Monaco only understands hex colours here; anything else makes
 			// `defineTheme` throw and drops the whole editor theme.
