@@ -92,6 +92,12 @@ const NEVER_IN_PRINT =
 	/:(?:hover|focus|focus-visible|focus-within|active|target|before|after|marker|placeholder|selection|backdrop|first-line|first-letter)\b|::/;
 const NEEDS_SIBLINGS = /[+~]/;
 const STRUCTURAL = /:(?:first|last|only|nth)-[a-z-]+/;
+// `:has()` asks about a subtree, and only the ancestor chain is modelled. It is
+// stripped rather than refused for the same reason STRUCTURAL is: the rest of
+// the compound still answers most elements outright, and a rule keyed on a
+// class this element does not carry is decided without ever consulting the
+// subtree. Only a compound that otherwise matches has to admit it cannot tell.
+const RELATIONAL = /:has\([^()]*\)/;
 
 /** false: cannot match this element. 'unsupported': the matcher cannot tell. */
 function compoundMatches(compound: string, element: Element): boolean | 'unsupported' {
@@ -113,7 +119,7 @@ function compoundMatches(compound: string, element: Element): boolean | 'unsuppo
 	if (withoutNot.includes(':fails')) return false;
 	if (withoutNot.includes(':unsupported')) return 'unsupported';
 
-	const bare = withoutNot.replace(STRUCTURAL, '');
+	const bare = withoutNot.replace(STRUCTURAL, '').replace(RELATIONAL, '');
 	if (!/^\*?(?:[a-z][a-z0-9]*)?(?:\.[A-Za-z0-9_-]+)*$/i.test(bare)) return 'unsupported';
 
 	const classes = [...bare.matchAll(/\.([A-Za-z0-9_-]+)/g)].map((m) => m[1]);
@@ -121,7 +127,7 @@ function compoundMatches(compound: string, element: Element): boolean | 'unsuppo
 	if (tag && tag !== element.tag) return false;
 	if (!classes.every((cls) => element.classes.includes(cls))) return false;
 	// Only now, with everything else matching, does the unmodelled part bite.
-	return STRUCTURAL.test(withoutNot) ? 'unsupported' : true;
+	return STRUCTURAL.test(withoutNot) || RELATIONAL.test(withoutNot) ? 'unsupported' : true;
 }
 
 /** Right-to-left matching against an ancestor chain (root first). */

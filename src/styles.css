@@ -1968,3 +1968,43 @@ body {
 .markdown-body .content-inner > .markdown-alert:first-child {
 	margin-top: 12px !important;
 }
+
+/*
+ * Monaco's find widget (Ctrl+F / Ctrl+H in the editor) draws its button
+ * tooltips through the hover service, which mounts them *outside* the editor
+ * proper — a `.context-view` appended to `.editor-container` — and puts them
+ * ABOVE the target. It only flips one below when the tooltip would leave the
+ * WINDOW (hoverWidget.js, adjustVerticalHoverPosition), and the widget sits a
+ * title bar's height down rather than at the window top, so the flip never
+ * fires and the tooltip lands in the strip `.pane` and `.editor-outer` clip
+ * away. That is #675: the first row of buttons showed a sliver of a tooltip or
+ * none, and the sliver that did reach the button flickered as the pointer
+ * crossed it. The second row was fine because its tooltip still fits inside
+ * the pane.
+ *
+ * So drop both clips while the widget is visible. Nothing else escapes: Monaco
+ * clips its own content — and the find widget itself, which lives in
+ * `.overlayWidgets` — inside `.overflow-guard`, leaving `.context-view` as the
+ * only child that can paint outside. `:has(.find-widget.visible)` still scopes
+ * it to when the widget is up, so the pane's flex/opacity transitions keep the
+ * clip they were written against.
+ *
+ * `overflow: clip` with an `overflow-clip-margin` would bound the escape more
+ * tightly, but WebKit ships `clip` without the margin property, so it would
+ * degrade to a plain clip — a silent no-op on the macOS and Linux builds.
+ * `clip-path: inset(-48px 0 0 0)` expresses it exactly and fails for a
+ * different reason: it creates a stacking context, which traps the tooltip
+ * below the title bar it has to paint over.
+ */
+.pane.editor-pane:has(.find-widget.visible),
+.pane.editor-pane:has(.find-widget.visible) .editor-outer {
+	overflow: visible;
+}
+
+/* Monaco writes `z-index: 2576` inline on this node, so only `!important`
+   reaches it, and the title bar it now has to clear is at 9999. Context menus
+   ride the same element and want the same thing: a menu opened near the top of
+   the editor belongs over the title bar, not under it. */
+.context-view {
+	z-index: 10000 !important;
+}
