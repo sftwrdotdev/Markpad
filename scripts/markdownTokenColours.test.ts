@@ -51,7 +51,7 @@ test('scopes written as one comma-separated string are split', () => {
 	// nothing — the same silent miss as the missing rename.
 	assert.deepEqual(
 		tokens([{ scope: 'comment, markup.bold', settings: { foreground: '#ff0000' } }]),
-		['comment', 'markup.bold', 'strong', 'strong.marker'],
+		['comment', 'markup.bold', 'strong'],
 	);
 });
 

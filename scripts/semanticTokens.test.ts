@@ -150,8 +150,11 @@ test('a theme that colours a construct colours all of it, markers included', () 
 	const kinds = [...new Set(Object.values(MARKDOWN_SCOPE_ALIASES).map((alias) => alias.kind))];
 	const colourOf = (kind: string) =>
 		`#${(kinds.indexOf(kind) + 1).toString(16).padStart(2, '0').repeat(3)}`;
-	const scopes = Object.entries(MARKDOWN_SCOPE_ALIASES).map(([scope, alias]) => ({
-		scope,
+	const scopes = Object.entries(MARKDOWN_SCOPE_ALIASES).map(([scope, alias], index) => ({
+		// Every other one language-qualified, which is the commoner spelling in
+		// real themes and reaches the alias lookup by its prefix rule rather
+		// than by an exact hit.
+		scope: index % 2 ? `${scope}.markdown` : scope,
 		kind: alias.kind,
 		foreground: colourOf(alias.kind),
 	}));

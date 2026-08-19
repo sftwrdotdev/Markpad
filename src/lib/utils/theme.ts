@@ -75,19 +75,52 @@ export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: 
 /**
  * Every rule an imported theme's editor gets, semantic layer included.
  *
- * The app's own semantic rules go first and the theme's on top, because Monaco
- * merges same-named rules in array order and the theme has to win wherever it
- * has an opinion. First is not a default in the ordinary sense, though — it is
- * what keeps the layer from erasing the theme. A semantic token whose type the
- * theme does not name resolves to the theme's *root* rule, whose foreground is
- * a real colour id rather than "none", and `sparseTokensStore` then masks the
- * grammar's colour out and paints the plain default over it
- * (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)` branch).
- * Before this, an imported theme lost its heading, link, quote and inline-code
- * colours to that path the moment the semantic layer shipped.
+ * The layer needs a rule for every kind it emits or it erases the theme. A
+ * semantic token whose type the theme does not name resolves to the theme's
+ * *root* rule, whose foreground is a real colour id rather than "none"
+ * (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)`
+ * branch), and `sparseTokensStore` then masks the grammar's colour out and
+ * paints that plain default over it. So the app's own rules go in as a base.
+ *
+ * The base is *rewritten* rather than layered under, and that is the point.
+ * Monaco has no notion of one rule set overriding another: rules are sorted by
+ * name and merged into a trie, where a child node is cloned from its parent at
+ * the moment it is created and never revisited. Between two rules of the same
+ * name, array order decides and a later theme rule wins. Between `strike` and
+ * `strike.marker` it is the trie shape that decides — the longer name is
+ * inserted last, creates the child, and overwrites it — and which set the rule
+ * came from does not enter into it. Layering by array order therefore holds for
+ * exactly as long as the two sets happen to name the same tokens, and inverts
+ * silently the moment the base names a longer one.
+ *
+ * Resolving the theme's colour into the base here means the base's shape stops
+ * mattering: whatever names it declares for a construct, marker or content or
+ * something not invented yet, all of them carry the theme's colour before
+ * Monaco ever sees them.
+ *
+ * Font styles stay the base's. `strike` has to be struck through and `insert`
+ * underlined whatever colour they take, and a theme that does spell out a style
+ * still applies it through its own rule below.
  */
 export function importedThemeRules(tokenColors: unknown, isDark: boolean): MonacoTokenRule[] {
-	return [...semanticTokenRules(isDark ? 'dark' : 'light'), ...monacoTokenRules(tokenColors)];
+	const themeRules = monacoTokenRules(tokenColors);
+
+	/** The colour the theme gave each construct, by the kind the extractor emits. */
+	const byKind = new Map<string, string>();
+	for (const rule of themeRules) {
+		// Read off the scope the theme wrote, which `monacoTokenRules` keeps
+		// beside every alias it derives, so a language-qualified spelling like
+		// `markup.bold.markdown` is matched by the same prefix rule.
+		const alias = markdownAliasFor(rule.token);
+		if (alias && rule.foreground) byKind.set(alias.kind, rule.foreground);
+	}
+
+	const base = semanticTokenRules(isDark ? 'dark' : 'light').map((rule) => {
+		const foreground = byKind.get(rule.token.split('.')[0]);
+		return foreground ? { ...rule, foreground } : rule;
+	});
+
+	return [...base, ...themeRules];
 }
 
 /**
@@ -138,18 +171,19 @@ export const MARKDOWN_SCOPE_ALIASES: Record<string, { readonly grammar: readonly
  * miss most of the themes it exists for. The trailing dot keeps
  * `markup.underline` from being read as `markup.underline.link`.
  */
-function markdownTokensFor(scope: string): readonly string[] {
+function markdownAliasFor(scope: string): { readonly grammar: readonly string[]; readonly kind: string } | undefined {
 	for (const [tmScope, alias] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
-		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) {
-			// The marker as well as the content. Not a nicety: the app's base
-			// carries `strike.marker`, which is *longer* than the theme's
-			// `strike` and therefore inserted after it, so without a rule of its
-			// own the theme would colour a word and leave the app colouring the
-			// `~~` on either side of it. One construct, two greys.
-			return [...alias.grammar, alias.kind, `${alias.kind}.marker`];
-		}
+		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) return alias;
 	}
-	return [];
+	return undefined;
+}
+
+function markdownTokensFor(scope: string): readonly string[] {
+	const alias = markdownAliasFor(scope);
+	// The construct name only. Its markers are reached by `importedThemeRules`
+	// rewriting the base, which is the one place that has to know how the base
+	// is spelled — naming them here as well would put that knowledge in two.
+	return alias ? [...alias.grammar, alias.kind] : [];
 }
 
 /**
