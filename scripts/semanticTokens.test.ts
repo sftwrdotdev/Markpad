@@ -4,7 +4,7 @@ import test from 'node:test';
 import { TokenTheme, parseTokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
 
 import { semanticTokenRules } from '../src/lib/utils/editorTheme.js';
-import { importedThemeRules } from '../src/lib/utils/theme.js';
+import { MARKDOWN_SCOPE_ALIASES, importedThemeRules } from '../src/lib/utils/theme.js';
 import { TOKEN_MODIFIERS, TOKEN_TYPES, encodeSemanticTokens } from '../src/lib/utils/semanticTokens.js';
 import { readRustBackend, readSource } from './sourceTree.js';
 
@@ -134,28 +134,33 @@ test('no kind falls through to an imported theme that has nothing to say', () =>
 });
 
 test('a theme that colours a construct colours all of it, markers included', () => {
-	// Rules are inserted longest-last, and a child node is cloned from its parent
-	// at the moment it is created. The app's base carries `strike.marker`, which
-	// sorts after the theme's `strike`, so an alias that stopped at the content
-	// left the theme colouring a word and the app colouring the `~~` on either
-	// side of it — one construct in two greys, and the same for `##` against its
-	// title, `[` against its link text, and the `*` around an emphasis.
-	const scopes = [
-		['markup.heading', '#ff5f5f', 'heading'],
-		['markup.bold', '#ffd166', 'strong'],
-		['markup.italic', '#06d6a0', 'emph'],
-		['markup.strikethrough', '#8d99ae', 'strike'],
-		['markup.inline.raw', '#b388ff', 'code'],
-		['markup.underline.link', '#4cc9f0', 'link'],
-		['markup.quote', '#f72585', 'quote'],
-		['markup.list', '#fb8500', 'list'],
-	] as const;
+	// Rules are sorted by name, and a child node is cloned from its parent at the
+	// moment it is created. The app's base carries `strike.marker`, which sorts
+	// after the theme's `strike`, so an alias that stopped at the content left
+	// the theme colouring a word and the app colouring the `~~` on either side of
+	// it — one construct in two greys, and the same for `##` against its title.
+	//
+	// Driven off the alias table rather than a list written out here: the failure
+	// arrives when the app names a *longer* token than the alias does, so a new
+	// entry is exactly the case that would otherwise go unchecked.
+	// A colour per *kind*, not per scope: two scopes can name the same construct
+	// (`markup.inline.raw` and `markup.raw.inline` are both inline code), and
+	// giving those two different colours would only test which one sorts last.
+	// Distinct across kinds is what catches a rule landing on the wrong one.
+	const kinds = [...new Set(Object.values(MARKDOWN_SCOPE_ALIASES).map((alias) => alias.kind))];
+	const colourOf = (kind: string) =>
+		`#${(kinds.indexOf(kind) + 1).toString(16).padStart(2, '0').repeat(3)}`;
+	const scopes = Object.entries(MARKDOWN_SCOPE_ALIASES).map(([scope, alias]) => ({
+		scope,
+		kind: alias.kind,
+		foreground: colourOf(alias.kind),
+	}));
 
 	const theme = TokenTheme.createFromParsedTokenTheme(
 		parseTokenTheme([
 			{ token: '', foreground: '#e6e6e6', background: '#12141a' },
 			...importedThemeRules(
-				scopes.map(([scope, foreground]) => ({ scope, settings: { foreground } })),
+				scopes.map(({ scope, foreground }) => ({ scope, settings: { foreground } })),
 				true,
 			),
 		]),
@@ -166,7 +171,7 @@ test('a theme that colours a construct colours all of it, markers included', () 
 	const foregroundOf = (token: string) =>
 		String(colours[(theme._match(token).metadata >>> 15) & 511]).toLowerCase();
 
-	for (const [scope, foreground, kind] of scopes) {
+	for (const { scope, kind, foreground } of scopes) {
 		assert.equal(foregroundOf(kind), foreground, `${scope} must reach ${kind}`);
 		assert.equal(foregroundOf(`${kind}.marker`), foreground, `${scope} must reach ${kind}.marker`);
 	}

@@ -117,7 +117,7 @@ export function importedThemeRules(tokenColors: unknown, isDark: boolean): Monac
  * gives every legend entry a rule before these are applied, so an unlisted one
  * takes the app's own colour rather than the theme's default foreground.
  */
-const MARKDOWN_SCOPE_ALIASES: Record<string, { readonly grammar: readonly string[]; readonly kind: string }> = {
+export const MARKDOWN_SCOPE_ALIASES: Record<string, { readonly grammar: readonly string[]; readonly kind: string }> = {
 	'markup.bold': { grammar: [], kind: 'strong' },
 	'markup.italic': { grammar: ['emphasis'], kind: 'emph' },
 	'markup.inline.raw': { grammar: ['variable'], kind: 'code' },
