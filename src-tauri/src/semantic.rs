@@ -192,8 +192,21 @@ fn collect_node<'a>(
             // whole span markup. The backtick runs are a known length instead.
             emit_delimited(node, lines, code.num_backticks, "code", out);
         }
-        NodeValue::Strong => emit_gaps(node, lines, "strong.marker", out),
-        NodeValue::Emph => emit_gaps(node, lines, "emph.marker", out),
+        // The words as well as the `**`, which matters only when something else
+        // has already claimed the line. Monaco's grammar paints `**bold**` on
+        // its own, but its link rule (`markdown.js`, the `["string.link", "",
+        // "string.link"]` action) swallows a link's text under an *empty*
+        // token, and its heading rule takes the whole line as one `keyword`.
+        // Inside either, an emphasis the parse can see would otherwise arrive
+        // with no colour of its own.
+        NodeValue::Strong => {
+            emit_gaps(node, lines, "strong.marker", out);
+            emit_text_children(node, lines, "strong", out);
+        }
+        NodeValue::Emph => {
+            emit_gaps(node, lines, "emph.marker", out);
+            emit_text_children(node, lines, "emph", out);
+        }
         NodeValue::Strikethrough => {
             emit_gaps(node, lines, "strike.marker", out);
             emit_text_children(node, lines, "strike", out);
@@ -870,6 +883,35 @@ mod tests {
             at = start + len;
         }
         assert_eq!(at as usize, line.encode_utf16().count(), "{found:?}");
+    }
+
+    #[test]
+    fn an_emphasis_keeps_its_own_colour_whatever_encloses_it() {
+        // Standing alone, `**bold**` needs nothing from here — the Monarch
+        // grammar paints it. Nested is where it showed: the grammar's link rule
+        // hands a link's text an *empty* token and its heading rule takes the
+        // whole line as one `keyword`, so a bold run inside either arrived with
+        // no colour of its own while its `**` sat there in the bold colour.
+        for text in [
+            "**b**",
+            "[**b**](u)",
+            "![**b**](u)",
+            "# **b** t",
+            "~~**b**~~",
+            "==**b**==",
+            "++**b**++",
+            "> **b**",
+            // `***bi***` is an Emph wrapping a Strong: the words belong to the
+            // inner one, and the outer contributes its `*` and nothing else.
+            "***bi***",
+        ] {
+            let found = spans(&format!("{text}\n"));
+            assert!(found.iter().any(|s| s.0 == "strong"), "{text}: {found:?}");
+        }
+        for text in ["*i*", "[*i*](u)", "# *i*", "~~*i*~~"] {
+            let found = spans(&format!("{text}\n"));
+            assert!(found.iter().any(|s| s.0 == "emph"), "{text}: {found:?}");
+        }
     }
 
     #[test]
