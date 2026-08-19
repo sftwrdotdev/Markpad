@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
+import { markdownTokenRules, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
 import { readSource } from './sourceTree.js';
 
 // The editor's Markdown colours. Two things can make a rule here do nothing at
@@ -125,5 +125,21 @@ test('light and dark are actually different themes', () => {
 	assert.deepEqual(light.map((rule) => rule.token), dark.map((rule) => rule.token));
 	for (const [index, rule] of light.entries()) {
 		assert.notEqual(rule.foreground, dark[index].foreground, `${rule.token} is the same colour on both`);
+	}
+});
+
+test('a formula reads as markup around content, not as one flat run', () => {
+	// Both math rules used to resolve to the same colour, which made the split
+	// between the delimiters and the body invisible on screen. The `$` and every
+	// control sequence inside now read as markup, like every other marker; the
+	// operands keep the code colour and take the italics TeX would give them.
+	for (const appearance of ['light', 'dark'] as const) {
+		const byToken = new Map(semanticTokenRules(appearance).map((rule) => [rule.token, rule]));
+		const marker = byToken.get('math.marker');
+		const body = byToken.get('math');
+		assert.equal(marker?.foreground, byToken.get('heading.marker')?.foreground, 'markup colour');
+		assert.notEqual(marker?.foreground, body?.foreground, 'delimiters must not vanish into the body');
+		assert.equal(body?.foreground, byToken.get('code')?.foreground, 'a formula is code-coloured');
+		assert.equal(body?.fontStyle, 'italic');
 	}
 });

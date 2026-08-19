@@ -129,7 +129,10 @@ const SEMANTIC_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role, s
 	['insert.marker', 'emphasis'],
 	['link.marker', 'link'],
 	['image.marker', 'link'],
-	['math.marker', 'code'],
+	// `$`, `$$` and every control sequence between them. `\frac` is the markup
+	// inside a formula the way `##` is the markup on a heading, so `math_spans`
+	// gives it the same modifier and it lands here.
+	['math.marker', 'accent'],
 	['wikilink.marker', 'link'],
 	// The content the markup is about.
 	['heading', 'accent', 'bold'],
@@ -139,7 +142,12 @@ const SEMANTIC_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role, s
 	['insert', 'emphasis', 'underline'],
 	['link', 'link'],
 	['image', 'link'],
-	['math', 'code'],
+	// A formula body is set in italics, which is the one thing about it a colour
+	// cannot say: TeX typesets variables italic, so the source and the rendered
+	// output agree at a glance. Obsidian does the same, and adds a monospace
+	// family — `ITokenThemeRule` has no `fontFamily`, so that half is out of
+	// reach here.
+	['math', 'code', 'italic'],
 	['wikilink', 'link'],
 	['footnote', 'link'],
 	['html', 'muted'],
