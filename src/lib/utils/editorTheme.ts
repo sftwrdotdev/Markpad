@@ -36,49 +36,54 @@ type Role = keyof (typeof PALETTE)['light'];
 /**
  * Monaco token → role.
  *
- * Only names this Monaco build's Markdown tokenizer actually emits are here.
- * A rule keyed on anything else is silently inert — the defect #676 was, one
- * layer over — so `editorTheme.test.ts` checks every token below against the
- * grammar itself.
+ * Every name carries the `.md` that Monaco's Markdown grammar appends to each
+ * token it emits (`tokenPostfix: ".md"`, applied in `monarchLexer.js`). The
+ * suffix is what keeps this palette inside Markdown: a rule on a bare
+ * `keyword` or `string` sits at the root of Monaco's token trie and repaints
+ * *every* language, so the first version of this file recoloured the Python,
+ * Rust and JSON inside fenced blocks — those are tokenized by their own
+ * grammar, under their own postfix, and Monaco's defaults for them are tuned
+ * for code in a way this six-colour palette is not.
  *
- * Two entries exist to *undo* an inheritance rather than to add a colour.
- * Monaco resolves a token against a trie, so `keyword.table.header` inherits
- * whatever `keyword` says: without a rule of its own, every header cell in
- * every table would be painted like a heading. `variable.source` is the same
- * story one token over — it is the body of a fenced code block, which inherits
- * inline code's colour and would turn whole blocks green.
+ * The postfix also means a prefix rule cannot stand in for its children:
+ * `keyword.table.left.md` walks `keyword` → `table` → …, so `keyword.md` never
+ * sees it. The four table tokens are therefore spelled out.
+ *
+ * Two entries exist to *undo* an inheritance rather than to add a colour. A
+ * table header cell and the body of a fenced block are content, not syntax,
+ * and both would otherwise arrive painted as the markup around them.
  */
 const MARKDOWN_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role]> = [
-	// `#`, the `=`/`-` of a setext heading, list bullets and numbers, and the
-	// `---|---` divider row. One token for all of them, so one colour: the
-	// tokenizer does not tell headings and lists apart, and a theme cannot
-	// invent a distinction the grammar never made.
-	['keyword', 'accent'],
-	// Table pipes are structure, not content — quiet, so the cells read.
-	['keyword.table', 'muted'],
-	// `text` rather than "leave it alone", which a Monaco rule cannot say: every
-	// rule must name a colour. The app's own foreground is the closest honest
-	// answer, so a header cell reads a hair off the body cells below it
-	// (#1f2328 against the base theme's #000000) and in step with the preview.
-	['keyword.table.header', 'text'],
-	// Blockquote markers.
-	['comment', 'muted'],
-	// Fences and indented code, then inline code: one family.
-	['string', 'code'],
-	['variable', 'code'],
-	['variable.source', 'text'],
+	// Block structure, one colour. `#`, the `=`/`-` of a setext heading, list
+	// bullets and numbers, the `---|---` divider, the table frame, `>` and a
+	// horizontal rule are all the same thing to a reader scanning a document:
+	// the markup, as opposed to what they wrote. Distinguishing *kinds* of
+	// markup matters less than distinguishing markup from prose, and the
+	// tokenizer cannot tell a heading from a list marker anyway — one bare
+	// `keyword` covers both.
+	['keyword.md', 'accent'],
+	['keyword.table.left.md', 'accent'],
+	['keyword.table.middle.md', 'accent'],
+	['keyword.table.right.md', 'accent'],
+	['comment.md', 'accent'],
+	['meta.separator.md', 'accent'],
+	// Content that sits inside markup, and must not read as markup.
+	['keyword.table.header.md', 'text'],
+	['variable.source.md', 'text'],
+	// Fences and inline code: one family, distinct from both.
+	['string.md', 'code'],
+	['variable.md', 'code'],
 	// `[text](target)`.
-	['string.link', 'link'],
-	// `***` / `---` on a line of its own.
-	['meta.separator', 'muted'],
-	// `\*` and `&amp;`: punctuation that is standing in for a character.
-	['escape', 'muted'],
-	['string.escape', 'muted'],
+	['string.link.md', 'link'],
+	// `\*` and `&amp;`: punctuation standing in for a character, and the one
+	// thing here quiet enough to recede.
+	['escape.md', 'muted'],
+	['string.escape.md', 'muted'],
 	// Bold and italic keep the font style the base theme gives them — no
 	// `fontStyle` here, which Monaco reads as "leave it alone" rather than as
 	// "regular", and both get a colour for the first time.
-	['strong', 'emphasis'],
-	['emphasis', 'emphasis'],
+	['strong.md', 'emphasis'],
+	['emphasis.md', 'emphasis'],
 ];
 
 export type EditorTokenRule = { token: string; foreground: string };

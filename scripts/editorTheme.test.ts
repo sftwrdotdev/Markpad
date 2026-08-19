@@ -28,16 +28,25 @@ function paletteColor(appearance: 'light' | 'dark', name: string): string {
 	return match[1].slice(1).toLowerCase();
 }
 
+test('every rule is scoped to Markdown', () => {
+	// Monaco's Markdown grammar appends `.md` to every token it emits, and a
+	// rule without that suffix sits at the root of the token trie — where it
+	// repaints Python, Rust and JSON inside fenced code blocks as well. That is
+	// not a hypothetical: the first version of this palette did exactly that.
+	for (const rule of markdownTokenRules('light')) {
+		assert.ok(rule.token.endsWith('.md'), `${rule.token} would leak into every other language`);
+	}
+});
+
 test('both themes get rules, and every rule is a real token', () => {
 	for (const appearance of ['light', 'dark'] as const) {
 		const rules = markdownTokenRules(appearance);
 		assert.ok(rules.length > 0, `${appearance} must not fall back to Monaco's source-code colours`);
 
 		for (const rule of rules) {
-			// `keyword.table` is the prefix Monaco's trie matches every
-			// `keyword.table.*` against; the grammar spells out the leaves.
-			const emitted = emittedTokens.has(rule.token)
-				|| [...emittedTokens].some((token) => token.startsWith(`${rule.token}.`));
+			// The grammar spells its tokens without the postfix it later appends.
+			const bare = rule.token.slice(0, -'.md'.length);
+			const emitted = emittedTokens.has(bare);
 			assert.ok(emitted, `no Markdown token is called \`${rule.token}\` — the rule would be inert`);
 			// Monaco's own parser reads these as `#rrggbb` once it prepends the
 			// hash; a `#` here, or a short form, resolves to no colour.
@@ -61,16 +70,31 @@ test('the colours are the app palette, not a second one', () => {
 
 	for (const appearance of ['light', 'dark'] as const) {
 		const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
-		assert.equal(byToken.get('keyword'), paletteColor(appearance, expected.accent));
-		assert.equal(byToken.get('string'), paletteColor(appearance, expected.code));
-		assert.equal(byToken.get('variable'), paletteColor(appearance, expected.code));
-		assert.equal(byToken.get('strong'), paletteColor(appearance, expected.emphasis));
-		assert.equal(byToken.get('emphasis'), paletteColor(appearance, expected.emphasis));
-		assert.equal(byToken.get('string.link'), paletteColor(appearance, expected.link));
-		assert.equal(byToken.get('comment'), paletteColor(appearance, expected.muted));
-		assert.equal(byToken.get('keyword.table'), paletteColor(appearance, expected.muted));
-		assert.equal(byToken.get('variable.source'), paletteColor(appearance, expected.text));
-		assert.equal(byToken.get('keyword.table.header'), paletteColor(appearance, expected.text));
+		assert.equal(byToken.get('keyword.md'), paletteColor(appearance, expected.accent));
+		assert.equal(byToken.get('string.md'), paletteColor(appearance, expected.code));
+		assert.equal(byToken.get('variable.md'), paletteColor(appearance, expected.code));
+		assert.equal(byToken.get('strong.md'), paletteColor(appearance, expected.emphasis));
+		assert.equal(byToken.get('emphasis.md'), paletteColor(appearance, expected.emphasis));
+		assert.equal(byToken.get('string.link.md'), paletteColor(appearance, expected.link));
+		assert.equal(byToken.get('escape.md'), paletteColor(appearance, expected.muted));
+		assert.equal(byToken.get('variable.source.md'), paletteColor(appearance, expected.text));
+		assert.equal(byToken.get('keyword.table.header.md'), paletteColor(appearance, expected.text));
+	}
+});
+
+test('the markup all reads as markup, and the content inside it does not', () => {
+	// The one line a reader actually scans by: is this the document, or the
+	// syntax around it? Every structural marker takes the same colour, and the
+	// two pieces of content that live inside markup take the text colour.
+	for (const appearance of ['light', 'dark'] as const) {
+		const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
+		const structure = ['keyword.md', 'keyword.table.left.md', 'keyword.table.middle.md', 'keyword.table.right.md', 'comment.md', 'meta.separator.md'];
+		for (const token of structure) {
+			assert.equal(byToken.get(token), byToken.get('keyword.md'), `${token} must read as markup`);
+		}
+		for (const token of ['keyword.table.header.md', 'variable.source.md']) {
+			assert.notEqual(byToken.get(token), byToken.get('keyword.md'), `${token} is content, not markup`);
+		}
 	}
 });
 
@@ -81,8 +105,8 @@ test('the two inheritance overrides are present, or a table and a code block are
 	// heading, every fenced block as inline code.
 	for (const appearance of ['light', 'dark'] as const) {
 		const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
-		assert.notEqual(byToken.get('keyword.table.header'), byToken.get('keyword'));
-		assert.notEqual(byToken.get('variable.source'), byToken.get('variable'));
+		assert.notEqual(byToken.get('keyword.table.header.md'), byToken.get('keyword.md'));
+		assert.notEqual(byToken.get('variable.source.md'), byToken.get('variable.md'));
 	}
 });
 
