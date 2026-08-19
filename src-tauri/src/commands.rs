@@ -106,6 +106,18 @@ pub async fn list_heading_anchors(markdown: String) -> Result<Vec<HeadingAnchor>
         .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+/// The ranges the editor should colour, from the same parse the preview uses.
+///
+/// Off the main thread like `render_markdown`: measured at 0.7 ms for a 500-line
+/// document and 24 ms for a 1.7 MB one, which is small but not nothing, and
+/// Monaco asks for this on every edit.
+#[tauri::command]
+pub async fn markdown_semantic_spans(content: String) -> Result<Vec<crate::semantic::SemanticSpan>, String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(crate::semantic::semantic_spans(&content)))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+}
+
 #[tauri::command]
 pub async fn render_markdown(content: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || Ok(convert_markdown(&content)))

@@ -219,6 +219,7 @@ pub fn run() {
             commands::clipboard_read_image,
             commands::open_markdown_preview,
             commands::render_markdown,
+            commands::markdown_semantic_spans,
             commands::list_heading_anchors,
             window_runtime::send_markdown_path,
             commands::read_file_content_checked,

@@ -11,6 +11,7 @@ mod commands;
 mod error;
 mod fs_safety;
 mod markdown;
+mod semantic;
 mod tab_transfer;
 mod window_runtime;
 
