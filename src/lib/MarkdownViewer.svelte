@@ -4080,6 +4080,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		font-size: var(--code-font-size, 14px) !important;
 	}
 
+	/*
+	 * The Code Font Size setting is an absolute px, which is what a reader wants
+	 * for code sitting in prose — and wrong for code sitting in a heading, where
+	 * it does not scale with the words around it: 14px inside a 24px `##` (#681),
+	 * 14px inside a 32px `#`. GitHub sizes inline code at 85% of whatever
+	 * contains it, and that is the rule the setting was overriding here.
+	 *
+	 * Scoped to headings so the setting keeps meaning what it says everywhere a
+	 * reader actually reads code, and `!important` because the rule above is —
+	 * specificity alone cannot answer it.
+	 */
+	.markdown-container :global(.markdown-body :is(h1, h2, h3, h4, h5, h6) code) {
+		font-size: 0.85em !important;
+	}
+
 	.markdown-body.full-width {
 		max-width: 100%;
 		margin: 0;
