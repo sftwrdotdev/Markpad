@@ -86,7 +86,8 @@ pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
         }
         claimed = Some((span.line, span.end));
         let line = lines.get(span.line).copied().unwrap_or("");
-        let (Some(start_utf16), Some(end_utf16)) = (utf16_column(line, start), utf16_column(line, span.end))
+        let (Some(start_utf16), Some(end_utf16)) =
+            (utf16_column(line, start), utf16_column(line, span.end))
         else {
             continue;
         };
@@ -122,16 +123,32 @@ fn node_lines(node: &AstNode, lines: &[&str]) -> Vec<ByteSpan> {
         let Some(text) = lines.get(line_no.saturating_sub(1)) else {
             continue;
         };
-        let start = if line_no == sp.start.line { sp.start.column.saturating_sub(1) } else { 0 };
-        let end = if line_no == sp.end.line { sp.end.column.min(text.len()) } else { text.len() };
+        let start = if line_no == sp.start.line {
+            sp.start.column.saturating_sub(1)
+        } else {
+            0
+        };
+        let end = if line_no == sp.end.line {
+            sp.end.column.min(text.len())
+        } else {
+            text.len()
+        };
         if end > start {
-            out.push(ByteSpan { line: line_no - 1, start, end });
+            out.push(ByteSpan {
+                line: line_no - 1,
+                start,
+                end,
+            });
         }
     }
     out
 }
 
-fn collect_node<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
+fn collect_node<'a>(
+    node: &'a AstNode<'a>,
+    lines: &[&str],
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
     let value = node.data.borrow().value.clone();
     match value {
         NodeValue::Heading(_) => {
@@ -201,7 +218,13 @@ fn collect_node<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(ByteSp
             emit_self(node, lines, "footnote", out);
         }
         NodeValue::Math(ref math) => {
-            emit_delimited(node, lines, if math.display_math { 2 } else { 1 }, "math", out);
+            emit_delimited(
+                node,
+                lines,
+                if math.display_math { 2 } else { 1 },
+                "math",
+                out,
+            );
         }
         NodeValue::WikiLink(_) => {
             emit_gaps(node, lines, "wikilink.marker", out);
@@ -225,16 +248,31 @@ fn emit_gaps<'a>(
     }
     for own in node_lines(node, lines) {
         let mut cursor = own.start;
-        let mut covering: Vec<&ByteSpan> = child_ranges.iter().filter(|c| c.line == own.line).collect();
+        let mut covering: Vec<&ByteSpan> =
+            child_ranges.iter().filter(|c| c.line == own.line).collect();
         covering.sort_by_key(|c| c.start);
         for child in covering {
             if child.start > cursor {
-                out.push((ByteSpan { line: own.line, start: cursor, end: child.start.min(own.end) }, kind));
+                out.push((
+                    ByteSpan {
+                        line: own.line,
+                        start: cursor,
+                        end: child.start.min(own.end),
+                    },
+                    kind,
+                ));
             }
             cursor = cursor.max(child.end);
         }
         if cursor < own.end {
-            out.push((ByteSpan { line: own.line, start: cursor, end: own.end }, kind));
+            out.push((
+                ByteSpan {
+                    line: own.line,
+                    start: cursor,
+                    end: own.end,
+                },
+                kind,
+            ));
         }
     }
 }
@@ -261,13 +299,42 @@ fn emit_delimited<'a>(
         out.push((*first, marker));
         return;
     }
-    out.push((ByteSpan { line: first.line, start: first.start, end: first.start + delimiter }, marker));
-    out.push((ByteSpan { line: last.line, start: last.end.saturating_sub(delimiter), end: last.end }, marker));
+    out.push((
+        ByteSpan {
+            line: first.line,
+            start: first.start,
+            end: first.start + delimiter,
+        },
+        marker,
+    ));
+    out.push((
+        ByteSpan {
+            line: last.line,
+            start: last.end.saturating_sub(delimiter),
+            end: last.end,
+        },
+        marker,
+    ));
     for (index, range) in ranges.iter().enumerate() {
-        let start = if index == 0 { range.start + delimiter } else { range.start };
-        let end = if index == ranges.len() - 1 { range.end.saturating_sub(delimiter) } else { range.end };
+        let start = if index == 0 {
+            range.start + delimiter
+        } else {
+            range.start
+        };
+        let end = if index == ranges.len() - 1 {
+            range.end.saturating_sub(delimiter)
+        } else {
+            range.end
+        };
         if end > start {
-            out.push((ByteSpan { line: range.line, start, end }, kind));
+            out.push((
+                ByteSpan {
+                    line: range.line,
+                    start,
+                    end,
+                },
+                kind,
+            ));
         }
     }
 }
@@ -281,7 +348,11 @@ fn emit_text_children<'a>(
 ) {
     for child in node.children() {
         if matches!(child.data.borrow().value, NodeValue::Text(_)) {
-            out.extend(node_lines(child, lines).into_iter().map(|span| (span, kind)));
+            out.extend(
+                node_lines(child, lines)
+                    .into_iter()
+                    .map(|span| (span, kind)),
+            );
         }
     }
 }
@@ -318,20 +389,40 @@ fn emit_item_marker<'a>(
     let start = sp.start.column.saturating_sub(1);
     let rest = &text[start.min(text.len())..];
     let marker_len = match list_type {
-        ListType::Bullet => rest.chars().next().filter(|c| "-+*".contains(*c)).map(|c| c.len_utf8()),
+        ListType::Bullet => rest
+            .chars()
+            .next()
+            .filter(|c| "-+*".contains(*c))
+            .map(|c| c.len_utf8()),
         ListType::Ordered => {
             let digits = rest.chars().take_while(|c| c.is_ascii_digit()).count();
-            let delimiter = rest[digits..].chars().next().filter(|c| *c == '.' || *c == ')');
-            delimiter.map(|c| digits + c.len_utf8()).filter(|_| digits > 0)
+            let delimiter = rest[digits..]
+                .chars()
+                .next()
+                .filter(|c| *c == '.' || *c == ')');
+            delimiter
+                .map(|c| digits + c.len_utf8())
+                .filter(|_| digits > 0)
         }
     };
     if let Some(len) = marker_len {
-        out.push((ByteSpan { line: sp.start.line - 1, start, end: start + len }, "list.marker"));
+        out.push((
+            ByteSpan {
+                line: sp.start.line - 1,
+                start,
+                end: start + len,
+            },
+            "list.marker",
+        ));
     }
 }
 
 /// `[ ]` or `[x]`, which Monarch reads as a link.
-fn emit_task_marker<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
+fn emit_task_marker<'a>(
+    node: &'a AstNode<'a>,
+    lines: &[&str],
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
     let sp = node.data.borrow().sourcepos;
     let Some(text) = lines.get(sp.start.line.saturating_sub(1)) else {
         return;
@@ -344,7 +435,14 @@ fn emit_task_marker<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(By
     let Some(close) = text[start..].find(']') else {
         return;
     };
-    out.push((ByteSpan { line: sp.start.line - 1, start, end: start + close + 1 }, "task.marker"));
+    out.push((
+        ByteSpan {
+            line: sp.start.line - 1,
+            start,
+            end: start + close + 1,
+        },
+        "task.marker",
+    ));
 }
 
 /// The `>` run at the head of every line the quote covers.
@@ -369,13 +467,24 @@ fn emit_line_prefix<'a>(
             }
         }
         if end > 0 {
-            out.push((ByteSpan { line: line_no - 1, start: 0, end }, kind));
+            out.push((
+                ByteSpan {
+                    line: line_no - 1,
+                    start: 0,
+                    end,
+                },
+                kind,
+            ));
         }
     }
 }
 
 /// The ``` lines, not the code between them — that keeps its own colouring.
-fn emit_fence_lines<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
+fn emit_fence_lines<'a>(
+    node: &'a AstNode<'a>,
+    lines: &[&str],
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
     let sp = node.data.borrow().sourcepos;
     for line_no in [sp.start.line, sp.end.line] {
         let Some(text) = lines.get(line_no.saturating_sub(1)) else {
@@ -383,7 +492,14 @@ fn emit_fence_lines<'a>(node: &'a AstNode<'a>, lines: &[&str], out: &mut Vec<(By
         };
         let trimmed = text.trim_start();
         if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            out.push((ByteSpan { line: line_no - 1, start: 0, end: text.len() }, "fence"));
+            out.push((
+                ByteSpan {
+                    line: line_no - 1,
+                    start: 0,
+                    end: text.len(),
+                },
+                "fence",
+            ));
         }
     }
 }
@@ -402,7 +518,14 @@ fn emit_pipes_on_line(lines: &[&str], line_no: usize, out: &mut Vec<(ByteSpan, &
     };
     for (index, ch) in text.char_indices() {
         if ch == '|' {
-            out.push((ByteSpan { line: line_no - 1, start: index, end: index + 1 }, "table.marker"));
+            out.push((
+                ByteSpan {
+                    line: line_no - 1,
+                    start: index,
+                    end: index + 1,
+                },
+                "table.marker",
+            ));
         }
     }
 }
@@ -422,9 +545,30 @@ fn app_syntax_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
             if bytes[at] == b'[' && bytes[at + 1] == b'[' {
                 if let Some(close) = text[at..].find("]]") {
                     let end = at + close + 2;
-                    out.push((ByteSpan { line: index, start: at, end: at + 2 }, "wikilink.marker"));
-                    out.push((ByteSpan { line: index, start: at + 2, end: end - 2 }, "wikilink"));
-                    out.push((ByteSpan { line: index, start: end - 2, end }, "wikilink.marker"));
+                    out.push((
+                        ByteSpan {
+                            line: index,
+                            start: at,
+                            end: at + 2,
+                        },
+                        "wikilink.marker",
+                    ));
+                    out.push((
+                        ByteSpan {
+                            line: index,
+                            start: at + 2,
+                            end: end - 2,
+                        },
+                        "wikilink",
+                    ));
+                    out.push((
+                        ByteSpan {
+                            line: index,
+                            start: end - 2,
+                            end,
+                        },
+                        "wikilink.marker",
+                    ));
                     at = end;
                     continue;
                 }
@@ -450,18 +594,78 @@ fn math_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
     }
 
     for (start, end) in crate::markdown::find_math_spans(&content, &regions) {
-        let Some(line) = line_starts.iter().rposition(|&begin| begin <= start) else {
-            continue;
+        // Display math spans lines: `$$` opens on one and closes on another,
+        // with the formula in between. Every range here is therefore cut at the
+        // line boundaries rather than assumed to sit inside one line.
+        let delimiter = if content[start..].starts_with("$$") {
+            2
+        } else {
+            1
         };
-        // A math span never crosses a line: `find_math_spans` scans line by line
-        // because the renderer's `hardbreaks` put every source line in its own
-        // text node.
+        if end < start + 2 * delimiter {
+            continue;
+        }
+        emit_byte_range(
+            lines,
+            &line_starts,
+            start,
+            start + delimiter,
+            "math.marker",
+            out,
+        );
+        emit_byte_range(
+            lines,
+            &line_starts,
+            start + delimiter,
+            end - delimiter,
+            "math",
+            out,
+        );
+        emit_byte_range(
+            lines,
+            &line_starts,
+            end - delimiter,
+            end,
+            "math.marker",
+            out,
+        );
+    }
+}
+
+/// A byte range over the whole document, as one `ByteSpan` per line it covers.
+fn emit_byte_range(
+    lines: &[&str],
+    line_starts: &[usize],
+    start: usize,
+    end: usize,
+    kind: &'static str,
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
+    if end <= start {
+        return;
+    }
+    let first = line_starts
+        .partition_point(|&begin| begin <= start)
+        .saturating_sub(1);
+    for line in first..lines.len() {
         let base = line_starts[line];
-        let (start, end) = (start - base, end - base);
-        let delimiter = if lines[line][start..end].starts_with("$$") { 2 } else { 1 };
-        out.push((ByteSpan { line, start, end: start + delimiter }, "math.marker"));
-        out.push((ByteSpan { line, start: start + delimiter, end: end - delimiter }, "math"));
-        out.push((ByteSpan { line, start: end - delimiter, end }, "math.marker"));
+        if base >= end {
+            break;
+        }
+        let (from, to) = (
+            start.max(base) - base,
+            end.min(base + lines[line].len()) - base,
+        );
+        if to > from {
+            out.push((
+                ByteSpan {
+                    line,
+                    start: from,
+                    end: to,
+                },
+                kind,
+            ));
+        }
     }
 }
 
@@ -477,7 +681,11 @@ mod tests {
     }
 
     fn kinds_on(text: &str, line: u32) -> Vec<String> {
-        spans(text).into_iter().filter(|s| s.1 == line).map(|s| s.0).collect()
+        spans(text)
+            .into_iter()
+            .filter(|s| s.1 == line)
+            .map(|s| s.0)
+            .collect()
     }
 
     #[test]
@@ -485,7 +693,10 @@ mod tests {
         // The distinction Monarch cannot express: it emits one `keyword` for the
         // whole line, markup and prose alike.
         let found = spans("## Title\n");
-        assert!(found.contains(&("heading.marker".into(), 0, 0, 3)), "{found:?}");
+        assert!(
+            found.contains(&("heading.marker".into(), 0, 0, 3)),
+            "{found:?}"
+        );
         assert!(found.contains(&("heading".into(), 0, 3, 5)), "{found:?}");
     }
 
@@ -495,8 +706,14 @@ mod tests {
         // and 3 units, so an unconverted span would start four characters late
         // and land mid-character, where Monaco drops it.
         let found = spans("中文 **粗体**\n");
-        assert!(found.contains(&("strong.marker".into(), 0, 3, 2)), "{found:?}");
-        assert!(found.contains(&("strong.marker".into(), 0, 7, 2)), "{found:?}");
+        assert!(
+            found.contains(&("strong.marker".into(), 0, 3, 2)),
+            "{found:?}"
+        );
+        assert!(
+            found.contains(&("strong.marker".into(), 0, 7, 2)),
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -506,7 +723,10 @@ mod tests {
         let found = spans("🎉 `code`\n");
         assert!(found.iter().any(|s| s.0 == "code" && s.1 == 0), "{found:?}");
         let code = found.iter().find(|s| s.0 == "code").unwrap();
-        assert_eq!(code.2, 4, "the backtick sits after an emoji (2) and a space (1), plus its own tick");
+        assert_eq!(
+            code.2, 4,
+            "the backtick sits after an emoji (2) and a space (1), plus its own tick"
+        );
     }
 
     #[test]
@@ -525,8 +745,28 @@ mod tests {
             ("[[a page]]\n", "wikilink"),
         ] {
             let kinds = kinds_on(text, 0);
-            assert!(kinds.contains(&kind.to_string()), "{kind} missing in {kinds:?}");
+            assert!(
+                kinds.contains(&kind.to_string()),
+                "{kind} missing in {kinds:?}"
+            );
         }
+    }
+
+    #[test]
+    fn display_math_is_cut_at_its_line_ends() {
+        // `$$…$$` opens on one line and closes on another, so its range is not
+        // an offset into any single line — slicing it out of the opening line
+        // panics, and the release profile aborts on panic.
+        let found = spans("$$\nE=mc^2\n$$\n");
+        assert_eq!(
+            found,
+            vec![
+                ("math.marker".into(), 0, 0, 2),
+                ("math".into(), 1, 0, 6),
+                ("math.marker".into(), 2, 0, 2),
+            ],
+            "{found:?}"
+        );
     }
 
     #[test]
@@ -551,7 +791,12 @@ mod tests {
             let (line, start, len) = pair[0];
             let (next_line, next_start, _) = pair[1];
             if line == next_line {
-                assert!(start + len <= next_start, "overlap at line {line}: {:?} then {:?}", pair[0], pair[1]);
+                assert!(
+                    start + len <= next_start,
+                    "overlap at line {line}: {:?} then {:?}",
+                    pair[0],
+                    pair[1]
+                );
             }
         }
     }
@@ -561,6 +806,9 @@ mod tests {
         let found = spans("```rust\nlet x = 1;\n```\n");
         assert!(found.iter().any(|s| s.0 == "fence" && s.1 == 0));
         assert!(found.iter().any(|s| s.0 == "fence" && s.1 == 2));
-        assert!(!found.iter().any(|s| s.1 == 1), "the code itself keeps its own colouring: {found:?}");
+        assert!(
+            !found.iter().any(|s| s.1 == 1),
+            "the code itself keeps its own colouring: {found:?}"
+        );
     }
 }

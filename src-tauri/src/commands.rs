@@ -112,7 +112,9 @@ pub async fn list_heading_anchors(markdown: String) -> Result<Vec<HeadingAnchor>
 /// document and 24 ms for a 1.7 MB one, which is small but not nothing, and
 /// Monaco asks for this on every edit.
 #[tauri::command]
-pub async fn markdown_semantic_spans(content: String) -> Result<Vec<crate::semantic::SemanticSpan>, String> {
+pub async fn markdown_semantic_spans(
+    content: String,
+) -> Result<Vec<crate::semantic::SemanticSpan>, String> {
     tauri::async_runtime::spawn_blocking(move || Ok(crate::semantic::semantic_spans(&content)))
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
