@@ -15,6 +15,7 @@
 	import { listEnter, parseListItem } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
+	import { markdownTokenRules } from '../utils/editorTheme.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
 	import {
@@ -292,7 +293,7 @@
 			monaco.editor.defineTheme("app-theme-dark", {
 				base: "vs-dark",
 				inherit: true,
-				rules: [],
+				rules: markdownTokenRules('dark'),
 				colors: {
 					"editor.background": "#181818",
 					"menu.background": "#181818",
@@ -308,7 +309,7 @@
 			monaco.editor.defineTheme("app-theme-light", {
 				base: "vs",
 				inherit: true,
-				rules: [],
+				rules: markdownTokenRules('light'),
 				colors: {
 					"editor.background": "#FDFDFD",
 					"menu.background": "#FDFDFD",
