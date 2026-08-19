@@ -140,6 +140,12 @@ const SEMANTIC_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role, s
 	['strike', 'muted', 'strikethrough'],
 	['highlight', 'emphasis'],
 	['insert', 'emphasis', 'underline'],
+	// Bold and italic words. The same colours their `**` and `*` already carry,
+	// so an emphasis reads the same whether it stands in prose — where the
+	// grammar would have painted it anyway — or inside a link or heading, where
+	// the grammar leaves its text with no colour of its own.
+	['strong', 'emphasis', 'bold'],
+	['emph', 'emphasis', 'italic'],
 	['link', 'link'],
 	['image', 'link'],
 	// A formula body is set in italics, which is the one thing about it a colour
