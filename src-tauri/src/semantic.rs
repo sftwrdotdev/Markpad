@@ -583,6 +583,9 @@ fn app_syntax_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
 /// Not a second scanner: `find_math_spans` is the one `mask_math_spans` uses to
 /// decide what the frontend will typeset, so the editor colours exactly what
 /// KaTeX will render — including the code regions it refuses to look inside.
+///
+/// comrak's own math extension is off (`markdown_options`), so nothing else
+/// claims these ranges and the spans below are the only ones a formula gets.
 fn math_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
     let content = lines.join("\n");
     let regions = crate::markdown::code_region_ranges(&content);
@@ -613,12 +616,12 @@ fn math_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
             "math.marker",
             out,
         );
-        emit_byte_range(
+        emit_math_body(
             lines,
             &line_starts,
+            &content,
             start + delimiter,
             end - delimiter,
-            "math",
             out,
         );
         emit_byte_range(
@@ -630,6 +633,60 @@ fn math_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
             out,
         );
     }
+}
+
+/// The formula between the delimiters, control sequences apart from operands.
+///
+/// A control sequence is the markup *inside* a formula: `\frac` is to `a` and
+/// `b` what `##` is to a title, so it takes the same `marker` modifier and the
+/// same colour as the `$` around it. Braces, `_` and `^` deliberately stay with
+/// the operands. They are markup too, but colouring them as well leaves almost
+/// nothing in the operand colour and the command names stop standing out —
+/// which is where VS Code's `md-math` grammar lands too, by way of a default
+/// theme that gives its bracket and operator scopes no colour at all.
+///
+/// Every byte between the delimiters is covered, blanks included. That is not
+/// tidiness: a range no semantic token claims keeps the Monarch grammar's
+/// colour, and the grammar has never heard of `$` — it reads the `_` in
+/// `x_i + y_j` as an emphasis run and italicises the middle of the formula.
+/// Covering the body is what keeps Markdown syntax out of the maths.
+fn emit_math_body(
+    lines: &[&str],
+    line_starts: &[usize],
+    content: &str,
+    start: usize,
+    end: usize,
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
+    let bytes = content.as_bytes();
+    let mut at = start;
+    let mut operand = start;
+    while at < end {
+        if bytes[at] != b'\\' {
+            at += char_len(content, at);
+            continue;
+        }
+        // `\` and its letters (`\frac`, `\alpha`), or `\` and one other
+        // character — `\,` is a thin space and `\\` a line break, as much
+        // markup as the named ones.
+        let mut close = at + 1;
+        while close < end && bytes[close].is_ascii_alphabetic() {
+            close += 1;
+        }
+        if close == at + 1 && close < end {
+            close += char_len(content, close);
+        }
+        emit_byte_range(lines, line_starts, operand, at, "math", out);
+        emit_byte_range(lines, line_starts, at, close, "math.marker", out);
+        at = close;
+        operand = close;
+    }
+    emit_byte_range(lines, line_starts, operand, end, "math", out);
+}
+
+/// The length of the character at `byte`, which is always a boundary here.
+fn char_len(content: &str, byte: usize) -> usize {
+    content[byte..].chars().next().map_or(1, char::len_utf8)
 }
 
 /// A byte range over the whole document, as one `ByteSpan` per line it covers.
@@ -767,6 +824,52 @@ mod tests {
             ],
             "{found:?}"
         );
+    }
+
+    #[test]
+    fn a_control_sequence_is_the_markup_inside_a_formula() {
+        // `\frac` is to `a` and `b` what `##` is to a title, so it carries the
+        // same modifier. `\,` counts too: one non-letter after the backslash is
+        // a control sequence as much as a named one.
+        let found = spans("$\\frac{a}{b}\\,c$\n");
+        assert!(
+            found.contains(&("math.marker".into(), 0, 1, 5)),
+            "\\frac: {found:?}"
+        );
+        assert!(
+            found.contains(&("math".into(), 0, 6, 6)),
+            "braces: {found:?}"
+        );
+        assert!(
+            found.contains(&("math.marker".into(), 0, 12, 2)),
+            "thin space: {found:?}"
+        );
+    }
+
+    #[test]
+    fn braces_and_scripts_stay_with_the_operands() {
+        // Deliberate: they are markup too, but marking them as well leaves
+        // almost nothing in the operand colour and the command names stop
+        // standing out. Only the `$` is a marker on this line.
+        let found = spans("$x_i + y^{2}$\n");
+        let markers: Vec<_> = found.iter().filter(|s| s.0 == "math.marker").collect();
+        assert_eq!(markers.len(), 2, "{found:?}");
+        assert!(markers.iter().all(|s| s.3 == 1), "{found:?}");
+    }
+
+    #[test]
+    fn the_formula_body_is_covered_whole() {
+        // A range no semantic token claims keeps the Monarch grammar's colour,
+        // and the grammar reads the two `_` in `x_i + y_j` as an emphasis run.
+        // Gapless coverage is what keeps Markdown syntax out of the maths.
+        let line = "$x_i + y_j \\alpha {z}$";
+        let found = spans(&format!("{line}\n"));
+        let mut at = 0;
+        for (kind, _, start, len) in &found {
+            assert_eq!(*start, at, "gap before {kind} at {start}: {found:?}");
+            at = start + len;
+        }
+        assert_eq!(at as usize, line.encode_utf16().count(), "{found:?}");
     }
 
     #[test]
