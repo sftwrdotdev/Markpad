@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TokenTheme, parseTokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
+
 import { semanticTokenRules } from '../src/lib/utils/editorTheme.js';
+import { importedThemeRules } from '../src/lib/utils/theme.js';
 import { TOKEN_MODIFIERS, TOKEN_TYPES, encodeSemanticTokens } from '../src/lib/utils/semanticTokens.js';
 import { readRustBackend, readSource } from './sourceTree.js';
 
@@ -97,4 +100,35 @@ test('the editor turns the layer on, because the default is off', () => {
 	const editor = readSource('src/lib/components/Editor.svelte');
 	assert.match(editor, /'semanticHighlighting\.enabled': true/);
 	assert.match(editor, /registerDocumentSemanticTokensProvider\(/);
+});
+
+test('no kind falls through to an imported theme that has nothing to say', () => {
+	// The failure this guards is silent and total. A semantic token whose type
+	// the theme does not name resolves to the theme's *root* rule, whose
+	// foreground is a real colour id rather than "none"
+	// (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)`
+	// branch), and `sparseTokensStore` then masks the grammar's colour out and
+	// paints that plain default over it. An imported theme lost its heading,
+	// link, quote and inline-code colours to this path the moment the semantic
+	// layer shipped, and nothing in either file said so.
+	const rust = readRustBackend();
+	const emitted = [
+		...new Set([...rust.matchAll(/"([a-z]+(?:\.marker)?)"\s*,?\s*out\s*\)/g)].map((match) => match[1])),
+	];
+	assert.ok(emitted.length > 0, 'the extractor must still name its kinds as literals');
+
+	const rules = importedThemeRules(
+		[{ scope: 'markup.bold', settings: { foreground: '#e06c75', fontStyle: 'bold' } }],
+		true,
+	);
+	// `base: 'vs-dark'` with `inherit: true` contributes the default foreground
+	// that every unmatched token resolves to.
+	const theme = TokenTheme.createFromParsedTokenTheme(
+		parseTokenTheme([{ token: '', foreground: '#d4d4d4', background: '#1e1e1e' }, ...rules]),
+		[],
+	);
+	const fallthrough = theme._match('a-token-no-rule-names').metadata;
+
+	const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
+	assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
 });

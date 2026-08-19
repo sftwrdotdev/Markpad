@@ -1,3 +1,5 @@
+import { semanticTokenRules } from './editorTheme.js';
+
 // Values taken from an imported VS Code theme end up concatenated into a global
 // `<style>` block. Anything that is not a colour literal could close the rule and
 // open a new one (`#fff; } * { display:none; background-image:url(https://evil) } :root {`),
@@ -71,6 +73,24 @@ export function sanitizeThemeColors(colors: unknown): Record<string, string> {
 export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: string };
 
 /**
+ * Every rule an imported theme's editor gets, semantic layer included.
+ *
+ * The app's own semantic rules go first and the theme's on top, because Monaco
+ * merges same-named rules in array order and the theme has to win wherever it
+ * has an opinion. First is not a default in the ordinary sense, though — it is
+ * what keeps the layer from erasing the theme. A semantic token whose type the
+ * theme does not name resolves to the theme's *root* rule, whose foreground is
+ * a real colour id rather than "none", and `sparseTokensStore` then masks the
+ * grammar's colour out and paints the plain default over it
+ * (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)` branch).
+ * Before this, an imported theme lost its heading, link, quote and inline-code
+ * colours to that path the moment the semantic layer shipped.
+ */
+export function importedThemeRules(tokenColors: unknown, isDark: boolean): MonacoTokenRule[] {
+	return [...semanticTokenRules(isDark ? 'dark' : 'light'), ...monacoTokenRules(tokenColors)];
+}
+
+/**
  * The Monaco token names a TextMate scope has to be renamed to before it can
  * colour anything in the editor.
  *
@@ -83,18 +103,33 @@ export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: 
  * which is why the reporter saw *some* of their theme arrive and concluded the
  * rest was unstyleable.
  *
- * Only the four that Monaco actually emits are here. `~~strikethrough~~`,
- * `==highlight==` and `++insert++` are absent from the tokenizer entirely
- * (`basic-languages/markdown/markdown.js` never leaves `linecontent` for
- * them), so no rename reaches them; colouring those means owning a fork of the
- * grammar, and the preview renders all three today.
+ * There are now two sets of names to reach, not one. The grammar's are still
+ * here, and beside them the construct names the semantic layer answers under
+ * (`utils/semanticTokens.ts`) — which is how a scope reaches `~~strikethrough~~`
+ * at last: Monaco's tokenizer never leaves `linecontent` for it, but the
+ * renderer's parse sees it, and a theme rule on `strike` styles what the parse
+ * reports. The two spellings rarely coincide: the grammar calls italics
+ * `emphasis` and the parse calls it `emph`, one letter apart and no match
+ * between them.
+ *
+ * A construct with no `markup.*` scope of its own — a task checkbox, a table,
+ * a wikilink, maths — is not listed and does not need to be: `importedThemeRules`
+ * gives every legend entry a rule before these are applied, so an unlisted one
+ * takes the app's own colour rather than the theme's default foreground.
  */
-const MARKDOWN_SCOPE_ALIASES: Record<string, string> = {
-	'markup.bold': 'strong',
-	'markup.italic': 'emphasis',
-	'markup.inline.raw': 'variable',
-	'markup.raw.inline': 'variable',
-	'markup.underline.link': 'string.link',
+const MARKDOWN_SCOPE_ALIASES: Record<string, readonly string[]> = {
+	'markup.bold': ['strong'],
+	'markup.italic': ['emphasis', 'emph'],
+	'markup.inline.raw': ['variable', 'code'],
+	'markup.raw.inline': ['variable', 'code'],
+	'markup.underline.link': ['string.link', 'link'],
+	'markup.heading': ['heading'],
+	'entity.name.section': ['heading'],
+	'markup.strikethrough': ['strike'],
+	'markup.quote': ['quote'],
+	'markup.list': ['list'],
+	'markup.fenced_code': ['fence'],
+	'meta.separator': ['rule'],
 };
 
 /**
@@ -103,11 +138,11 @@ const MARKDOWN_SCOPE_ALIASES: Record<string, string> = {
  * miss most of the themes it exists for. The trailing dot keeps
  * `markup.underline` from being read as `markup.underline.link`.
  */
-function markdownTokenFor(scope: string): string | undefined {
-	for (const [tmScope, token] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
-		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) return token;
+function markdownTokensFor(scope: string): readonly string[] {
+	for (const [tmScope, tokens] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
+		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) return tokens;
 	}
-	return undefined;
+	return [];
 }
 
 /**
@@ -140,12 +175,13 @@ export function monacoTokenRules(tokenColors: unknown): MonacoTokenRule[] {
 					fontStyle: item.settings.fontStyle,
 				};
 				rules.push(rule);
-				const alias = markdownTokenFor(trimmed);
 				// `fontStyle` is carried over, and its absence is not "regular":
 				// Monaco reads a missing one as NotSet and leaves the base
 				// theme's `strong: bold` / `emphasis: italic` standing, so a
 				// colour-only rule adds colour without flattening the text.
-				if (alias) rules.push({ ...rule, token: alias });
+				for (const alias of markdownTokensFor(trimmed)) {
+					rules.push({ ...rule, token: alias });
+				}
 			}
 		}
 	}
@@ -236,7 +272,7 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 		// editor, so the dynamic import resolves from cache).
 		const monaco = await import('monaco-editor');
 		if (monaco) {
-			const rules = monacoTokenRules(theme.tokenColors);
+			const rules = importedThemeRules(theme.tokenColors, isDark);
 
 			// Monaco only understands hex colours here; anything else makes
 			// `defineTheme` throw and drops the whole editor theme.

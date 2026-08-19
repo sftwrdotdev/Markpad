@@ -63,3 +63,29 @@ test('an unusable entry is dropped rather than passed to defineTheme', () => {
 	assert.deepEqual(tokens([{ settings: { foreground: '#ff0000' } }]), []);
 	assert.deepEqual(tokens(undefined), []);
 });
+
+test('an imported theme reaches the semantic names too, not only the grammar ones', () => {
+	// The grammar calls italics `emphasis` and the renderer's parse calls it
+	// `emph`; a scope that stopped at the first spelling would leave the second
+	// unstyled. `~~strikethrough~~` has no grammar name at all, so `strike` is
+	// the only way a theme can colour it — which is the half of #676 that could
+	// not be answered until the parse drove the colours.
+	const byToken = new Map(
+		rulesFor([
+			{ scope: 'markup.italic', settings: { foreground: '#00ff00' } },
+			{ scope: 'markup.strikethrough', settings: { foreground: '#888888' } },
+			{ scope: 'markup.heading', settings: { foreground: '#61afef' } },
+			{ scope: 'markup.inline.raw', settings: { foreground: '#98c379' } },
+			{ scope: 'markup.underline.link', settings: { foreground: '#56b6c2' } },
+			{ scope: 'markup.quote', settings: { foreground: '#5c6370' } },
+		]).map((rule) => [rule.token, rule.foreground]),
+	);
+	assert.equal(byToken.get('emph'), '00ff00');
+	assert.equal(byToken.get('emphasis'), '00ff00');
+	assert.equal(byToken.get('strike'), '888888');
+	assert.equal(byToken.get('heading'), '61afef');
+	assert.equal(byToken.get('code'), '98c379');
+	assert.equal(byToken.get('link'), '56b6c2');
+	assert.equal(byToken.get('quote'), '5c6370');
+});
+
