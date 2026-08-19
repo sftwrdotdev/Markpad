@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { TokenTheme, parseTokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
+
 import { semanticTokenRules } from '../src/lib/utils/editorTheme.js';
+import { MARKDOWN_SCOPE_ALIASES, importedThemeRules } from '../src/lib/utils/theme.js';
 import { TOKEN_MODIFIERS, TOKEN_TYPES, encodeSemanticTokens } from '../src/lib/utils/semanticTokens.js';
 import { readRustBackend, readSource } from './sourceTree.js';
 
@@ -97,4 +100,82 @@ test('the editor turns the layer on, because the default is off', () => {
 	const editor = readSource('src/lib/components/Editor.svelte');
 	assert.match(editor, /'semanticHighlighting\.enabled': true/);
 	assert.match(editor, /registerDocumentSemanticTokensProvider\(/);
+});
+
+test('no kind falls through to an imported theme that has nothing to say', () => {
+	// The failure this guards is silent and total. A semantic token whose type
+	// the theme does not name resolves to the theme's *root* rule, whose
+	// foreground is a real colour id rather than "none"
+	// (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)`
+	// branch), and `sparseTokensStore` then masks the grammar's colour out and
+	// paints that plain default over it. An imported theme lost its heading,
+	// link, quote and inline-code colours to this path the moment the semantic
+	// layer shipped, and nothing in either file said so.
+	const rust = readRustBackend();
+	const emitted = [
+		...new Set([...rust.matchAll(/"([a-z]+(?:\.marker)?)"\s*,?\s*out\s*\)/g)].map((match) => match[1])),
+	];
+	assert.ok(emitted.length > 0, 'the extractor must still name its kinds as literals');
+
+	const rules = importedThemeRules(
+		[{ scope: 'markup.bold', settings: { foreground: '#e06c75', fontStyle: 'bold' } }],
+		true,
+	);
+	// `base: 'vs-dark'` with `inherit: true` contributes the default foreground
+	// that every unmatched token resolves to.
+	const theme = TokenTheme.createFromParsedTokenTheme(
+		parseTokenTheme([{ token: '', foreground: '#d4d4d4', background: '#1e1e1e' }, ...rules]),
+		[],
+	);
+	const fallthrough = theme._match('a-token-no-rule-names').metadata;
+
+	const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
+	assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
+});
+
+test('a theme that colours a construct colours all of it, markers included', () => {
+	// Rules are sorted by name, and a child node is cloned from its parent at the
+	// moment it is created. The app's base carries `strike.marker`, which sorts
+	// after the theme's `strike`, so an alias that stopped at the content left
+	// the theme colouring a word and the app colouring the `~~` on either side of
+	// it — one construct in two greys, and the same for `##` against its title.
+	//
+	// Driven off the alias table rather than a list written out here: the failure
+	// arrives when the app names a *longer* token than the alias does, so a new
+	// entry is exactly the case that would otherwise go unchecked.
+	// A colour per *kind*, not per scope: two scopes can name the same construct
+	// (`markup.inline.raw` and `markup.raw.inline` are both inline code), and
+	// giving those two different colours would only test which one sorts last.
+	// Distinct across kinds is what catches a rule landing on the wrong one.
+	const kinds = [...new Set(Object.values(MARKDOWN_SCOPE_ALIASES).map((alias) => alias.kind))];
+	const colourOf = (kind: string) =>
+		`#${(kinds.indexOf(kind) + 1).toString(16).padStart(2, '0').repeat(3)}`;
+	const scopes = Object.entries(MARKDOWN_SCOPE_ALIASES).map(([scope, alias], index) => ({
+		// Every other one language-qualified, which is the commoner spelling in
+		// real themes and reaches the alias lookup by its prefix rule rather
+		// than by an exact hit.
+		scope: index % 2 ? `${scope}.markdown` : scope,
+		kind: alias.kind,
+		foreground: colourOf(alias.kind),
+	}));
+
+	const theme = TokenTheme.createFromParsedTokenTheme(
+		parseTokenTheme([
+			{ token: '', foreground: '#e6e6e6', background: '#12141a' },
+			...importedThemeRules(
+				scopes.map(({ scope, foreground }) => ({ scope, settings: { foreground } })),
+				true,
+			),
+		]),
+		[],
+	);
+	const colours = theme.getColorMap();
+	// The map holds Monaco `Color` objects; their string form is the hex.
+	const foregroundOf = (token: string) =>
+		String(colours[(theme._match(token).metadata >>> 15) & 511]).toLowerCase();
+
+	for (const { scope, kind, foreground } of scopes) {
+		assert.equal(foregroundOf(kind), foreground, `${scope} must reach ${kind}`);
+		assert.equal(foregroundOf(`${kind}.marker`), foreground, `${scope} must reach ${kind}.marker`);
+	}
 });

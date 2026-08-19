@@ -257,3 +257,33 @@ declare module 'monaco-editor/esm/vs/editor/common/core/wordCharacterClassifier.
 		intlSegmenterLocales: readonly string[],
 	): WordCharacterClassifier;
 }
+
+// The theme trie, for `semanticTokens.test.ts`. It is where a semantic token's
+// colour is actually decided — `_match` walking the token name and falling back
+// to the parent rule — so the test asks Monaco rather than re-implementing the
+// lookup and agreeing with itself.
+declare module 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js' {
+	/** Opaque here: the test only passes these from `parseTokenTheme` to `TokenTheme`. */
+	export type ParsedThemeRule = unknown;
+
+	/** `metadata` packs the foreground colour id and the font-style bits. */
+	export interface ResolvedRule {
+		readonly metadata: number;
+	}
+
+	export function parseTokenTheme(
+		source: ReadonlyArray<{ token: string; foreground?: string; background?: string; fontStyle?: string }>,
+	): ParsedThemeRule[];
+
+	export const TokenTheme: {
+		createFromParsedTokenTheme(
+			source: ParsedThemeRule[],
+			customTokenColors: string[],
+		): {
+			/** The rule a token name resolves to, or its nearest ancestor's. */
+			_match(token: string): ResolvedRule;
+			/** Indexed by the colour id `metadata` carries; entries stringify to hex. */
+			getColorMap(): readonly unknown[];
+		};
+	};
+}
