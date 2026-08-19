@@ -15,7 +15,8 @@
 	import { listEnter, parseListItem } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
-	import { markdownTokenRules } from '../utils/editorTheme.js';
+	import { markdownTokenRules, semanticTokenRules } from '../utils/editorTheme.js';
+	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
 	import {
@@ -293,7 +294,7 @@
 			monaco.editor.defineTheme("app-theme-dark", {
 				base: "vs-dark",
 				inherit: true,
-				rules: markdownTokenRules('dark'),
+				rules: [...markdownTokenRules('dark'), ...semanticTokenRules('dark')],
 				colors: {
 					"editor.background": "#181818",
 					"menu.background": "#181818",
@@ -309,7 +310,7 @@
 			monaco.editor.defineTheme("app-theme-light", {
 				base: "vs",
 				inherit: true,
-				rules: markdownTokenRules('light'),
+				rules: [...markdownTokenRules('light'), ...semanticTokenRules('light')],
 				colors: {
 					"editor.background": "#FDFDFD",
 					"menu.background": "#FDFDFD",
@@ -365,6 +366,10 @@
 			theme: getTheme(),
 			dragAndDrop: true,
 			automaticLayout: true,
+			// Off by default, and `'configuredByTheme'` cannot turn it on here:
+			// `StandaloneTheme.semanticHighlighting` is hard-coded false, so the
+			// switch has to be explicit or the provider above is never asked.
+			'semanticHighlighting.enabled': true,
 			// The settings-derived options, shared with the updateOptions
 			// effect below. Zoom is 100 here and not `zoomLevel`: that is
 			// what this literal has always passed, and the effect re-applies
@@ -617,6 +622,15 @@
 		}
 	}
 
+	// The colours that come from the renderer rather than from the grammar's
+	// regexes (`utils/semanticTokens.ts`). Registered once per editor, beside the
+	// completion provider, and disposed with it.
+	const { provider: semanticTokensProvider } = createMarkdownSemanticTokensProvider(monaco);
+	const semanticTokens = monaco.languages.registerDocumentSemanticTokensProvider(
+		MARKDOWN_LANGUAGE_ID,
+		semanticTokensProvider,
+	);
+
 	const completionProvider = monaco.languages.registerCompletionItemProvider(
 			"markdown",
 			{
@@ -837,6 +851,7 @@
 			mediaQuery.removeEventListener("change", updateTheme);
 			container.removeEventListener("wheel", wheelListener, { capture: true });
 			completionProvider.dispose();
+			semanticTokens.dispose();
 			// The keybinding rules are global to the Monaco module, not to this
 			// editor, so they are disposed with it rather than left to pile up one
 			// copy per mount — this component is rebuilt every time a tab goes to

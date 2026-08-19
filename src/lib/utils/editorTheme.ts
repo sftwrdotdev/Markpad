@@ -95,10 +95,73 @@ const MARKDOWN_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role]> 
 	['emphasis.md', 'emphasis'],
 ];
 
-export type EditorTokenRule = { token: string; foreground: string };
+/**
+ * The semantic layer's rules (`utils/semanticTokens.ts`).
+ *
+ * Two things differ from the grammar rules above, both forced by how Monaco
+ * styles a semantic token. `standaloneThemeService.getTokenStyleMetadata`
+ * reports bold and italic as booleans rather than "not set", so a semantic
+ * token always *claims* those bits — a rule without `fontStyle` would switch
+ * off the bold the base theme gives `strong`. Every rule covering something
+ * bold, italic or struck through therefore says so.
+ *
+ * And the names are the construct's, not the grammar's: `heading.marker` is the
+ * token type `heading` plus its `marker` modifier, joined with a dot the way
+ * Monaco joins them before matching.
+ */
+const SEMANTIC_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role, style?: string]> = [
+	// Markup characters. The same colour the grammar gives block markup, so the
+	// two layers agree while a parse is in flight and nothing shifts under the
+	// reader when the answer arrives.
+	['heading.marker', 'accent'],
+	['list.marker', 'accent'],
+	['task.marker', 'accent'],
+	['quote.marker', 'accent'],
+	['table.marker', 'accent'],
+	['rule', 'accent'],
+	['fence', 'code'],
+	['frontmatter', 'muted'],
+	['code.marker', 'code'],
+	['strong.marker', 'emphasis', 'bold'],
+	['emph.marker', 'emphasis', 'italic'],
+	['strike.marker', 'muted'],
+	['highlight.marker', 'emphasis'],
+	['insert.marker', 'emphasis'],
+	['link.marker', 'link'],
+	['image.marker', 'link'],
+	['math.marker', 'code'],
+	['wikilink.marker', 'link'],
+	// The content the markup is about.
+	['heading', 'accent', 'bold'],
+	['code', 'code'],
+	['strike', 'muted', 'strikethrough'],
+	['highlight', 'emphasis'],
+	['insert', 'emphasis', 'underline'],
+	['link', 'link'],
+	['image', 'link'],
+	['math', 'code'],
+	['wikilink', 'link'],
+	['footnote', 'link'],
+	['html', 'muted'],
+];
+
+export type EditorTokenRule = { token: string; foreground: string; fontStyle?: string };
 
 /** The `rules` for one of the two built-in themes. */
 export function markdownTokenRules(appearance: 'light' | 'dark'): EditorTokenRule[] {
 	const palette = PALETTE[appearance];
 	return MARKDOWN_TOKEN_ROLES.map(([token, role]) => ({ token, foreground: palette[role] }));
+}
+
+/**
+ * The `rules` for the semantic layer, kept apart from the grammar's because the
+ * two answer to different contracts — `.md`-scoped names and inherited font
+ * styles there, construct names and explicit font styles here — and a test that
+ * holds one to the other's rules would have to be weakened to pass both.
+ */
+export function semanticTokenRules(appearance: 'light' | 'dark'): EditorTokenRule[] {
+	const palette = PALETTE[appearance];
+	return SEMANTIC_TOKEN_ROLES.map(([token, role, fontStyle]) =>
+		fontStyle ? { token, foreground: palette[role], fontStyle } : { token, foreground: palette[role] },
+	);
 }

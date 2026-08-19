@@ -94,7 +94,7 @@ fn escape_html_attribute(value: &str) -> String {
 /// the editor's link completion — has to parse it the same way the renderer
 /// does, or it reports ids for headings the renderer never made and misses the
 /// ones it did.
-fn markdown_options<'a>() -> Options<'a> {
+pub(crate) fn markdown_options<'a>() -> Options<'a> {
     let mut options = Options::default();
     options.extension.strikethrough = true;
     options.extension.table = true;
@@ -268,7 +268,7 @@ fn wikilink_file_destination(path: &str) -> Option<String> {
 /// a second pass afterwards, which left the vector unsorted for any document
 /// containing both, and made a single `sort_unstable()` call the only thing
 /// standing between the search and a wrong answer.
-fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
+pub(crate) fn code_region_ranges(content: &str) -> Vec<(usize, usize)> {
     let len = content.len();
     let mut regions: Vec<(usize, usize)> = Vec::new();
     // (fence char, opener run length, region start)
@@ -986,7 +986,7 @@ fn line_bounds(content: &str, at: usize) -> (usize, usize) {
 /// Recognising a span here that the frontend will not render would strip the
 /// Markdown out of ordinary prose; recognising less would leave the formula
 /// mangled — so the rules have to be the same rules.
-fn find_math_spans(content: &str, regions: &[(usize, usize)]) -> Vec<(usize, usize)> {
+pub(crate) fn find_math_spans(content: &str, regions: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let bytes = content.as_bytes();
     let mut spans: Vec<(usize, usize)> = Vec::new();
     let mut barrier = 0usize;
