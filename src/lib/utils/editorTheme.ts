@@ -79,6 +79,15 @@ const MARKDOWN_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role]> 
 	// thing here quiet enough to recede.
 	['escape.md', 'muted'],
 	['string.escape.md', 'muted'],
+	// Inline HTML is the escape hatch: someone dropped a tag in because Markdown
+	// could not say it. Monaco's defaults paint it as source code — a maroon tag
+	// name, a red attribute — which makes the one thing in the document that is
+	// not Markdown the loudest thing on the line. It recedes instead.
+	['tag.md', 'muted'],
+	['attribute.name.html.md', 'muted'],
+	['delimiter.html.md', 'muted'],
+	['string.html.md', 'muted'],
+	['comment.content.md', 'muted'],
 	// Bold and italic keep the font style the base theme gives them — no
 	// `fontStyle` here, which Monaco reads as "leave it alone" rather than as
 	// "regular", and both get a colour for the first time.
