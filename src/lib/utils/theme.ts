@@ -117,19 +117,19 @@ export function importedThemeRules(tokenColors: unknown, isDark: boolean): Monac
  * gives every legend entry a rule before these are applied, so an unlisted one
  * takes the app's own colour rather than the theme's default foreground.
  */
-const MARKDOWN_SCOPE_ALIASES: Record<string, readonly string[]> = {
-	'markup.bold': ['strong'],
-	'markup.italic': ['emphasis', 'emph'],
-	'markup.inline.raw': ['variable', 'code'],
-	'markup.raw.inline': ['variable', 'code'],
-	'markup.underline.link': ['string.link', 'link'],
-	'markup.heading': ['heading'],
-	'entity.name.section': ['heading'],
-	'markup.strikethrough': ['strike'],
-	'markup.quote': ['quote'],
-	'markup.list': ['list'],
-	'markup.fenced_code': ['fence'],
-	'meta.separator': ['rule'],
+const MARKDOWN_SCOPE_ALIASES: Record<string, { readonly grammar: readonly string[]; readonly kind: string }> = {
+	'markup.bold': { grammar: [], kind: 'strong' },
+	'markup.italic': { grammar: ['emphasis'], kind: 'emph' },
+	'markup.inline.raw': { grammar: ['variable'], kind: 'code' },
+	'markup.raw.inline': { grammar: ['variable'], kind: 'code' },
+	'markup.underline.link': { grammar: ['string.link'], kind: 'link' },
+	'markup.heading': { grammar: [], kind: 'heading' },
+	'entity.name.section': { grammar: [], kind: 'heading' },
+	'markup.strikethrough': { grammar: [], kind: 'strike' },
+	'markup.quote': { grammar: [], kind: 'quote' },
+	'markup.list': { grammar: [], kind: 'list' },
+	'markup.fenced_code': { grammar: [], kind: 'fence' },
+	'meta.separator': { grammar: [], kind: 'rule' },
 };
 
 /**
@@ -139,8 +139,15 @@ const MARKDOWN_SCOPE_ALIASES: Record<string, readonly string[]> = {
  * `markup.underline` from being read as `markup.underline.link`.
  */
 function markdownTokensFor(scope: string): readonly string[] {
-	for (const [tmScope, tokens] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
-		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) return tokens;
+	for (const [tmScope, alias] of Object.entries(MARKDOWN_SCOPE_ALIASES)) {
+		if (scope === tmScope || scope.startsWith(`${tmScope}.`)) {
+			// The marker as well as the content. Not a nicety: the app's base
+			// carries `strike.marker`, which is *longer* than the theme's
+			// `strike` and therefore inserted after it, so without a rule of its
+			// own the theme would colour a word and leave the app colouring the
+			// `~~` on either side of it. One construct, two greys.
+			return [...alias.grammar, alias.kind, `${alias.kind}.marker`];
+		}
 	}
 	return [];
 }

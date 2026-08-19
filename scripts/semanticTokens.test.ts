@@ -132,3 +132,42 @@ test('no kind falls through to an imported theme that has nothing to say', () =>
 	const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
 	assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
 });
+
+test('a theme that colours a construct colours all of it, markers included', () => {
+	// Rules are inserted longest-last, and a child node is cloned from its parent
+	// at the moment it is created. The app's base carries `strike.marker`, which
+	// sorts after the theme's `strike`, so an alias that stopped at the content
+	// left the theme colouring a word and the app colouring the `~~` on either
+	// side of it — one construct in two greys, and the same for `##` against its
+	// title, `[` against its link text, and the `*` around an emphasis.
+	const scopes = [
+		['markup.heading', '#ff5f5f', 'heading'],
+		['markup.bold', '#ffd166', 'strong'],
+		['markup.italic', '#06d6a0', 'emph'],
+		['markup.strikethrough', '#8d99ae', 'strike'],
+		['markup.inline.raw', '#b388ff', 'code'],
+		['markup.underline.link', '#4cc9f0', 'link'],
+		['markup.quote', '#f72585', 'quote'],
+		['markup.list', '#fb8500', 'list'],
+	] as const;
+
+	const theme = TokenTheme.createFromParsedTokenTheme(
+		parseTokenTheme([
+			{ token: '', foreground: '#e6e6e6', background: '#12141a' },
+			...importedThemeRules(
+				scopes.map(([scope, foreground]) => ({ scope, settings: { foreground } })),
+				true,
+			),
+		]),
+		[],
+	);
+	const colours = theme.getColorMap();
+	// The map holds Monaco `Color` objects; their string form is the hex.
+	const foregroundOf = (token: string) =>
+		String(colours[(theme._match(token).metadata >>> 15) & 511]).toLowerCase();
+
+	for (const [scope, foreground, kind] of scopes) {
+		assert.equal(foregroundOf(kind), foreground, `${scope} must reach ${kind}`);
+		assert.equal(foregroundOf(`${kind}.marker`), foreground, `${scope} must reach ${kind}.marker`);
+	}
+});

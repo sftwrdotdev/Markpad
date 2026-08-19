@@ -282,6 +282,8 @@ declare module 'monaco-editor/esm/vs/editor/common/languages/supports/tokenizati
 		): {
 			/** The rule a token name resolves to, or its nearest ancestor's. */
 			_match(token: string): ResolvedRule;
+			/** Indexed by the colour id `metadata` carries; entries stringify to hex. */
+			getColorMap(): readonly unknown[];
 		};
 	};
 }
