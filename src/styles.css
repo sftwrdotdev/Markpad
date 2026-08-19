@@ -748,7 +748,15 @@ body {
 	font-weight: 600;
 	line-height: 1.25;
 	display: flex;
-	align-items: flex-start;
+	/* A heading is a flex container so the fold chevron can sit beside its text,
+	   which makes every element inside it a flex item — an inline `<code>`, an
+	   image, a KaTeX span. `flex-start` then pins each of them to the top of the
+	   line instead of standing them on the text's baseline, and the smaller the
+	   element the further it floats: #681 reported inline code in a heading
+	   riding above the words around it. `baseline` is what inline layout would
+	   have done. The chevron is unaffected — it is positioned in its own rule
+	   below — so this changes nothing but the alignment of real content. */
+	align-items: baseline;
 	position: relative;
 }
 
