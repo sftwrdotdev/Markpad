@@ -85,7 +85,11 @@ test('nothing evaluates the pair any more', () => {
 	assert.match(viewerSource, /if \(!settings\.autoSave\) return;/); // leaving an editable pane
 	assert.match(viewerSource, /if \(!settings\.autoSave\) \{/); // the debounce
 	assert.match(viewerSource, /if \(settings\.autoSave\) \{/); // the close-window walk
-	assert.match(sessionSource, /if \(settings\.autoSave && tab\.path !== ''\)/); // closing a tab
+	// Closing a tab. The condition grew a third term — a file that changed
+	// under the buffer is a question for the user, not something auto-save may
+	// answer by writing — but it is still this one switch that decides whether
+	// the silent save happens at all.
+	assert.match(sessionSource, /if \(settings\.autoSave && tab\.path !== '' && !diskMoved\)/);
 });
 
 /* ---------------------------------------------- B & C: visible dependency */

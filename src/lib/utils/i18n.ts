@@ -306,7 +306,11 @@ export const translations: Record<LanguageCode, Translation> = {
         externalChange: {
             message: 'This file changed on disk while you had unsaved changes.',
             reload: 'Reload from disk',
-            keepMine: 'Keep my version'
+            keepMine: 'Keep my version',
+            compare: 'Compare',
+            onDisk: 'On disk',
+            mine: 'Your version',
+            close: 'Close'
         },
         modal: {
             confirmExit: 'Confirm Exit',
@@ -673,7 +677,11 @@ export const translations: Record<LanguageCode, Translation> = {
         externalChange: {
             message: '此文件在你有未保存修改时被外部程序改动。',
             reload: '从磁盘重新加载',
-            keepMine: '保留我的版本'
+            keepMine: '保留我的版本',
+            compare: '对比',
+            onDisk: '磁盘上的版本',
+            mine: '我的版本',
+            close: '关闭'
         },
         modal: {
             confirmExit: '确认退出',
@@ -1320,7 +1328,11 @@ export const translations: Record<LanguageCode, Translation> = {
         externalChange: {
             message: '當您有未儲存的變更時，此檔案在磁碟上已被修改。',
             reload: '從磁碟重新讀取',
-            keepMine: '保留我的版本'
+            keepMine: '保留我的版本',
+            compare: '比對',
+            onDisk: '磁碟上的版本',
+            mine: '我的版本',
+            close: '關閉'
         },
         modal: {
             confirmExit: '確認結束',

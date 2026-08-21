@@ -9,6 +9,7 @@
 	import { open, save, ask } from '@tauri-apps/plugin-dialog';
 	import Settings from './components/Settings.svelte';
 	import TitleBar from './components/TitleBar.svelte';
+	import DiffOverlay from './components/DiffOverlay.svelte';
 	import Editor from './components/Editor.svelte';
 	import EditorToolbar from './components/EditorToolbar.svelte';
 	import Modal from './components/Modal.svelte';
@@ -783,12 +784,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		},
 		onDiskChangedUnderSave: noteExternalChangeConflict,
 		cancelPendingAutoSave,
-		askClose: (title) =>
-			askCustom(t('modal.youHaveUnsavedChanges', settings.language).replace('{title}', title), {
-				title: t('modal.unsavedChanges', settings.language),
-				kind: 'warning',
-				showSave: true,
-			}),
+		// Two questions, one dialog. With the file untouched, Save means "write
+		// what I typed" and the ordinary wording is right. With the disk moved
+		// under the buffer, Save means "overwrite what somebody else wrote", and
+		// saying "you have unsaved changes" would hide the half that matters.
+		// The changed-on-disk sentence is the same one the conflict bar uses,
+		// because it is the same news.
+		askClose: (title, diskMoved) =>
+			askCustom(
+				diskMoved
+					? t('externalChange.message', settings.language)
+					: t('modal.youHaveUnsavedChanges', settings.language).replace('{title}', title),
+				{
+					title: t('modal.unsavedChanges', settings.language),
+					kind: 'warning',
+					showSave: true,
+				},
+			),
 		onCloseSaveNewerEdits: () => addToast(t('toast.savedNewerEdits', settings.language), 'info'),
 		onCloseAutoSaveFailed: () => addToast(t('toast.autoSaveFailed', settings.language), 'error'),
 		// Not an error: the copy is the way out of a partial buffer, and it was
@@ -2020,6 +2032,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function resolveExternalChangeByReloading() {
 		const tab = tabManager.activeTab;
 		if (!tab?.path) return;
+		comparison = null;
 		clearExternalChangeConflict(tab.id);
 		await loadMarkdown(tab.path, {
 			preserveEditState: true,
@@ -2033,6 +2046,33 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		});
 	}
 
+	/**
+	 * The two versions the conflict bar is asking about, once the user has
+	 * asked to see them.
+	 *
+	 * Read on demand rather than kept alongside the flag: the bar can stand for
+	 * a while, and what matters is what the file says when the question is
+	 * actually being answered, not what it said when it was raised.
+	 */
+	let comparison = $state<{ onDisk: string; mine: string; language: string } | null>(null);
+
+	/** "Compare": show what Reload would replace, before it is irreversible. */
+	async function compareExternalChange() {
+		const tab = tabManager.activeTab;
+		if (!tab?.path) return;
+		try {
+			const [onDisk] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
+			comparison = {
+				onDisk,
+				mine: tab.rawContent,
+				language: getLanguage(tab.path),
+			};
+		} catch (error) {
+			console.error('Failed to read the file for comparison', error);
+			addToast(`${t('externalChange.compare', settings.language)}: ${String(error)}`, 'error');
+		}
+	}
+
 	/** "Keep my version": dismiss. The buffer stays dirty and saveable. */
 	function resolveExternalChangeByKeepingBuffer() {
 		const id = tabManager.activeTabId;
@@ -2042,6 +2082,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// changed file. One save only — a third program writing a minute later
 		// is a new question, and the user has not answered that one.
 		documentSession.allowOverwriteOnce(id);
+		comparison = null;
 		clearExternalChangeConflict(id);
 	}
 
@@ -3638,6 +3679,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	{#if activeExternalChangeConflict && !showHome}
 		<div class="external-change-bar" role="status">
 			<span class="external-change-text">{t('externalChange.message', settings.language)}</span>
+			<button class="external-change-action" onclick={compareExternalChange}>
+				{t('externalChange.compare', settings.language)}
+			</button>
 			<button class="external-change-action" onclick={resolveExternalChangeByReloading}>
 				{t('externalChange.reload', settings.language)}
 			</button>
@@ -3646,6 +3690,22 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			</button>
 		</div>
 	{/if}
+
+	<DiffOverlay
+		show={comparison !== null}
+		onDisk={comparison?.onDisk ?? ''}
+		mine={comparison?.mine ?? ''}
+		language={comparison?.language ?? 'markdown'}
+		labels={{
+			onDisk: t('externalChange.onDisk', settings.language),
+			mine: t('externalChange.mine', settings.language),
+			reload: t('externalChange.reload', settings.language),
+			keepMine: t('externalChange.keepMine', settings.language),
+			close: t('externalChange.close', settings.language),
+		}}
+		onclose={() => (comparison = null)}
+		onreload={resolveExternalChangeByReloading}
+		onkeep={resolveExternalChangeByKeepingBuffer} />
 
 	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
 			<div
