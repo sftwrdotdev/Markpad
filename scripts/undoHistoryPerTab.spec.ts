@@ -57,6 +57,7 @@ const { getTabModel, lineEndingLabel, tabModelUri, trackedTabModelIds } = await 
 	'../src/lib/utils/tabModels.js'
 );
 const { buildTransferredTab } = await import('../src/lib/utils/tabTransfer.js');
+const { countWords } = await import('../src/lib/utils/wordCount.js');
 
 // ------------------------------------------------- the component, as written
 
@@ -316,7 +317,7 @@ type Component = {
  * Types are erased, nothing else: the statements that run are the component's.
  */
 const factorySource = ts.transpileModule(
-	`const __component = (tabManager, monaco, editor, getTabModel, tabModelUri, lineEndingLabel) => {
+	`const __component = (tabManager, monaco, editor, getTabModel, tabModelUri, lineEndingLabel, countWords) => {
 		let currentTabId = null;
 		let language = 'markdown';
 		let currentLanguage = 'markdown';
@@ -370,9 +371,18 @@ function createComponent(editor: Editor): Component {
 		getTabModel: unknown,
 		tabModelUri: unknown,
 		lineEndingLabel: unknown,
+		countWords: unknown,
 	) => Component;
 
-	return factory(tabManager, monacoStub, editor, getTabModel, tabModelUri, lineEndingLabel);
+	return factory(
+		tabManager,
+		monacoStub,
+		editor,
+		getTabModel,
+		tabModelUri,
+		lineEndingLabel,
+		countWords,
+	);
 }
 
 type Harness = {
