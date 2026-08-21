@@ -104,3 +104,25 @@ test('the outline collapses itself only when it is in the way', () => {
 	// Click-outside must not fight the toggle button, which owns its own click.
 	assert.match(viewer, /tocToggleEl\?\.contains\(target\)/);
 });
+
+test('the outline\'s toggle drops the editor toolbar\'s offset once it is over the outline', () => {
+	// Collapsed, the button floats over the editor pane and `--pane-top-chrome`
+	// is what keeps it clear of the toolbar. Expanded it floats over the OUTLINE,
+	// which has no toolbar — and the offset pushed it onto the outline's first
+	// entry instead. This is an absence, and an absence in CSS is not reachable
+	// from a runtime test in this suite: jsdom applies no stylesheet.
+	const viewer = readSource('src/lib/MarkdownViewer.svelte');
+
+	const base = viewer.match(/\.toc-toggle-floating \{([^}]*)\}/);
+	assert.ok(base, 'the floating toggle rule moved or was renamed');
+	assert.match(base[1], /top:\s*calc\([^)]*--pane-top-chrome/);
+
+	const expanded = viewer.match(/\.toc-toggle-floating\.expanded \{([^}]*)\}/);
+	assert.ok(expanded, 'the expanded rule moved or was renamed');
+	assert.match(expanded[1], /top:\s*\d+px/);
+	assert.equal(
+		/--pane-top-chrome/.test(expanded[1]),
+		false,
+		'the expanded toggle is over the outline, which has no editor toolbar to clear',
+	);
+});

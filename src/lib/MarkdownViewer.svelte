@@ -4657,8 +4657,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		padding: 0;
 	}
 
+	/**
+	 * Expanded, the button floats over the OUTLINE, which has no editor toolbar
+	 * on it — so the offset that clears one has nothing to clear and pushes the
+	 * button down onto the outline's first entry instead. 48px puts it back in
+	 * the panel's own header band, whose buttons sit at the far end (right when
+	 * the outline is on the left, left when it is on the right), leaving this
+	 * end of that band empty.
+	 *
+	 * Collapsed it keeps the offset, because there it really is floating over
+	 * the editor pane and the toolbar really is above it.
+	 */
 	.toc-toggle-floating.expanded {
 		left: 24px;
+		top: 48px;
 	}
 
 	.toc-toggle-floating.on-right {
