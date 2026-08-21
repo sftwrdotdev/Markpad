@@ -1,8 +1,9 @@
 use crate::fs_safety::atomic_write;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Mutex,
@@ -582,6 +583,55 @@ pub fn create_transfer_window(app: AppHandle, token: String) -> Result<(), Strin
     Ok(())
 }
 
+/// The path a watch for `target` is armed on: its parent directory.
+///
+/// Not `target` itself, which is what this used to be. A Linux `inotify` watch
+/// resolves the path once and then follows the INODE, and `atomic_write` — like
+/// VS Code, Vim, JetBrains and Emacs — saves by writing a temp file alongside
+/// and renaming it over the top. That leaves a new inode at the same path, so
+/// the watch was left holding the unlinked old one: after the first save, its
+/// own or anyone else's, Live Mode on Linux reported nothing for the rest of
+/// the session, and the callback swallowed the error that said so.
+/// `watch_survives_rename` below is that failure, pinned per platform.
+///
+/// A directory watch has no such problem, because the directory is the thing
+/// whose entries changed. The cost is hearing about every sibling file, which
+/// `event_concerns` drops on a name comparison — cheaper than the emit it
+/// replaces, and paid only while Live Mode is on.
+///
+/// Falls back to the target itself when there is no usable parent (a bare
+/// relative filename, or a filesystem root), which keeps the previous
+/// behaviour for the cases a directory watch cannot serve.
+fn watch_root(target: &Path) -> PathBuf {
+    match target.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() && target.file_name().is_some() => {
+            parent.to_path_buf()
+        }
+        _ => target.to_path_buf(),
+    }
+}
+
+/// Whether `event` is about the watched file rather than one of its neighbours.
+///
+/// Compares file names, not whole paths: the watch covers exactly one
+/// directory, so the name is already unambiguous within it, and the platforms
+/// do not agree on how to spell the directory back to us (macOS reports
+/// `/private/var/...` for a path opened as `/var/...`). A rename that brings a
+/// different file to this name is reported too, which is right — the file at
+/// this path changed.
+///
+/// `atomic_write`'s temp file is a sibling with a different name, so a save
+/// emits for the rename and not for the temp write that precedes it.
+///
+/// `None` means the watch is on the file itself (see `watch_root`), where
+/// there is nothing to filter out.
+fn event_concerns(event: &notify::Event, file_name: Option<&OsStr>) -> bool {
+    match file_name {
+        None => true,
+        Some(name) => event.paths.iter().any(|p| p.file_name() == Some(name)),
+    }
+}
+
 pub fn watch_file(
     window: tauri::Window,
     handle: AppHandle,
@@ -592,6 +642,12 @@ pub fn watch_file(
     let event_label = label.clone();
     let watched_path = path.clone();
 
+    // The DIRECTORY, not the file — see `watch_root`. The filename is kept so
+    // the callback can drop everything else that happens in it.
+    let target = Path::new(&path);
+    let file_name = target.file_name().map(OsStr::to_os_string);
+    let root = watch_root(target);
+
     // Build and arm the replacement *before* touching the watcher already
     // registered for this window. Dropping the old one first meant a failure
     // in either step below left the window with no watcher at all: the
@@ -600,15 +656,17 @@ pub fn watch_file(
     // in one step — the map drops the previous watcher, which unregisters it.
     let mut watcher = RecommendedWatcher::new(
         move |result: Result<notify::Event, notify::Error>| {
-            if result.is_ok() {
-                let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
+            let Ok(event) = result else { return };
+            if !event_concerns(&event, file_name.as_deref()) {
+                return;
             }
+            let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
         },
         Config::default(),
     )
     .map_err(|e| e.to_string())?;
     watcher
-        .watch(Path::new(&path), RecursiveMode::NonRecursive)
+        .watch(&root, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
 
     lock_recover(&state.watchers).insert(label, watcher);
@@ -1100,6 +1158,48 @@ mod tests {
 /// If this fails on a platform, Live Mode there stops reporting anything after
 /// the first save, silently and for the rest of the session.
 #[cfg(test)]
+mod watch_targeting {
+    use super::{event_concerns, watch_root};
+    use std::ffi::OsStr;
+    use std::path::{Path, PathBuf};
+
+    fn event(paths: &[&str]) -> notify::Event {
+        let mut e = notify::Event::new(notify::EventKind::Any);
+        e.paths = paths.iter().map(PathBuf::from).collect();
+        e
+    }
+
+    #[test]
+    fn a_watch_is_armed_on_the_containing_directory() {
+        assert_eq!(
+            watch_root(Path::new("/notes/a.md")),
+            PathBuf::from("/notes")
+        );
+        // No usable parent: the file itself, which is what it always was.
+        assert_eq!(watch_root(Path::new("a.md")), PathBuf::from("a.md"));
+        assert_eq!(watch_root(Path::new("/")), PathBuf::from("/"));
+    }
+
+    #[test]
+    fn only_events_naming_the_watched_file_get_through() {
+        let name = Some(OsStr::new("a.md"));
+        assert!(event_concerns(&event(&["/notes/a.md"]), name));
+        // A rename reports both sides; ours being either one is our business.
+        assert!(event_concerns(
+            &event(&["/notes/a.md.tmp99", "/notes/a.md"]),
+            name
+        ));
+        // The directory reports its other entries, and the temp file every
+        // `atomic_write` leaves beside the target is one of them.
+        assert!(!event_concerns(&event(&["/notes/b.md"]), name));
+        assert!(!event_concerns(&event(&["/notes/a.md.tmp99"]), name));
+        assert!(!event_concerns(&event(&[]), name));
+        // The fallback watch is on the file, so there is nothing to filter.
+        assert!(event_concerns(&event(&["/notes/b.md"]), None));
+    }
+}
+
+#[cfg(test)]
 mod watch_survives_rename {
     use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
     use std::sync::mpsc;
@@ -1116,10 +1216,14 @@ mod watch_survives_rename {
         let target = dir.join("notes.md");
         std::fs::write(&target, b"one").unwrap();
 
+        let name = target.file_name().map(std::ffi::OsStr::to_os_string);
         let (tx, rx) = mpsc::channel();
         let mut watcher = RecommendedWatcher::new(
             move |result: Result<notify::Event, notify::Error>| {
-                if result.is_ok() {
+                // The same two decisions `watch_file` makes, so this exercises
+                // the composition rather than notify on its own.
+                let Ok(event) = result else { return };
+                if super::event_concerns(&event, name.as_deref()) {
                     let _ = tx.send(());
                 }
             },
@@ -1127,7 +1231,9 @@ mod watch_survives_rename {
         )
         .unwrap();
         // Exactly what `watch_file` arms.
-        watcher.watch(&target, RecursiveMode::NonRecursive).unwrap();
+        watcher
+            .watch(&super::watch_root(&target), RecursiveMode::NonRecursive)
+            .unwrap();
 
         // First write in place, to prove the watch is live at all. Without this
         // a dead watcher and a broken test harness look identical.
@@ -1149,12 +1255,24 @@ mod watch_survives_rename {
         // And a write to the file that now lives at that path.
         std::fs::write(&target, b"four").unwrap();
         let after = rx.recv_timeout(Duration::from_secs(5)).is_ok();
+        while rx.try_recv().is_ok() {}
+
+        // The watch is on the whole directory now, so the filter is the only
+        // thing keeping this from reporting the neighbours — including the
+        // temp file `atomic_write` drops beside every save.
+        std::fs::write(dir.join("unrelated.md"), b"not ours").unwrap();
+        std::fs::write(dir.join("notes.md.tmp1234"), b"nor this").unwrap();
+        let neighbours = rx.recv_timeout(Duration::from_millis(1500)).is_ok();
 
         std::fs::remove_dir_all(&dir).ok();
         assert!(replaced, "the rename itself was not reported");
         assert!(
             after,
             "the watch died with the replaced inode: every later external change is invisible",
+        );
+        assert!(
+            !neighbours,
+            "a sibling file was reported as a change to the watched one",
         );
     }
 }
