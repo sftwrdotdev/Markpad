@@ -19,6 +19,7 @@
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
+	import { countWords } from '../utils/wordCount.js';
 	import {
 		headingLinkContext,
 		headingQueryStart,
@@ -229,7 +230,7 @@
 		currentLanguage = model.getLanguageId();
 		lineEnding = lineEndingLabel(model);
 		const text = model.getValue();
-		wordCount = (text.match(/\S+/g) || []).filter((w) => /\w/.test(w)).length;
+		wordCount = countWords(text);
 	}
 
 	self.MonacoEnvironment = {
