@@ -1247,7 +1247,7 @@ mod watch_survives_rename {
             .unwrap();
 
         let mut delivered: Vec<Vec<String>> = Vec::new();
-        let mut collect = |rx: &mpsc::Receiver<Vec<String>>, out: &mut Vec<Vec<String>>| {
+        let collect = |rx: &mpsc::Receiver<Vec<String>>, out: &mut Vec<Vec<String>>| {
             let first = rx.recv_timeout(Duration::from_secs(5)).ok();
             let reported = first.is_some();
             out.extend(first);
