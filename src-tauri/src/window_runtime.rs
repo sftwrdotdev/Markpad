@@ -1087,3 +1087,71 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+/// Does a watch armed on a FILE survive that file being replaced by a rename?
+///
+/// Not a test of Markpad's code — a test of the platform behaviour `watch_file`
+/// rests on, which is the only way to know whether the assumption holds on the
+/// three targets. `atomic_write` saves every document by writing a temp file
+/// alongside and renaming it over the target, so this is not an exotic case:
+/// it is what one Markpad save does to its own watch, and what most editors do
+/// to it (VS Code, Vim, JetBrains, Emacs all rename on save).
+///
+/// If this fails on a platform, Live Mode there stops reporting anything after
+/// the first save, silently and for the rest of the session.
+#[cfg(test)]
+mod watch_survives_rename {
+    use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+    use std::sync::mpsc;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn a_file_watch_still_reports_after_the_file_is_replaced() {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("markpad-watch-{nonce}"));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("notes.md");
+        std::fs::write(&target, b"one").unwrap();
+
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = RecommendedWatcher::new(
+            move |result: Result<notify::Event, notify::Error>| {
+                if result.is_ok() {
+                    let _ = tx.send(());
+                }
+            },
+            Config::default(),
+        )
+        .unwrap();
+        // Exactly what `watch_file` arms.
+        watcher.watch(&target, RecursiveMode::NonRecursive).unwrap();
+
+        // First write in place, to prove the watch is live at all. Without this
+        // a dead watcher and a broken test harness look identical.
+        std::fs::write(&target, b"two").unwrap();
+        assert!(
+            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
+            "the watch reported nothing even for an in-place write",
+        );
+        while rx.try_recv().is_ok() {}
+
+        // Now the way `atomic_write` — and every editor that saves atomically —
+        // actually writes: a new file renamed over the old one.
+        let temp = dir.join("notes.md.tmp");
+        std::fs::write(&temp, b"three").unwrap();
+        std::fs::rename(&temp, &target).unwrap();
+        let replaced = rx.recv_timeout(Duration::from_secs(5)).is_ok();
+        while rx.try_recv().is_ok() {}
+
+        // And a write to the file that now lives at that path.
+        std::fs::write(&target, b"four").unwrap();
+        let after = rx.recv_timeout(Duration::from_secs(5)).is_ok();
+
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(replaced, "the rename itself was not reported");
+        assert!(
+            after,
+            "the watch died with the replaced inode: every later external change is invisible",
+        );
+    }
+}
