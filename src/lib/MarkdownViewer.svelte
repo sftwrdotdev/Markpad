@@ -1179,6 +1179,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
+	 * How many documents the preview DOM has been given, as a number anything
+	 * downstream of the render can wait on.
+	 *
+	 * `sanitizedHtml` looks like the same signal and is not. It says a document
+	 * has been *rendered*, and the outline used to take it as saying the article
+	 * now *holds* that document — which is true only if the patch below has
+	 * already run. On a mount it has not: Svelte runs a child component's
+	 * effects before its parent's, so `<Toc>` scanned the article in the same
+	 * flush, one step ahead of the patch that fills it, and found nothing. The
+	 * string does not change again, so nothing asked it to look twice and the
+	 * outline stayed empty until it was unmounted and remounted.
+	 *
+	 * A pinned outline is the one that never gets that remount, which is why it
+	 * was the only place the bug was visible: an overhanging floating outline
+	 * closes itself, and reopening it builds a new component against a DOM that
+	 * is by then complete.
+	 *
+	 * The counter is kept twice on purpose — `previewPatches` is the plain one
+	 * this effect increments, so the `$state` is only ever written here and
+	 * never read, and the effect cannot schedule itself.
+	 */
+	let previewRevision = $state(0);
+	let previewPatches = 0;
+
+	/**
 	 * The one place a rendered document becomes preview DOM.
 	 *
 	 * It used to be three: `{@html sanitizedHtml}` put the markup in, this effect
@@ -1205,6 +1230,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// that keeping the observation alive removed.
 		for (const block of patch.inserted) foldLayout?.observe(block);
 		if (hljs && renderMathInElement && mermaid) renderRichContent(patch.inserted);
+		previewRevision = ++previewPatches;
 	});
 
 	$effect(() => {
@@ -3873,7 +3899,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								<Toc
 									activeLine={tocActiveLine} 
 										{markdownBody} 
-										htmlContent={sanitizedHtml}
+										{previewRevision}
 										onBeforeJump={pushScrollHistory} 
 										{foldOverrides} 
 										ontoggleFold={(key: string) => toggleFold(foldHost, key)} 
@@ -4681,8 +4707,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		padding: 0;
 	}
 
+	/**
+	 * Expanded, the button floats over the OUTLINE, which has no editor toolbar
+	 * on it — so the offset that clears one has nothing to clear and pushes the
+	 * button down onto the outline's first entry instead. 48px puts it back in
+	 * the panel's own header band, whose buttons sit at the far end (right when
+	 * the outline is on the left, left when it is on the right), leaving this
+	 * end of that band empty.
+	 *
+	 * Collapsed it keeps the offset, because there it really is floating over
+	 * the editor pane and the toolbar really is above it.
+	 */
 	.toc-toggle-floating.expanded {
 		left: 24px;
+		top: 48px;
 	}
 
 	.toc-toggle-floating.on-right {

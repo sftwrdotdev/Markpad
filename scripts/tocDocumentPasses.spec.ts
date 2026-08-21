@@ -46,7 +46,7 @@ beforeAll(() => {
 
 interface Harness {
 	body: HTMLElement;
-	props: { markdownBody: HTMLElement; htmlContent: string };
+	props: { markdownBody: HTMLElement; previewRevision: number };
 	/** Selectors the outline ran over the whole article since the last reset. */
 	passes: string[];
 	render(html: string): void;
@@ -74,7 +74,7 @@ function harness(html: string): Harness {
 		return queryAll(selector);
 	};
 
-	const props = runeProps({ markdownBody: body, htmlContent: html });
+	const props = runeProps({ markdownBody: body, previewRevision: 1 });
 	const component = mount(Toc, { target, props });
 	flushSync();
 
@@ -83,9 +83,11 @@ function harness(html: string): Harness {
 		props,
 		passes,
 		render(next: string) {
+			// The order the app does it in: the patch writes the DOM, and only
+			// then does the revision say so. Bumping first would model the bug
+			// this signal replaced.
 			body.innerHTML = next;
-			// The same dependency the preview changes: a new sanitized document.
-			props.htmlContent = next;
+			props.previewRevision += 1;
 			passes.length = 0;
 			flushSync();
 		},

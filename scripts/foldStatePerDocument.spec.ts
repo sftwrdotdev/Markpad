@@ -192,7 +192,7 @@ function tocEntries(body: HTMLElement, folds: Set<string>): string[] {
 
 	const component = mount(Toc, {
 		target,
-		props: { markdownBody: body, htmlContent: body.innerHTML, foldOverrides: new Set(folds) },
+		props: { markdownBody: body, previewRevision: 1, foldOverrides: new Set(folds) },
 	});
 	flushSync();
 	const entries = Array.from(target.querySelectorAll('.toc-link')).map((el) => el.textContent!.trim());

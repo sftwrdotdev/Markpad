@@ -8,9 +8,21 @@
 	import { anchorScrollTop } from '../utils/previewAnchor.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
-	let { markdownBody, htmlContent, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
+	let { markdownBody, previewRevision, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
 		markdownBody: HTMLElement | null;
-		htmlContent: string;
+		/**
+		 * How many documents the preview DOM has been given. Read as a signal and
+		 * never for its value: it says the article now HOLDS the document, which
+		 * is the thing this component has to wait for before it reads the DOM.
+		 *
+		 * It used to be `htmlContent`, the rendered string itself. That says a
+		 * document was rendered, not that it reached the article, and on a mount
+		 * the two are a step apart — a child's effects run before its parent's,
+		 * so the scan below ran before the patch that fills the article and read
+		 * an empty one. Nothing changed the string afterwards, so nothing asked
+		 * for a second look.
+		 */
+		previewRevision: number;
 		/**
 		 * The source line at the top of the EDITOR's viewport, or `null` when the
 		 * outline should follow the preview alone (the setting is off, or nothing
@@ -86,7 +98,12 @@
 	const CLICK_LOCK_MS = 600;
 
 	$effect(() => {
-		if (htmlContent && markdownBody) {
+		// The dependency, and the whole reason this runs. An empty document is
+		// not a special case: the scan below finds nothing in it and clears the
+		// outline the same way a document with no headings does.
+		void previewRevision;
+
+		if (markdownBody) {
 			const result: TocItem[] = [];
 
 			const entries = markdownBody.querySelectorAll(ENTRY_SELECTOR) as NodeListOf<HTMLElement>;
