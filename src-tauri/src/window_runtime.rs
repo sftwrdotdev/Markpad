@@ -1223,9 +1223,20 @@ mod watch_survives_rename {
                 // The same two decisions `watch_file` makes, so this exercises
                 // the composition rather than notify on its own.
                 let Ok(event) = result else { return };
-                if super::event_concerns(&event, name.as_deref()) {
-                    let _ = tx.send(());
+                if !super::event_concerns(&event, name.as_deref()) {
+                    return;
                 }
+                // The names, not a bare tick. Which file an event was about is
+                // the only timing-independent way to ask whether the filter
+                // held: an event is allowed to arrive late, but it is never
+                // allowed to name somebody else's file.
+                let names: Vec<String> = event
+                    .paths
+                    .iter()
+                    .filter_map(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .collect();
+                let _ = tx.send(names);
             },
             Config::default(),
         )
@@ -1235,44 +1246,63 @@ mod watch_survives_rename {
             .watch(&super::watch_root(&target), RecursiveMode::NonRecursive)
             .unwrap();
 
+        let mut delivered: Vec<Vec<String>> = Vec::new();
+        let mut collect = |rx: &mpsc::Receiver<Vec<String>>, out: &mut Vec<Vec<String>>| {
+            let first = rx.recv_timeout(Duration::from_secs(5)).ok();
+            let reported = first.is_some();
+            out.extend(first);
+            while let Ok(more) = rx.try_recv() {
+                out.push(more);
+            }
+            reported
+        };
+
         // First write in place, to prove the watch is live at all. Without this
-        // a dead watcher and a broken test harness look identical.
+        // a dead watcher and a broken harness look identical.
         std::fs::write(&target, b"two").unwrap();
-        assert!(
-            rx.recv_timeout(Duration::from_secs(5)).is_ok(),
-            "the watch reported nothing even for an in-place write",
-        );
-        while rx.try_recv().is_ok() {}
+        let alive = collect(&rx, &mut delivered);
 
         // Now the way `atomic_write` — and every editor that saves atomically —
         // actually writes: a new file renamed over the old one.
-        let temp = dir.join("notes.md.tmp");
+        let temp = dir.join("notes.md.tmp1234");
         std::fs::write(&temp, b"three").unwrap();
         std::fs::rename(&temp, &target).unwrap();
-        let replaced = rx.recv_timeout(Duration::from_secs(5)).is_ok();
-        while rx.try_recv().is_ok() {}
+        let replaced = collect(&rx, &mut delivered);
 
-        // And a write to the file that now lives at that path.
+        // The write that used to be invisible: the inode the watch was armed on
+        // is gone, and this one belongs to the file that replaced it.
         std::fs::write(&target, b"four").unwrap();
-        let after = rx.recv_timeout(Duration::from_secs(5)).is_ok();
-        while rx.try_recv().is_ok() {}
+        let after = collect(&rx, &mut delivered);
 
-        // The watch is on the whole directory now, so the filter is the only
-        // thing keeping this from reporting the neighbours — including the
-        // temp file `atomic_write` drops beside every save.
+        // The watch covers the whole directory now, so the filter is the only
+        // thing keeping the neighbours out — including the temp file
+        // `atomic_write` drops beside every save.
         std::fs::write(dir.join("unrelated.md"), b"not ours").unwrap();
-        std::fs::write(dir.join("notes.md.tmp1234"), b"nor this").unwrap();
-        let neighbours = rx.recv_timeout(Duration::from_millis(1500)).is_ok();
+        std::fs::write(dir.join("notes.md.tmp5678"), b"nor this").unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        while let Ok(more) = rx.try_recv() {
+            delivered.push(more);
+        }
 
         std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            alive,
+            "the watch reported nothing even for an in-place write"
+        );
         assert!(replaced, "the rename itself was not reported");
         assert!(
             after,
             "the watch died with the replaced inode: every later external change is invisible",
         );
-        assert!(
-            !neighbours,
-            "a sibling file was reported as a change to the watched one",
-        );
+        // Asserted over every event the run produced rather than over a quiet
+        // window, because a late event about the watched file is legitimate and
+        // a slow machine will produce one. What must never appear is a
+        // neighbour's name.
+        for names in &delivered {
+            assert!(
+                names.iter().any(|n| n == "notes.md"),
+                "an event about {names:?} was reported as a change to notes.md",
+            );
+        }
     }
 }
