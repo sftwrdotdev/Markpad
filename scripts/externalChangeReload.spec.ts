@@ -10,11 +10,37 @@ import { readSource, sliceBetween } from './sourceTree.js';
 // not just overwritten, it stops looking dirty afterwards: the user cannot
 // even tell what they lost. Turning Live Mode ON must likewise never pull
 // disk content over the buffer; it only installs the watcher.
+//
+// Whether an event is somebody else's write used to be guessed from the clock:
+// each of our own writes opened a 400ms window in which events for that path
+// were discarded. Both directions of that guess were wrong and both are tested
+// below — a foreign write inside the window was DROPPED and then overwritten by
+// the next auto-save, and a late event about our own write raised a conflict
+// bar about nothing. `originalContent` answers the question exactly, and the
+// same answer now also guards the write itself, which is the half that works
+// when the watcher does not.
 
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
 // Svelte plugin, so the store and the session run under real reactivity, and jsdom
 // supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
-let handleInvoke: (cmd: string, args: any) => unknown = (cmd) => {
+
+/**
+ * The filesystem, as far as these tests are concerned. Real enough for the
+ * question every test here asks — "what does the file say right now?" — and the
+ * reason the suite no longer needs to fake a clock.
+ */
+const disk = new Map<string, string>();
+
+let handleInvoke: (cmd: string, args: any) => unknown = (cmd, args) => {
+	if (cmd === 'canonicalize_path') return args.path;
+	if (cmd === 'read_file_content_checked') {
+		if (!disk.has(args.path)) throw new Error(`no such file: ${args.path}`);
+		return [disk.get(args.path), false, 'UTF-8'];
+	}
+	if (cmd === 'save_file_content') {
+		disk.set(args.path, args.content);
+		return null;
+	}
 	throw new Error(`unexpected invoke: ${cmd}`);
 };
 (window as any).__TAURI_INTERNALS__ = {
@@ -26,6 +52,8 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
+
+let refusedSaves: string[] = [];
 
 function makeSession(overrides: Record<string, unknown> = {}) {
 	return createDocumentSession({
@@ -41,7 +69,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: () => {},
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: (tabId: string) => refusedSaves.push(tabId),
 		cancelPendingAutoSave: () => {},
 		askClose: async () => 'discard' as const,
 		onCloseSaveNewerEdits: () => {},
@@ -51,30 +79,42 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 	});
 }
 
+/** A file on disk, open in a tab whose buffer matches it. */
 function open(path: string, content: string) {
+	disk.set(path, content);
 	tabManager.addTab(path, content);
-	return tabManager.activeTab!;
+	const tab = tabManager.activeTab!;
+	tab.originalContent = content;
+	return tab;
 }
 
-test('a clean tab that owns the changed file is reloaded', () => {
+function reset() {
 	tabManager.closeAll();
+	disk.clear();
+	refusedSaves = [];
+}
+
+test('a clean tab that owns the changed file is reloaded', async () => {
+	reset();
 	const session = makeSession();
 	const tab = open('/notes/a.md', 'on disk');
+	disk.set('/notes/a.md', 'somebody else wrote this');
 
-	assert.deepEqual(session.resolveExternalChange('/notes/a.md'), {
+	assert.deepEqual(await session.resolveExternalChange('/notes/a.md'), {
 		action: 'reload',
 		tabId: tab.id,
 		path: '/notes/a.md',
 	});
 });
 
-test('a tab with unsaved edits is never reloaded behind the user', () => {
-	tabManager.closeAll();
+test('a tab with unsaved edits is never reloaded behind the user', async () => {
+	reset();
 	const session = makeSession();
 	const tab = open('/notes/a.md', 'on disk');
 	tabManager.updateTabRawContent(tab.id, 'my unsaved paragraph');
+	disk.set('/notes/a.md', 'somebody else wrote this');
 
-	const outcome = session.resolveExternalChange('/notes/a.md');
+	const outcome = await session.resolveExternalChange('/notes/a.md');
 
 	assert.equal(outcome.action, 'conflict');
 	assert.equal((outcome as { tabId: string }).tabId, tab.id);
@@ -85,15 +125,16 @@ test('a tab with unsaved edits is never reloaded behind the user', () => {
 	assert.equal(tab.isDirty, true);
 });
 
-test('the changed path decides which tab is affected, not whichever tab is active', () => {
-	tabManager.closeAll();
+test('the changed path decides which tab is affected, not whichever tab is active', async () => {
+	reset();
 	const session = makeSession();
 	const a = open('/notes/a.md', 'a on disk');
 	const b = open('/notes/b.md', 'b on disk');
 	tabManager.setActive(b.id);
 	tabManager.updateTabRawContent(b.id, 'b unsaved');
+	disk.set('/notes/a.md', 'a changed');
 
-	const outcome = session.resolveExternalChange('/notes/a.md');
+	const outcome = await session.resolveExternalChange('/notes/a.md');
 
 	// Reloading here would pull b.md's disk content over b's unsaved buffer
 	// because a.md changed. Whatever the outcome, it must not name tab b.
@@ -102,53 +143,118 @@ test('the changed path decides which tab is affected, not whichever tab is activ
 	assert.notEqual(a.id, b.id);
 });
 
-test('a change to a file no tab holds is ignored', () => {
-	tabManager.closeAll();
+test('a change to a file no tab holds is ignored', async () => {
+	reset();
 	const session = makeSession();
 	open('/notes/a.md', 'a on disk');
 
-	assert.deepEqual(session.resolveExternalChange('/notes/elsewhere.md'), { action: 'ignore' });
-	assert.deepEqual(session.resolveExternalChange(''), { action: 'ignore' });
+	assert.deepEqual(await session.resolveExternalChange('/notes/elsewhere.md'), { action: 'ignore' });
+	assert.deepEqual(await session.resolveExternalChange(''), { action: 'ignore' });
 });
 
-test('our own writes still suppress the reload', async () => {
-	// Saving fires the watcher too. Reloading on that event would clobber any
-	// keystroke that landed between the write and the notification.
-	tabManager.closeAll();
+test('our own write is not an external change, however late the event arrives', async () => {
+	reset();
 	const session = makeSession();
 	const tab = open('/notes/a.md', 'on disk');
 	tabManager.updateTabRawContent(tab.id, 'my edit');
-	handleInvoke = (cmd) => {
-		if (cmd === 'save_file_content') return null;
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
-
 	assert.equal(await session.saveContent(tab.id), true);
 
-	assert.deepEqual(session.resolveExternalChange('/notes/a.md'), { action: 'ignore' });
+	// No clock is consulted, so there is no window to be outside of. The old
+	// guard answered this correctly for 400ms and then started answering it
+	// wrong; a slow watcher, a network share or a synced folder is all it took.
+	assert.deepEqual(await session.resolveExternalChange('/notes/a.md'), { action: 'ignore' });
+	assert.deepEqual(await session.resolveExternalChange('/notes/a.md'), { action: 'ignore' });
 });
 
-test('the suppression expires, and does not outlive its own grace period', async () => {
-	// The other half of the same guard, and the one with teeth: a suppression
-	// that never lifts turns Live Mode off for that file for the rest of the
-	// session, silently. Grace 0 makes the window already over by the time the
-	// event arrives, which is what a real event a second later looks like.
-	tabManager.closeAll();
-	const session = makeSession({ selfWriteGraceMs: 0 });
+test('a late event about our own save is not raised as a conflict', async () => {
+	// The second failure of the clock, and the one that costs trust rather than
+	// data: with the user typing again after a save, an event that arrived after
+	// the window found a dirty tab and asked "this file changed on disk" about
+	// their own keystrokes. Zed is disliked for exactly this
+	// (zed-industries/zed#42108) — a question that is sometimes false gets
+	// dismissed the times it is true.
+	reset();
+	const session = makeSession();
 	const tab = open('/notes/a.md', 'on disk');
 	tabManager.updateTabRawContent(tab.id, 'my edit');
-	handleInvoke = (cmd) => {
-		if (cmd === 'save_file_content') return null;
-		throw new Error(`unexpected invoke: ${cmd}`);
-	};
+	assert.equal(await session.saveContent(tab.id), true);
+	tabManager.updateTabRawContent(tab.id, 'my edit, and more');
+
+	assert.deepEqual(await session.resolveExternalChange('/notes/a.md'), { action: 'ignore' });
+	assert.equal(tab.isDirty, true, 'and the later typing is still unsaved');
+});
+
+test('a foreign write moments after our own is still reported', async () => {
+	// The direction that lost data. Inside the old 400ms window this event was
+	// DISCARDED with nothing re-queued: the buffer held our text, the disk held
+	// theirs, the tab looked clean, and the next keystroke's auto-save put ours
+	// back over theirs. Nothing anywhere said so.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
 	assert.equal(await session.saveContent(tab.id), true);
 
-	assert.equal(session.shouldReloadExternalChange('/notes/a.md'), true, 'a later change is not suppressed');
-	assert.equal(
-		session.shouldReloadExternalChange('/notes/a.md'),
-		true,
-		'and the expired entry is dropped rather than re-consulted',
-	);
+	disk.set('/notes/a.md', 'their edit, one moment later');
+
+	assert.deepEqual(await session.resolveExternalChange('/notes/a.md'), {
+		action: 'reload',
+		tabId: tab.id,
+		path: '/notes/a.md',
+	});
+});
+
+// --- the guard that does not depend on the watcher ---
+
+test('a save is refused when the disk moved under it', async () => {
+	// Live Mode is off by default and its events can be missed, so this is the
+	// check every editor that does not lose work has: VS Code refuses the save
+	// ("The content of the file is newer"), Vim re-stats before each write, and
+	// Vim has no watcher at all.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+	disk.set('/notes/a.md', 'their edit');
+
+	assert.equal(await session.saveContent(tab.id), false);
+	assert.equal(disk.get('/notes/a.md'), 'their edit', 'their work was overwritten anyway');
+	assert.deepEqual(refusedSaves, [tab.id], 'the refusal was not reported, so nothing asked the user');
+	assert.equal(tab.rawContent, 'my edit', 'and the refusal must not cost the user their buffer');
+	assert.equal(tab.isDirty, true);
+});
+
+test('answering "keep mine" authorises the next save, and only the next one', async () => {
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+	disk.set('/notes/a.md', 'their edit');
+	assert.equal(await session.saveContent(tab.id), false);
+
+	session.allowOverwriteOnce(tab.id);
+	assert.equal(await session.saveContent(tab.id), true);
+	assert.equal(disk.get('/notes/a.md'), 'my edit');
+
+	// A third program writing a minute later is a new question the user has not
+	// answered, so the authorisation must not still be lying around.
+	tabManager.updateTabRawContent(tab.id, 'my later edit');
+	disk.set('/notes/a.md', 'somebody else again');
+	assert.equal(await session.saveContent(tab.id), false);
+	assert.equal(disk.get('/notes/a.md'), 'somebody else again');
+});
+
+test('an ordinary save of an untouched file still just saves', async () => {
+	// The guard has to be invisible in the common case, which is every save.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+
+	assert.equal(await session.saveContent(tab.id), true);
+	assert.equal(disk.get('/notes/a.md'), 'my edit');
+	assert.deepEqual(refusedSaves, []);
+	assert.equal(tab.isDirty, false);
 });
 
 // --- wiring that cannot be executed outside a Svelte runtime ---

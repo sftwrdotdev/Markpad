@@ -77,7 +77,7 @@ function makeSession() {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: (message) => errors.push(message),
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},
 		askClose: async () => 'discard' as const,
 		onCloseSaveNewerEdits: () => {},

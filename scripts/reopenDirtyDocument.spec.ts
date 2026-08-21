@@ -59,7 +59,7 @@ function makeSession() {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: () => {},
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},
 		askClose: async () => 'discard' as const,
 		onCloseSaveNewerEdits: () => {},
@@ -227,8 +227,12 @@ test('a Reload of a file changed under unsaved edits replaces the buffer', async
 	const edited = openEdited('/notes/a.md', 'on disk', 'my unsaved paragraph');
 
 	disk.set('/notes/a.md', 'someone else wrote this');
-	const outcome = session.resolveExternalChange('/notes/a.md');
+	const outcome = await session.resolveExternalChange('/notes/a.md');
 	assert.equal(outcome.action, 'conflict', 'the watcher never reloads it on its own');
+	// Deciding that took a read of its own — comparing the file against the
+	// tab's baseline is how "who wrote this" is answered now. `reads` is here
+	// to measure what the OPEN does, so the resolution's read is cleared first.
+	reads.length = 0;
 
 	// The options resolveExternalChangeByReloading passes, verbatim.
 	await session.loadMarkdown('/notes/a.md', {
@@ -249,7 +253,8 @@ test('a conflict alone does not authorize the next open to discard the buffer', 
 	const edited = openEdited('/notes/a.md', 'on disk', 'my unsaved paragraph');
 
 	disk.set('/notes/a.md', 'someone else wrote this');
-	session.resolveExternalChange('/notes/a.md');
+	await session.resolveExternalChange('/notes/a.md');
+	reads.length = 0;
 
 	// Same tab, same path, conflict outstanding — but this is an open, and it
 	// did not ask to discard anything.
