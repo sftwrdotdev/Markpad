@@ -154,3 +154,23 @@ test('every command the dispatcher can name is one the component can run', () =>
 	assert.ok(reachable.size >= 10, `only ${reachable.size} commands were reached; the sweep is not running`);
 	for (const command of reachable) assert.ok(table[command], `runViewerCommand has no case for ${command}`);
 });
+
+test('Mod+L reaches Auto-Reload from every mode, including the preview', () => {
+	// #692. The chord used to exist only as an `editorAction`, so Monaco owned
+	// it and it did nothing in the preview — the exact inverse of where the
+	// Auto-Reload button was drawn, while the shortcut panel advertised it in
+	// all three modes regardless. The button now appears in all three; this is
+	// the other surface agreeing.
+	const modL = chord('l', 'KeyL', { ctrlKey: true });
+	assert.equal(viewerCommandFor(modL, READING), 'toggle-live-mode');
+	assert.equal(
+		viewerCommandFor(modL, { ...READING, isEditing: true, editorHasFocus: true }),
+		'toggle-live-mode',
+	);
+	assert.equal(viewerCommandFor(modL, { ...READING, isSplit: true }), 'toggle-live-mode');
+
+	// And it is Mod+L, not the cross product Mod+Shift+L / Mod+Alt+L.
+	assert.equal(viewerCommandFor(chord('l', 'KeyL', { ctrlKey: true, shiftKey: true }), READING), null);
+	assert.equal(viewerCommandFor(chord('l', 'KeyL', { ctrlKey: true, altKey: true }), READING), null);
+	assert.equal(viewerCommandFor(chord('l', 'KeyL'), READING), null);
+});

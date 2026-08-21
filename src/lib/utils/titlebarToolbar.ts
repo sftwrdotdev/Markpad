@@ -161,11 +161,13 @@ export type TitlebarActionContext = {
  *
  * This used to be a `$derived.by` inside TitleBar.svelte, where nothing could
  * call it — and one of its conditions was wrong for as long as that was true.
- * The Auto-Reload button was gated on `!isEditing` while its chord, Mod+L, is
- * an `editorAction` in shortcuts.ts and therefore registered on Monaco: the
- * chord existed only in edit mode and the button existed everywhere else, so
- * the two never both applied. Editing a file that another program also writes
- * — the case auto-reload is for — got the chord with no indicator.
+ * The Auto-Reload button was drawn only in the preview (`!isEditing`,
+ * `!isSplit`) while its chord, Mod+L, was only an `editorAction` in
+ * shortcuts.ts and therefore only on Monaco, which exists only in the other
+ * two modes. The two surfaces of one feature never both applied, and the
+ * shortcut panel advertised the chord in all three regardless. Editing a file
+ * that another program also writes — the case auto-reload is for — got the
+ * chord and no indicator.
  *
  * Its output already fed `getConfiguredTitlebarToolbarIds` below, so this is
  * the first half of a pipeline moving next to the second, not a new layer.
@@ -188,10 +190,10 @@ export function visibleTitlebarActionIds(context: TitlebarActionContext): string
 		if (isMarkdown) {
 			list.push('toc');
 			list.push('fullWidth');
-			// Split view stays out on purpose: its preview renders the live
-			// buffer rather than the file, which is why entering it turns live
-			// mode off (`toggleSplitView` in MarkdownViewer.svelte).
-			if (!context.isSplit && context.currentFile) {
+			// Every mode that has a file on disk, which is every mode an
+			// external writer can surprise. The chord answers the same
+			// question the same way — see the note above.
+			if (context.currentFile) {
 				list.push('live');
 			}
 			if (context.isSplit) {

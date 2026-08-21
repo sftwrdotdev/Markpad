@@ -218,3 +218,18 @@ test('reloading a clean tab does not throw the user out of the editor', async ()
 	assert.equal(tabManager.activeTab?.isEditing, true, 'the reload left the editor');
 	assert.equal(tabManager.activeTab?.isDirty, false, 'the reloaded buffer is not an edit');
 });
+
+test('entering split view no longer turns Live Mode off behind the user', () => {
+	// #692. Split used to kill live mode on the way in, with no comment and no
+	// way back — the setting was silently dropped and stayed dropped after
+	// leaving. That line arrived with the original split-view commit and reads
+	// as a consequence of the Auto-Reload button being hidden there (nothing
+	// left to turn it off with) rather than a decision that a split pane should
+	// not follow the file. The button and the chord are now offered in all
+	// three modes; a kill here would take the state straight back off.
+	//
+	// An absence claim about a component that cannot be imported, so it is
+	// matched as source text — the same reason as the four assertions above.
+	const body = sliceBetween(viewer, 'async function toggleSplitView', '\n\t}');
+	assert.doesNotMatch(body, /toggleLiveMode|liveMode\s*=/);
+});

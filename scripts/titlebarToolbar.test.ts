@@ -77,13 +77,18 @@ test('titlebar toolbar reorder helpers resolve drag and keyboard moves', () => {
  * #692: editing a file in Markpad while VS Code writes the same file, and
  * Markpad not noticing until the mode was toggled.
  *
- * Auto-Reload is what that user wanted and it already existed, but the button
- * was gated on `!isEditing` — so in the one mode the feature is for, it was
- * unreachable. Its chord answered the same question the other way: `Mod+L` is
- * `editorAction: true` in shortcuts.ts, which registers it on Monaco, so the
- * chord works in edit mode ONLY. Two answers, exactly complementary, nothing
- * requiring them to agree. Ctrl+L in the editor flipped the state with no
- * indicator anywhere on screen.
+ * Auto-Reload is what that user wanted and it already existed. Its two
+ * surfaces disagreed about where it existed, and their answers were exact
+ * complements: the button was drawn only in the preview (`!isEditing`,
+ * `!isSplit`), while `Mod+L` was only an `editorAction` in shortcuts.ts and
+ * therefore only on Monaco — which exists only in edit and split. Whether a
+ * user got the feature depended on which surface they happened to find, and
+ * pressing the chord in the editor armed the watcher with nothing on screen
+ * to show it had.
+ *
+ * The answer is one condition, in one place, with the chord routed through
+ * the same `toggleLiveMode` (`shortcutRegistry.test.ts` holds the chord end
+ * up, `externalChangeReload.spec.ts` holds the reload end).
  */
 
 const documentContext = {
@@ -94,18 +99,19 @@ const documentContext = {
 	isEditing: false,
 };
 
-test('Auto-Reload is offered in edit mode, where Mod+L already toggles it', () => {
-	assert.ok(
-		visibleTitlebarActionIds({ ...documentContext, isEditing: true }).includes('live'),
-		'the editor is where a file changing underneath you matters most',
-	);
-	assert.ok(visibleTitlebarActionIds(documentContext).includes('live'));
-});
-
-test('Auto-Reload is not offered in split view, whose preview renders the buffer', () => {
-	assert.ok(
-		!visibleTitlebarActionIds({ ...documentContext, isSplit: true }).includes('live'),
-	);
+test('Auto-Reload is offered in every mode that has a file on disk', () => {
+	// An external writer can surprise all three equally: what varies between
+	// them is which pane is on screen, not whether the file can change.
+	for (const mode of [
+		{ label: 'preview' },
+		{ label: 'edit', isEditing: true },
+		{ label: 'split', isSplit: true },
+	]) {
+		assert.ok(
+			visibleTitlebarActionIds({ ...documentContext, ...mode }).includes('live'),
+			`Auto-Reload was missing in ${mode.label} mode`,
+		);
+	}
 });
 
 test('Auto-Reload needs a file on disk to watch', () => {
@@ -124,8 +130,10 @@ test('the rest of the toolbar still answers to the mode it is in', () => {
 	assert.deepEqual([view, edit, split].map((ids) => ids.includes('find')), [true, false, true]);
 	// The formatting toolbar is the mirror image: only where a pane can write.
 	assert.deepEqual([view, edit, split].map((ids) => ids.includes('editorToolbar')), [false, true, true]);
-	// Sync Scroll needs two panes; Edit is meaningless once both are showing.
+	// Sync Scroll and Swap Panes both need two panes; Edit is meaningless once
+	// both are showing.
 	assert.deepEqual([view, edit, split].map((ids) => ids.includes('sync')), [false, false, true]);
+	assert.deepEqual([view, edit, split].map((ids) => ids.includes('swap')), [false, false, true]);
 	assert.deepEqual([view, edit, split].map((ids) => ids.includes('edit')), [true, true, false]);
 });
 
