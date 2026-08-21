@@ -2854,7 +2854,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return;
 			}
 			tabManager.setSplitEnabled(tab.id, true);
-			if (liveMode) toggleLiveMode();
 		} else {
 			// Closing split view is the same move as leaving edit mode, and it
 			// gets the same treatment: the surviving pane renders the buffer,
@@ -2921,6 +2920,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			case 'toggle-split-view':
 				if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
 				return;
+			case 'toggle-live-mode':
+				return void toggleLiveMode();
 			case 'toggle-edit-view':
 				// The `silentSave` argument this used to pass meant "suppress the
 				// unsaved-changes modal on the hotkey path". There is no modal on a

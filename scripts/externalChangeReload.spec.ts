@@ -188,3 +188,48 @@ test('turning Live Mode on installs the watcher without reloading', () => {
 	const body = sliceBetween(viewer, 'function toggleLiveMode', '\n\t}');
 	assert.doesNotMatch(body, /loadMarkdown/);
 });
+
+// --- #692: the editor is where the reload has to land ---
+
+test('reloading a clean tab does not throw the user out of the editor', async () => {
+	// The gate on the Auto-Reload button used to hide it in edit mode, so this
+	// path was reachable only by enabling Live Mode in the preview and then
+	// pressing Edit. Now that editing is the case the button is FOR, a reload
+	// that dropped the tab back to preview would be the visible bug.
+	//
+	// `loadMarkdown(path)` with no options is exactly the call the
+	// `file-changed` listener makes for a `reload` outcome.
+	const session = makeSession();
+	const tab = open('/notes/live.md', 'before');
+	tab.isEditing = true;
+
+	handleInvoke = (cmd) => {
+		if (cmd === 'canonicalize_path') return '/notes/live.md';
+		// An editing pane always gets the whole file, never the 5MB preview
+		// slice — an editor bound to a partial buffer auto-saves it back over
+		// the document's tail.
+		if (cmd === 'read_file_content_checked') return ['after', false, 'UTF-8'];
+		throw new Error(`unexpected invoke: ${cmd}`);
+	};
+
+	await session.loadMarkdown('/notes/live.md');
+
+	assert.equal(tabManager.activeTab?.rawContent, 'after', 'the disk version did not arrive');
+	assert.equal(tabManager.activeTab?.isEditing, true, 'the reload left the editor');
+	assert.equal(tabManager.activeTab?.isDirty, false, 'the reloaded buffer is not an edit');
+});
+
+test('entering split view no longer turns Live Mode off behind the user', () => {
+	// #692. Split used to kill live mode on the way in, with no comment and no
+	// way back — the setting was silently dropped and stayed dropped after
+	// leaving. That line arrived with the original split-view commit and reads
+	// as a consequence of the Auto-Reload button being hidden there (nothing
+	// left to turn it off with) rather than a decision that a split pane should
+	// not follow the file. The button and the chord are now offered in all
+	// three modes; a kill here would take the state straight back off.
+	//
+	// An absence claim about a component that cannot be imported, so it is
+	// matched as source text — the same reason as the four assertions above.
+	const body = sliceBetween(viewer, 'async function toggleSplitView', '\n\t}');
+	assert.doesNotMatch(body, /toggleLiveMode|liveMode\s*=/);
+});

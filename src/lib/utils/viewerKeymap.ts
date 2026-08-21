@@ -58,6 +58,7 @@ export type ViewerCommand =
 	| 'close-window'
 	| 'toggle-split-view'
 	| 'toggle-edit-view'
+	| 'toggle-live-mode'
 	| 'save-as'
 	| 'save'
 	| 'undo-close-tab'
@@ -244,6 +245,11 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	if (mod && key === 'q') return 'close-window';
 	if (mod && (code === 'Backslash' || code === 'IntlBackslash')) return 'toggle-split-view';
 	if (mod && key === 'e') return 'toggle-edit-view';
+	// Mod+L had only the Monaco half (`editorAction` in shortcuts.ts), so it
+	// fired in the editor and in split view and did nothing in the preview —
+	// the exact inverse of where the Auto-Reload button was drawn (#692). The
+	// panel advertised the chord in every mode regardless.
+	if (mod && key === 'l') return 'toggle-live-mode';
 	// Save As. The app menu advertised this chord for as long as the menu has
 	// existed, but nothing ever bound it: the branch below matched on
 	// `cmdOrCtrl && key === 's'` with no Shift guard, so the advertised

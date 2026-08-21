@@ -348,7 +348,12 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'menu.toggleLiveMode',
 		chords: ['Mod+L'],
 		group: 'view',
+		// Both halves, like Mod+E: Monaco's own Ctrl+L is `expandLineSelection`,
+		// so the editor action is what stops the chord selecting a line, and the
+		// document command is what makes it work in the preview, where there is
+		// no Monaco to register anything on.
 		editorAction: true,
+		documentCommands: ['toggle-live-mode'],
 	},
 	{
 		id: 'view-toggle-split',
