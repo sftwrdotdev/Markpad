@@ -54,7 +54,12 @@ type DocumentSessionOptions = {
 	/** The disk moved under a save, which was refused. Raise the conflict bar. */
 	onDiskChangedUnderSave: (tabId: string) => void;
 	cancelPendingAutoSave: (tabId: string) => void;
-	askClose: (title: string) => Promise<'save' | 'discard' | 'cancel'>;
+	/**
+	 * `diskMoved` picks the question. "You have unsaved changes" is the wrong
+	 * one when the file also changed underneath them: Save there means
+	 * overwriting somebody else's work, and the dialog has to say so.
+	 */
+	askClose: (title: string, diskMoved: boolean) => Promise<'save' | 'discard' | 'cancel'>;
 	onCloseSaveNewerEdits: () => void;
 	onCloseAutoSaveFailed: () => void;
 	/**
@@ -837,15 +842,29 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		const tab = tabManager.tabs.find((item) => item.id === tabId);
 		if (!tab || (!tab.isDirty && tab.path !== '')) return true;
 		if (!tab.isDirty) return true;
-		if (settings.autoSave && tab.path !== '') {
+		// Asked before auto-save gets its turn, because auto-save's answer to a
+		// dirty tab — write it and close — is the same answer as "keep mine",
+		// and the user has not given it. The conflict bar may well be on screen
+		// asking that exact question; closing the tab used to answer it for
+		// them, in the direction that destroys the other program's work, with
+		// nothing said. VS Code prompts here, and so does this.
+		//
+		// Only ever reached with a dirty tab, so an untouched document still
+		// closes with no I/O and no question.
+		const diskMoved = tab.path !== '' && (await fileDiffersFromBaseline(tab, tab.path));
+		if (settings.autoSave && tab.path !== '' && !diskMoved) {
 			const success = await saveContent(tabId);
 			if (success && !tab.isDirty) return true;
 			if (success) options.onCloseSaveNewerEdits();
 			else options.onCloseAutoSaveFailed();
 		}
-		const response = await options.askClose(tab.title);
+		const response = await options.askClose(tab.title, diskMoved);
 		if (response === 'cancel') return false;
 		if (response === 'save') {
+			// Answering Save to the changed-on-disk question IS "keep mine", so
+			// it has to carry the authorisation the write guard is waiting for —
+			// otherwise Save silently fails and the tab refuses to close.
+			if (diskMoved) allowOverwriteOnce(tab.id);
 			return saveContent(tabId);
 		}
 		// Kept, but not because the timer would otherwise fire: the two lines

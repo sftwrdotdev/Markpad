@@ -54,6 +54,8 @@ const { createDocumentSession } = await import('../src/lib/sessions/documentSess
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 let refusedSaves: string[] = [];
+let closeQuestions: boolean[] = [];
+let closeAnswer: 'save' | 'discard' | 'cancel' = 'discard';
 
 function makeSession(overrides: Record<string, unknown> = {}) {
 	return createDocumentSession({
@@ -71,7 +73,10 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		onError: () => {},
 		onDiskChangedUnderSave: (tabId: string) => refusedSaves.push(tabId),
 		cancelPendingAutoSave: () => {},
-		askClose: async () => 'discard' as const,
+		askClose: async (_title: string, diskMoved: boolean) => {
+			closeQuestions.push(diskMoved);
+			return closeAnswer;
+		},
 		onCloseSaveNewerEdits: () => {},
 		onCloseAutoSaveFailed: () => {},
 		onPartialCopySaved: () => {},
@@ -92,6 +97,8 @@ function reset() {
 	tabManager.closeAll();
 	disk.clear();
 	refusedSaves = [];
+	closeQuestions = [];
+	closeAnswer = 'discard';
 }
 
 test('a clean tab that owns the changed file is reloaded', async () => {
@@ -257,6 +264,53 @@ test('an ordinary save of an untouched file still just saves', async () => {
 	assert.equal(tab.isDirty, false);
 });
 
+// --- closing must not answer the question for the user ---
+
+test('closing a tab whose file changed asks, instead of auto-saving over it', async () => {
+	// Auto-save is on by default, and `canCloseTab` used to hand a dirty tab
+	// straight to it — which is the same answer as "keep mine", to a question
+	// the user was shown and did not answer, in the direction that destroys the
+	// other program's work. VS Code prompts here.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+	disk.set('/notes/a.md', 'their edit');
+
+	closeAnswer = 'cancel';
+	assert.equal(await session.canCloseTab(tab.id), false);
+	assert.deepEqual(closeQuestions, [true], 'the dialog was not told the disk had moved');
+	assert.equal(disk.get('/notes/a.md'), 'their edit', 'and nothing was written behind the question');
+});
+
+test('answering Save to that dialog does overwrite, rather than failing silently', async () => {
+	// The write guard refuses a changed file, so without the authorisation this
+	// answer carries, Save would return false and the tab would refuse to close
+	// — a dialog whose Save button does nothing.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+	disk.set('/notes/a.md', 'their edit');
+
+	closeAnswer = 'save';
+	assert.equal(await session.canCloseTab(tab.id), true);
+	assert.equal(disk.get('/notes/a.md'), 'my edit');
+});
+
+test('closing an untouched file still just saves and closes', async () => {
+	// The question is for the case that earned it. Every other close keeps the
+	// behaviour it had.
+	reset();
+	const session = makeSession();
+	const tab = open('/notes/a.md', 'on disk');
+	tabManager.updateTabRawContent(tab.id, 'my edit');
+
+	assert.equal(await session.canCloseTab(tab.id), true);
+	assert.equal(disk.get('/notes/a.md'), 'my edit');
+	assert.deepEqual(closeQuestions, [], 'nothing was asked');
+});
+
 // --- wiring that cannot be executed outside a Svelte runtime ---
 
 test('the watcher listener routes every event through the guarded resolution', () => {
@@ -338,4 +392,46 @@ test('entering split view no longer turns Live Mode off behind the user', () => 
 	// matched as source text — the same reason as the four assertions above.
 	const body = sliceBetween(viewer, 'async function toggleSplitView', '\n\t}');
 	assert.doesNotMatch(body, /toggleLiveMode|liveMode\s*=/);
+});
+
+// --- #4: the irreversible answer is now visible before it is given ---
+
+test('the conflict bar offers Compare beside the two answers', () => {
+	// Reload replaces the buffer and `setValue` clears the undo stack with it,
+	// so the bar asks for an irreversible decision. VS Code and Sublime both
+	// put a Compare next to the same two choices.
+	const bar = sliceBetween(viewer, 'external-change-bar', '{/if}');
+	assert.match(bar, /t\('externalChange\.compare'/);
+	assert.match(bar, /t\('externalChange\.reload'/);
+	assert.match(bar, /t\('externalChange\.keepMine'/);
+});
+
+test('Compare reads the file at the moment it is asked, not when the bar went up', () => {
+	// The bar can stand for a while. What the user needs to see is the file as
+	// it is when they are actually answering.
+	const fn = sliceBetween(viewer, 'async function compareExternalChange', '\n\t}');
+	assert.match(fn, /read_file_content_checked/);
+	assert.match(fn, /tab\.rawContent/);
+});
+
+test('answering the bar closes the comparison with it', () => {
+	// Otherwise the overlay outlives the question and shows a diff against a
+	// version that is no longer either side of anything.
+	for (const name of ['resolveExternalChangeByReloading', 'resolveExternalChangeByKeepingBuffer']) {
+		const fn = sliceBetween(viewer, `function ${name}`, '\n\t}');
+		assert.match(fn, /comparison = null/, `${name} left the comparison open`);
+	}
+});
+
+test('the diff view owns its models and never edits the document', () => {
+	// Handing it the tab's live model would put a second editor on a buffer
+	// Editor.svelte owns, and a read-only view of a document is not a place to
+	// change it from.
+	const overlay = readSource('src/lib/components/DiffOverlay.svelte');
+	assert.match(overlay, /createModel\(/);
+	assert.match(overlay, /readOnly: true/);
+	assert.match(overlay, /originalEditable: false/);
+	// Every model it creates is disposed, or opening the view repeatedly leaks
+	// one document's worth of text each time.
+	assert.match(overlay, /for \(const model of models\) model\.dispose\(\)/);
 });
