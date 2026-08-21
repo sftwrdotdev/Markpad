@@ -9,10 +9,9 @@
 	import { tabManager } from '../stores/tabs.svelte.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
-	import { getConfiguredTitlebarToolbarIds } from '../utils/titlebarToolbar.js';
+	import { getConfiguredTitlebarToolbarIds, visibleTitlebarActionIds } from '../utils/titlebarToolbar.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
-	import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
 	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
@@ -327,55 +326,16 @@
 		}
 	});
 
-	let visibleActionIds = $derived.by(() => {
-		const list: string[] = [];
-
-		if (tabManager.activeTab && !showHome) {
-			list.push('back');
-			list.push('forward');
-			if (currentFile) list.push('reload');
-
-			// An unsaved buffer has no name to read an extension off, and is
-			// treated as Markdown — which is what the old inline default of `'md'`
-			// said, spelled as the condition it actually is.
-			const isMarkdown = currentFile ? hasMarkdownLinkExtension(currentFile) : true;
-
-			if (isMarkdown) {
-				list.push('toc');
-				list.push('fullWidth');
-				if (!tabManager.activeTab?.isSplit && !isEditing && currentFile) {
-					list.push('live');
-				}
-				if (tabManager.activeTab?.isSplit) {
-					list.push('sync');
-					// Only a split has two panes to put in an order, so the
-					// control that orders them exists only there.
-					list.push('swap');
-				}
-				list.push('split');
-			}
-			if (isMarkdown && !tabManager.activeTab?.isSplit) {
-				list.push('edit');
-			}
-			// Find in preview: only meaningful when a preview is actually
-			// visible (view mode or split). In pure edit mode Monaco's own
-			// Ctrl+F handles search, so we hide the entry there.
-			if (isMarkdown && (!isEditing || tabManager.activeTab?.isSplit)) {
-				list.push('find');
-			}
-			if (isEditing || tabManager.activeTab?.isSplit) {
-				list.push('editorToolbar');
-			}
-			list.push('zen');
-			list.push('tabs');
-		}
-
-		if (zoomLevel && zoomLevel !== 100) list.push('zoom');
-		list.push('theme');
-		list.push('settings');
-
-		return list;
-	});
+	let visibleActionIds = $derived.by(() =>
+		visibleTitlebarActionIds({
+			hasActiveTab: Boolean(tabManager.activeTab),
+			showHome,
+			currentFile,
+			isSplit: Boolean(tabManager.activeTab?.isSplit),
+			isEditing,
+			zoomLevel,
+		}),
+	);
 
 	let configuredActionIds = $derived.by(() =>
 		getConfiguredTitlebarToolbarIds(

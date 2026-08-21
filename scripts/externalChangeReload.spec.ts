@@ -188,3 +188,33 @@ test('turning Live Mode on installs the watcher without reloading', () => {
 	const body = sliceBetween(viewer, 'function toggleLiveMode', '\n\t}');
 	assert.doesNotMatch(body, /loadMarkdown/);
 });
+
+// --- #692: the editor is where the reload has to land ---
+
+test('reloading a clean tab does not throw the user out of the editor', async () => {
+	// The gate on the Auto-Reload button used to hide it in edit mode, so this
+	// path was reachable only by enabling Live Mode in the preview and then
+	// pressing Edit. Now that editing is the case the button is FOR, a reload
+	// that dropped the tab back to preview would be the visible bug.
+	//
+	// `loadMarkdown(path)` with no options is exactly the call the
+	// `file-changed` listener makes for a `reload` outcome.
+	const session = makeSession();
+	const tab = open('/notes/live.md', 'before');
+	tab.isEditing = true;
+
+	handleInvoke = (cmd) => {
+		if (cmd === 'canonicalize_path') return '/notes/live.md';
+		// An editing pane always gets the whole file, never the 5MB preview
+		// slice — an editor bound to a partial buffer auto-saves it back over
+		// the document's tail.
+		if (cmd === 'read_file_content_checked') return ['after', false, 'UTF-8'];
+		throw new Error(`unexpected invoke: ${cmd}`);
+	};
+
+	await session.loadMarkdown('/notes/live.md');
+
+	assert.equal(tabManager.activeTab?.rawContent, 'after', 'the disk version did not arrive');
+	assert.equal(tabManager.activeTab?.isEditing, true, 'the reload left the editor');
+	assert.equal(tabManager.activeTab?.isDirty, false, 'the reloaded buffer is not an edit');
+});

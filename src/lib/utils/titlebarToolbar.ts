@@ -1,3 +1,5 @@
+import { hasMarkdownLinkExtension } from './markdownLinks.js';
+
 export type TitlebarToolbarPlacement = 'bar' | 'menu';
 
 type TitlebarToolbarAction = {
@@ -142,6 +144,85 @@ export function applyTitlebarToolbarMove(order: readonly string[], move: Titleba
 	const [moved] = next.splice(move.fromIndex, 1);
 	next.splice(move.toIndex, 0, moved);
 	return next;
+}
+
+export type TitlebarActionContext = {
+	hasActiveTab: boolean;
+	showHome: boolean;
+	currentFile: string;
+	isSplit: boolean;
+	isEditing: boolean;
+	zoomLevel?: number;
+};
+
+/**
+ * Which actions the current document offers, before the user's own order,
+ * hiding and bar/menu placement are applied to them.
+ *
+ * This used to be a `$derived.by` inside TitleBar.svelte, where nothing could
+ * call it — and one of its conditions was wrong for as long as that was true.
+ * The Auto-Reload button was gated on `!isEditing` while its chord, Mod+L, is
+ * an `editorAction` in shortcuts.ts and therefore registered on Monaco: the
+ * chord existed only in edit mode and the button existed everywhere else, so
+ * the two never both applied. Editing a file that another program also writes
+ * — the case auto-reload is for — got the chord with no indicator.
+ *
+ * Its output already fed `getConfiguredTitlebarToolbarIds` below, so this is
+ * the first half of a pipeline moving next to the second, not a new layer.
+ */
+export function visibleTitlebarActionIds(context: TitlebarActionContext): string[] {
+	const list: string[] = [];
+
+	if (context.hasActiveTab && !context.showHome) {
+		list.push('back');
+		list.push('forward');
+		if (context.currentFile) list.push('reload');
+
+		// An unsaved buffer has no name to read an extension off, and is
+		// treated as Markdown — which is what the old inline default of `'md'`
+		// said, spelled as the condition it actually is.
+		const isMarkdown = context.currentFile
+			? hasMarkdownLinkExtension(context.currentFile)
+			: true;
+
+		if (isMarkdown) {
+			list.push('toc');
+			list.push('fullWidth');
+			// Split view stays out on purpose: its preview renders the live
+			// buffer rather than the file, which is why entering it turns live
+			// mode off (`toggleSplitView` in MarkdownViewer.svelte).
+			if (!context.isSplit && context.currentFile) {
+				list.push('live');
+			}
+			if (context.isSplit) {
+				list.push('sync');
+				// Only a split has two panes to put in an order, so the
+				// control that orders them exists only there.
+				list.push('swap');
+			}
+			list.push('split');
+		}
+		if (isMarkdown && !context.isSplit) {
+			list.push('edit');
+		}
+		// Find in preview: only meaningful when a preview is actually
+		// visible (view mode or split). In pure edit mode Monaco's own
+		// Ctrl+F handles search, so we hide the entry there.
+		if (isMarkdown && (!context.isEditing || context.isSplit)) {
+			list.push('find');
+		}
+		if (context.isEditing || context.isSplit) {
+			list.push('editorToolbar');
+		}
+		list.push('zen');
+		list.push('tabs');
+	}
+
+	if (context.zoomLevel && context.zoomLevel !== 100) list.push('zoom');
+	list.push('theme');
+	list.push('settings');
+
+	return list;
 }
 
 export function getConfiguredTitlebarToolbarIds(
