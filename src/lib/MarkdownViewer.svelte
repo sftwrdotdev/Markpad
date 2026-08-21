@@ -106,6 +106,7 @@ import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
 import { isTocOverhanging } from './utils/tocOverlay.js';
+import { splitRatioAfterMove } from './utils/splitPanes.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
 	getScrollSyncPositionFromPixels,
@@ -384,6 +385,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			isEditing,
 			isSplit,
 			tocSide: settings.tocSide,
+			splitEditorSide: settings.splitEditorSide,
 			isFullWidth: settings.previewFullWidth,
 			viewerWidth,
 			previewContentWidth,
@@ -576,11 +578,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const activeTab = tabManager.activeTab;
 		if (!activeTab || !tabManager.activeTabId) return;
 
-		if (e.key === 'ArrowLeft') {
-			tabManager.setSplitRatio(tabManager.activeTabId, Math.max(0.1, activeTab.splitRatio - 0.05));
-		} else if (e.key === 'ArrowRight') {
-			tabManager.setSplitRatio(tabManager.activeTabId, Math.min(0.9, activeTab.splitRatio + 0.05));
-		}
+		// The same step the bar takes under the pointer, in the same units, so
+		// `splitRatioAfterMove` is the only thing that knows which way is wider.
+		const step = e.key === 'ArrowLeft' ? -0.05 : e.key === 'ArrowRight' ? 0.05 : 0;
+		if (step === 0) return;
+
+		tabManager.setSplitRatio(
+			tabManager.activeTabId,
+			splitRatioAfterMove(activeTab.splitRatio, step, settings.splitEditorSide),
+		);
 	}
 
 	function setTocWidth(width: number) {
@@ -3076,8 +3082,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 		const onMove = (moveEvent: MouseEvent) => {
 			const deltaX = moveEvent.clientX - startX;
-			const deltaRatio = deltaX / containerWidth;
-			tabManager.setSplitRatio(tabId, startRatio + deltaRatio);
+			tabManager.setSplitRatio(
+				tabId,
+				splitRatioAfterMove(startRatio, deltaX / containerWidth, settings.splitEditorSide),
+			);
 		};
 
 		const onUp = () => {
@@ -3521,6 +3529,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontoggleLiveMode={toggleLiveMode}
 		ontoggleEdit={() => toggleEditView()}
 		ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
+		onswapPanes={() => settings.toggleSplitEditorSide()}
 		{isEditing}
 		ondetach={handleDetach}
 		ontabclick={() => (showHome = false)}
@@ -3562,6 +3571,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontoggleEdit={() => toggleEditView()}
 		ontoggleEditorToolbar={() => settings.toggleEditorToolbar()}
 		ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
+		onswapPanes={() => settings.toggleSplitEditorSide()}
 		{isEditing}
 		ondetach={handleDetach}
 		ontabclick={() => (showHome = false)}
@@ -3602,6 +3612,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				role="presentation">
 				<div class="layout-container" 
 					class:split={isSplit} 
+					class:editor-on-right={isSplit && settings.splitEditorSide === 'right'} 
 					class:editing={isEditing} 
 					class:has-pinned-toc={isMarkdown && settings.pinnedToc && settings.showToc}
 					class:toc-on-left={isMarkdown && settings.tocSide === 'left'}
@@ -3987,7 +3998,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	{#if isDragging}
 		<div class="drag-overlay" role="presentation">
-			<div class="drag-zones" class:split={isSplit}>
+			<div class="drag-zones" class:split={isSplit} class:editor-on-right={isSplit && settings.splitEditorSide === 'right'}>
 				{#if isSplit || isEditing}
 					<div class="drag-zone editor-zone" class:active={dragTarget === 'editor'}>
 								<div class="drag-message">
@@ -4392,6 +4403,19 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		padding-top: 36px;
 		box-sizing: border-box;
 		overflow: hidden;
+	}
+
+	/**
+	 * Swapping the panes reverses the row rather than reordering the markup
+	 * (#184). The editor keeps its place in the DOM, so focus order, the drag
+	 * hit test — which reads each pane's own `getBoundingClientRect()` — and
+	 * every `.editor-pane` / `.viewer-pane` rule carry over untouched. The
+	 * padding that a pinned outline adds is on the container and is unaffected
+	 * by the direction, so the outline stays on the side it is pinned to.
+	 */
+	.layout-container.editor-on-right,
+	.drag-zones.editor-on-right {
+		flex-direction: row-reverse;
 	}
 
 	.pane {

@@ -1,9 +1,12 @@
+import type { SplitEditorSide } from './splitPanes.js';
+
 export type TocSide = 'left' | 'right';
 
 export interface TocPlacement {
 	isEditing: boolean;
 	isSplit: boolean;
 	tocSide: TocSide;
+	splitEditorSide: SplitEditorSide;
 }
 
 export interface TocOverhangInput extends TocPlacement {
@@ -30,18 +33,24 @@ const MIN_GUTTER = 50;
  * its content and leaves a gutter either side, while the editor fills its pane
  * edge to edge and has no gutter to lend.
  *
- * Which pane is underneath follows from which panes are rendered, because the
- * editor is always the first child and so takes the left edge whenever it is on
- * screen at all:
+ * Only a split has two panes to put in an order. In the other two modes the
+ * pane that is rendered fills the container and holds both edges at once, so
+ * the outline lands on it whichever side it is pinned to — which is why the
+ * side is not consulted there:
  *
  *   reading        viewer alone           → preview on both sides
- *   split          editor | viewer        → editor on the left, preview on the right
  *   editing only   viewer is `flex: 0`    → editor on both sides
+ *   split          two panes              → whichever one is not on `tocSide`
+ *
+ * The split row used to be read off the DOM order instead, on the grounds that
+ * the editor is the first child and so takes the left edge. `splitEditorSide`
+ * reverses that row (#184), and it reverses it with `flex-direction`, which
+ * leaves the first child exactly where it was in the markup. Asking the
+ * preference is the only way to see it.
  */
-export function isTocOverPreview({ isEditing, isSplit, tocSide }: TocPlacement): boolean {
-	const editorVisible = isSplit || isEditing;
-	const viewerVisible = isSplit || !isEditing;
-	return tocSide === 'right' ? viewerVisible : !editorVisible;
+export function isTocOverPreview({ isEditing, isSplit, tocSide, splitEditorSide }: TocPlacement): boolean {
+	if (isSplit) return tocSide !== splitEditorSide;
+	return !isEditing;
 }
 
 /**

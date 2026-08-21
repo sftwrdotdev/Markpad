@@ -502,6 +502,18 @@ export class SettingsStore {
 	theme = $state<ThemeSetting>(DEFAULT_THEME);
 	pinnedToc = $state(false);
 	tocSide = $state<'left' | 'right'>('left');
+	/**
+	 * Which side of a split the editor takes, and so which side the preview
+	 * takes (#184). Read only while a tab is split: with one pane on screen it
+	 * fills the container and there is no order to state.
+	 *
+	 * Window-wide rather than per tab, like `tocSide` and unlike `splitRatio`.
+	 * A ratio is about one document — how much of it you want to see while you
+	 * write — and a reader sets it again per file. Which hand the editor is
+	 * under is about the reader, and answering it once per tab would mean
+	 * answering it again every time one is opened.
+	 */
+	splitEditorSide = $state<'left' | 'right'>('left');
 	tocWidth = $state(240);
 	osType = $state<OSType>('unknown');
 	imageDirectory = $state('img');
@@ -696,6 +708,10 @@ export class SettingsStore {
 
 	toggleTocSide() {
 		this.tocSide = this.tocSide === 'left' ? 'right' : 'left';
+	}
+
+	toggleSplitEditorSide() {
+		this.splitEditorSide = this.splitEditorSide === 'left' ? 'right' : 'left';
 	}
 
 	setTocWidth(width: number) {
@@ -940,6 +956,13 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 			read: (s) => s.tocSide,
 			load: (s, raw) => {
 				if (raw === 'left' || raw === 'right') s.tocSide = raw;
+			},
+		},
+		{
+			key: 'editor.splitEditorSide',
+			read: (s) => s.splitEditorSide,
+			load: (s, raw) => {
+				if (raw === 'left' || raw === 'right') s.splitEditorSide = raw;
 			},
 		},
 		numberSetting('editor.tocWidth', TOC_WIDTH_RANGE, (s) => s.tocWidth, (s, v) => { s.tocWidth = v; }),

@@ -51,6 +51,7 @@
 		ontoggleEdit,
 		ontoggleEditorToolbar,
 		ontoggleSplit,
+		onswapPanes,
 		isEditing,
 		ondetach,
 		ontabclick,
@@ -94,6 +95,7 @@
 		ontoggleEdit: () => void;
 		ontoggleEditorToolbar?: () => void;
 		ontoggleSplit?: () => void;
+		onswapPanes?: () => void;
 		isEditing: boolean;
 		ondetach: (tabId: string) => void;
 		ontabclick?: () => void;
@@ -346,6 +348,9 @@
 				}
 				if (tabManager.activeTab?.isSplit) {
 					list.push('sync');
+					// Only a split has two panes to put in an order, so the
+					// control that orders them exists only there.
+					list.push('swap');
 				}
 				list.push('split');
 			}
@@ -911,6 +916,21 @@
 							></svg>
 						<span class="action-label">{t('menu.splitView', currentLanguage)}</span>
 						<span class="menu-shortcut">{shortcutLabel('view-toggle-split', modifier)}</span>
+					</button>
+				{:else if id === 'swap'}
+					<button
+						class="title-action-btn"
+						onclick={() => onswapPanes?.()}
+						aria-label={t('tooltip.swapPanes', currentLanguage)}
+											onmouseenter={(e) => showTooltip(e, t('tooltip.swapPanes', currentLanguage))}
+						onmousedown={(e) => e.preventDefault()}
+						onmouseleave={hideTooltip}
+						transition:fly={{ x: 10, duration: 200 }}>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+							><rect x="3" y="11" width="7" height="10" rx="1"></rect><rect x="14" y="11" width="7" height="10" rx="1"></rect><path
+								d="M6.5 8C6.5 3.5 17.5 3.5 17.5 8"></path><polyline points="4.5 6 6.5 8.4 8.5 6"></polyline><polyline points="15.5 6 17.5 8.4 19.5 6"></polyline
+							></svg>
+						<span class="action-label">{t('menu.swapPanes', currentLanguage)}</span>
 					</button>
 				{:else if id === 'sync'}
 					<button
