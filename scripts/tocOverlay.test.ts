@@ -12,13 +12,14 @@ const DEFAULTS = {
 	isFullWidth: false,
 };
 
-const reading = { isEditing: false, isSplit: false } as const;
-const editingOnly = { isEditing: true, isSplit: false } as const;
-const split = { isEditing: true, isSplit: true } as const;
+const reading = { isEditing: false, isSplit: false, splitEditorSide: 'left' } as const;
+const editingOnly = { isEditing: true, isSplit: false, splitEditorSide: 'left' } as const;
+const split = { isEditing: true, isSplit: true, splitEditorSide: 'left' } as const;
+const splitSwapped = { ...split, splitEditorSide: 'right' } as const;
 
 test('the pane under the outline follows from the panes that are rendered', () => {
-	// The editor is always the first child, so it owns the left edge whenever
-	// it is on screen.
+	// One pane on screen fills the container and holds both edges, so the side
+	// the outline is pinned to cannot change the answer.
 	assert.equal(isTocOverPreview({ ...reading, tocSide: 'left' }), true);
 	assert.equal(isTocOverPreview({ ...reading, tocSide: 'right' }), true);
 
@@ -28,6 +29,39 @@ test('the pane under the outline follows from the panes that are rendered', () =
 	// The viewer pane is `flex: 0` here — neither side lands on the preview.
 	assert.equal(isTocOverPreview({ ...editingOnly, tocSide: 'left' }), false);
 	assert.equal(isTocOverPreview({ ...editingOnly, tocSide: 'right' }), false);
+});
+
+test('swapping the split panes moves the outline onto the other one', () => {
+	// The reason this cannot be read off the DOM: `splitEditorSide` reverses
+	// the row with `flex-direction`, so the editor is still the first child
+	// while the preview is the one on the left.
+	assert.equal(isTocOverPreview({ ...splitSwapped, tocSide: 'left' }), true);
+	assert.equal(isTocOverPreview({ ...splitSwapped, tocSide: 'right' }), false);
+
+	// Nothing else has two panes to order, so nothing else moves.
+	for (const mode of [reading, editingOnly]) {
+		for (const tocSide of ['left', 'right'] as const) {
+			assert.equal(
+				isTocOverPreview({ ...mode, splitEditorSide: 'right', tocSide }),
+				isTocOverPreview({ ...mode, splitEditorSide: 'left', tocSide }),
+			);
+		}
+	}
+});
+
+test('a swapped split hands the gutter test the pane that actually has a gutter', () => {
+	// The outline is pinned left and the preview is now the left pane, so the
+	// preview's gutter is what decides — the same question the unswapped
+	// right-side case asks, and the opposite of what the unswapped left-side
+	// case answers.
+	const swappedLeft = { ...DEFAULTS, ...splitSwapped, tocSide: 'left' } as const;
+	assert.equal(isTocOverhanging({ ...swappedLeft, viewerWidth: 1400 }), false);
+	assert.equal(isTocOverhanging({ ...swappedLeft, viewerWidth: 1000 }), true);
+
+	// Unswapped, the same outline sits on the editor, which has no gutter to
+	// lend at any width.
+	const unswappedLeft = { ...DEFAULTS, ...split, tocSide: 'left' } as const;
+	assert.equal(isTocOverhanging({ ...unswappedLeft, viewerWidth: 1400 }), true);
 });
 
 test('in reading mode the gutter decides, and the default one is not wide enough', () => {
