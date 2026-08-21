@@ -1107,7 +1107,10 @@ mod watch_survives_rename {
 
     #[test]
     fn a_file_watch_still_reports_after_the_file_is_replaced() {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let dir = std::env::temp_dir().join(format!("markpad-watch-{nonce}"));
         std::fs::create_dir_all(&dir).unwrap();
         let target = dir.join("notes.md");
