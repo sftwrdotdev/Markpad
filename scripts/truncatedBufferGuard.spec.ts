@@ -61,7 +61,7 @@ function makeSession() {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: (message) => errors.push(message),
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},
 		askClose: async () => closeAnswer,
 		onCloseSaveNewerEdits: () => {},
@@ -287,10 +287,24 @@ async function openPartialTasks() {
  * through so that a guard which stops refusing is caught by the write it lets
  * happen, not by an "unexpected invoke" from the stub.
  */
+/**
+ * The original file's tail cannot be read any more — the case Save As exists to
+ * rescue. `/docs/copy.md`, the file the rescue writes, is readable: it is a new
+ * file the process just created, and every save checks the disk against its own
+ * baseline before overwriting.
+ */
 function makeTailUnreadable() {
-	handleInvoke = (cmd) => {
-		if (cmd === 'read_file_content_checked') return Promise.reject(new Error('Os { code: 5, kind: Uncategorized }'));
-		if (cmd === 'save_file_content') return null;
+	const written = new Map<string, string>();
+	handleInvoke = (cmd, args) => {
+		if (cmd === 'read_file_content_checked') {
+			const saved = written.get(args.path);
+			if (saved !== undefined) return [saved, false, 'UTF-8'];
+			return Promise.reject(new Error('Os { code: 5, kind: Uncategorized }'));
+		}
+		if (cmd === 'save_file_content') {
+			written.set(args.path, args.content);
+			return null;
+		}
 		if (cmd === 'canonicalize_path') return '/docs/copy.md';
 		if (cmd === 'plugin:dialog|save') return '/docs/copy.md';
 		throw new Error(`unexpected invoke: ${cmd}`);

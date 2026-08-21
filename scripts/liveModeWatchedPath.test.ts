@@ -8,14 +8,16 @@ const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 test('Live Mode routes a watcher notification to its watched path', () => {
 	assert.match(runtime, /emit_to\(event_label\.as_str\(\), "file-changed", watched_path\.clone\(\)\)/);
-	assert.match(viewer, /await appWindow\.listen\('file-changed', \(event\) => \{/);
+	// `async` because deciding what an event means now reads the file: the
+	// answer to "did somebody else write this" is the file itself, not a clock.
+	assert.match(viewer, /await appWindow\.listen\('file-changed', async \(event\) => \{/);
 	assert.match(viewer, /const changedPath = event\.payload as string;/);
 	// The listener no longer compares the payload with the active file itself:
 	// resolveExternalChange looks up the tab that OWNS the changed path (and
 	// refuses to reload it when it has unsaved edits). See
 	// externalChangeReload.test.ts for the routing behaviour.
 	assert.match(viewer, /if \(!liveMode\) return;/);
-	assert.match(viewer, /documentSession\.resolveExternalChange\(changedPath\)/);
+	assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
 	const session = readSource('src/lib/sessions/documentSession.svelte.ts');
 	assert.match(session, /tabManager\.tabs\.find\(\(tab\) => tab\.path === changedPath\)/);
 });

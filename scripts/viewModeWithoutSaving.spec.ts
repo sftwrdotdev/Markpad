@@ -377,7 +377,7 @@ function makeSession(askClose: (title: string) => Promise<'save' | 'discard' | '
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: () => {},
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},
 		askClose,
 		onCloseSaveNewerEdits: () => {},

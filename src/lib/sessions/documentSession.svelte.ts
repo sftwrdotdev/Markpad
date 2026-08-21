@@ -51,7 +51,8 @@ type DocumentSessionOptions = {
 	isScrolling: () => boolean;
 	renderRichContent: () => void;
 	onError: (message: string, error: unknown) => void;
-	selfWriteGraceMs: number;
+	/** The disk moved under a save, which was refused. Raise the conflict bar. */
+	onDiskChangedUnderSave: (tabId: string) => void;
 	cancelPendingAutoSave: (tabId: string) => void;
 	askClose: (title: string) => Promise<'save' | 'discard' | 'cancel'>;
 	onCloseSaveNewerEdits: () => void;
@@ -79,15 +80,9 @@ function foldsForTab(tabId: string): Set<string> {
 export function createDocumentSession(options: DocumentSessionOptions) {
 	const loadRevisionByTab = new Map<string, number>();
 	const loadingTabs = new Set<string>();
-	const selfWriteUntilByPath = new Map<string, number>();
-
-	function markSelfWrite(path: string) {
-		selfWriteUntilByPath.set(path, Date.now() + options.selfWriteGraceMs);
-	}
-
-	function clearSelfWrite(path: string) {
-		selfWriteUntilByPath.delete(path);
-	}
+	// Tabs whose next save is authorised to overwrite a changed file, set by
+	// answering the conflict bar with "keep mine". One save each.
+	const overwriteAllowed = new Set<string>();
 
 	/**
 	 * Per tab: a promise that settles once every save queued for it so far has
@@ -141,12 +136,59 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return result;
 	}
 
-	function shouldReloadExternalChange(path: string) {
-		const until = selfWriteUntilByPath.get(path);
-		if (until === undefined) return true;
-		if (Date.now() < until) return false;
-		selfWriteUntilByPath.delete(path);
-		return true;
+	/**
+	 * Has this file changed from the version the tab believes is on disk?
+	 *
+	 * The one question both halves of the external-change guard are asking,
+	 * which is why they are one function. `originalContent` IS the text last
+	 * known to be in the file — every load sets it, every successful save sets
+	 * it — so "different" means somebody has written since, and "equal" means
+	 * nobody has, whoever ran the write.
+	 *
+	 * It replaces a 400ms window opened at each of our own writes, inside which
+	 * every event for that path was discarded as ours. A clock cannot answer a
+	 * question about identity, and it was wrong in both directions:
+	 *
+	 * - too early — another program writing inside the window had its event
+	 *   DROPPED, with nothing re-queued. The buffer then held our text and the
+	 *   disk held theirs, with the tab looking clean, so the next keystroke's
+	 *   auto-save put ours back over theirs. Silent loss of someone else's
+	 *   edit, which is the exact thing this guard exists to prevent.
+	 * - too late — an event arriving after the window (a network share, a
+	 *   synced folder, any watcher latency over 400ms) read as external, and if
+	 *   the user had typed since, the conflict bar asked about their own save.
+	 *   Zed is disliked for precisely this (zed-industries/zed#42108): a
+	 *   question that is sometimes false teaches people to dismiss it,
+	 *   including the times it is true.
+	 *
+	 * A truncated tab (the >5MB preview slice) always answers "changed" and
+	 * needs no better answer: `ensureFullContent` gates every path that can
+	 * write, so a tab we have never written has no write of ours to recognise.
+	 */
+	async function fileDiffersFromBaseline(tab: Tab, path: string): Promise<boolean> {
+		if (!path || tab.isTruncated) return true;
+		try {
+			// The same read the reload does, so the two strings are comparable:
+			// decoded with the file's own encoding rather than assumed UTF-8.
+			const [content] = (await invoke('read_file_content_checked', { path })) as [string, boolean, string];
+			return content !== tab.originalContent;
+		} catch {
+			// Unreadable right now — mid-write, or gone. "Changed" is the safe
+			// answer: it stops a save and asks, instead of quietly deciding that
+			// nothing happened.
+			return true;
+		}
+	}
+
+	/**
+	 * "Keep my version" — the next save of this tab may overwrite a file that
+	 * has changed underneath it.
+	 *
+	 * One save, not a mode: the answer was given about the change the user was
+	 * shown, and a third program writing a minute later is a new question.
+	 */
+	function allowOverwriteOnce(tabId: string) {
+		overwriteAllowed.add(tabId);
 	}
 
 	/**
@@ -159,16 +201,18 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	 * `originalContent` too, so the overwrite would also erase the evidence
 	 * that anything was lost. The caller offers the user the choice instead.
 	 */
-	function resolveExternalChange(changedPath: string): ExternalChangeOutcome {
+	async function resolveExternalChange(changedPath: string): Promise<ExternalChangeOutcome> {
 		if (!changedPath) return { action: 'ignore' };
-		if (!shouldReloadExternalChange(changedPath)) return { action: 'ignore' };
 
 		const active = tabManager.activeTab;
 		const owner =
 			active && active.path === changedPath
 				? active
 				: tabManager.tabs.find((tab) => tab.path === changedPath);
+		// Ahead of the read, so an event for a file no tab holds costs no I/O.
 		if (!owner) return { action: 'ignore' };
+
+		if (!(await fileDiffersFromBaseline(owner, changedPath))) return { action: 'ignore' };
 
 		if (owner.isDirty) return { action: 'conflict', tabId: owner.id, path: changedPath };
 
@@ -608,7 +652,32 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// Snapshot taken on the far side of the wait. Anything typed while
 			// the previous write drained is part of what this save is for.
 			const snapshot = tab.rawContent;
-			markSelfWrite(targetPath);
+			// The second line of defence, and the only one that does not rest on
+			// the watcher. Live Mode is off by default, its events can be
+			// dropped, and until recently a watch armed on a file did not
+			// survive that file being renamed over — which is how `atomic_write`
+			// and most other editors save. None of that reaches this check,
+			// because it asks the file itself at the moment of writing.
+			//
+			// Every editor with a claim to not losing work has one. VS Code
+			// refuses the save ("The content of the file is newer"), Vim
+			// re-stats before each write ("WARNING: The file has been changed
+			// since reading it!!!"), Emacs raises `file-supersession` as soon as
+			// you type into a superseded buffer. Vim has no watcher at all and
+			// is still safe, which is the argument for the check living here and
+			// not only on the event.
+			//
+			// A refusal, not a merge and not a retry: the user is shown the bar
+			// and answers it. "Keep mine" authorises exactly the next save,
+			// which is what `overwriteAllowed` carries.
+			//
+			// The gap between this read and the rename is real, and is the same
+			// gap Vim and VS Code have. It narrows the exposure from "the whole
+			// time the document is open" to "the length of one write".
+			if (!overwriteAllowed.delete(tab.id) && (await fileDiffersFromBaseline(tab, targetPath))) {
+				options.onDiskChangedUnderSave(tab.id);
+				return false;
+			}
 			try {
 				// The tab's own encoding, so a GBK or Shift-JIS document is
 				// written back as the file it was opened from rather than
@@ -616,7 +685,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// buffer saved through the dialog above still carries the
 				// `UTF-8` it was created with, which is what it should be.
 				await invoke('save_file_content', { path: targetPath, content: snapshot, encoding: tab.encoding });
-				markSelfWrite(targetPath);
 				if (tab.path === '') {
 					tabManager.updateTabPath(tab.id, targetPath, targetKey);
 					options.saveRecentFile(targetPath);
@@ -627,7 +695,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tab.originalContent = snapshot;
 				return true;
 			} catch (error) {
-				clearSelfWrite(targetPath);
 				const { message, detail } = describeSaveFailure(error, tab);
 				options.onError(message, detail);
 				return false;
@@ -674,7 +741,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// overwrite that collides outright.
 		return writeExclusively(tab.id, async () => {
 			const snapshot = tab.rawContent;
-			markSelfWrite(selected);
 			try {
 				// Deliberately UTF-8, not `tab.encoding`. Save As is the way out
 				// of both failure modes this file guards: a buffer nothing could
@@ -682,7 +748,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// represent. Writing the copy in the encoding that caused the
 				// problem would take the exit away.
 				await invoke('save_file_content', { path: selected, content: snapshot, encoding: 'UTF-8' });
-				markSelfWrite(selected);
 				tabManager.updateTabPath(tab.id, selected, selectedKey);
 				// The buffer now has a UTF-8 file of its own that it matches
 				// exactly, so it is safe to save from here on — and every save
@@ -709,7 +774,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				if (copyIsPartial) options.onPartialCopySaved();
 				return true;
 			} catch (error) {
-				clearSelfWrite(selected);
 				const { message, detail } = describeSaveFailure(error, tab);
 				options.onError(message === 'Failed to save file' ? 'Failed to save file as' : message, detail);
 				return false;
@@ -797,5 +861,5 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return true;
 	}
 
-	return { loadMarkdown, saveContent, saveContentAs, toggleTaskCheckbox, shouldReloadExternalChange, resolveExternalChange, ensureFullContent, canCloseTab, isLossySaveRefused };
+	return { loadMarkdown, saveContent, saveContentAs, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

@@ -47,7 +47,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: (message: string, error: unknown) => void errors.push({ message, error }),
-		selfWriteGraceMs: 400,
+		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},
 		askClose: async () => 'discard' as const,
 		onCloseSaveNewerEdits: () => {},

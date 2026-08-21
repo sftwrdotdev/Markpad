@@ -266,9 +266,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// same-length ones (overwriting characters, formatting toggles) that
 	// a length-based tick would miss.
 	const lastContentRefByTab = new Map<string, string>();
-	// Suppress the file-watcher reload that fires when we ourselves write the file.
-	// Maps absolute path -> wall-clock ms after which an event for that path is real again.
-	const SELF_WRITE_GRACE_MS = 400;
 	const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
 	// Cancel a pending auto-save for a tab. Call this only on paths that
@@ -784,7 +781,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			console.error(message, error);
 			addToast(`${message}: ${String(error)}`, 'error');
 		},
-		selfWriteGraceMs: SELF_WRITE_GRACE_MS,
+		onDiskChangedUnderSave: noteExternalChangeConflict,
 		cancelPendingAutoSave,
 		askClose: (title) =>
 			askCustom(t('modal.youHaveUnsavedChanges', settings.language).replace('{title}', title), {
@@ -1976,13 +1973,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let lineCoords = $derived(lineCoordinates(rawContent));
 
 	async function saveContent(tabId?: string): Promise<boolean> {
-		const saved = await documentSession.saveContent(tabId);
+		const id = tabId ?? tabManager.activeTabId ?? '';
 		// Every route into here is an explicit decision — Cmd+S, the close
 		// dialog, a mode-toggle dialog — and the background debounce is held
 		// back entirely while a conflict is open (see the auto-save effect).
-		// So a save that lands here IS the answer "keep my version": our text
-		// is now the newest on disk and the bar has nothing left to ask.
-		if (saved) clearExternalChangeConflict(tabId ?? tabManager.activeTabId ?? '');
+		// So a save that lands here IS the answer "keep my version": it both
+		// authorises the write the session would otherwise refuse, and leaves
+		// the bar with nothing to ask.
+		//
+		// Without the first half the bar became a trap: the disk really has
+		// changed, so the guard in `saveContent` refuses, so the bar goes back
+		// up, and Cmd+S can never get the user out of it.
+		if (externalChangeConflicts[id]) documentSession.allowOverwriteOnce(id);
+		const saved = await documentSession.saveContent(tabId);
+		if (saved) clearExternalChangeConflict(id);
 		return saved;
 	}
 
@@ -2031,7 +2035,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	/** "Keep my version": dismiss. The buffer stays dirty and saveable. */
 	function resolveExternalChangeByKeepingBuffer() {
-		if (tabManager.activeTabId) clearExternalChangeConflict(tabManager.activeTabId);
+		const id = tabManager.activeTabId;
+		if (!id) return;
+		// The answer is about a write, not about a bar: the next save has to be
+		// allowed past the guard that would otherwise refuse to overwrite the
+		// changed file. One save only — a third program writing a minute later
+		// is a new question, and the user has not answered that one.
+		documentSession.allowOverwriteOnce(id);
+		clearExternalChangeConflict(id);
 	}
 
 	/**
@@ -2142,6 +2153,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								// file and the way out. "Auto-save failed" on top
 								// of that says nothing new.
 								if (documentSession.isLossySaveRefused(s.id)) return;
+								// Same reasoning for the other refusal: the disk
+								// moved under the write, and the conflict bar is
+								// already on screen saying so and offering both
+								// ways out.
+								if (externalChangeConflicts[s.id]) return;
 								addToast(
 									t('toast.autoSaveFailed', settings.language),
 									'error',
@@ -3203,7 +3219,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				}),
 			);
 			unlisteners.push(
-				await appWindow.listen('file-changed', (event) => {
+				await appWindow.listen('file-changed', async (event) => {
 					const changedPath = event.payload as string;
 					if (!liveMode) return;
 					// The event names the changed file. Which tab that touches —
@@ -3211,7 +3227,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					// session: it owns the self-write grace window (so our own
 					// auto-save does not bounce back) and it refuses to reload a
 					// tab with unsaved edits.
-					const outcome = documentSession.resolveExternalChange(changedPath);
+					const outcome = await documentSession.resolveExternalChange(changedPath);
 					if (outcome.action === 'ignore') return;
 					if (outcome.action === 'conflict') {
 						noteExternalChangeConflict(outcome.tabId);
