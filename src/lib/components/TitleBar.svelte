@@ -927,11 +927,8 @@
 						onmouseleave={hideTooltip}
 						transition:fly={{ x: 10, duration: 200 }}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-							><polyline points="16 3 21 3 21 8"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><polyline points="8 21 3 21 3 16"></polyline><line
-								x1="3"
-								y1="21"
-								x2="10"
-								y2="14"></line
+							><rect x="3" y="11" width="7" height="10" rx="1"></rect><rect x="14" y="11" width="7" height="10" rx="1"></rect><path
+								d="M6.5 8C6.5 3.5 17.5 3.5 17.5 8"></path><polyline points="4.5 6 6.5 8.4 8.5 6"></polyline><polyline points="15.5 6 17.5 8.4 19.5 6"></polyline
 							></svg>
 						<span class="action-label">{t('menu.swapPanes', currentLanguage)}</span>
 					</button>
