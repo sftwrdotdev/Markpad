@@ -12,7 +12,7 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
-	import { listEnter, parseListItem } from '../utils/listEditing.js';
+	import { blockEnter, parseListItem } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { markdownTokenRules, semanticTokenRules } from '../utils/editorTheme.js';
@@ -1021,10 +1021,11 @@
 	};
 
 	/**
-	 * Enter on a list item writes the next item's marker; Enter on an item that
-	 * has a marker and no text takes the marker away instead, which is how a
-	 * list ends. What the next line should say is decided by `listEnter` in
-	 * utils/listEditing.ts, where it can be tested without a browser.
+	 * Enter on a list item writes the next item's marker; Enter on a block quote
+	 * writes the quote (#700); Enter on either with a marker and no text takes
+	 * the marker away instead, which is how the block ends. What the next line
+	 * should say is decided by `blockEnter` in utils/listEditing.ts, where it can
+	 * be tested without a browser.
 	 *
 	 * Only a single collapsed caret is claimed. A selection, or several carets,
 	 * gets the ordinary Enter: replacing a multi-cursor edit with one edit at
@@ -1041,7 +1042,7 @@
 
 		const selection = selections[0];
 		const line = selection.startLineNumber;
-		const next = listEnter(model.getLineContent(line), selection.startColumn);
+		const next = blockEnter(model.getLineContent(line), selection.startColumn);
 		if (!next) return plainEnter();
 
 		// Its own undo step, so one Ctrl+Z gives back the marker this took away
