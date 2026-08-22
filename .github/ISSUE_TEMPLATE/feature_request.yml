@@ -6,7 +6,9 @@ body:
     id: problem
     attributes:
       label: What problem would this solve?
-      placeholder: What you were trying to do when you wanted it.
+      placeholder: What you were trying to do when you wanted it, and any workaround you settled for.
+    validations:
+      required: true
 
   - type: textarea
     id: proposal
@@ -14,7 +16,29 @@ body:
       label: What would you like?
 
   - type: textarea
-    id: alternatives
+    id: reference
     attributes:
-      label: What have you tried instead?
-      description: Workarounds, other editors, or nothing — all three are useful to know.
+      label: Has another app got this right?
+      description: A screenshot of it, or just a name, is the single most useful thing you can add. Requests that point at something concrete get answered against that thing; requests that describe it in prose get answered against a guess at what you meant.
+      placeholder: Drag screenshots straight into this box.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Which platform is this for?
+      description: Some requests only make sense on one OS — tray icons, package managers, file associations.
+      options:
+        - "All platforms"
+        - "Windows"
+        - "macOS"
+        - "Linux"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: setup
+    attributes:
+      label: Your Markpad version and how you installed it
+      description: Skip only if the request has nothing to do with your setup.
+      placeholder: "2.7.4 · Windows installer"
