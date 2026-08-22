@@ -6,15 +6,32 @@ body:
     id: problem
     attributes:
       label: What problem would this solve?
-      placeholder: What you were trying to do when you wanted it.
+      placeholder: What you were trying to do when you wanted it, and any workaround you settled for.
+    validations:
+      required: true
 
   - type: textarea
     id: proposal
     attributes:
       label: What would you like?
 
-  - type: textarea
-    id: alternatives
+  - type: dropdown
+    id: platform
     attributes:
-      label: What have you tried instead?
-      description: Workarounds, other editors, or nothing — all three are useful to know.
+      label: Which platform is this for?
+      description: Some requests only make sense on one OS — tray icons, package managers, file associations.
+      options:
+        - "All platforms"
+        - "Windows"
+        - "macOS"
+        - "Linux"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: input
+    id: setup
+    attributes:
+      label: Your Markpad version and how you installed it
+      description: Skip only if the request has nothing to do with your setup.
+      placeholder: "2.7.4 · Windows installer"

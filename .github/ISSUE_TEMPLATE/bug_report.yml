@@ -9,11 +9,20 @@ body:
 
         **One problem per issue, please.** If you have hit several, open one issue for each: problems added to the end of an existing report tend to get lost in the thread while the first one is being discussed.
 
+  - type: input
+    id: app-version
+    attributes:
+      label: Markpad version
+      description: Shown in Settings, or in the About / Markpad menu.
+      placeholder: "2.7.4"
+    validations:
+      required: true
+
   - type: dropdown
     id: install-method
     attributes:
-      label: How did you install Markpad?
-      description: This is often the single most useful line in the report — the installer and the portable build, or a snap and an AppImage, fail in different ways.
+      label: How did you install it?
+      description: The installer and the portable build, or a snap and an AppImage, fail in different ways.
       options:
         - "Windows — installer (Markpad_…_setup.exe)"
         - "Windows — portable (Markpad_….exe)"
@@ -25,37 +34,25 @@ body:
         - "Linux — snap"
         - "Built from source"
         - "Not sure"
-
-  - type: input
-    id: app-version
-    attributes:
-      label: App version
-      description: Shown in Settings, or in the About / Markpad menu.
-      placeholder: "2.7.0"
+    validations:
+      required: true
 
   - type: input
     id: os-version
     attributes:
       label: OS and version
-      placeholder: "Windows 11 24H2 · macOS 26.1 · Ubuntu 24.04"
-
-  - type: input
-    id: linux-details
-    attributes:
-      label: "Linux only: distribution, session and GPU/driver"
-      description: Skip this on Windows and macOS. On Linux it is usually what localises the bug.
-      placeholder: "CachyOS · GNOME on Wayland (also tried X11) · Intel Arc, Mesa"
+      description: On Linux, add the desktop session and GPU driver — that is usually what localises the bug.
+      placeholder: "Windows 11 24H2 · macOS 26.1 · CachyOS, GNOME on Wayland, Intel Arc/Mesa"
+    validations:
+      required: true
 
   - type: textarea
     id: what-happens
     attributes:
-      label: What happens
+      label: What happens, and what you expected instead
       placeholder: Paste any error text from the terminal or a dialog here too — it is often the fastest route to the cause.
-
-  - type: textarea
-    id: what-expected
-    attributes:
-      label: What you expected
+    validations:
+      required: true
 
   - type: textarea
     id: steps
@@ -67,18 +64,7 @@ body:
         3. See …
 
   - type: textarea
-    id: source-document
+    id: extras
     attributes:
-      label: The document, if one triggers it
-      description: If the bug only shows up with a particular file, attach the `.md` or paste the smallest part that still reproduces it. Reports that depend on a document and do not include one often cannot be reproduced at all.
-
-  - type: textarea
-    id: screenshots
-    attributes:
-      label: Screenshots
-      description: Drag images straight into this box.
-
-  - type: textarea
-    id: anything-else
-    attributes:
-      label: Anything else
+      label: Screenshots, sample file, anything else
+      description: Drag images straight into this box. If the bug only shows up with a particular document, attach the `.md` or paste the smallest part that still reproduces it — reports that depend on a document and do not include one often cannot be reproduced at all.

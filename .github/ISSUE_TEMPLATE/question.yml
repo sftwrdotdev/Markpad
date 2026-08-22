@@ -9,15 +9,14 @@ body:
   - type: textarea
     id: goal
     attributes:
-      label: What are you trying to do?
-
-  - type: textarea
-    id: tried
-    attributes:
-      label: What have you tried?
+      label: What are you trying to do, and what have you tried?
+    validations:
+      required: true
 
   - type: input
     id: platform-version
     attributes:
-      label: Platform and app version
-      placeholder: "Windows 11 · Markpad 2.7.0"
+      label: Platform and Markpad version
+      placeholder: "Windows 11 · Markpad 2.7.4"
+    validations:
+      required: true
