@@ -5,7 +5,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     Mutex,
 };
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -350,9 +350,37 @@ pub fn focus_window(app: AppHandle, label: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Consumed by the main window's first show. See `show_window`.
+static MAIN_WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
+
+/// Reveals a window that was built hidden.
+///
+/// The main window is built hidden so no empty frame is on screen while the
+/// webview boots, and the frontend calls this once it has mounted — seconds
+/// after launch, by which time the user has usually gone back to whatever they
+/// were doing. Activating then is wrong, and `set_focus` is not a polite
+/// request to activate: it is each platform's override for the focus-stealing
+/// prevention the OS applies on the user's behalf — `SetForegroundWindow` on
+/// Windows, with a *synthesized Alt keypress* as the fallback when the OS
+/// refuses, `activateIgnoringOtherApps:` on macOS, `present_with_time` passed
+/// `GDK_CURRENT_TIME` on Linux. Shown without it, the window appears behind
+/// whatever the user moved on to and waits there (#702).
+///
+/// Only that first show is quiet. Every other caller is answering something the
+/// user just did — a detached tab window revealing itself, or the close walk
+/// bringing its window up so the dialog is not hidden behind another — and each
+/// of those must still come to the front.
 #[tauri::command]
 pub async fn show_window(window: tauri::Window) {
+    let is_cold_start =
+        window.label() == "main" && !MAIN_WINDOW_SHOWN.swap(true, Ordering::Relaxed);
+
     let _ = window.show();
+
+    if is_cold_start {
+        return;
+    }
+
     let _ = window.unminimize();
     let _ = window.set_focus();
 }
