@@ -4,7 +4,7 @@ import test from 'node:test';
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 
-import { listEnter, parseListItem } from '../src/lib/utils/listEditing.js';
+import { blockEnter, parseListItem } from '../src/lib/utils/listEditing.js';
 import { bareCommands, runEditorHandler } from './keymapHarness.js';
 import { functionSource, readSource } from './sourceTree.js';
 
@@ -16,7 +16,8 @@ import { functionSource, readSource } from './sourceTree.js';
  *
  * The decision — "given this line and this caret, what should the next line
  * say" — is a pure function in `src/lib/utils/listEditing.ts` and is CALLED
- * here, once per shape of list item the app claims to understand.
+ * here, once per shape of list item and block quote the app claims to
+ * understand.
  *
  * The two handlers in `Editor.svelte` are lifted out of the component and run
  * against a stub editor, the same trick `keymapHarness.ts` uses, so what is
@@ -33,9 +34,9 @@ import { functionSource, readSource } from './sourceTree.js';
 
 // ------------------------------------------------------------- the pure part
 
-/** `listEnter` at the end of `line`, which is where Enter is normally pressed. */
+/** `blockEnter` at the end of `line`, which is where Enter is normally pressed. */
 function enterAtEnd(line: string) {
-	return listEnter(line, line.length + 1);
+	return blockEnter(line, line.length + 1);
 }
 
 test('a bullet item continues with the same bullet character', () => {
@@ -105,8 +106,10 @@ test('lines that are not list items are left to the ordinary Enter', () => {
 		'',
 		'plain text',
 		'# heading',
-		'> quoted prose',
 		'    indented code',
+		// A `>` inside a sentence is prose: the quote has to start the line.
+		'a > b',
+		'-> arrow',
 		// A thematic break is a bullet character followed by more of them, never
 		// by a space — which is what keeps `---` out.
 		'---',
@@ -120,20 +123,102 @@ test('lines that are not list items are left to the ordinary Enter', () => {
 	}
 });
 
-test('a caret still inside the marker gets the ordinary Enter', () => {
-	// Enter at the very start of `- item` means "make room above me". A
-	// continuation there would write a second marker in front of the first.
-	assert.equal(listEnter('- item', 1), null);
-	assert.equal(listEnter('- item', 2), null);
-	assert.deepEqual(listEnter('- item', 3), { kind: 'continue', text: '- ' });
-	assert.equal(listEnter('  - [ ] item', 8), null);
-	assert.deepEqual(listEnter('  - [ ] item', 9), { kind: 'continue', text: '  - [ ] ' });
+// -------------------------------------------------------- block quotes (#700)
+
+test('a quoted line continues the quote', () => {
+	assert.deepEqual(enterAtEnd('> quoted'), { kind: 'continue', text: '> ' });
+	assert.deepEqual(enterAtEnd('> > deeper'), { kind: 'continue', text: '> > ' });
+	assert.deepEqual(enterAtEnd('  > indented'), { kind: 'continue', text: '  > ' });
+	// The spacing is copied, not normalised — the rule the hand-aligned list
+	// above lives by, applied to the quote.
+	assert.deepEqual(enterAtEnd('>   wide'), { kind: 'continue', text: '>   ' });
+});
+
+test('a quote written without its space is a quote too', () => {
+	// `>text` IS a block quote — CommonMark says so, comrak says so, and the
+	// preview beside the editor draws one. VS Code's Markdown All in One
+	// declines it (`/^> /.test(textBeforeCursor)`); this key does not, because
+	// declining would make Enter disagree with the app's own renderer.
+	assert.deepEqual(enterAtEnd('>tight'), { kind: 'continue', text: '>' });
+	assert.deepEqual(enterAtEnd('>> deep'), { kind: 'continue', text: '>> ' });
+	// A bare `>` is an empty quote, so Enter leaves the quote as it does on `> `.
+	assert.deepEqual(enterAtEnd('>'), { kind: 'clear', line: '' });
+});
+
+test('Enter on an empty quote leaves the quote, whatever its depth', () => {
+	assert.deepEqual(enterAtEnd('> '), { kind: 'clear', line: '' });
+	assert.deepEqual(enterAtEnd('> > '), { kind: 'clear', line: '' });
+	assert.deepEqual(enterAtEnd('  > '), { kind: 'clear', line: '' });
+});
+
+test('leaving a quoted list takes one Enter per block, not one per level', () => {
+	// The ladder the two branches make together, and the reason `clear` on a
+	// quote goes to nothing rather than one level shallower: the list ends, then
+	// the quote ends. Three Enters from a nested item to prose.
+	assert.deepEqual(enterAtEnd('> > - item'), { kind: 'continue', text: '> > - ' });
+	assert.deepEqual(enterAtEnd('> > - '), { kind: 'clear', line: '> > ' });
+	assert.deepEqual(enterAtEnd('> > '), { kind: 'clear', line: '' });
+});
+
+test('the caret joins the block after the marker\'s CHARACTERS, not after its space', () => {
+	// THE RULE, and the reason it is not "after the marker's text starts".
+	//
+	// A caret just after the `>` of `> quoted` and one just after the `>` of
+	// `>quoted` are the same pixel and the same gesture; the first sits inside a
+	// two-character marker, the second at the head of the content. Measuring to
+	// where the TEXT starts answers those two opposite things — one Enter ending
+	// the quote, the other continuing it — from a position nobody can tell
+	// apart. Measuring to where the marker's characters stop answers both the
+	// same. It is CodeMirror's rule for the same reason: @codemirror/lang-markdown
+	// declines only when `inner.to - inner.spaceAfter.length > pos`.
+	//
+	// Column 1 is still the ordinary Enter everywhere: in front of the marker,
+	// Enter means "make room above me".
+	assert.equal(blockEnter('> quoted', 1), null);
+	assert.deepEqual(blockEnter('> quoted', 2), { kind: 'continue', text: '>' });
+	assert.equal(blockEnter('>quoted', 1), null);
+	assert.deepEqual(blockEnter('>quoted', 2), { kind: 'continue', text: '>' });
+
+	// Lists answer to the same measurement, which is where `-` stops.
+	assert.equal(blockEnter('- item', 1), null);
+	assert.deepEqual(blockEnter('- item', 2), { kind: 'continue', text: '-' });
+	assert.deepEqual(blockEnter('1. item', 3), { kind: 'continue', text: '2.' });
+	// A task item's marker runs through the box, so the space that does not
+	// count is the one after `]`, not the one before `[`.
+	assert.equal(blockEnter('  - [ ] item', 7), null);
+	assert.deepEqual(blockEnter('  - [ ] item', 8), { kind: 'continue', text: '  - [ ]' });
+
+	// Between the quote and a list marker the LIST has not started but the quote
+	// has, so the tail moving down keeps its `> `.
+	assert.deepEqual(blockEnter('> - item', 2), { kind: 'continue', text: '>' });
+	assert.deepEqual(blockEnter('> - item', 4), { kind: 'continue', text: '> -' });
+});
+
+test('a caret inside the marker\'s space does not double that space', () => {
+	// The separator is split by the caret: its second half rides down with the
+	// text, so writing a whole one at the head of the new line lands an extra
+	// space — and another on every Enter after that. What each pair below has to
+	// add up to is the separator that was already there, not two of them.
+	const split = (line: string, column: number) => {
+		const next = blockEnter(line, column);
+		assert.equal(next?.kind, 'continue', line);
+		return [line.slice(0, column - 1), (next as { text: string }).text + line.slice(column - 1)];
+	};
+
+	assert.deepEqual(split('> quoted', 2), ['>', '> quoted']);
+	assert.deepEqual(split('- item', 2), ['-', '- item']);
+	// A hand-aligned list keeps every one of its spaces, and no more.
+	assert.deepEqual(split('-   aligned', 2), ['-', '-   aligned']);
+	// The marker's CHARACTERS are never rationed, only its whitespace: the
+	// number still counts up and the box still comes back unchecked.
+	assert.deepEqual(split('9. item', 3), ['9.', '10. item']);
+	assert.deepEqual(split('- [x] task', 6), ['- [x]', '- [ ] task']);
 });
 
 test('a caret in the middle of an item still continues the list', () => {
 	// Splitting an item is continuing it: the tail moves down behind the new
 	// marker, which is what every editor does and what the caller relies on.
-	assert.deepEqual(listEnter('- hello world', 9), { kind: 'continue', text: '- ' });
+	assert.deepEqual(blockEnter('- hello world', 9), { kind: 'continue', text: '- ' });
 });
 
 test('parseListItem reports where the marker ends', () => {
@@ -168,8 +253,10 @@ const EDITOR = 'src/lib/components/Editor.svelte';
 
 const TAB_HANDLER = ['soleCaret', 'applyTableEdit', 'stepTableCell', 'handleTabKey'];
 
+const ENTER_HANDLER = ['continueListOnEnter'];
+
 test('Enter on a list item inserts the line break and the next marker in one edit', () => {
-	const run = runEditorHandler(['continueListOnEnter'], { lines: ['- item'], selections: [[1, 7, 1, 7]] });
+	const run = runEditorHandler(ENTER_HANDLER, { lines: ['- item'], selections: [[1, 7, 1, 7]] });
 
 	assert.deepEqual(run.triggers, [], 'the plain Enter must not fire as well');
 	assert.deepEqual(run.edits, [
@@ -182,7 +269,7 @@ test('the line break is the document\'s, not a hard-coded \\n', () => {
 	// The CRLF class of defect this repo has been bitten by before (#148): a
 	// handler that writes '\n' into a CRLF document leaves one mixed line
 	// behind, and nothing downstream reports it.
-	const run = runEditorHandler(['continueListOnEnter'], {
+	const run = runEditorHandler(ENTER_HANDLER, {
 		lines: ['1. item'],
 		selections: [[1, 8, 1, 8]],
 		eol: '\r\n',
@@ -191,7 +278,7 @@ test('the line break is the document\'s, not a hard-coded \\n', () => {
 });
 
 test('Enter on an empty item replaces the line instead of breaking it', () => {
-	const run = runEditorHandler(['continueListOnEnter'], { lines: ['- ', 'x'], selections: [[1, 3, 1, 3]] });
+	const run = runEditorHandler(ENTER_HANDLER, { lines: ['- ', 'x'], selections: [[1, 3, 1, 3]] });
 
 	assert.deepEqual(run.triggers, []);
 	assert.deepEqual(run.edits, [
@@ -204,7 +291,7 @@ test('Enter on an empty item replaces the line instead of breaking it', () => {
 
 test('Enter anywhere else is a plain Enter', () => {
 	for (const lines of [['plain text'], ['---'], ['']]) {
-		const run = runEditorHandler(['continueListOnEnter'], {
+		const run = runEditorHandler(ENTER_HANDLER, {
 			lines,
 			selections: [[1, lines[0].length + 1, 1, lines[0].length + 1]],
 		});
@@ -213,17 +300,27 @@ test('Enter anywhere else is a plain Enter', () => {
 	}
 });
 
+test('a quoted line continues in the editor too', () => {
+	const run = runEditorHandler(ENTER_HANDLER, { lines: ['> quoted'], selections: [[1, 9, 1, 9]] });
+	assert.deepEqual(run.triggers, []);
+	assert.deepEqual(run.edits, [{ range: [1, 9, 1, 9], text: '\n> ', cursor: [2, 3, 2, 3] }]);
+	assert.equal(run.undoStops, 1);
+
+	const leaving = runEditorHandler(ENTER_HANDLER, { lines: ['> ', 'x'], selections: [[1, 3, 1, 3]] });
+	assert.deepEqual(leaving.edits, [{ range: [1, 1, 1, 3], text: '', cursor: [1, 1, 1, 1] }]);
+});
+
 test('a selection, or a second caret, gets the plain Enter', () => {
 	// One edit at the primary selection would silently discard what the other
 	// carets were about to do.
-	const spanning = runEditorHandler(['continueListOnEnter'], {
+	const spanning = runEditorHandler(ENTER_HANDLER, {
 		lines: ['- item'],
 		selections: [[1, 3, 1, 7]],
 	});
 	assert.deepEqual(spanning.edits, []);
 	assert.deepEqual(spanning.triggers, ['type:"\\n"']);
 
-	const multi = runEditorHandler(['continueListOnEnter'], {
+	const multi = runEditorHandler(ENTER_HANDLER, {
 		lines: ['- one', '- two'],
 		selections: [
 			[1, 6, 1, 6],

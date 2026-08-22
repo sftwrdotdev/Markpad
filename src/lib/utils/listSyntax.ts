@@ -52,6 +52,15 @@ export const LIST_MARKER = String.raw`(?:${BULLET_MARKER}|${ORDERED_MARKER})`;
 export const TASK_BOX = String.raw`\[[ xX]\]`;
 
 /**
+ * One level of block quote: the `>` and whatever separates it from what follows.
+ *
+ * A fragment of its own because a quote is TWO things to this app — the prefix a
+ * list item may be nested inside, and, since #700, a block Enter continues on
+ * its own. Both spellings were `>[ \t]*` and a second copy is how they drift.
+ */
+export const QUOTE_MARKER = String.raw`>[ \t]*`;
+
+/**
  * What may stand between the start of a line and the marker: indentation, then
  * any depth of block-quote nesting.
  *
@@ -60,4 +69,4 @@ export const TASK_BOX = String.raw`\[[ xX]\]`;
  * every task in a CRLF document to the previous line (#148). See the call site
  * in documentSession.svelte.ts for the full account.
  */
-export const LIST_MARKER_PREFIX = String.raw`[ \t]*(?:>[ \t]*)*`;
+export const LIST_MARKER_PREFIX = String.raw`[ \t]*(?:${QUOTE_MARKER})*`;
