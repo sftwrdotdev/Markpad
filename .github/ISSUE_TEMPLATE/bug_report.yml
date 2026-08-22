@@ -64,7 +64,14 @@ body:
         3. See …
 
   - type: textarea
+    id: source-markdown
+    attributes:
+      label: The Markdown that triggers it
+      description: Paste it as text, not as a screenshot of text — a screenshot has to be retyped before it can be tested, and the retyping is where the actual trigger gets lost. Paste the smallest part that still reproduces it, or attach the `.md`.
+      render: markdown
+
+  - type: textarea
     id: extras
     attributes:
-      label: Screenshots, sample file, anything else
-      description: Drag images straight into this box. If the bug only shows up with a particular document, attach the `.md` or paste the smallest part that still reproduces it — reports that depend on a document and do not include one often cannot be reproduced at all.
+      label: Screenshots, and anything else
+      description: Drag images straight into this box.
