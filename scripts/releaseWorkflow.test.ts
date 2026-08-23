@@ -416,6 +416,21 @@ test('a macOS release without the signing secrets still builds', () => {
 	assert.match(step, /echo "APPLE_SIGNING_IDENTITY=[^"]*" >> "\$GITHUB_ENV"/);
 });
 
+test('RELEASING.md names the signing secrets the workflow reads', () => {
+	// Whoever configures the secrets works from the runbook and never opens the
+	// workflow, so a rename on either side sends them to create a secret nothing
+	// reads. The failure is the quiet one this step is built to allow: the import
+	// exits 0, the build stays green, and the bundle ships unsigned -- which
+	// reaches users as folder access being asked for all over again.
+	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
+	const secrets = [...new Set(step.match(/secrets\.[A-Z_]+/g) ?? [])];
+	assert.ok(secrets.length > 0, 'the signing step reads no secrets at all');
+	for (const secret of secrets) {
+		const name = secret.slice('secrets.'.length);
+		assert.ok(releasing.includes(`\`${name}\``), `RELEASING.md never tells anyone to create ${name}`);
+	}
+});
+
 test('the package managers we recommend are the ones we publish to', () => {
 	// Three places tell people a package manager can install Markpad: the README,
 	// the download table written into every release body, and the workflow that

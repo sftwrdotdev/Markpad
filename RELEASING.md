@@ -125,6 +125,7 @@ The workflow uses `npm ci`, so its installed dependency graph is exactly the com
 4. **Wait** ~30 min for matrix builds to finish, plus ~2 min for `generate-update-feed`.
 5. **Open the draft release** on the [Releases page](https://github.com/sftwrdotdev/Markpad/releases). Verify the assets:
    - **macOS**: `*.dmg`, `*.app.tar.gz`, `*.app.tar.gz.sig`
+     - Once one-time setup step 6 is done, check the signature took as well: mount the `.dmg` and run `codesign -d -r-` against the `.app` inside it. It must print `certificate leaf = H"…"`. `code object is not signed at all` means the secrets are missing or the import step exited early — the build is green either way, and shipping it costs every macOS user their folder grants again.
    - **Windows x64**: `Markpad_<version>_x64.exe` (portable), `*_x64-setup.exe` (NSIS installer), `*_x64-setup.exe.sig`
    - **Windows ARM64**: `Markpad_<version>_arm64.exe` (portable), `*_arm64-setup.exe` (NSIS installer), `*_arm64-setup.exe.sig`
    - **Linux**: `*.deb`, `*.rpm`, `*.AppImage`, `*.AppImage.sig`
@@ -139,6 +140,14 @@ The first release after auto-update is enabled does **not** auto-update existing
 Mention this clearly in the release notes for the first auto-update-capable version, e.g.:
 
 > This release activates in-app auto-updates. **Install it manually one last time** — future releases will update Markpad on their own.
+
+## First signed macOS release
+
+Turning on one-time setup step 6 changes the app's identity once. Existing bundles are pinned to an ad-hoc content hash; the signed one is pinned to the certificate, so to macOS the first signed release is a different app. Its users grant folder access one last time, and from then on the grant survives updates. No other platform is affected.
+
+Say so in that release's notes, e.g.:
+
+> macOS will ask for folder access once more after this update. **This is the last time** — from this release on, the permission carries across updates.
 
 ## Coverage notes
 
