@@ -18,7 +18,34 @@
  * the person, not a default for the app to override.
  */
 export function animatesJumpScroll(animate: boolean, systemPrefersReducedMotion: boolean): boolean {
-	return animate && !systemPrefersReducedMotion;
+	return wantedUnlessSystemAsksForLess(animate, systemPrefersReducedMotion);
+}
+
+/**
+ * Whether the caret glides to its new position — Monaco's
+ * `cursorSmoothCaretAnimation`, which `Editor.svelte` hard-coded to `'on'`
+ * (#710).
+ *
+ * A second preference and not the one above: a jump is something the app does
+ * to the view on the user's behalf, and the caret glide is drawn under every
+ * arrow key. Someone can want the first animated and the second not, which is
+ * why this is its own setting rather than a second reader of
+ * `animateJumpScroll`.
+ *
+ * It answers the system preference the same way, and for the reason spelled
+ * out above: either voice asking for less motion is enough.
+ */
+export function animatesCursor(animate: boolean, systemPrefersReducedMotion: boolean): boolean {
+	return wantedUnlessSystemAsksForLess(animate, systemPrefersReducedMotion);
+}
+
+/**
+ * The shared half of the two answers above — the part that would otherwise be
+ * one expression written twice, which is how a preference ends up honouring
+ * `prefers-reduced-motion` in one place and not the other.
+ */
+function wantedUnlessSystemAsksForLess(animate: boolean, reducedMotion: boolean): boolean {
+	return animate && !reducedMotion;
 }
 
 /**
