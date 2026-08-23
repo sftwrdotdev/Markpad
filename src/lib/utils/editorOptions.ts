@@ -1,6 +1,6 @@
 import type { editor as MonacoEditor } from "monaco-editor";
 
-import { animatesJumpScroll } from "./motion.js";
+import { animatesCursor, animatesJumpScroll } from "./motion.js";
 
 /**
  * The Monaco options derived from the settings store, in one place.
@@ -16,6 +16,11 @@ import { animatesJumpScroll } from "./motion.js";
  * The rest of the creation literal stays where it is: those options are set
  * once and never re-applied, so they are not duplicated and moving them here
  * would only put distance between an option and the paragraph explaining it.
+ *
+ * `cursorSmoothCaretAnimation` is the one that arrived from the other
+ * direction: it was in the creation literal and nowhere else, which was
+ * correct while it was a hard-coded `'on'` and wrong the moment #710 gave it a
+ * setting. Being here is what makes the toggle apply to the open editor.
  *
  * `zoomPercent` is a parameter rather than another settings field because the
  * two call sites genuinely pass different things — see the note at the
@@ -57,6 +62,17 @@ export function editorOptionsFromSettings(
 		// set `updateOptions` re-applies, or the toggle would take effect only
 		// on a new editor.
 		smoothScrolling: animatesJumpScroll(settings.animateJumpScroll, settings.systemReducedMotion),
+		// The caret's glide between positions. Here rather than in the creation
+		// literal, where it was a hard-coded `'on'` (#710), for the same reason
+		// `smoothScrolling` moved: an option a setting can change has to be in
+		// the set `updateOptions` re-applies, or the toggle would take effect
+		// only on the next editor.
+		cursorSmoothCaretAnimation: animatesCursor(
+			settings.animateCursor,
+			settings.systemReducedMotion,
+		)
+			? "on"
+			: "off",
 	};
 }
 
@@ -71,6 +87,7 @@ export type EditorOptionSettings = {
 	editorFontSize: number;
 	editorFont: string;
 	animateJumpScroll: boolean;
+	animateCursor: boolean;
 	systemReducedMotion: boolean;
 	showWhitespace: boolean;
 };

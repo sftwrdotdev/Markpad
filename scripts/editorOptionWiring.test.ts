@@ -41,8 +41,38 @@ const SETTINGS = {
 	editorFont: 'Menlo',
 	showWhitespace: false,
 	animateJumpScroll: true,
+	animateCursor: true,
 	systemReducedMotion: false,
 };
+
+test('the caret glide is a setting and not a hard-coded on', () => {
+	// It was `cursorSmoothCaretAnimation: 'on'` in the creation literal (#710),
+	// which is why the assertion below is about `editorOptionsFromSettings` and
+	// not about the literal: being in the shared options is what makes the
+	// toggle reach the editor that is already open, through `updateOptions`.
+	assert.equal(editorOptionsFromSettings(SETTINGS, 100).cursorSmoothCaretAnimation, 'on');
+	assert.equal(
+		editorOptionsFromSettings({ ...SETTINGS, animateCursor: false }, 100)
+			.cursorSmoothCaretAnimation,
+		'off',
+	);
+
+	// The system's request for less motion is enough on its own, the same way
+	// it is for the jump-scroll preference beside it.
+	assert.equal(
+		editorOptionsFromSettings({ ...SETTINGS, systemReducedMotion: true }, 100)
+			.cursorSmoothCaretAnimation,
+		'off',
+	);
+
+	// And it is its own preference: turning off the animated jump must not take
+	// the caret glide with it.
+	assert.equal(
+		editorOptionsFromSettings({ ...SETTINGS, animateJumpScroll: false }, 100)
+			.cursorSmoothCaretAnimation,
+		'on',
+	);
+});
 
 test('the editor animates a jump on the same preference the preview does', () => {
 	// Monaco's `smoothScrolling` animates the scroll when the editor is sent to
@@ -115,6 +145,7 @@ test('editor options are applied by a single updateOptions effect', () => {
 	assert.deepEqual(
 		Object.keys(applied).sort(),
 		[
+			'cursorSmoothCaretAnimation',
 			'fontFamily',
 			'fontSize',
 			'lineNumbers',

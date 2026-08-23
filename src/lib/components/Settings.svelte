@@ -1372,6 +1372,14 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="appearance-animate-cursor">{t('settings.animateCursor', settings.language)}</label>
+							<label class="toggle">
+								<input id="appearance-animate-cursor" type="checkbox" checked={settings.animateCursor} onchange={() => settings.toggleAnimateCursor()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
 							<label for="appearance-links-new-tab">{t('settings.linksOpenInNewTab', settings.language)}</label>
 							<label class="toggle">
 								<input id="appearance-links-new-tab" type="checkbox" checked={settings.linksOpenInNewTab} onchange={() => settings.toggleLinksOpenInNewTab()} />
