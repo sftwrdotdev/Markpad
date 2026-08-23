@@ -6,7 +6,7 @@ import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standalon
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 import ts from 'typescript';
 
-import { blockEnter, parseListItem } from '../src/lib/utils/listEditing.js';
+import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { readSource, functionSource } from './sourceTree.js';
@@ -473,6 +473,7 @@ export function runEditorHandler(
 	const scope: Record<string, unknown> = {
 		blockEnter,
 		parseListItem,
+		shiftListItem,
 		tableStep,
 		tableOperation,
 		monaco: { Range: FakeRange, Selection: FakeRange },

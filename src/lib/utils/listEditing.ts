@@ -256,3 +256,352 @@ export function blockEnter(line: string, column: number): BlockEnter | null {
 
 	return quoteEnter(line, column);
 }
+
+/* ---------------------------------------------------------------- #711: Tab
+
+ * Changing an item's LEVEL, which is two edits and not one.
+ *
+ * `editor.action.indentLines` — what Tab did until #711 — moves the line by the
+ * editor's `tabSize` and leaves the number alone. Both halves of that are wrong
+ * in Markdown, and each is wrong on its own:
+ *
+ *   1. NESTING IS A COLUMN, NOT A TAB. An item nests inside the one above it
+ *      only when its indentation reaches that item's CONTENT column: 2 for
+ *      `- `, 3 for `1. `, 4 for `10. `. With `tabSize` at 2 under a `1. ` parent
+ *      the line moves and nothing nests — CommonMark reads it as the next
+ *      sibling, which is what #711's reporter saw.
+ *   2. THE NUMBER SUDDENLY MATTERS. In a flat list the numbers after the first
+ *      are ignored: `1. / 7. / 3.` renders 1, 2, 3, because a list's start comes
+ *      from its FIRST item and the renderer counts from there. Tab moves a line
+ *      to exactly the one position where its number is read — the first item of
+ *      a new sub-list — so the `2.` that Enter wrote, and that had been
+ *      invisible all along, renders as `2.`.
+ *
+ * So Tab has to indent to the parent's content column AND renumber, and the
+ * renumbering cannot stop at the moved line: the siblings it left behind in the
+ * parent list are now 1, 3, 4.
+ *
+ * WHAT IS COPIED FROM MARKDOWN ALL IN ONE, AND WHAT IS NOT
+ *
+ * The shape is `vscode-markdown`'s (`src/listEditing.ts`: `indent()` +
+ * `fixMarker()`), which is the de-facto standard for this key — its adaptive
+ * indentation is the same "align to the parent's marker width" rule, and its
+ * `lookUpwardForMarker` is the same upward scan for a sibling. Three deliberate
+ * divergences:
+ *
+ *   - MAIO's sibling test compares the caret's indentation against the previous
+ *     item's DIGITS (`prevLeadingSpace + prevMarker`), not against its content
+ *     column, so under `1. x` it reads indentation 2 as nested when CommonMark
+ *     needs 3. That is invisible in MAIO because MAIO only ever writes 3, and
+ *     very visible here, where every document already carries the indentation
+ *     the old Tab produced.
+ *   - MAIO renumbers a list's FIRST item too, so `5. 6. 7.` — a list that
+ *     legitimately starts at 5 — silently becomes 1, 2, 3 on a Tab elsewhere in
+ *     the document. Here the number is only forced on the line the user is
+ *     moving; a first item nobody touched keeps what it says, and every scan
+ *     that fails to find a sibling therefore degrades to "leave it alone"
+ *     rather than to "write 1".
+ *   - Block quotes are respected. MAIO has no concept of them, which is the
+ *     same defect Obsidian still has inside callouts, and this app has had
+ *     quote-aware list handling since #700.
+ *
+ * WHAT IS NOT SUPPORTED, STATED RATHER THAN DISCOVERED
+ *
+ *   - A CHILD DOES NOT TRAVEL WITH ITS PARENT. Tab on an item that already has
+ *     a sub-list under it moves one line, so the sub-list is left at what is now
+ *     its parent's own level and becomes its sibling. MAIO behaves the same way;
+ *     Obsidian, whose editor holds a real tree, moves the subtree. Doing it here
+ *     means deciding where an item's children END, which is the fenced-code
+ *     problem `blockEnter` documents one function up.
+ *   - THE WALK IS O(LIST), not O(edit). Every ordered item below the moved one
+ *     is re-derived, because one of them changing can change the next; only the
+ *     lines that actually differ end up in the edit, but all of them are read.
+ *     Measured on a flat ordered list: 2 ms at 500 items, 5 ms at 5 000, 22 ms
+ *     at 20 000. Tab is not Enter — it moves a whole line and the user expects
+ *     the document to change — so this stays until a list long enough to feel it
+ *     turns up in a real document.
+ *   - THE SEPARATOR AFTER THE MARKER IS NOT RE-PADDED. Renumbering `10.` to `9.`
+ *     shortens the marker by one column, so text hand-aligned under it is off by
+ *     one until the user fixes it. MAIO pads the separator to hold the content
+ *     column still; this module keeps the separator the user typed, which is the
+ *     rule the whole module already follows.
+ */
+
+/**
+ * The two things this module asks of a document — the shape Monaco's
+ * `ITextModel` already has, so `Editor.svelte` passes the model itself and a
+ * test passes an object literal. `utils/tableEditing.ts` asks for the same two
+ * for the same reason: a scan outward from the caret is O(list), where
+ * `getLinesContent()` would be O(document) on every keystroke.
+ */
+export type ListDocument = {
+	getLineCount(): number;
+	getLineContent(line: number): string;
+};
+
+/**
+ * A replacement for one line range, and where the caret goes in it.
+ *
+ * Deliberately the same record as `TableEdit`: both keys end at the same
+ * `executeEdits` in `Editor.svelte`, and giving them one shape is what lets that
+ * be one function instead of two.
+ */
+export type ListEdit = {
+	/** 1-based inclusive line range to replace. */
+	readonly startLine: number;
+	readonly endLine: number;
+	/** The lines as they should be. `lines[0]` is the line that moved. */
+	readonly lines: readonly string[];
+	readonly caretLine: number;
+	readonly caretColumn: number;
+};
+
+/**
+ * A tab stop, in columns. CommonMark's own figure: a tab advances to the next
+ * multiple of four, which is not the same as "four columns" once a space
+ * precedes it.
+ */
+const TAB_STOP = 4;
+
+/** How many columns `text` occupies, counting a tab to the next tab stop. */
+function columnsOf(text: string): number {
+	let width = 0;
+	for (const character of text) {
+		width = character === '\t' ? width + TAB_STOP - (width % TAB_STOP) : width + 1;
+	}
+	return width;
+}
+
+/**
+ * The block-quote markers a line opens with, separated from the indentation
+ * that follows them.
+ *
+ * Each `>` takes AT MOST ONE space with it, which is the rule that makes the
+ * split meaningful: in `>   - item` the quote is `> ` and the list is indented
+ * by two, so the item is nested inside the quote's list rather than sitting at
+ * its margin. `LIST_MARKER_PREFIX` cannot answer this on its own — its
+ * `QUOTE_MARKER` is greedy and swallows all three spaces.
+ */
+const QUOTE_PREFIX = /^(?:[ \t]*>[ \t]?)*/;
+
+function splitQuote(prefix: string): { quote: string; indent: string } {
+	const quote = QUOTE_PREFIX.exec(prefix)?.[0] ?? '';
+	return { quote, indent: prefix.slice(quote.length) };
+}
+
+/** The leading whitespace and quote markers of ANY line, list item or not. */
+const LINE_PREFIX = new RegExp(String.raw`^(${LIST_MARKER_PREFIX})`);
+
+/**
+ * One line, reduced to what the two scans below ask about it.
+ *
+ * `indent` and `content` are columns INSIDE the quote — measured from after the
+ * last `>` — because that is where a quoted list's own margin is.
+ */
+type Row = {
+	readonly depth: number;
+	readonly indent: number;
+	/** The column an item's content starts at; `indent` again when there is none. */
+	readonly content: number;
+	readonly blank: boolean;
+	readonly item: ListItem | null;
+	/** The ordered marker's number, or null for a bullet and for a non-item. */
+	readonly number: number | null;
+};
+
+function rowOf(line: string): Row {
+	const item = parseListItem(line);
+	const { quote, indent } = splitQuote(item ? item.prefix : (LINE_PREFIX.exec(line)?.[1] ?? ''));
+	const depth = (quote.match(/>/g) ?? []).length;
+	const indentWidth = columnsOf(indent);
+
+	return {
+		depth,
+		indent: indentWidth,
+		content: item ? columnsOf(`${indent}${item.marker}${item.spacing}`) : indentWidth,
+		blank: line.trim() === '',
+		item,
+		number: item && ORDERED_ONLY.test(item.marker) ? Number(item.marker.slice(0, -1)) : null,
+	};
+}
+
+/** An item's line, rebuilt with a different prefix and a different marker. */
+function rebuild(item: ListItem, prefix: string, marker: string): string {
+	return `${prefix}${marker}${item.spacing}${item.box ?? ''}${item.boxSpacing}${item.content}`;
+}
+
+/** The same item wearing a different number, delimiter and spacing untouched. */
+function withNumber(item: ListItem, number: number): string {
+	return rebuild(item, item.prefix, `${number}${item.marker.slice(-1)}`);
+}
+
+/**
+ * The item this one follows at its own level, or null when it is the first of
+ * its list — which is the one question renumbering asks.
+ *
+ * A blank line is skipped: a loose list is still one list. A line that is NOT a
+ * list item ends the scan only when it is no deeper than the caret's own
+ * indentation, so an item's own wrapped paragraph is scanned past and the prose
+ * before the list is not.
+ *
+ * `lineAt` rather than the document, because the cascade below has already
+ * rewritten some of these lines and every later scan has to see the rewrite.
+ */
+function siblingAbove(
+	lineAt: (line: number) => string,
+	from: number,
+	depth: number,
+	indent: number,
+): Row | null {
+	for (let line = from - 1; line >= 1; line--) {
+		const row = rowOf(lineAt(line));
+		if (row.blank) continue;
+		if (row.depth !== depth) return null;
+
+		if (row.item) {
+			// Reaching that item's content column means it is the PARENT, so
+			// there is no sibling above and this line is the first of its list.
+			if (indent >= row.content) return null;
+			if (indent >= row.indent) return row;
+			// Deeper than this line: something nested inside an earlier sibling.
+			continue;
+		}
+
+		if (row.indent <= indent) return null;
+	}
+	return null;
+}
+
+/**
+ * The indentation, in columns, the line should move to — null for "it cannot
+ * move", which is a key that does nothing rather than a key that inserts
+ * whitespace.
+ *
+ * Tab looks for the SIBLING above and takes its content column: nesting under a
+ * previous item is the only thing indenting a list item can mean, so the first
+ * item of a list has nowhere to go (Tab there is a no-op in Obsidian and in
+ * every outliner). Shift+Tab looks for the PARENT and takes its margin, which
+ * lands the line on a level that exists rather than `tabSize` columns to the
+ * left of one.
+ */
+function targetIndent(doc: ListDocument, line: number, here: Row, back: boolean): number | null {
+	for (let above = line - 1; above >= 1; above--) {
+		const row = rowOf(doc.getLineContent(above));
+		if (row.blank) continue;
+		if (row.depth !== here.depth) break;
+
+		if (row.item) {
+			if (here.indent >= row.content) return back ? row.indent : null;
+			if (!back && here.indent >= row.indent) return row.content;
+			continue;
+		}
+
+		if (row.indent <= here.indent) break;
+	}
+
+	// Nothing above owns this line. Shift+Tab still has somewhere to go if the
+	// line is indented at all; Tab has nothing to nest under.
+	return back && here.indent > 0 ? 0 : null;
+}
+
+/**
+ * The shallowest column an ordered item's content can start at, and therefore
+ * the shallowest a line can be indented and still be INSIDE one: `1. ` is three
+ * columns. Used to end the downward walk — after a blank line, a line shallower
+ * than this is a new block, and the list it follows is over.
+ */
+const LIST_CONTENT_MIN = 3;
+
+/**
+ * Tab / Shift+Tab on a list item: the line at its new level, with every ordered
+ * number that the move invalidated rewritten. Null when the line is not a list
+ * item, or when it has no level to move to.
+ *
+ * THE RANGE IS AS SHORT AS THE EDIT. The walk downward continues past lines it
+ * does not change — an item's own paragraphs, a nested bullet list — but the
+ * range ends at the last line that actually differs, so the undo step and the
+ * dirty-diff cover what moved and nothing else.
+ */
+export function shiftListItem(
+	doc: ListDocument,
+	line: number,
+	column: number,
+	back: boolean,
+): ListEdit | null {
+	const source = doc.getLineContent(line);
+	const item = parseListItem(source);
+	if (!item) return null;
+
+	const here = rowOf(source);
+	const target = targetIndent(doc, line, here, back);
+	if (target === null || target === here.indent) return null;
+
+	const edited = new Map<number, string>();
+	const lineAt = (at: number) => edited.get(at) ?? doc.getLineContent(at);
+
+	const { quote } = splitQuote(item.prefix);
+	const prefix = `${quote}${' '.repeat(target)}`;
+
+	// The moved line is the one line whose number may be FORCED, because it is
+	// the one line that has just changed what its number MEANS: an item with a
+	// sibling above it is counted by the renderer, and an item without one starts
+	// a list at whatever it says. Landing without a sibling therefore writes 1 —
+	// unless the line had no sibling before the move either, in which case it was
+	// already a list's start and `5.` is a start, not a mistake.
+	const sibling = siblingAbove(lineAt, line, here.depth, target);
+	const first = sibling?.number == null;
+	const started = first && siblingAbove(lineAt, line, here.depth, here.indent) === null;
+	const number = first ? (started ? here.number : 1) : sibling!.number! + 1;
+	const marker = here.number === null ? item.marker : `${number}${item.marker.slice(-1)}`;
+	const shifted = rebuild(item, prefix, marker);
+	edited.set(line, shifted);
+
+	const lines = [shifted];
+	let last = line;
+	let afterBlank = false;
+
+	for (let below = line + 1; below <= doc.getLineCount(); below++) {
+		const text = doc.getLineContent(below);
+		const row = rowOf(text);
+
+		if (row.blank) {
+			afterBlank = true;
+			lines.push(text);
+			continue;
+		}
+		if (row.depth !== here.depth) break;
+		if (afterBlank && row.indent < LIST_CONTENT_MIN && !row.item) break;
+		afterBlank = false;
+
+		if (row.number === null) {
+			lines.push(text);
+			continue;
+		}
+
+		// No sibling means this item is the first of its own list, and a first
+		// item nobody moved keeps the number it says: `5. 6. 7.` is a list that
+		// starts at five, not a list that is wrong.
+		const previous = siblingAbove(lineAt, below, row.depth, row.indent);
+		const fixed =
+			previous?.number == null || previous.number + 1 === row.number
+				? text
+				: withNumber(row.item!, previous.number + 1);
+		if (fixed !== text) {
+			edited.set(below, fixed);
+			last = below;
+		}
+		lines.push(fixed);
+	}
+
+	// The caret keeps its place in the text: everything before the content moved
+	// by the same amount, so the caret does too.
+	const head = prefix.length + marker.length - item.prefix.length - item.marker.length;
+
+	return {
+		startLine: line,
+		endLine: last,
+		lines: lines.slice(0, last - line + 1),
+		caretLine: line,
+		caretColumn: Math.max(1, column + head),
+	};
+}

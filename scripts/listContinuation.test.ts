@@ -4,7 +4,7 @@ import test from 'node:test';
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 
-import { blockEnter, parseListItem } from '../src/lib/utils/listEditing.js';
+import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { bareCommands, runEditorHandler } from './keymapHarness.js';
 import { functionSource, readSource } from './sourceTree.js';
 
@@ -237,6 +237,95 @@ test('parseListItem reports where the marker ends', () => {
 	assert.equal('  > - [x]  do it'.slice(item.contentColumn - 1), 'do it');
 });
 
+// ----------------------------------------------------- #711: the level, run
+
+/** A document of literal lines — the two methods `shiftListItem` asks for. */
+const docOf = (lines: string[]) => ({
+	getLineCount: () => lines.length,
+	getLineContent: (line: number) => lines[line - 1],
+});
+
+/** Tab (or Shift+Tab) on `line`, as the lines it writes back. Null is "no level to move to". */
+function shift(lines: string[], line: number, back = false): string[] | null {
+	const edit = shiftListItem(docOf(lines), line, 1, back);
+	return edit ? [...edit.lines] : null;
+}
+
+test('Tab nests to the parent’s content column, which is not tabSize', () => {
+	// #711 verbatim: Enter continued `1. something` as `2. `, and Tab has to put
+	// that line INSIDE the item above it. Under `1. ` that column is 3 — with
+	// tabSize at 2 the old Tab wrote two spaces, which CommonMark reads as the
+	// next sibling, so the user got neither the nesting nor the number.
+	assert.deepEqual(shift(['1. something', '2. '], 2), ['   1. ']);
+	// Four under `10. `, and two under a bullet: the column is the marker’s width,
+	// so it is a different number for every list.
+	assert.deepEqual(shift(['10. a', '11. b'], 2), ['    1. b']);
+	assert.deepEqual(shift(['- a', '- b'], 2), ['  - b']);
+	// The box travels with the item and stays checked: this key moves an item, it
+	// does not re-open a task the way Enter opens a new one.
+	assert.deepEqual(shift(['- [ ] a', '- [x] b'], 2), ['  - [x] b']);
+});
+
+test('the item that moves starts its sub-list at 1, and the list it left closes up', () => {
+	// Both halves of the renumbering, in one edit: `3. c` becomes the first item
+	// of a nested list, and `4. d` — which is now the parent list’s third item —
+	// stops claiming to be its fourth.
+	assert.deepEqual(shift(['1. a', '2. b', '3. c', '4. d'], 3), ['   1. c', '3. d']);
+	// The same in reverse: an item that leaves a sub-list takes the number of the
+	// list it rejoins.
+	assert.deepEqual(shift(['1. a', '   1. b', '   2. c'], 3, true), ['2. c']);
+});
+
+test('a list that starts at five keeps starting at five', () => {
+	// The divergence from Markdown All in One, which renumbers a list’s first
+	// item too and would rewrite this list to 1, 2, 3 on a Tab three lines away.
+	// A first item is the one item whose number the renderer reads, so it is the
+	// one item nobody may quietly overwrite.
+	assert.deepEqual(shift(['5. a', '6. b', '7. c'], 2), ['   1. b', '6. c']);
+	// Including when it is the line that moved: this one was a list’s start
+	// before the key and is a list’s start after it.
+	assert.deepEqual(shift(['   3. orphan'], 1, true), ['3. orphan']);
+});
+
+test('a level that does not exist is not invented', () => {
+	// The first item of a list has nothing to nest under, and an item at the
+	// margin has nothing to fall back to. Both answer null, and the handler turns
+	// that into a key that does nothing rather than one that inserts whitespace.
+	assert.equal(shift(['1. a', '2. b'], 1), null);
+	assert.equal(shift(['1. a', '   - x'], 2), null, 'already the first item of its sub-list');
+	assert.equal(shift(['1. a', '2. b'], 2, true), null);
+});
+
+test('a quoted list is indented inside the quote, not in front of it', () => {
+	// What Markdown All in One cannot do and Obsidian still gets wrong in
+	// callouts: the `>` stays where it is and the indentation goes after it.
+	assert.deepEqual(shift(['> 1. a', '> 2. b'], 2), ['>    1. b']);
+	assert.deepEqual(shift(['> 1. a', '>    1. b', '>    2. c'], 3, true), ['> 2. c']);
+});
+
+test('the renumbering stops where the list does', () => {
+	// A blank line and a paragraph at the margin end a list, and the list AFTER
+	// them is a different list — its `1.` must not be counted as this one’s third
+	// item. `endLine` is the last line that actually changed, so the undo step and
+	// the dirty-diff cover the move and nothing else.
+	const edit = shiftListItem(docOf(['1. a', '2. b', '', 'text', '', '1. new']), 2, 1, false);
+	assert.deepEqual(edit, {
+		startLine: 2,
+		endLine: 2,
+		lines: ['   1. b'],
+		caretLine: 2,
+		caretColumn: 4,
+	});
+});
+
+test('the caret keeps its place in the text it was in', () => {
+	// Column 7 is in front of `bcd`; after a three-column indent it is column 10,
+	// still in front of `bcd`. Losing that is how a level change stops being a
+	// level change and starts being a jump.
+	const edit = shiftListItem(docOf(['1. a', '2. bcd']), 2, 7, false);
+	assert.deepEqual(edit?.caretColumn, 10);
+});
+
 // ------------------------------------------------- the handlers, actually run
 //
 // The two handlers are lifted out of the component and run against a stub
@@ -251,7 +340,15 @@ test('parseListItem reports where the marker ends', () => {
 
 const EDITOR = 'src/lib/components/Editor.svelte';
 
-const TAB_HANDLER = ['soleCaret', 'applyTableEdit', 'stepTableCell', 'handleTabKey'];
+const TAB_HANDLER = ['soleCaret', 'applyLineEdit', 'stepTableCell', 'shiftListLevel', 'handleTabKey'];
+
+const SHIFT_TAB_HANDLER = [
+	'soleCaret',
+	'applyLineEdit',
+	'stepTableCell',
+	'shiftListLevel',
+	'handleShiftTabKey',
+];
 
 const ENTER_HANDLER = ['continueListOnEnter'];
 
@@ -331,19 +428,33 @@ test('a selection, or a second caret, gets the plain Enter', () => {
 	assert.deepEqual(multi.triggers, ['type:"\\n"']);
 });
 
-test('Tab on a list item indents the line; Tab anywhere else is a Tab', () => {
-	// `editor.action.indentLines` moves the whole line by one level wherever the
-	// caret is on it; the core `tab` command inserts indentation AT the caret,
-	// which inside an item's text would be a tab character in the sentence.
+test('Tab on a list item is the list module’s edit, and Tab anywhere else is a Tab', () => {
+	// The handler no longer sends `editor.action.indentLines`: that command moves
+	// the line by `tabSize`, which is not a nesting level, and leaves the number
+	// alone — both halves of #711. What it sends now is one `executeEdits` built
+	// from `shiftListItem`, and nothing else, because a trigger AND an edit would
+	// indent the line twice.
+	const run = runEditorHandler(TAB_HANDLER, {
+		lines: ['1. something', '2. ', '3. c'],
+		selections: [[2, 4, 2, 4]],
+	});
+	assert.deepEqual(run.triggers, [], 'a core command fired as well as the edit');
+	assert.deepEqual(run.edits, [{ range: [2, 1, 3, 5], text: '   1. \n2. c', cursor: [2, 7, 2, 7] }]);
+	assert.equal(run.undoStops, 1, 'one Ctrl+Z must give the level back');
+
+	// A LIST ITEM’S TAB NEVER FALLS THROUGH. The first item of a list has nothing
+	// to nest under, so the key does nothing — handing it to `indentLines` would
+	// indent a line that no longer nests anywhere, which is the state #711’s
+	// reporter was left in.
 	for (const line of ['- item', '  1. item', '> - [x] item', '- ']) {
-		const run = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 3, 1, 3]] });
-		assert.deepEqual(run.triggers, ['editor.action.indentLines'], line);
-		assert.deepEqual(run.edits, [], line);
+		const alone = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 3, 1, 3]] });
+		assert.deepEqual(alone.triggers, [], line);
+		assert.deepEqual(alone.edits, [], line);
 	}
 
 	for (const line of ['plain text', '# heading', '']) {
-		const run = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 1, 1, 1]] });
-		assert.deepEqual(run.triggers, ['tab'], JSON.stringify(line));
+		const prose = runEditorHandler(TAB_HANDLER, { lines: [line], selections: [[1, 1, 1, 1]] });
+		assert.deepEqual(prose.triggers, ['tab'], JSON.stringify(line));
 	}
 
 	// A selection spans lines on purpose or by accident; Monaco's own Tab
@@ -353,6 +464,32 @@ test('Tab on a list item indents the line; Tab anywhere else is a Tab', () => {
 		selections: [[1, 1, 2, 6]],
 	});
 	assert.deepEqual(selected.triggers, ['tab']);
+});
+
+test('Shift+Tab on a list item is the list’s level, not Monaco’s outdent', () => {
+	const run = runEditorHandler(SHIFT_TAB_HANDLER, {
+		lines: ['1. a', '   1. b', '   2. c'],
+		selections: [[3, 10, 3, 10]],
+	});
+	assert.deepEqual(run.triggers, [], 'outdent fired as well as the edit');
+	// It rejoins the list it left, so it is that list’s second item and not `1.`.
+	assert.deepEqual(run.edits, [{ range: [3, 1, 3, 8], text: '2. c', cursor: [3, 7, 3, 7] }]);
+
+	// Prose still gets Monaco’s own outdent.
+	for (const line of ['plain text', '']) {
+		const fallback = runEditorHandler(SHIFT_TAB_HANDLER, { lines: [line], selections: [[1, 1, 1, 1]] });
+		assert.deepEqual(fallback.triggers, ['outdent'], JSON.stringify(line));
+		assert.deepEqual(fallback.edits, [], JSON.stringify(line));
+	}
+
+	// A list item at the margin has no level to give up, and — like Tab’s first
+	// item — does not fall through either. `outdent` on a line with no
+	// indentation does nothing anyway; what the swallow rules out is the day a
+	// list item carries indentation Monaco would happily eat a `tabSize` of,
+	// leaving the item nested under nothing.
+	const margin = runEditorHandler(SHIFT_TAB_HANDLER, { lines: ['1. a'], selections: [[1, 1, 1, 1]] });
+	assert.deepEqual(margin.triggers, []);
+	assert.deepEqual(margin.edits, []);
 });
 
 // ------------------------------------------------------------- the when clauses
@@ -413,11 +550,13 @@ test('Shift+Tab still means outdent everywhere except inside a table', () => {
 	// and said in its own failure message that one may only appear if it does more
 	// than outdent.
 	//
-	// Tables are that "more": there is no core command for "previous cell". So the
-	// binding exists now, and what is pinned instead is the SAME decision one
-	// level in — the handler's non-table path re-sends `outdent` rather than
-	// reimplementing it, so a list item, a code block and a paragraph all still
-	// get exactly Monaco's own behaviour.
+	// Tables were the first "more": there is no core command for "previous cell".
+	// #711 is the second — a level is not a `tabSize`, and an item that leaves a
+	// sub-list has to take the number of the list it rejoins. So the binding
+	// exists now, and what is pinned instead is the SAME decision two branches in:
+	// the handler's LAST path re-sends `outdent` rather than reimplementing it, so
+	// a code block, a paragraph and an item already at the margin all still get
+	// exactly Monaco's own behaviour.
 	const handler = functionSource(readSource(EDITOR), 'handleShiftTabKey');
 	assert.match(
 		handler,
