@@ -569,10 +569,10 @@ test('a table operation outside a table does nothing', () => {
  * Naming the collaborators is what keeps this honest: a stub `stepTableCell`
  * would let a Tab handler that had stopped looking at tables pass.
  */
-const TAB = ['soleCaret', 'applyTableEdit', 'stepTableCell', 'handleTabKey'];
-const SHIFT_TAB = ['soleCaret', 'applyTableEdit', 'stepTableCell', 'handleShiftTabKey'];
-const MOD_ENTER = ['soleCaret', 'applyTableEdit', 'editTable', 'handleModEnterKey'];
-const MOD_SHIFT_ENTER = ['soleCaret', 'applyTableEdit', 'editTable', 'handleModShiftEnterKey'];
+const TAB = ['soleCaret', 'applyLineEdit', 'stepTableCell', 'shiftListLevel', 'handleTabKey'];
+const SHIFT_TAB = ['soleCaret', 'applyLineEdit', 'stepTableCell', 'shiftListLevel', 'handleShiftTabKey'];
+const MOD_ENTER = ['soleCaret', 'applyLineEdit', 'editTable', 'handleModEnterKey'];
+const MOD_SHIFT_ENTER = ['soleCaret', 'applyLineEdit', 'editTable', 'handleModShiftEnterKey'];
 
 test('Tab in a table writes the re-aligned table in one edit, and no plain Tab', () => {
 	const run = runEditorHandler(TAB, { lines: [...INSERTED], selections: [[4, 26, 4, 26]] });
@@ -624,20 +624,33 @@ test('Shift+Tab in the first cell moves the caret and writes nothing', () => {
 	assert.deepEqual(run.selections, [[1, 4, 1, 4]]);
 });
 
-test('Shift+Tab outside a table is Monaco’s own outdent', () => {
-	for (const line of ['plain text', '  - a nested list item', '']) {
+test('Shift+Tab outside a table and outside a list is Monaco’s own outdent', () => {
+	for (const line of ['plain text', '']) {
 		const run = runEditorHandler(SHIFT_TAB, { lines: [line], selections: [[1, 1, 1, 1]] });
 		assert.deepEqual(run.triggers, ['outdent'], JSON.stringify(line));
 		assert.deepEqual(run.edits, [], JSON.stringify(line));
 	}
+
+	// A list item stopped falling through with #711: `outdent` moves the line by
+	// `tabSize`, which lands on a level only by coincidence, and it renumbers
+	// nothing. The middle branch owns it now — table, then list, then the key.
+	const item = runEditorHandler(SHIFT_TAB, {
+		lines: ['  - a nested list item'],
+		selections: [[1, 1, 1, 1]],
+	});
+	assert.deepEqual(item.triggers, []);
+	assert.deepEqual(item.edits, [{ range: [1, 1, 1, 23], text: '- a nested list item', cursor: [1, 1, 1, 1] }]);
 });
 
 test('Tab on a list item is still the list’s Tab, and Tab in prose is still a Tab', () => {
 	// The dispatch order this feature had to fit into: table, then list, then the
 	// key's own meaning. #636 owns the middle branch and must not have moved.
-	const list = runEditorHandler(TAB, { lines: ['- item'], selections: [[1, 3, 1, 3]] });
-	assert.deepEqual(list.triggers, ['editor.action.indentLines']);
-	assert.deepEqual(list.edits, []);
+	// #711 changed what the middle branch DOES — one `executeEdits` from
+	// `shiftListItem` instead of `editor.action.indentLines` — but not where it
+	// sits, which is what this file is about.
+	const list = runEditorHandler(TAB, { lines: ['- a', '- item'], selections: [[2, 3, 2, 3]] });
+	assert.deepEqual(list.triggers, []);
+	assert.deepEqual(list.edits, [{ range: [2, 1, 2, 7], text: '  - item', cursor: [2, 5, 2, 5] }]);
 
 	const prose = runEditorHandler(TAB, { lines: ['plain text'], selections: [[1, 1, 1, 1]] });
 	assert.deepEqual(prose.triggers, ['tab']);

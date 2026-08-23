@@ -12,7 +12,7 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
-	import { blockEnter, parseListItem } from '../utils/listEditing.js';
+	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { markdownTokenRules, semanticTokenRules } from '../utils/editorTheme.js';
@@ -1082,15 +1082,17 @@
 	};
 
 	/**
-	 * Replace a table with its re-aligned self and put the caret in the cell the
-	 * edit names. Every table operation ends here, because every one of them
-	 * changes a column's width and therefore has to redraw the pipes.
+	 * Replace a run of lines with what a Markdown edit says they should be, and
+	 * put the caret where it says. Every table operation ends here, because every
+	 * one of them changes a column's width and therefore has to redraw the pipes;
+	 * so does every list level change (#711), which renumbers the items the moved
+	 * one left behind and is therefore a run of lines rather than one line.
 	 *
 	 * An edit that changes nothing but the caret — Shift+Tab in the first cell of
 	 * an already-aligned table — moves the caret WITHOUT an edit, so it does not
 	 * push an undo step that undoes nothing.
 	 */
-	const applyTableEdit = (edit: TableEdit, source: string) => {
+	const applyLineEdit = (edit: TableEdit | ListEdit, source: string) => {
 		const model = editor.getModel();
 		if (!model) return;
 
@@ -1122,7 +1124,7 @@
 		if (!caret) return false;
 		const step = tableStep(caret.model, caret.line, caret.column, back);
 		if (!step) return false;
-		applyTableEdit(step, "table-step");
+		applyLineEdit(step, "table-step");
 		return true;
 	};
 
@@ -1136,40 +1138,54 @@
 		if (!caret) return false;
 		const edit = tableOperation(caret.model, caret.line, caret.column, operation);
 		if (!edit) return false;
-		applyTableEdit(edit, `table-${operation}`);
+		applyLineEdit(edit, `table-${operation}`);
 		return true;
 	};
 
 	/**
-	 * Tab: the next cell of a table, else a list item's nesting level, else a Tab.
+	 * Tab / Shift+Tab on a list item: the level, decided by `shiftListItem` in
+	 * utils/listEditing.ts, where it can be tested without a browser.
 	 *
-	 * `editor.action.indentLines` rather than a hand-written edit, and that is
-	 * also what makes Tab mean the level and not the caret: the core `tab` command
-	 * inserts indentation AT the caret, so a Tab in the middle of an item's text
-	 * would drop a tab character into the sentence.
+	 * A LIST ITEM'S TAB NEVER FALLS THROUGH, not even when the edit is refused.
+	 * On a list item this key means the level and only the level, and the two
+	 * refusals are both "there is no other level": Tab on the first item of a
+	 * list, which has nothing to nest under, and Shift+Tab on an item already at
+	 * the margin. Handing those to `indentLines` or `outdent` would move the line
+	 * by `tabSize` into a column that nests under nothing — which is half of
+	 * #711 — so the key does nothing instead, as it does in every outliner.
 	 */
+	const shiftListLevel = (back: boolean) => {
+		const caret = soleCaret();
+		if (!caret || !parseListItem(caret.model.getLineContent(caret.line))) return false;
+		const edit = shiftListItem(caret.model, caret.line, caret.column, back);
+		if (edit) applyLineEdit(edit, back ? "list-outdent" : "list-indent");
+		return true;
+	};
+
+	/** Tab: the next cell of a table, else a list item's nesting level, else a Tab. */
 	const handleTabKey = () => {
 		if (stepTableCell(false)) return;
-		const caret = soleCaret();
-		const onListItem = !!caret && parseListItem(caret.model.getLineContent(caret.line)) !== null;
-		editor.trigger("keyboard", onListItem ? "editor.action.indentLines" : "tab", null);
+		if (shiftListLevel(false)) return;
+		editor.trigger("keyboard", "tab", null);
 	};
 
 	/**
-	 * Shift+Tab: the previous cell of a table, else Monaco's own `outdent`.
+	 * Shift+Tab: the previous cell of a table, else a list item's level, else
+	 * Monaco's own `outdent`.
 	 *
-	 * THE FALL-THROUGH IS THE POINT. Shift+Tab was left unbound on purpose when
-	 * the list keys landed, because `outdent` already had the chord and already
-	 * took one indent level off the current line wherever the caret sat on it —
-	 * a command of ours in front of it would have been a second name for a key
-	 * that was already right. Tables need the chord for something `outdent` does
-	 * not do, so this handler takes it and hands it straight back everywhere
-	 * except inside a table: `outdent` remains what Shift+Tab means, including on
-	 * a list item, and `scripts/listContinuation.test.ts` still pins that against
-	 * the installed Monaco rather than against this comment.
+	 * IT USED TO BE A PURE FALL-THROUGH, and the reason it no longer is, is #711.
+	 * `outdent` takes `tabSize` columns off the line wherever the caret sits on
+	 * it, which was close enough to right while nothing renumbered — but a level
+	 * is not a `tabSize`, and an item that leaves a sub-list has to take the
+	 * number of the list it rejoins. Both are `shiftListItem`'s, in the same
+	 * function as Tab's, because they are the same edit with the sign flipped.
+	 *
+	 * `outdent` remains what the chord means on every line that is not a list
+	 * item, which is what the third line preserves.
 	 */
 	const handleShiftTabKey = () => {
 		if (stepTableCell(true)) return;
+		if (shiftListLevel(true)) return;
 		editor.trigger("keyboard", "outdent", null);
 	};
 
