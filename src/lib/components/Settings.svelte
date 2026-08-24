@@ -1068,6 +1068,7 @@
 								style="width: 120px;"
 								bind:value={settings.imageDirectory}
 								placeholder="img"
+								title={t('settings.imageDirectoryHint', settings.language)}
 							/>
 						</div>
 

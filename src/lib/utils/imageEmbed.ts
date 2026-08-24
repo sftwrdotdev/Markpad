@@ -93,3 +93,38 @@ export function encodeImageDestination(relPath: string): string {
 export function imageEmbed(relPath: string): string {
 	return `![alt](${encodeImageDestination(relPath)})`;
 }
+
+/** The one token `imageDirectory` expands. Spelled as Typora and SoloMD spell it. */
+const FILENAME_TOKEN = '${filename}';
+
+/**
+ * The folder this document's images go in: the `imageDirectory` setting, with
+ * `${filename}` standing for the document's own name.
+ *
+ * Without the token every document in a directory shares one `img/`, which is
+ * what #714 asked to be rid of: `${filename}.assets` next to `notes/trip.md`
+ * is `notes/trip.assets`, one image folder per document. The token is spelled
+ * the way Typora and SoloMD spell it, because a user arriving from either
+ * types what worked there.
+ *
+ * What comes back is a path *component*, not a path. `trip.assets` still has
+ * to pass Rust's `safe_path_component`, which refuses separators, `.`, `..`
+ * and absolute paths so the folder cannot leave the document's directory —
+ * and that guard is why this function special-cases no stem of its own. A file
+ * named `..md` expands to `.`, and Rust is the one that says no.
+ *
+ * The substitution is `split`/`join` rather than `String.replace` because the
+ * replacement is a filename the user chose: `replace` reads `$&` and `$'` in a
+ * replacement string as backreferences, so a document named `$&.md` would put
+ * `${filename}.assets` on disk verbatim.
+ */
+export function resolveImageDirectory(setting: string, documentPath: string): string {
+	const template = setting || DEFAULT_IMAGE_DIRECTORY;
+	if (!template.includes(FILENAME_TOKEN)) return template;
+	const base = documentPath.split(/[/\\]/).pop() ?? documentPath;
+	const dot = base.lastIndexOf('.');
+	// `.gitignore` is all name and no extension: only a dot with something in
+	// front of it separates the two.
+	const stem = dot > 0 ? base.slice(0, dot) : base;
+	return template.split(FILENAME_TOKEN).join(stem);
+}
