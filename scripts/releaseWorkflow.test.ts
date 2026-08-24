@@ -273,10 +273,18 @@ test('a package manager is not published from inside the platform matrix', () =>
 	// Matched on the push commands rather than on step names, because the
 	// property is "the build matrix has no irreversible external effect", and a
 	// renamed step would still have one.
+	//
+	// `snapcraft upload` was `snapcraft push` here until snapcraft 8 removed
+	// that name. Worth being honest about what this assertion is: it pins the
+	// string the workflow uses, so it went on passing for the whole time the
+	// command it named did not exist. Nothing runnable from `npm test` can
+	// check the other half -- the tool is installed by the job, from the store,
+	// at release time. See publish-packages.yml.
+	assert.doesNotMatch(workflow, /snapcraft (pack|push|upload)/);
 	assert.doesNotMatch(workflow, /choco push/);
-	assert.doesNotMatch(workflow, /snapcraft (pack|push)/);
 	assert.match(publishWorkflow, /choco push/);
-	assert.match(publishWorkflow, /snapcraft push/);
+	assert.match(publishWorkflow, /snapcraft upload/);
+	assert.doesNotMatch(publishWorkflow, /snapcraft push/);
 });
 
 test('package managers are published from a release a human published', () => {
@@ -418,7 +426,7 @@ test('the package managers we recommend are the ones we publish to', () => {
 	const releaseBody = sliceBetween(workflow, "echo '## Download'", 'RELEASE_BODY');
 	for (const [name, install, push] of [
 		['Chocolatey', /choco install markpad-app/, /choco push/],
-		['Snap', /snap install markpad/, /snapcraft push/],
+		['Snap', /snap install markpad/, /snapcraft upload/],
 	] as const) {
 		const publishes = push.test(publishWorkflow);
 		assert.equal(
