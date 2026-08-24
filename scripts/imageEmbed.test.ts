@@ -7,6 +7,7 @@ import {
 	documentParentDir,
 	encodeImageDestination,
 	imageEmbed,
+	resolveImageDirectory,
 } from '../src/lib/utils/imageEmbed.js';
 import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
 import { readSource } from './sourceTree.js';
@@ -179,6 +180,33 @@ test('documentParentDir refuses a path with no directory in it', () => {
 	assert.equal(documentParentDir('note.md'), null);
 });
 
+test('${filename} expands to the document name, so each document can own its images', () => {
+	assert.equal(
+		resolveImageDirectory('${filename}.assets', '/home/u/notes/trip.md'),
+		'trip.assets',
+	);
+	assert.equal(
+		resolveImageDirectory('${filename}.assets', 'C:\\notes\\trip.md'),
+		'trip.assets',
+	);
+	// The extension comes off at the last dot; a leading dot is a name, not an
+	// extension.
+	assert.equal(resolveImageDirectory('${filename}', '/n/archive.tar.md'), 'archive.tar');
+	assert.equal(resolveImageDirectory('${filename}', '/n/.gitignore'), '.gitignore');
+	// No token, no expansion: the setting stays the literal folder name it has
+	// always been, and an empty one still means the default.
+	assert.equal(resolveImageDirectory('img', '/n/trip.md'), 'img');
+	assert.equal(resolveImageDirectory('', '/n/trip.md'), DEFAULT_IMAGE_DIRECTORY);
+});
+
+test('a $ in the document name is not read as a replacement pattern', () => {
+	// `String.replace` reads `$&` and `$'` in the *replacement* as the match and
+	// the text after it, so a document named `$&.md` would have written the
+	// literal token back out and created a folder called `${filename}.assets`.
+	assert.equal(resolveImageDirectory('${filename}.assets', '/n/$&.md'), '$&.assets');
+	assert.equal(resolveImageDirectory('${filename}', "/n/$'.md"), "$'");
+});
+
 test('Editor.svelte writes an image link through this module only', () => {
 	// The two call sites — paste (`save_image`) and drop (`copy_file_to_img`) —
 	// carried verbatim copies of this logic 300 lines apart, and the space-only
@@ -189,4 +217,13 @@ test('Editor.svelte writes an image link through this module only', () => {
 	assert.equal(source.includes('%20'), false, 'a hand-rolled space escape is back');
 	assert.match(source, /imageEmbed\(relPath\)/);
 	assert.equal(source.includes(`|| "${DEFAULT_IMAGE_DIRECTORY}"`), false);
+	// Three call sites read the image directory — paste, drop, and the path
+	// completion that lists the folder's contents. Expanding `${filename}` at
+	// two of them and not the third would offer completions out of a folder
+	// named after the literal token, which exists nowhere.
+	assert.equal(
+		source.includes('settings.imageDirectory ||'),
+		false,
+		'a call site resolves the image directory itself',
+	);
 });

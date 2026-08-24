@@ -118,6 +118,7 @@ export const translations: Record<LanguageCode, Translation> = {
             language: 'Language',
             highlightColor: 'Highlight Color',
             imageDirectory: 'Image Directory',
+            imageDirectoryHint: 'Folder for pasted and dropped images, created next to the document. Use ${filename} for the document\'s own name: ${filename}.assets gives every document its own folder instead of one shared img/.',
             scaleMacOSScreenshots: 'Scale macOS Screenshots',
             reduceSizeBy50: 'Reduce size by 50%',
             toolbar: 'Toolbar',

@@ -40,9 +40,9 @@
 		type BufferLine,
 	} from '../utils/lineCoordinates.js';
 	import {
-		DEFAULT_IMAGE_DIRECTORY,
 		documentParentDir,
 		imageEmbed,
+		resolveImageDirectory,
 	} from '../utils/imageEmbed.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
@@ -685,8 +685,10 @@
 						tab.path.lastIndexOf("/"),
 					);
 					const parentDir = tab.path.substring(0, lastSlash);
-					const imgDirName =
-						settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
+					const imgDirName = resolveImageDirectory(
+						settings.imageDirectory,
+						tab.path,
+					);
 
 					try {
 						const [currentEntries, imgEntries] = await Promise.all([
@@ -1945,8 +1947,10 @@
 					const tabPath = tabManager.activeTab.path;
 					const parentDir = documentParentDir(tabPath);
 					if (parentDir !== null) {
-						const imgDirName =
-							settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
+						const imgDirName = resolveImageDirectory(
+							settings.imageDirectory,
+							tabPath,
+						);
 						const relPath = (await invoke("save_image", {
 							parentDir,
 							filename,
@@ -2268,7 +2272,10 @@
 		if (parentDir === null) return;
 
 		try {
-			const imgDirName = settings.imageDirectory || DEFAULT_IMAGE_DIRECTORY;
+			const imgDirName = resolveImageDirectory(
+				settings.imageDirectory,
+				tabPath,
+			);
 			const relPath = (await invoke("copy_file_to_img", {
 				srcPath: path,
 				parentDir,
