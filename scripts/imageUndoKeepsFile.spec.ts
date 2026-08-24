@@ -64,7 +64,7 @@ const { lineEndingLabel } = await import('../src/lib/utils/tabModels.js');
 const { countWords } = await import('../src/lib/utils/wordCount.js');
 // The real module, not a stub: the embed these tests match against is the one
 // it writes, and its escaping is pinned separately in imageEmbed.test.ts.
-const { DEFAULT_IMAGE_DIRECTORY, documentParentDir, imageEmbed } = await import(
+const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
 	'../src/lib/utils/imageEmbed.js'
 );
 
@@ -238,7 +238,7 @@ type Component = {
  * the statements that run are the component's own.
  */
 const factorySource = ts.transpileModule(
-	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, DEFAULT_IMAGE_DIRECTORY, documentParentDir, imageEmbed) => {
+	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed) => {
 		let wordCount = 0;
 		let currentLanguage = 'markdown';
 		let lineEnding = 'LF';
@@ -309,7 +309,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		editor: unknown,
 		lineEndingLabel: unknown,
 		countWords: unknown,
-		defaultImageDirectory: unknown,
+		resolveImageDir: unknown,
 		parentDir: unknown,
 		embed: unknown,
 	) => Component;
@@ -322,7 +322,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		editor,
 		lineEndingLabel,
 		countWords,
-		DEFAULT_IMAGE_DIRECTORY,
+		resolveImageDirectory,
 		documentParentDir,
 		imageEmbed,
 	);
