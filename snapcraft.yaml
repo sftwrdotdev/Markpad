@@ -28,6 +28,7 @@ website: https://markpad.sftwr.dev
 donation: https://github.com/sponsors/alecdotdev
 source-code: https://github.com/sftwrdotdev/Markpad
 issues: https://github.com/sftwrdotdev/Markpad/issues
+contact: https://github.com/sftwrdotdev/Markpad/issues
 
 confinement: strict
 base: core24
@@ -44,6 +45,12 @@ apps:
       - network-bind
       - wayland
       - home
+      # `home` reaches $HOME and nothing else, so a note kept on a USB stick or
+      # a second-drive mount is invisible to the app, with no way for the user
+      # to grant it. This does not auto-connect -- it takes one
+      # `sudo snap connect markpad:removable-media` -- but without the plug
+      # declared here there is nothing to connect. #562.
+      - removable-media
 
 parts:
   # The snap packages the .deb the release already shipped. It does not build

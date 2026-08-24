@@ -173,4 +173,18 @@ jobs:
           SNAP_FILE="${snaps[0]}"
 
           gh release upload "$TAG" "$SNAP_FILE" --clobber
-          snapcraft push "$SNAP_FILE" --release stable
+
+          # `upload`, not `push`. snapcraft 8 turned the old name into a hard
+          # error -- "The 'push' command was renamed to 'upload'", exit 64 --
+          # and the step above installs whatever `snap install snapcraft
+          # --classic` currently serves, so the command this line calls stopped
+          # existing without a commit here.
+          #
+          # It last worked on 2026-06-03: markpad 2.6.11, revision 15, which is
+          # still what the Snap Store serves. Every run after that died earlier,
+          # in the build, and the swallowing this workflow's header describes
+          # reported it as success. #561 removed that and #577/#579 fixed the
+          # build, so v2.7.4 was the first release to reach this line -- and it
+          # failed here, in run 31775835301, after packing
+          # markpad_2.7.4_amd64.snap green.
+          snapcraft upload "$SNAP_FILE" --release stable
