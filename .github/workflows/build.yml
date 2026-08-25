@@ -57,6 +57,44 @@ jobs:
         shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
+      # `create-release` composes the release for `v<version from package.json>`,
+      # and softprops/action-gh-release documents what it does when that tag
+      # already has one: "the existing release will be updated". The matrix then
+      # uploads with `--clobber`, and `generate-update-feed` overwrites
+      # `latest.json`. So a dispatch from a master that was never bumped does not
+      # fail and does not create anything -- it rewrites the release users are
+      # downloading right now, with a build of whatever master holds today, and
+      # every gate this pipeline has is downstream of that: the draft, the asset
+      # check, and clicking Publish all come after the write.
+      #
+      # The tag and the version are two facts that nothing else compares. This
+      # compares them against the one place a released version is recorded.
+      #
+      # It fails closed. An answer that is not "no release" and not "a draft" --
+      # including a network error or a rate limit -- stops the run, because the
+      # direction this guard protects is the one where proceeding is expensive
+      # and waiting five minutes is not.
+      - name: This version has not already been released
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.get_version.outputs.version }}"
+
+          if answer=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft 2>&1); then
+            if [ "$(printf '%s' "$answer" | jq -r '.isDraft')" != "true" ]; then
+              echo "::error::$TAG is already published. This run would rewrite that release's assets and its updater feed, not create a new one. Bump the version first -- npm run release X.Y.Z, RELEASING.md per-release step 1."
+              exit 1
+            fi
+            echo "::notice::$TAG already has a draft release. This run writes into it, which is the recovery path."
+          elif printf '%s' "$answer" | grep -qi 'not found'; then
+            echo "$TAG has no release yet."
+          else
+            echo "::error::Could not establish whether $TAG is already released, so this run stops rather than guess: $answer"
+            exit 1
+          fi
+
       # Every Markpad up to v2.7.0 has the pre-transfer endpoint compiled in and
       # reaches the current feed only through GitHub's transfer redirect, which a
       # repository or fork at the old location voids permanently. RELEASING.md §5
