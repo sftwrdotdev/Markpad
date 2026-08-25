@@ -408,6 +408,20 @@ jobs:
             echo "No MACOS_CERTIFICATE secret; leaving the bundle unsigned (unchanged behaviour)."
             exit 0
           fi
+
+          # The certificate is set, so this release is meant to be signed, and
+          # the early exit above no longer covers a configuration that is only
+          # half there. The identity is the value with nothing downstream to
+          # catch it: a wrong one stops `codesign` with "no identity found",
+          # while an empty one is exported as an empty APPLE_SIGNING_IDENTITY,
+          # and whether `tauri build` then errors or simply signs nothing is not
+          # this step's to know. Refusing here makes it not matter. A missing
+          # password needs no check of its own -- `security import` fails on it.
+          if [ -z "${MACOS_SIGNING_IDENTITY:-}" ]; then
+            echo "::error::MACOS_CERTIFICATE is set but MACOS_SIGNING_IDENTITY is empty. Set all three secrets or none -- RELEASING.md one-time setup step 6."
+            exit 1
+          fi
+
           KEYCHAIN="$RUNNER_TEMP/markpad-signing.keychain"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           CERTIFICATE="$RUNNER_TEMP/certificate.p12"
