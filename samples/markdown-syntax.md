@@ -147,7 +147,7 @@ A list item can hold anything:
 - [ ] An unfinished one
   - [ ] Nested, and also clickable
 
-**The editor writes the markers.** Press `Enter` inside an item and the next line carries the same one: a bullet keeps the character it was written with, a numbered item increments, a task item arrives unticked. `Tab` and `Shift`+`Tab` change the level. `Enter` on an item with nothing in it clears the marker and leaves the list, which is how you get out.
+**The editor writes the markers.** Press `Enter` inside an item and the next line carries the same one: a bullet keeps the character it was written with, a numbered item increments, a task item arrives unticked. `Tab` and `Shift`+`Tab` change the level: the item moves to its parent's content column, and both numbered lists renumber — the one it joins and the one it left behind. `Enter` on an item with nothing in it clears the marker and leaves the list, which is how you get out.
 
 A list can also be started from the keyboard: `Ctrl`/`Cmd` + `Shift` + `8` for bullets, `7` for numbers, `9` for a task list.
 
@@ -194,6 +194,8 @@ Markpad adds five more that GitHub does not have — `[!INFO]`, `[!TODO]`, `[!FA
 
 > [!EXAMPLE]-
 > Folded to begin with. Click the title to open it.
+
+**The editor writes the `>` as well.** Press `Enter` inside a quote and the next line carries the marker at the same depth, nesting included. An empty quoted line clears in one keystroke — one, however deep it is — which is how you leave the quote.
 
 ## 5. Code
 
@@ -336,6 +338,8 @@ A reference-style image, where the destination lives elsewhere in the document:
 [dnd]: ../pics/drag-and-drop.png "Dropping a file onto the editor"
 
 Obsidian's embed syntax works for local files too — `![[lightmode.png]]` — resolved the same way. Dragging an image into the editor writes the reference for you; dragging a `.md` file onto either pane opens it in a tab.
+
+**Where a pasted or dropped image lands** is a setting: a folder name, created next to the document. `${filename}` in it stands for the document's own name without its extension, so `${filename}.assets` beside `notes/trip.md` writes into `notes/trip.assets`, and a folder of notes stops sharing one flat `img/`. The token is spelled the way Typora and SoloMD spell it. It expands to a folder *name* rather than a path — separators, `..` and absolute paths are refused — so the images stay beside the document they belong to.
 
 ### Video and audio
 
@@ -503,7 +507,8 @@ Some of what Markpad adds is not a spelling to learn but behaviour you get for f
 - **Hover a heading** and an anchor appears. Right-click it for **Copy Reference**, which writes a link in whichever style this document already uses — `[[…]]` if the document uses wikilinks, `[…](#…)` if it uses standard links.
 - **Right-click any paragraph, list item or heading** and choose **Edit**: the editor opens on exactly those lines, with them selected. `Ctrl`/`Cmd` + `E` does the same for whatever you have selected in the preview.
 - **Fold a heading** with the chevron beside it, and everything under it collapses. The folds are remembered per document.
-- **Scroll either pane of the split view** and the other follows by source line rather than by ratio, so the two stay together even this far down the document.
+- **Scroll either pane of the split view** and the other follows by source line rather than by ratio, so the two stay together even this far down the document. The two panes can trade sides, in Settings.
+- **Copy from the preview** and the formatting comes with it: headings, emphasis, lists, tables and links arrive as themselves in Word, Mail or Docs, and as the Markdown behind them anywhere that takes plain text.
 - **Sticky scroll** keeps the heading you are currently inside pinned to the top of the editor. Toggle it in Settings.
 - **Open the table of contents** and it follows wherever you scroll, in the preview or in the editor, keeping the current heading centred. Unpinned, it gets out of the way rather than sitting on the text: it collapses when you pick an entry, and when you reach past it to touch what it was covering.
 - **Type `](#` or `[[#`** in the editor and every heading in the document is offered as a completion.
