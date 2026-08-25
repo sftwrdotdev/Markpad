@@ -201,10 +201,13 @@ test('the PDF export wraps the print render and always restores', () => {
 	// One theme decision, shared by the screen render and the restore. Asserted
 	// as "both options are fed the same expression" rather than as the literal
 	// `currentMermaidTheme()`: what must not drift is that the two agree, and the
-	// private helper producing the value is free to be renamed or inlined.
+	// private helper producing the value is free to be renamed or inlined. The
+	// rest of the config is free too — it moved into `mermaidConfig` so the print
+	// pass could not send a different one — so the match reaches into the call
+	// rather than requiring an object literal in it.
 	assert.match(
 		richContent,
-		/mermaid\.initialize\(\{[^}]*\btheme:\s*\w+\.mermaidTheme\b/,
+		/mermaid\.initialize\([^)]*\w+\.mermaidTheme\b/,
 		'the shared renderer must use the theme it was handed, not resolve its own',
 	);
 	const screenTheme = viewer.match(/\bscreenTheme:\s*([^,\n]+),/);

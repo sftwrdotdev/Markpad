@@ -22,9 +22,36 @@ const SOURCE_ATTR = 'data-mermaid-source';
 
 const MERMAID_PRINT_THEME = 'neutral';
 
+export interface MermaidConfig {
+	startOnLoad: boolean;
+	theme: string;
+	htmlLabels: boolean;
+}
+
 interface MermaidRenderer {
-	initialize(config: { startOnLoad: boolean; theme: string }): void;
+	initialize(config: MermaidConfig): void;
 	render(id: string, source: string): Promise<{ svg: string }>;
+}
+
+/**
+ * The only place in the app that says how Mermaid is configured, because
+ * `initialize` is not a merge. `setSiteConfig` rebuilds the config from
+ * Mermaid's defaults on every call (`assignWithDepth({}, defaultConfig)`, then
+ * the caller's keys on top of that), so a key one caller sends is gone the
+ * moment another caller initializes without it.
+ *
+ * That is what `htmlLabels: false` is doing here. It keeps a diagram's text in
+ * the picture: with Mermaid's default every flowchart, class, state, ER,
+ * mindmap, block and kanban label is HTML inside a `<foreignObject>`, and
+ * `sanitizeDiagramSvg` — like any DOMPurify — deletes HTML children of an SVG
+ * element, so the labels arrive as empty shapes. The preview learned that in
+ * `renderRichContent`; the print re-render below did not, and re-themed the
+ * diagrams straight back into empty shapes on the way to the PDF (#717).
+ * Handing both callers the same object is what stops the two from drifting
+ * again. See scripts/mermaidDiagramLabels.test.ts for the measurement.
+ */
+export function mermaidConfig(theme: string): MermaidConfig {
+	return { startOnLoad: false, theme, htmlLabels: false };
 }
 
 /**
@@ -87,7 +114,7 @@ export async function renderDiagramsForPrint(context: PrintDiagramContext): Prom
 
 	const idFactory = context.idFactory ?? ((index: number) => `mermaid-print-${index}-${Math.floor(Math.random() * 10000)}`);
 
-	mermaid.initialize({ startOnLoad: false, theme: context.printTheme ?? MERMAID_PRINT_THEME });
+	mermaid.initialize(mermaidConfig(context.printTheme ?? MERMAID_PRINT_THEME));
 
 	for (const [index, element] of diagrams.entries()) {
 		const source = readDiagramSource(element);
@@ -106,7 +133,7 @@ export async function renderDiagramsForPrint(context: PrintDiagramContext): Prom
 	return () => {
 		if (restored) return;
 		restored = true;
-		mermaid.initialize({ startOnLoad: false, theme: context.screenTheme });
+		mermaid.initialize(mermaidConfig(context.screenTheme));
 		for (const snapshot of snapshots) {
 			snapshot.element.innerHTML = snapshot.html;
 		}
