@@ -424,6 +424,17 @@ test('a macOS release without the signing secrets still builds', () => {
 	assert.match(step, /echo "APPLE_SIGNING_IDENTITY=[^"]*" >> "\$GITHUB_ENV"/);
 });
 
+test('a signing identity that is only half configured stops the release', () => {
+	// The early exit above is for a repository that has never set up signing at
+	// all. It reads one of the three secrets, so a set certificate and an empty
+	// identity walks straight past it and exports an empty
+	// APPLE_SIGNING_IDENTITY -- and a green build that shipped unsigned is the
+	// exact outcome this step exists to prevent, since it reaches users as
+	// folder access being asked for all over again.
+	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
+	assert.match(step, /if \[ -z "\$\{MACOS_SIGNING_IDENTITY:-\}" \]; then[\s\S]*?exit 1/);
+});
+
 test('RELEASING.md names the signing secrets the workflow reads', () => {
 	// Whoever configures the secrets works from the runbook and never opens the
 	// workflow, so a rename on either side sends them to create a secret nothing
