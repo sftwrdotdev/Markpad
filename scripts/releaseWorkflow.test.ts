@@ -289,7 +289,8 @@ test('a package manager is not published from inside the platform matrix', () =>
 
 test('package managers are published from a release a human published', () => {
 	// `release: published` fires when a maintainer clicks Publish on the draft,
-	// which RELEASING.md step 6 describes as the gate after checking the assets.
+	// which RELEASING.md's per-release step 6 describes as the gate after
+	// checking the assets.
 	// Anything earlier — `created`, a tag push, the end of the build — publishes
 	// on a release nobody has looked at.
 	const on = sliceBetween(publishWorkflow, '\non:', '\npermissions:');
@@ -409,6 +410,33 @@ test('signing uses the environment variables the pinned CLI reads', () => {
 	);
 	assert.doesNotMatch(workflow, /TAURI_PRIVATE_KEY/);
 	assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
+});
+
+test('a macOS release without the signing secrets still builds', () => {
+	// #294 was closed because a workflow that *requires* signing credentials
+	// blocks every release until someone configures them. This identity is
+	// optional by construction: the step exits before it touches a keychain when
+	// MACOS_CERTIFICATE is empty, and `tauri build` signs only when
+	// APPLE_SIGNING_IDENTITY is exported -- the name the pinned CLI reads, and
+	// the reason this step has to run before the build rather than beside it.
+	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
+	assert.match(step, /if \[ -z "\$\{MACOS_CERTIFICATE:-\}" \]; then[\s\S]*?exit 0/);
+	assert.match(step, /echo "APPLE_SIGNING_IDENTITY=[^"]*" >> "\$GITHUB_ENV"/);
+});
+
+test('RELEASING.md names the signing secrets the workflow reads', () => {
+	// Whoever configures the secrets works from the runbook and never opens the
+	// workflow, so a rename on either side sends them to create a secret nothing
+	// reads. The failure is the quiet one this step is built to allow: the import
+	// exits 0, the build stays green, and the bundle ships unsigned -- which
+	// reaches users as folder access being asked for all over again.
+	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
+	const secrets = [...new Set(step.match(/secrets\.[A-Z_]+/g) ?? [])];
+	assert.ok(secrets.length > 0, 'the signing step reads no secrets at all');
+	for (const secret of secrets) {
+		const name = secret.slice('secrets.'.length);
+		assert.ok(releasing.includes(`\`${name}\``), `RELEASING.md never tells anyone to create ${name}`);
+	}
 });
 
 test('the package managers we recommend are the ones we publish to', () => {

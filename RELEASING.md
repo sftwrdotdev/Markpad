@@ -58,6 +58,40 @@ The failure is quiet and unfixable from here: `latest.json` 404s, the updater re
 
 **`build.yml` checks this before creating a release.** It fetches that URL and asserts the feed's download URLs still name this repository. A network failure warns instead of blocking.
 
+### 6. Optional: a stable macOS signing identity
+
+This is unrelated to the minisign keypair above, and it is not the Apple Developer Program. Skip it and macOS releases behave exactly as they did before.
+
+**What it buys.** macOS binds a persisted file-access grant — including the Full Disk Access checkbox — to the app's *designated requirement*, not to its bytes. Today's bundles carry no certificate, so the requirement is a content hash that changes with every build, and every update looks like a different app to TCC. Users re-grant folder access after each release ([#209](https://github.com/sftwrdotdev/Markpad/issues/209)). Signing with a certificate that outlives releases replaces that hash with `identifier "com.alecdotdev.markpad" and certificate leaf = H"..."`, which does not move when the code does.
+
+**What it does not buy.** Nothing about Gatekeeper. The app stays un-notarized, so a downloaded `.dmg` still warns on first launch — the same as today.
+
+**Create the certificate** (once, on a Mac, no Apple account involved):
+
+1. Keychain Access → menu bar → *Certificate Assistant* → *Create a Certificate…*
+2. Name it `markpad-codesign-certificate`, Identity Type *Self Signed Root*, Certificate Type **Code Signing**, and tick *Let me override defaults*.
+3. **Set the validity period to something long — 7300 days.** The default is 365, and an expired certificate is as disruptive as a lost one.
+4. Finish, then right-click the certificate → *Export…* → `.p12`, and set a password.
+
+**Add three secrets** (Settings → Secrets and variables → Actions):
+
+| Name | Value |
+|---|---|
+| `MACOS_CERTIFICATE` | `base64 -i markpad-codesign-certificate.p12 \| pbcopy` |
+| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
+| `MACOS_SIGNING_IDENTITY` | `markpad-codesign-certificate` (the certificate's common name) |
+
+With all three set, the macOS job imports the certificate into a throwaway keychain and `tauri build` signs with it. With `MACOS_CERTIFICATE` absent, the step prints one line and exits.
+
+### 7. CRITICAL: the signing certificate has no revocation path
+
+Apple can revoke a Developer ID certificate. Nobody can revoke this one. Two consequences worth accepting deliberately before step 6:
+
+- **If the `.p12` leaks**, whoever holds it can sign a build that satisfies the same designated requirement — and therefore inherits every folder grant users gave the real Markpad. The only remedy is to switch certificates, which costs every user their permissions.
+- **If it is lost or expires**, same outcome: a new certificate is a new identity, and every user re-grants from scratch.
+
+Back it up in the same place as the minisign private key, and treat it with the same care.
+
 ## Per-release workflow
 
 The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. `scripts/releaseWorkflow.test.ts` guards that.
@@ -91,6 +125,7 @@ The workflow uses `npm ci`, so its installed dependency graph is exactly the com
 4. **Wait** ~30 min for matrix builds to finish, plus ~2 min for `generate-update-feed`.
 5. **Open the draft release** on the [Releases page](https://github.com/sftwrdotdev/Markpad/releases). Verify the assets:
    - **macOS**: `*.dmg`, `*.app.tar.gz`, `*.app.tar.gz.sig`
+     - Once one-time setup step 6 is done, check the signature took as well: mount the `.dmg` and run `codesign -d -r-` against the `.app` inside it. It must print `certificate leaf = H"…"`. `code object is not signed at all` means the secrets are missing or the import step exited early — the build is green either way, and shipping it costs every macOS user their folder grants again.
    - **Windows x64**: `Markpad_<version>_x64.exe` (portable), `*_x64-setup.exe` (NSIS installer), `*_x64-setup.exe.sig`
    - **Windows ARM64**: `Markpad_<version>_arm64.exe` (portable), `*_arm64-setup.exe` (NSIS installer), `*_arm64-setup.exe.sig`
    - **Linux**: `*.deb`, `*.rpm`, `*.AppImage`, `*.AppImage.sig`
@@ -106,6 +141,14 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 
 > This release activates in-app auto-updates. **Install it manually one last time** — future releases will update Markpad on their own.
 
+## First signed macOS release
+
+Turning on one-time setup step 6 changes the app's identity once. Existing bundles are pinned to an ad-hoc content hash; the signed one is pinned to the certificate, so to macOS the first signed release is a different app. Its users grant folder access one last time, and from then on the grant survives updates. No other platform is affected.
+
+Say so in that release's notes, e.g.:
+
+> macOS will ask for folder access once more after this update. **This is the last time** — from this release on, the permission carries across updates.
+
 ## Coverage notes
 
 - **macOS** uses one universal binary (`darwin-aarch64` + `darwin-x86_64` share the same `.app.tar.gz` and signature).
@@ -118,6 +161,8 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 | Symptom | Likely cause / fix |
 |---------|---------------------|
 | Build fails: "missing `TAURI_SIGNING_PRIVATE_KEY`" | Step 2 of one-time setup wasn't done, or Secret name doesn't match. |
+| macOS build fails at `security import` | The `.p12` was exported by a recent `openssl` with its default cipher, which `security` cannot read (it reports a MAC failure, not a cipher failure). Re-export from Keychain Access, or pass `-legacy -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1`. |
+| macOS build logs `no identity found` | The certificate is a CA rather than a leaf — `codesign` will not sign with it. Keychain Access's *Create a Certificate…* produces the right kind; `openssl req -x509` needs an explicit `basicConstraints=critical,CA:FALSE`. |
 | `generate-update-feed` succeeds but `latest.json` lacks a platform | That platform's matrix build failed silently (or the `.sig` file wasn't produced). Check the failed build's logs. |
 | `latest.json` missing entirely | The `generate-update-feed` job didn't run — usually because no `*.sig` files were uploaded. Check the `Upload * Artifacts` steps. |
 | Users don't see the update | (1) Did you click *Publish release*? Drafts aren't visible to clients. (2) Is the user on a version older than the first auto-update-capable release? They need a one-time manual reinstall. |
@@ -128,6 +173,6 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 
 ## Out of scope (not handled by this workflow)
 
-- **Apple Developer ID code-signing & notarization** — `.app` bundles are unsigned. macOS may show a Gatekeeper warning on first launch. Minisign verification by the updater is independent of Apple code-signing.
+- **Apple Developer ID code-signing & notarization** — not done, and one-time setup step 6 is not a substitute: a self-signed certificate gives the bundle a stable identity for TCC, but macOS still shows a Gatekeeper warning on first launch because the app is not notarized. Minisign verification by the updater is independent of both.
 - **Windows Authenticode signing** — neither the portable `.exe` nor the `*-setup.exe` NSIS installer is signed with a code-signing certificate. Users may see a SmartScreen warning. Minisign verification by the updater is independent.
 - **Retroactive signing** of older releases.

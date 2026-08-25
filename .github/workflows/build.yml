@@ -380,6 +380,59 @@ jobs:
           find src-tauri/target/release/bundle/appimage -name "*.AppImage.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
 
       # --- MacOS Build ---
+      # macOS binds a persisted file-access grant to the app's *designated
+      # requirement*, not to its bytes. An unsigned bundle has no certificate to
+      # pin, so the requirement falls back to a content hash that changes with
+      # every build -- which is why the folder permission has to be granted
+      # again after each update (#209).
+      #
+      # Signing with a certificate that stays the same across releases replaces
+      # that hash with `identifier <bundle-id> and certificate leaf = H"..."`,
+      # which does not move when the code does. The certificate does NOT have to
+      # come from Apple for this: TCC compares the requirement, it does not ask
+      # who issued the certificate.
+      #
+      # Without the three secrets below this step prints one line and does
+      # nothing, and the build stays exactly as it is today. This is not Apple
+      # notarization -- Gatekeeper still warns on first launch either way.
+      - name: Import macOS signing certificate
+        if: matrix.os == 'macos'
+        shell: bash
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERTIFICATE:-}" ]; then
+            echo "No MACOS_CERTIFICATE secret; leaving the bundle unsigned (unchanged behaviour)."
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/markpad-signing.keychain"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERTIFICATE="$RUNNER_TEMP/certificate.p12"
+
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # Lock the keychain after an hour and on sleep, so a stuck runner does
+          # not leave the key readable for the rest of its life.
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERTIFICATE" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          # Without this, codesign blocks on a GUI prompt for the private key
+          # that nobody is there to answer.
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN" > /dev/null
+          # codesign resolves the identity through the search list, so the new
+          # keychain has to join it rather than replace it.
+          security list-keychains -d user -s \
+            $(security list-keychains -d user | tr -d '"') "$KEYCHAIN"
+          rm -f "$CERTIFICATE"
+
+          # `tauri build` reads this and signs with it; unset means no signing.
+          echo "APPLE_SIGNING_IDENTITY=$MACOS_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+
       - name: Build MacOS (Universal)
         if: matrix.os == 'macos'
         env:
