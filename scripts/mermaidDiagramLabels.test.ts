@@ -90,6 +90,7 @@ const WITHOUT_A_DOM = { isSupported: DOMPurify.isSupported, sanitize: typeof DOM
 DOMPurify.sanitize = (html: string) => html;
 
 const { renderRichContent } = await import('../src/lib/utils/richContent.ts');
+const { renderDiagramsForPrint } = await import('../src/lib/utils/mermaidPrint.ts');
 const { resetDiagramCache } = await import('../src/lib/utils/diagramCache.ts');
 
 interface Corpus {
@@ -150,8 +151,16 @@ function sourceposOf(index: number): string {
 	return `${start}:1-${start + 5}:3`;
 }
 
+interface RenderedDiagrams {
+	diagrams: Map<string, ShimElement>;
+	/** The article the diagrams live in, as the export hands it to the print pass. */
+	root: ShimElement;
+	/** The same Mermaid stand-in the preview configured, singleton like the real one. */
+	mermaid: ReturnType<typeof libraries>['mermaid'];
+}
+
 /** Runs the real preview pipeline over one code block per captured diagram. */
-async function renderDiagrams(): Promise<Map<string, ShimElement>> {
+async function renderDiagrams(): Promise<RenderedDiagrams> {
 	resetDiagramCache();
 	const root = (globalThis as any).document.createElement('div');
 	root.innerHTML = Object.values(CORPUS.diagrams)
@@ -161,9 +170,10 @@ async function renderDiagrams(): Promise<Map<string, ShimElement>> {
 		)
 		.join('');
 
+	const libs = libraries();
 	await renderRichContent({
 		roots: [root as any],
-		libraries: libraries() as any,
+		libraries: libs as any,
 		mermaidTheme: 'neutral',
 		idFactory: (index: number) => `diagram-${index}`,
 		onError: (error) => assert.fail(`renderRichContent reported: ${error}`),
@@ -171,7 +181,24 @@ async function renderDiagrams(): Promise<Map<string, ShimElement>> {
 
 	const containers = root.querySelectorAll('.mermaid-diagram');
 	assert.equal(containers.length, Object.keys(CORPUS.diagrams).length, 'every code block must become a diagram');
-	return new Map(Object.keys(CORPUS.diagrams).map((name, index) => [name, containers[index]]));
+	return {
+		diagrams: new Map(Object.keys(CORPUS.diagrams).map((name, index) => [name, containers[index]])),
+		root,
+		mermaid: libs.mermaid,
+	};
+}
+
+/** Every captured label of `name`, present as SVG text under `container`. */
+function assertLabelsSurvived(name: string, container: ShimElement, what: string) {
+	assert.equal(
+		container.querySelectorAll('foreignObject').length,
+		0,
+		`${name}: ${what} carries its labels in foreignObject, whose HTML children DOMPurify removes regardless of ADD_TAGS — Mermaid must be initialized with htmlLabels: false`,
+	);
+	const labels = svgTextLabels(container);
+	for (const label of CORPUS.diagrams[name].labels) {
+		assert.ok(labels.some((text) => text.includes(label)), `${name}: "${label}" is missing from ${what}`);
+	}
 }
 
 /** The text of every SVG-native `<text>` element, which no filter touches. */
@@ -211,30 +238,59 @@ test('the captured corpus is a real before/after pair', () => {
 });
 
 test('the preview asks Mermaid for labels a sanitizer cannot delete', async () => {
-	const diagrams = await renderDiagrams();
+	const { diagrams } = await renderDiagrams();
 
-	for (const [name, diagram] of Object.entries(CORPUS.diagrams)) {
+	for (const name of Object.keys(CORPUS.diagrams)) {
 		const container = diagrams.get(name)!;
 
 		// The load-bearing assertion. `foreignObject` is the only route by which
 		// Mermaid puts HTML inside the SVG, and HTML inside an SVG is exactly what
 		// DOMPurify's HTML_INTEGRATION_POINTS check deletes — so a diagram with
 		// none of it has nothing the diagram filter can take away.
-		assert.equal(
-			container.querySelectorAll('foreignObject').length,
-			0,
-			`${name}: the rendered diagram still carries its labels in foreignObject, whose HTML children DOMPurify removes regardless of ADD_TAGS — renderRichContent must initialize Mermaid with htmlLabels: false`,
-		);
-
-		const labels = svgTextLabels(container);
-		for (const label of diagram.labels) {
-			assert.ok(labels.some((text) => text.includes(label)), `${name}: "${label}" is missing from the rendered diagram`);
-		}
+		assertLabelsSurvived(name, container, 'the rendered diagram');
 
 		// Mermaid's `<style>` carries the diagram's fills and strokes, and is the
 		// reason the diagram filter cannot be the document policy.
 		assert.equal(container.querySelectorAll('style').length, 1, `${name}: the diagram must keep its own stylesheet`);
 	}
+});
+
+/**
+ * The export re-renders every diagram with a light theme before printing, and
+ * `mermaid.initialize` replaces the site config rather than merging into it —
+ * so the print pass sends its own config, and a key the preview set does not
+ * survive into it. Sending `{startOnLoad, theme}` there put the labels straight
+ * back into `foreignObject` for the render that becomes the PDF: on screen and
+ * in an exported HTML file the diagram was fine, and its text vanished the
+ * moment the print preview appeared (#717).
+ *
+ * The stand-in answers `render()` from the config it was last initialized with,
+ * so this fails on the real symptom rather than on the spelling of a call.
+ */
+test('the PDF re-render keeps the labels the preview asked for', async () => {
+	const { diagrams, root, mermaid } = await renderDiagrams();
+
+	const restore = await renderDiagramsForPrint({
+		root: root as any,
+		mermaid: mermaid as any,
+		sanitizeSvg: (svg: string) => svg,
+		screenTheme: 'dark',
+		idFactory: (index: number) => `print-${index}`,
+		onError: (error) => assert.fail(`renderDiagramsForPrint reported: ${error}`),
+	});
+
+	for (const name of Object.keys(CORPUS.diagrams)) {
+		assertLabelsSurvived(name, diagrams.get(name)!, 'the diagram re-rendered for print');
+	}
+
+	// The restore puts the screen rendering back, and leaves the singleton
+	// configured for the screen — the next preview pass must not inherit the
+	// print config either.
+	restore();
+	for (const name of Object.keys(CORPUS.diagrams)) {
+		assertLabelsSurvived(name, diagrams.get(name)!, 'the diagram restored after print');
+	}
+	assert.equal((mermaid.config as Record<string, unknown>).htmlLabels, false, 'the restore must leave the screen config in place');
 });
 
 /**
@@ -246,7 +302,7 @@ test('the preview asks Mermaid for labels a sanitizer cannot delete', async () =
  * unannotated pixels get attributed to whatever block is nearest instead.
  */
 test('a rendered diagram answers for the source lines it replaced', async () => {
-	const diagrams = await renderDiagrams();
+	const { diagrams } = await renderDiagrams();
 
 	Object.keys(CORPUS.diagrams).forEach((name, index) => {
 		assert.equal(

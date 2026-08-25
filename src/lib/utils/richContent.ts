@@ -5,7 +5,7 @@ import {
 	storeDiagramTemplate,
 	templateDiagramSvg,
 } from './diagramCache.js';
-import { rememberDiagramSource } from './mermaidPrint.js';
+import { mermaidConfig, rememberDiagramSource } from './mermaidPrint.js';
 import { highlightedCode, renderedMath } from './richContentCache.js';
 
 /**
@@ -227,16 +227,12 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 
 	const codeBlocks = roots.flatMap((root) => selfAndDescendants(root, 'pre code'));
 
-	// `htmlLabels: false` is what keeps a diagram's text in the picture. With
-	// Mermaid's default (`true`) every label is an HTML `<div>`/`<span>` inside a
-	// `<foreignObject>`, and `sanitizeDiagramSvg` — like any DOMPurify — deletes
-	// HTML children of SVG elements outright, so the diagrams arrived as empty
-	// shapes. Turning it off makes Mermaid emit SVG `<text>`, which no sanitizer
-	// objects to. Measured against mermaid 11.16.0: this one root-level key is
-	// enough for every diagram type it ships (the per-diagram `htmlLabels` keys
-	// are deprecated in 11.x and the root one takes precedence over them).
+	// The config itself lives in `mermaidPrint.ts` — `initialize` replaces the
+	// site config rather than merging into it, so the two callers that write to
+	// this singleton have to send the same keys or the last one wins. See
+	// `mermaidConfig` for what `htmlLabels: false` is buying.
 	//
-	// Only when there is something to draw: `initialize` deep-merges and installs
+	// Only when there is something to draw: `initialize` builds and installs
 	// a site config, which measures at ~2.5ms in Chromium, and this function runs
 	// once per keystroke. A document with no diagram in it was paying that on
 	// every character. Asking first is one selector over a list already in hand.
@@ -246,7 +242,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	// be a claim about a global another module also writes to.
 	const hasDiagram = codeBlocks.some((block) => block.classList.contains('language-mermaid'));
 	if (hasDiagram) {
-		mermaid.initialize({ startOnLoad: false, theme: options.mermaidTheme, htmlLabels: false });
+		mermaid.initialize(mermaidConfig(options.mermaidTheme));
 	}
 
 	let diagramIndex = 0;
