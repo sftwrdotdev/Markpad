@@ -236,6 +236,25 @@ test('the updater feed publishes the keys an installed Markpad can ask for', () 
 	}
 });
 
+test('a release build cannot write into a version that is already published', () => {
+	// The release is composed for `v<version from package.json>`, and
+	// softprops/action-gh-release updates an existing release for that tag rather
+	// than refusing it. So a dispatch from an unbumped master rewrites the
+	// release users are downloading, and every gate this pipeline has -- the
+	// draft, the asset check, clicking Publish -- is downstream of that write.
+	const step = sliceBetween(workflow, 'This version has not already been released', 'endpoint old installs');
+	assert.match(step, /gh release view "\$TAG"/);
+	assert.match(step, /isDraft/);
+	// Fails closed: an unusable answer stops the run instead of assuming there is
+	// no release. Two exits, one for published and one for cannot-tell.
+	assert.equal((step.match(/exit 1/g) ?? []).length, 2);
+	// And it has to come before the step that does the writing.
+	assert.ok(
+		workflow.indexOf('This version has not already been released') < workflow.indexOf('- name: Create Release'),
+		'the guard runs after the release it guards has been created',
+	);
+});
+
 test('the updater endpoint names the repository RELEASING.md documents', () => {
 	// The endpoint is compiled into every installed copy, so getting it wrong is
 	// only discoverable by a user who stops being offered updates. It was left
