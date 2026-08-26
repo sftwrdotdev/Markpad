@@ -23,7 +23,7 @@
 - Content zoom, custom typography, custom themes (VS Code themes import)
 
 **Editing**
-- Monaco — the editor from VS Code — with Vim mode
+- Monaco (VS Code editor) with Vim support
 - Split view, kept in sync line for line
 - Heading completion for links, and a customisable formatting toolbar
 - Paste an image straight into the document; drag files in to open them
@@ -32,10 +32,10 @@
 - Tabs, multiple windows, window tags, and a session that comes back
 - Auto-reload when a file changes on disk
 - Export to HTML, print to PDF
-- Wikilinks, embeds and callouts alongside standard Markdown — see
+- Wikilinks, embeds and callouts alongside standard Markdown. See
   **[What Markpad renders](#what-markpad-renders)** below
 
-**The rest**
+**More**
 - Windows, macOS and Linux
 - ~10MB of memory, no telemetry, free and open source
 - 26 interface languages
@@ -58,7 +58,7 @@ sudo snap install markpad
 
 ### Direct download
 
-Every file below is on the [latest release](https://github.com/sftwrdotdev/Markpad/releases/latest) page, and on [markpad.sftwr.dev](https://markpad.sftwr.dev).
+Every file below is on the [latest release](https://github.com/sftwrdotdev/Markpad/releases/latest) page, and on [markpad.dev](https://markpad.dev).
 
 | System | Chip | File | |
 |---|---|---|---|
