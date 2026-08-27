@@ -3244,6 +3244,24 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			await windowSession.claimTransferredTab();
 			if (isDisposed) return;
 
+			// Clear temp files an earlier run left beside the documents this
+			// window knows about. A save sweeps the document it writes, which
+			// covers everything the user is working on; this covers the one a
+			// save cannot reach — a document nobody edits again, whose
+			// leftovers would otherwise stay in the folder for good (#722).
+			//
+			// Not awaited, and its failure is not the user's problem: nothing
+			// on screen depends on it, and a folder that cannot be read is a
+			// folder with nothing to clean.
+			void invoke('sweep_temp_files', {
+				paths: [
+					...new Set([
+						...recentFiles,
+						...tabManager.tabs.map((tab) => tab.path).filter(hasRealFilePath),
+					]),
+				],
+			}).catch((error) => console.error('Failed to sweep temp files', error));
+
 			const urlParams = new URLSearchParams(window.location.search);
 
 			const fileParam = urlParams.get('file');

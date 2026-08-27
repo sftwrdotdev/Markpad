@@ -235,6 +235,7 @@ pub fn run() {
             commands::canonicalize_path,
             commands::read_file_as_data_url,
             commands::save_file_content,
+            commands::sweep_temp_files,
             commands::export_pdf_windows,
             commands::print_pdf,
             commands::is_win11,

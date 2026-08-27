@@ -5,7 +5,7 @@
 
 use crate::fs_safety::{
     atomic_write, canonical_identity, encode_text, ensure_path_within_root, read_to_string_lossy,
-    resolve_image_directory, safe_path_component,
+    resolve_image_directory, safe_path_component, sweep_document_temps,
 };
 use crate::markdown::{build_markdown_preview, convert_markdown, heading_anchors, HeadingAnchor};
 use crate::window_runtime::{self, WatcherState};
@@ -224,6 +224,30 @@ pub async fn save_file_content(
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()))
+}
+
+/// Clear temp files earlier runs left beside the documents this window knows
+/// about — the recent-file list, and whatever the session restored.
+///
+/// A save already sweeps the document it is writing, and that is the sweep
+/// that matters while someone is working. It cannot reach a document nobody
+/// opens again, whose leftovers would otherwise stay in the user's folder for
+/// good, so startup asks for the documents Markpad remembers (#722).
+///
+/// Every window calls this and only the first pays for it: the sweep is once
+/// per document per run, and Markpad's windows share a process.
+///
+/// Async and off the main thread: this is a `read_dir` per document on folders
+/// that may live on a network volume, and nothing waits for the result.
+#[tauri::command]
+pub async fn sweep_temp_files(paths: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        for path in paths {
+            sweep_document_temps(Path::new(&path));
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Resolve `path` to the identity the filesystem gives it — see

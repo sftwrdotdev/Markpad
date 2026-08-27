@@ -52,6 +52,40 @@ fn remove_temp_or_say_why(error: std::io::Error, temp_path: &Path) -> std::io::E
     }
 }
 
+/// Clear temp files earlier runs left beside `document`, once per document
+/// per run.
+///
+/// Two callers, because one of them cannot reach everything. A save sweeps the
+/// document it is writing, which clears a folder the next time the user edits
+/// what is in it — and never clears the folder of a document nobody edits
+/// again. Startup sweeps the documents Markpad already knows about (the recent
+/// list, and whatever the session restored), which is where a leftover would
+/// otherwise sit for good.
+///
+/// Once per document per run because the scan only ever finds garbage from
+/// earlier runs: repeating it finds nothing new, and it would put a `read_dir`
+/// in front of every 1.5s auto-save, which on a network folder is the kind of
+/// cost that shows up as a stutter while typing.
+pub(crate) fn sweep_document_temps(document: &Path) {
+    let Some(file_name) = document
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+    else {
+        return;
+    };
+    let parent = match document.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
+        _ => PathBuf::from("."),
+    };
+    let first_time = SWEPT_TEMP_PREFIXES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(parent.join(&file_name));
+    if first_time {
+        sweep_abandoned_temps(&parent, &file_name);
+    }
+}
+
 /// Delete temp files for `file_name` that an earlier run left in `parent`.
 ///
 /// Cleanup at the time of the failure is the first line and stays the main
@@ -166,17 +200,7 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "markpad".to_string());
 
-    // Once per document per run. The scan is for garbage from earlier runs, so
-    // repeating it would find nothing new — and it would put a `read_dir` in
-    // front of every 1.5s auto-save, which on a network folder is the kind of
-    // cost that shows up as a stutter while typing.
-    let first_write_here = SWEPT_TEMP_PREFIXES
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .insert(parent_path.join(&file_name));
-    if first_write_here {
-        sweep_abandoned_temps(&parent_path, &file_name);
-    }
+    sweep_document_temps(target);
 
     // Claim a temp file nobody else holds. The name must be unique or two
     // concurrent writers of the same target collide, and a collision is not a
@@ -928,6 +952,34 @@ pub(crate) mod tests {
             "the sweep must not reach past the document being written",
         );
         assert_eq!(fs::read(&path).unwrap(), b"edited");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_document_nobody_edits_again_is_still_swept() {
+        // The reason `sweep_document_temps` is reachable without a write: the
+        // per-save sweep only ever clears the folder of a document someone is
+        // still editing. Startup calls this for the recent list and the
+        // restored tabs, which is the only thing that reaches leftovers beside
+        // a document that is never saved again.
+        let dir = temp_path("atomic-sweep-startup");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("archived.md");
+        fs::write(&path, b"body").unwrap();
+
+        let leftover = dir.join(".archived.md.markpad-tmp-4242-1787728728439865400-4");
+        fs::write(&leftover, b"").unwrap();
+        set_modified_ago(&leftover, Duration::from_secs(5 * 60));
+
+        sweep_document_temps(&path);
+
+        assert!(!leftover.exists());
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            b"body",
+            "sweeping must not touch the document itself",
+        );
 
         fs::remove_dir_all(dir).unwrap();
     }
