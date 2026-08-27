@@ -3,16 +3,101 @@
 //!
 //! Split out of `lib.rs`; the code and its tests are unchanged.
 
+use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{LazyLock, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Distinguishes the temp files of `atomic_write` calls that share a process.
 /// Never reset, and read with `fetch_add` so no two callers can be handed the
 /// same value — the property the wall clock could not supply.
 static TEMP_FILE_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Temp-name prefixes already swept this run — see `sweep_abandoned_temps`.
+static SWEPT_TEMP_PREFIXES: LazyLock<Mutex<HashSet<PathBuf>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Below this, a temp file could belong to a write that is still running —
+/// this process's own or another Markpad's — and nothing may touch it.
+const IN_FLIGHT_GRACE: Duration = Duration::from_secs(60);
+
+/// How old a temp file that still has contents has to be before it counts as
+/// abandoned. Long, because such a file can be the only copy of a document a
+/// crash caught between the `fsync` and the rename.
+const ABANDONED_TEMP_AGE: Duration = Duration::from_secs(60 * 60);
+
+/// Remove the temp file this call created, and if that fails, say so in the
+/// error being returned.
+///
+/// The two are one thing on purpose. A write or rename that fails leaves the
+/// temp file behind, and the reason the CLEANUP failed is the interesting half
+/// — the failure that reaches the user is "could not save", while the file
+/// they then find in their folder is explained by an error nobody kept
+/// (#722). `let _ =` discarded exactly that.
+fn remove_temp_or_say_why(error: std::io::Error, temp_path: &Path) -> std::io::Error {
+    match fs::remove_file(temp_path) {
+        Ok(()) => error,
+        // Already gone is the outcome this wanted.
+        Err(cleanup) if cleanup.kind() == std::io::ErrorKind::NotFound => error,
+        Err(cleanup) => std::io::Error::new(
+            error.kind(),
+            format!(
+                "{error} — and {} could not be cleaned up either: {cleanup}",
+                temp_path.display()
+            ),
+        ),
+    }
+}
+
+/// Delete temp files for `file_name` that an earlier run left in `parent`.
+///
+/// Cleanup at the time of the failure is the first line and stays the main
+/// one, but it cannot run at all when the process dies mid-write, and it can
+/// be refused by whatever refused the write. Both leave a file the user has
+/// to find and delete by hand, which is what #722 is: a portable Windows
+/// build accumulating `.doc.md.markpad-tmp-…` siblings across sessions.
+///
+/// `IN_FLIGHT_GRACE` is what keeps this off a write that is still happening —
+/// a temp file lives for one `write_all` and one `fsync`, so a minute is four
+/// orders of magnitude past any of them, on any volume. Past that, two kinds
+/// of leftover with different stakes:
+///
+/// - **Empty**: there is nothing in it to lose, so it goes. This is the #722
+///   shape, and waiting an hour to clear a file that can never be anything but
+///   garbage only means the user finds it first.
+/// - **Not empty**: it may be the only copy of a document, from a process that
+///   died between the `fsync` and the rename. `ABANDONED_TEMP_AGE` gives that
+///   a wide berth before Markpad decides it is garbage.
+fn sweep_abandoned_temps(parent: &Path, file_name: &str) {
+    let prefix = format!(".{file_name}.markpad-tmp-");
+    let Ok(entries) = fs::read_dir(parent) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with(&prefix) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let Some(age) = meta
+            .modified()
+            .ok()
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+        else {
+            continue;
+        };
+        if age < IN_FLIGHT_GRACE {
+            continue;
+        }
+        if meta.len() == 0 || age >= ABANDONED_TEMP_AGE {
+            let _ = fs::remove_file(entry.path());
+        }
+    }
+}
 
 /// Write `bytes` to `target` durably and atomically: write to a sibling temp
 /// file, fsync it, then rename over the target. Atomic on both Unix and
@@ -81,6 +166,18 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "markpad".to_string());
 
+    // Once per document per run. The scan is for garbage from earlier runs, so
+    // repeating it would find nothing new — and it would put a `read_dir` in
+    // front of every 1.5s auto-save, which on a network folder is the kind of
+    // cost that shows up as a stutter while typing.
+    let first_write_here = SWEPT_TEMP_PREFIXES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(parent_path.join(&file_name));
+    if first_write_here {
+        sweep_abandoned_temps(&parent_path, &file_name);
+    }
+
     // Claim a temp file nobody else holds. The name must be unique or two
     // concurrent writers of the same target collide, and a collision is not a
     // harmless retry: the loser used to delete `temp_path` on its way out,
@@ -126,9 +223,18 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
         Ok(())
     })();
 
+    // Closed before the rename and before any cleanup, rather than at the end
+    // of the function. Both of those operations are ones an open handle takes
+    // part in on Windows: `MoveFileExW` and `DeleteFileW` fail with a sharing
+    // violation when a handle without `FILE_SHARE_DELETE` is open on the file,
+    // and our own handle joins whatever an antivirus scanner or indexer is
+    // already holding on a file created one instruction ago. A `DeleteFileW`
+    // that does get through with a handle still open only marks the file
+    // delete-pending, so it stays visible in the directory meanwhile.
+    drop(file);
+
     if let Err(e) = write_result {
-        let _ = fs::remove_file(&temp_path);
-        return Err(e);
+        return Err(remove_temp_or_say_why(e, &temp_path));
     }
 
     // Atomic on both Unix and modern Windows: std::fs::rename uses
@@ -139,8 +245,24 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     // we clean up the temp file and surface the original error without
     // touching the target.
     if let Err(e) = fs::rename(&temp_path, target) {
+        return Err(remove_temp_or_say_why(e, &temp_path));
+    }
+
+    // A rename that reported success has left nothing at the old name, and on
+    // every machine this has been run on that is what happens. #722 is a
+    // machine where it does not: an endpoint agent (亚信安全 TrustOne) sits in
+    // the filesystem, and the reporter gets one 0-byte `.doc.md.markpad-tmp-…`
+    // per save while the save itself succeeds — no error, the tab's modified
+    // dot clears, the document holds the new text. Whatever the agent is doing
+    // with the source name, this call is the moment we still know it, and one
+    // `remove_file` on a path that is normally already gone is a cheaper way
+    // to find out than any amount of reasoning about filter drivers.
+    //
+    // Best-effort, and deliberately not folded into the error above: the write
+    // has landed, the document is correct, and a save must not start failing
+    // over a file that should not be there in the first place.
+    if temp_path.exists() {
         let _ = fs::remove_file(&temp_path);
-        return Err(e);
     }
 
     // Best-effort restore of the original mode bits. If this fails (e.g. the
@@ -757,6 +879,95 @@ pub(crate) mod tests {
         );
 
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_temp_file_an_earlier_run_abandoned_is_swept_by_the_next_write() {
+        // #722: temp files accumulating beside a document across sessions.
+        // The next save of that document is the moment Markpad knows both the
+        // folder and the name, and the only moment it is guaranteed to be
+        // looking at them.
+        let dir = temp_path("atomic-sweep");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("notes.md");
+        fs::write(&path, b"body").unwrap();
+
+        // Old, and with contents — the case that has to wait out
+        // `ABANDONED_TEMP_AGE`, because a temp file with a document in it can
+        // be the only copy of that document.
+        let stale = dir.join(".notes.md.markpad-tmp-4242-1787728728439865400-4");
+        fs::write(&stale, b"a whole document").unwrap();
+        set_modified_ago(&stale, Duration::from_secs(3 * 60 * 60));
+
+        // Empty, and only minutes old. Nothing in it can be lost, and this is
+        // the shape #722 produces one of per save.
+        let empty = dir.join(".notes.md.markpad-tmp-4242-1787728728439865400-5");
+        fs::write(&empty, b"").unwrap();
+        set_modified_ago(&empty, Duration::from_secs(5 * 60));
+
+        // Another document's leftovers, equally stale. The sweep is scoped to
+        // the file being written, so a folder full of documents is cleaned by
+        // the saves that touch each of them rather than by the first save to
+        // reach the folder.
+        let neighbour = dir.join(".other.md.markpad-tmp-4242-1787728728439865400-6");
+        fs::write(&neighbour, b"").unwrap();
+        set_modified_ago(&neighbour, Duration::from_secs(3 * 60 * 60));
+
+        atomic_write(&path, b"edited").unwrap();
+
+        assert!(
+            !stale.exists(),
+            "an abandoned temp file must not survive a save"
+        );
+        assert!(
+            !empty.exists(),
+            "an empty temp file has nothing in it to wait for"
+        );
+        assert!(
+            neighbour.exists(),
+            "the sweep must not reach past the document being written",
+        );
+        assert_eq!(fs::read(&path).unwrap(), b"edited");
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_temp_file_that_could_still_be_in_flight_is_left_alone() {
+        // The dangerous half of a sweep: another Markpad, or another thread
+        // here, is between `create_new` and `rename` right now. Deleting its
+        // temp file fails its rename with ENOENT — the exact breakage
+        // `concurrent_atomic_writes_to_one_target_all_succeed` exists for. A
+        // write in that window is milliseconds old, and it is EMPTY for the
+        // stretch between `create_new` and `write_all`, so age has to be the
+        // first question the sweep asks and the empty-file rule the second.
+        let dir = temp_path("atomic-sweep-live");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("notes.md");
+        fs::write(&path, b"body").unwrap();
+
+        let just_created = dir.join(".notes.md.markpad-tmp-4242-1787728728439865400-4");
+        fs::write(&just_created, b"").unwrap();
+        let half_written = dir.join(".notes.md.markpad-tmp-4242-1787728728439865400-5");
+        fs::write(&half_written, b"half a document").unwrap();
+
+        atomic_write(&path, b"edited").unwrap();
+
+        assert!(
+            just_created.exists(),
+            "a temp file young enough to be a live write must survive, empty or not",
+        );
+        assert!(half_written.exists());
+
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// Backdate `path`'s mtime, which is what the sweep reads to tell an
+    /// abandoned temp file from a live one.
+    fn set_modified_ago(path: &Path, ago: Duration) {
+        let file = fs::OpenOptions::new().write(true).open(path).unwrap();
+        file.set_times(fs::FileTimes::new().set_modified(SystemTime::now() - ago))
+            .unwrap();
     }
 
     #[test]
