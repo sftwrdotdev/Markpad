@@ -172,6 +172,16 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	 */
 	async function fileDiffersFromBaseline(tab: Tab, path: string): Promise<boolean> {
 		if (!path || tab.isTruncated) return true;
+		// An untitled buffer is a version OF nothing, so there is no baseline to
+		// have moved and nothing here to protect. Asking anyway refused the first
+		// save of every new document: the path the Save dialog just returned
+		// names no file yet, the read fails, and "unreadable means changed" —
+		// safe for a file the tab has written before — turned the write into a
+		// conflict the user could not answer. Reload has no file to reload, so
+		// the bar stayed up and every retry, under any name, was refused the
+		// same way. The dialog has already asked about replacing an existing
+		// file, which is the question this one would be a worse version of.
+		if (!tab.path) return false;
 		try {
 			// The same read the reload does, so the two strings are comparable:
 			// decoded with the file's own encoding rather than assumed UTF-8.
