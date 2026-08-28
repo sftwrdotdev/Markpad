@@ -552,9 +552,25 @@ function processSoftLineAnchors(root: Element, doc: Document) {
 			anchor.className = "source-line-anchor";
 			anchor.setAttribute("data-sourcepos", `${line}:1-${line}:1`);
 			anchor.setAttribute("aria-hidden", "true");
+			// Behind the newline comrak writes after the `<br>`, not in front of
+			// it. That newline is collapsible whitespace, and a browser drops it
+			// only while it is still at the START of the line: put a box — and
+			// `inline-block` is what makes this one a box — in front of it, and
+			// it becomes a space BETWEEN two boxes and is drawn. Every wrapped
+			// line of a paragraph long enough to qualify then opens with an
+			// indent nobody typed. Splitting the text node leaves the whitespace
+			// on the break's side, where it goes on collapsing away.
+			//
 			// `insertBefore` rather than `after`: it is the older API, and the
 			// render-protocol DOM the tests drive implements it.
-			br.parentNode?.insertBefore(anchor, br.nextSibling);
+			const follows = br.nextSibling;
+			const text = follows?.nodeType === Node.TEXT_NODE ? follows : null;
+			const lead = text ? /^\s+/.exec(text.nodeValue ?? "") : null;
+			if (text && lead) {
+				text.nodeValue = (text.nodeValue ?? "").slice(lead[0].length);
+				br.parentNode?.insertBefore(doc.createTextNode(lead[0]), text);
+			}
+			br.parentNode?.insertBefore(anchor, follows);
 		}
 	}
 }

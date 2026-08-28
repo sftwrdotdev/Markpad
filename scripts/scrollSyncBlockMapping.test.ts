@@ -44,7 +44,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { installShimDom, parseHtml, NODE_ELEMENT, type ShimElement } from './renderProtocolDom.ts';
+import {
+	installShimDom,
+	parseHtml,
+	NODE_ELEMENT,
+	NODE_TEXT,
+	type ShimElement,
+	type ShimText,
+} from './renderProtocolDom.ts';
 
 installShimDom();
 
@@ -1434,6 +1441,22 @@ test('a short paragraph is left alone', () => {
 	// them would be DOM nobody can see the benefit of, and most paragraphs in a
 	// document are short.
 	assert.deepEqual(anchorsOf(renderParagraph(10, 2)), []);
+});
+
+test('the newline behind a break stays in front of the anchor', () => {
+	// comrak writes a newline after every `<br>`, and a browser drops it only
+	// while it is still at the start of the line. The anchor is an
+	// `inline-block` — a box — so an anchor in front of that newline turns it
+	// into a space BETWEEN two boxes, and every wrapped line of the paragraph
+	// renders with an indent nobody typed (#725).
+	const anchors = anchorsOf(renderParagraph(10, 4));
+	assert.equal(anchors.length, 3);
+	for (const { element } of anchors) {
+		const gap = element.previousSibling;
+		assert.equal(gap?.nodeType, NODE_TEXT, 'an anchor sits behind the whitespace, not in front of it');
+		assert.match((gap as ShimText).nodeValue, /^\s+$/);
+		assert.equal((gap.previousSibling as ShimElement | null)?.tagName, 'BR');
+	}
 });
 
 test('the <br> itself is untouched', () => {
