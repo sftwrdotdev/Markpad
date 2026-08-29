@@ -10,8 +10,15 @@
 	import { isHomePath } from '../utils/homeTab.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 
-	let { tab, isActive, isLast, onclick, onclose } = $props<{
+	let { tab, folderSuffix, isActive, isLast, onclick, onclose } = $props<{
 		tab: Tab;
+		/**
+		 * The containing folder, when another tab in this window holds a
+		 * different file by the same name (#727). Computed over the whole tab
+		 * strip by `TabList`, because whether a name is ambiguous is not
+		 * something a tab can know about itself.
+		 */
+		folderSuffix?: string;
 		isActive: boolean;
 		isLast?: boolean;
 		onclick: () => void;
@@ -183,7 +190,7 @@
 				class="tab-label-text"
 				style:transform={marqueeOffset > 0 ? `translateX(-${marqueeOffset}px)` : ''}
 				style:transition-duration={marqueeOffset > 0 ? `${Math.max(300, marqueeOffset * 20)}ms` : '150ms'}>
-				{tab.title}
+				{tab.title}{#if folderSuffix}<span class="tab-folder">{folderSuffix}</span>{/if}
 			</span>
 		</span>
 	</button>
@@ -270,6 +277,12 @@
 
 	.tab-label-text {
 		display: inline;
+	}
+
+	/* Dimmed and set off, so the file name still reads as the label. */
+	.tab-folder {
+		margin-left: 6px;
+		opacity: 0.6;
 	}
 
 	.tab-label.marquee .tab-label-text {

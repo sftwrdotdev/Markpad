@@ -1323,6 +1323,14 @@
 								</label>
 							</div>
 
+							<div class="setting-item" class:inactive={!settings.showTabs}>
+								<label for="appearance-duplicate-name-folder">{t('settings.showFolderForDuplicateNames', settings.language)}</label>
+								<label class="toggle">
+									<input id="appearance-duplicate-name-folder" type="checkbox" disabled={!settings.showTabs} checked={settings.showFolderForDuplicateNames} onchange={() => settings.toggleShowFolderForDuplicateNames()} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
+
 							<div class="setting-item">
 								<label for="appearance-restore-state">{t('settings.restoreStateOnReopen', settings.language)}</label>
 								<label class="toggle">

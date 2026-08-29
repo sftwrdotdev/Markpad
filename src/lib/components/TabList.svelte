@@ -7,6 +7,7 @@
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
+	import { duplicateNameSuffixes } from '../utils/duplicateTabNames.js';
 
 	import { flip } from 'svelte/animate';
 	import { tick } from 'svelte';
@@ -24,6 +25,13 @@
 		ontabclick?: () => void;
 		oncloseTab?: (id: string) => void;
 	}>();
+
+	// Which tabs need a folder to be told apart, recomputed as the strip
+	// changes: a suffix is a fact about the SET of open tabs, not about any one
+	// of them, so it cannot live on the tab the way `title` does (#727).
+	const folderSuffixes = $derived(
+		settings.showFolderForDuplicateNames ? duplicateNameSuffixes(tabManager.tabs) : new Map<string, string>(),
+	);
 
 	let scrollContainer = $state<HTMLElement | null>(null);
 	let showLeftArrow = $state(false);
@@ -204,6 +212,7 @@
 					onmousedown={(e) => handleMouseDown(e, tab, e.currentTarget as HTMLElement)}>
 					<Tab
 						{tab}
+						folderSuffix={folderSuffixes.get(tab.id)}
 						isActive={!showHome && tabManager.activeTabId === tab.id}
 						isLast={i === tabManager.tabs.length - 1}
 						onclick={() => {
@@ -218,7 +227,7 @@
 
 		{#if draggingId && dragState}
 			<div class="drag-proxy" style:left="{dragState.initialRect.left + (dragState.currentX - dragState.startX)}px" style:top="{dragState.initialRect.top}px">
-				<Tab tab={dragState.tab} isActive={!showHome && tabManager.activeTabId === dragState.tab.id} onclick={() => {}} onclose={() => {}} />
+				<Tab tab={dragState.tab} folderSuffix={folderSuffixes.get(dragState.tab.id)} isActive={!showHome && tabManager.activeTabId === dragState.tab.id} onclick={() => {}} onclose={() => {}} />
 			</div>
 		{/if}
 
