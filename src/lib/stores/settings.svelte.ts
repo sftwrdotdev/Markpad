@@ -468,6 +468,14 @@ export class SettingsStore {
 	openFileMode = $state<OpenFileMode>(DEFAULT_OPEN_FILE_MODE);
 	newFileDefaultMode = $state(true);
 	showRecentFiles = $state(true);
+	/**
+	 * On, because the suffix is silent until it is needed: it appears only when
+	 * two tabs in one window hold different files of the same name, which is
+	 * the moment the tab strip stops answering the question it exists to
+	 * answer. The switch is for the reader who would rather keep the strip
+	 * narrow and reach for the tooltip instead.
+	 */
+	showFolderForDuplicateNames = $state(true);
 	/*
 	 * On, so nothing about an existing install changes.
 	 *
@@ -649,6 +657,10 @@ export class SettingsStore {
 
 	toggleShowRecentFiles() {
 		this.showRecentFiles = !this.showRecentFiles;
+	}
+
+	toggleShowFolderForDuplicateNames() {
+		this.showFolderForDuplicateNames = !this.showFolderForDuplicateNames;
 	}
 
 	toggleAnimateJumpScroll() {
@@ -942,6 +954,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		},
 		booleanSetting('editor.newFileDefaultMode', (s) => s.newFileDefaultMode, (s, v) => { s.newFileDefaultMode = v; }),
 		booleanSetting('editor.showRecentFiles', (s) => s.showRecentFiles, (s, v) => { s.showRecentFiles = v; }),
+		booleanSetting('editor.showFolderForDuplicateNames', (s) => s.showFolderForDuplicateNames, (s, v) => { s.showFolderForDuplicateNames = v; }),
 		booleanSetting('motion.animateJumpScroll', (s) => s.animateJumpScroll, (s, v) => { s.animateJumpScroll = v; }),
 		booleanSetting('motion.animateCursor', (s) => s.animateCursor, (s, v) => { s.animateCursor = v; }),
 		booleanSetting('links.openInNewTab', (s) => s.linksOpenInNewTab, (s, v) => { s.linksOpenInNewTab = v; }),
