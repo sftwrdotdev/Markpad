@@ -73,6 +73,51 @@ export function sanitizeThemeColors(colors: unknown): Record<string, string> {
 export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: string };
 
 /**
+ * The constructs the preview takes from an imported theme, and the variable
+ * each is written to.
+ *
+ * The preview renders what the editor tokenizes, but as HTML with the markup
+ * gone: `**bold**` arrives as `<strong>`, `##` as an `<h2>`. So the colours
+ * reach it through CSS rather than through Monaco, and they reach the
+ * construct's *text*, which is all that is left of it (#682).
+ *
+ * A kind the theme does not name is simply absent here, and the stylesheet's
+ * own fallback stands — which is what keeps the built-in themes' preview, and
+ * every preview that was rendered before an import, exactly as it was.
+ */
+export const PREVIEW_KIND_VARS: ReadonlyArray<readonly [kind: string, cssVar: string]> = [
+	['heading', '--md-heading'],
+	['strong', '--md-strong'],
+	['emph', '--md-emph'],
+	['code', '--md-code'],
+	['link', '--md-link'],
+	['strike', '--md-strike'],
+	['quote', '--md-quote'],
+];
+
+/** The colour the theme gave each construct, by the kind the extractor emits. */
+function kindColorsOf(rules: readonly MonacoTokenRule[]): Map<string, string> {
+	const byKind = new Map<string, string>();
+	for (const rule of rules) {
+		// Read off the scope the theme wrote, which `monacoTokenRules` keeps
+		// beside every alias it derives, so a language-qualified spelling like
+		// `markup.bold.markdown` is matched by the same prefix rule.
+		const alias = markdownAliasFor(rule.token);
+		if (alias && rule.foreground) byKind.set(alias.kind, rule.foreground);
+	}
+	return byKind;
+}
+
+/**
+ * The colour an imported theme gives each Markdown construct, for a caller that
+ * needs the colours rather than Monaco's rules — the preview, which renders the
+ * same constructs as HTML.
+ */
+export function markdownKindColors(tokenColors: unknown): Map<string, string> {
+	return kindColorsOf(monacoTokenRules(tokenColors));
+}
+
+/**
  * Every rule an imported theme's editor gets, semantic layer included.
  *
  * The layer needs a rule for every kind it emits or it erases the theme. A
@@ -104,16 +149,7 @@ export type MonacoTokenRule = { token: string; foreground?: string; fontStyle?: 
  */
 export function importedThemeRules(tokenColors: unknown, isDark: boolean): MonacoTokenRule[] {
 	const themeRules = monacoTokenRules(tokenColors);
-
-	/** The colour the theme gave each construct, by the kind the extractor emits. */
-	const byKind = new Map<string, string>();
-	for (const rule of themeRules) {
-		// Read off the scope the theme wrote, which `monacoTokenRules` keeps
-		// beside every alias it derives, so a language-qualified spelling like
-		// `markup.bold.markdown` is matched by the same prefix rule.
-		const alias = markdownAliasFor(rule.token);
-		if (alias && rule.foreground) byKind.set(alias.kind, rule.foreground);
-	}
+	const byKind = kindColorsOf(themeRules);
 
 	const base = semanticTokenRules(isDark ? 'dark' : 'light').map((rule) => {
 		const foreground = byKind.get(rule.token.split('.')[0]);
@@ -279,6 +315,16 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 	cssVars['--hljs-title'] = cssVars['--color-attention-fg'];
 	cssVars['--hljs-variable'] = cssVars['--color-fg-default'];
 	cssVars['--hljs-type'] = cssVars['--color-fg-default'];
+
+	// `tokenColors` reached the editor and nothing else, so an imported theme
+	// arrived on one half of the window and stopped (#682). The values are hex
+	// literals `monacoTokenRules` already validated, and are re-checked below
+	// with the rest.
+	const kindColors = markdownKindColors(theme.tokenColors);
+	for (const [kind, cssVar] of PREVIEW_KIND_VARS) {
+		const foreground = kindColors.get(kind);
+		if (foreground) cssVars[cssVar] = `#${foreground}`;
+	}
 
 	let styleTag = document.getElementById('vscode-theme-style');
 	if (!styleTag) {
