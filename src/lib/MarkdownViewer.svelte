@@ -530,9 +530,28 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			});
 		}
 
-		// Re-initialize mermaid or trigger update if needed
-		// Note: Mermaid 10+ usually doesn't support dynamic re-init easily but we can try re-rendering rich content
-		if (markdownBody && !isEditing) renderRichContent();
+		// Mermaid bakes its colours into the SVG it produces, so the diagrams have
+		// to be drawn again for the new theme; no `roots`, because the whole
+		// article is what changed appearance.
+		//
+		// `untrack` because `renderRichContent` reads `richLibraries` before its
+		// first `await`, which made this effect re-run when the libraries landed —
+		// and that accident, not anything here, was what enriched a document
+		// patched in during a cold start. It was the wrong owner three ways over:
+		// it re-enriched every open tab's host rather than the one that needed it,
+		// it did not fire at all for a tab in edit mode (the guard is
+		// `!isEditing`), and it left the reading position restored against the
+		// layout the enrichment then changed. The patch effect owns that case now.
+		//
+		// The edit-mode gap is not only about a hidden preview. `isSplit` is
+		// independent of `isEditing` — `setSplitEnabled` never touches it — so a
+		// tab split from EDIT mode has both flags set, and its preview is on
+		// screen next to the editor while this guard excludes it. A restored
+		// session in that shape showed raw LaTeX and `<pre>` diagram source with
+		// nothing scheduled to fix it. Split from READING mode leaves `isEditing`
+		// false and did reach this line, which is why the gap was only ever half
+		// of split view and took a while to see.
+		if (markdownBody && !isEditing) untrack(() => renderRichContent());
 	});
 
 	// ui state
@@ -1357,6 +1376,39 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * itself. The patch has to happen before the enrichment and the enrichment
 	 * has to be told what the patch changed, so the two stop being independent
 	 * effects racing on the same dependency and become one statement.
+	 *
+	 * ## The cold start, where the libraries have not arrived yet
+	 *
+	 * `loadRichContentLibraries()` is started in `onMount` and not awaited, and
+	 * it loses: `mode = 'app'` is roughly twenty-five sequentially awaited Tauri
+	 * round trips away (one per `appWindow.listen`, plus the session restore),
+	 * while the three chunks are megabytes of JavaScript to fetch and evaluate.
+	 * So the first document is normally patched in with `hljs` still null, this
+	 * effect skips the enrichment, and the reading position is then restored
+	 * against source text.
+	 *
+	 * This effect does re-run when they land — `hljs` is read here and it is a
+	 * `$derived` of `richLibraries` — but by then the diff has nothing to do and
+	 * `patch.inserted` comes back empty, which is why the roots below are the
+	 * host rather than the patch on that one pass.
+	 *
+	 * And the enrichment moves the text. Measured in Chromium (Vite, a
+	 * 1000x800 preview box, one anchor at each of the 10/25/50/75/90th
+	 * percentile of the rendered source lines) by restoring the position against
+	 * the un-enriched document and then re-measuring the anchored element after
+	 * `renderRichContent` — the cold-start sequence exactly — the anchored text
+	 * moved down by:
+	 *
+	 *     samples/katex-stress.md      0, 2.5, 367.1, 498.1, 502.0 px
+	 *     samples/markdown-syntax.md   0, 0, 96.0, 128.0, 812.3 px
+	 *     samples/stress-test.md       16.0, 714.2, 714.2, 714.2, 714.2 px
+	 *
+	 * A display formula replaces a line of source with a stack of boxes and a
+	 * Mermaid `<pre>` becomes an SVG several hundred pixels tall; every one of
+	 * those above the anchor pushes it down, and the constant 714.2px on
+	 * stress-test.md is its three diagrams, all near the top. Running the same
+	 * cascade once more after the enrichment lands brings the same anchors back
+	 * to within 0.8px — which is what `restoreAfterColdEnrichment` does.
 	 */
 	$effect(() => {
 		const host = previewBlocks;
@@ -1374,9 +1426,50 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// host would put back exactly the per-keystroke re-measure of every fold
 		// that keeping the observation alive removed.
 		for (const block of patch.inserted) foldLayout?.observe(block);
-		if (hljs && renderMathInElement && mermaid) renderRichContent(patch.inserted);
+		if (hljs && renderMathInElement && mermaid) {
+			// Nothing inserted and nothing enriched yet is the cold start above,
+			// and only that: a tab being re-activated also patches to nothing, but
+			// its host is in the set from the render that filled it.
+			const cold = patch.inserted.length === 0 && !enrichedHosts.has(host);
+			enrichedHosts.add(host);
+			const enrichment = renderRichContent(cold ? [host] : patch.inserted);
+			if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
+		}
 		previewRevision = ++previewPatches;
 	});
+
+	/**
+	 * The hosts whose document has been through `renderRichContent` at least
+	 * once. A `WeakMap`/`WeakSet` keyed on the container for the same reason
+	 * `renderedKeys` in `blockPatch.ts` is: a host that Svelte destroys with its
+	 * tab takes its entry with it, so this cannot drift from the set of live
+	 * tabs the way a hand-kept registry can.
+	 */
+	const enrichedHosts = new WeakSet<HTMLElement>();
+
+	/**
+	 * Put the reader back where they were, once, after a cold start's enrichment
+	 * has changed the layout underneath them.
+	 *
+	 * Through `restorePreviewReadingPosition` — the same cascade the restore
+	 * effect runs, in the same order — because two sites consulting a tab's
+	 * three position fields in different orders are two answers for one tab.
+	 * That effect cannot do this itself: giving it a dependency on the render
+	 * would drag the preview back to the anchor on every debounced re-render
+	 * while the reader is typing in split view.
+	 *
+	 * Only for the tab that is still on screen. The enrichment is awaited, a
+	 * switch can happen inside it, and restoring another tab's position into the
+	 * article would move the document the reader is actually looking at.
+	 */
+	async function restoreAfterColdEnrichment(enrichment: Promise<void>, tabId: string | null) {
+		await enrichment;
+		await tick();
+		const body = markdownBody;
+		if (!body || !tabId || tabManager.activeTabId !== tabId) return;
+		const tab = tabManager.tabs.find((t) => t.id === tabId);
+		if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
+	}
 
 	$effect(() => {
 		const host = previewBlocks;
