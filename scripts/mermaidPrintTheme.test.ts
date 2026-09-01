@@ -59,7 +59,7 @@ const asElement = (element: FakeElement) => element as unknown as Element;
 
 function diagram(source: string | null, html: string) {
 	const element = new FakeElement('mermaid-diagram');
-	if (source !== null) rememberDiagramSource(asElement(element), source);
+	if (source !== null) rememberDiagramSource(asElement(element), source, 'dark');
 	element.innerHTML = html;
 	return element;
 }
@@ -196,7 +196,12 @@ test('the PDF export wraps the print render and always restores', () => {
 	// calling the same function; the assertion follows it rather than being
 	// relaxed, because "some path renders diagrams without remembering the
 	// source" is exactly the drift that deleted the markdown.ts copy.
-	assert.match(richContent, /rememberDiagramSource\(\s*\w+\s*,\s*\w+\s*\)/);
+	//
+	// The theme it was drawn with is recorded alongside it now. That is not for
+	// this path — `renderDiagramsForPrint` swaps the print rendering in and the
+	// screen one back out, and never writes the attribute — it is what lets
+	// `renderRichContent` find the diagrams a theme change left behind.
+	assert.match(richContent, /rememberDiagramSource\(\s*\w+\s*,\s*\w+\s*,[^)]*\)/);
 
 	// One theme decision, shared by the screen render and the restore. Asserted
 	// as "both options are fed the same expression" rather than as the literal

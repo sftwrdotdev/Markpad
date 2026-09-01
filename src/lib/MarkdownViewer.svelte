@@ -500,6 +500,24 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// effect is only the part that cannot: applying the theme to the document.
 		const theme = settings.theme;
 
+		// Mermaid bakes its colours into the SVG it produces, so the diagrams have
+		// to be drawn again; `renderRichContent` finds the ones drawn for another
+		// theme. No `roots`, because the whole article is what changed appearance
+		// — including the hosts of tabs that are not on screen, which the reader
+		// switches back to without anything else re-rendering them.
+		//
+		// Called from each branch rather than once at the end, because the
+		// `vscode:` branch does not know its own appearance until
+		// `parseAndApplyVscodeTheme` has published `dataset.themeType`, and that
+		// is what `currentMermaidTheme` reads. Calling here would have re-drawn
+		// every diagram in the theme being replaced.
+		//
+		// `untrack` for the reason #740 established: `renderRichContent` reads
+		// `richLibraries` before its first `await`, so a tracked call makes this
+		// effect re-run when the libraries land — duplicating the cold-start
+		// enrichment the patch effect owns, over every open tab's host.
+		const recolourDiagrams = () => untrack(() => { if (markdownBody) renderRichContent(); });
+
 		if (theme === 'system' || theme === 'light' || theme === 'dark') {
 			if (theme === 'system') {
 				delete document.documentElement.dataset.theme;
@@ -510,6 +528,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			}
 			clearVscodeTheme();
 			saveStartupAppearance(theme);
+			recolourDiagrams();
 			const monaco = (window as any).monaco;
 			if (monaco && monaco.editor) {
 				const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -523,34 +542,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// `parseAndApplyVscodeTheme` decides dark vs. light from the theme's
 				// own `type` field and publishes it here.
 				saveStartupAppearance(document.documentElement.dataset.themeType === 'dark' ? 'dark' : 'light');
+				recolourDiagrams();
 			}).catch(e => {
 				console.error("Failed to load vscode theme", e);
 				settings.theme = 'system';
 			});
 		}
-
-		// Mermaid bakes its colours into the SVG it produces, so the diagrams have
-		// to be drawn again for the new theme; no `roots`, because the whole
-		// article is what changed appearance.
-		//
-		// `untrack` because `renderRichContent` reads `richLibraries` before its
-		// first `await`, which made this effect re-run when the libraries landed —
-		// and that accident, not anything here, was what enriched a document
-		// patched in during a cold start. It was the wrong owner three ways over:
-		// it re-enriched every open tab's host rather than the one that needed it,
-		// it did not fire at all for a tab in edit mode (the guard is
-		// `!isEditing`), and it left the reading position restored against the
-		// layout the enrichment then changed. The patch effect owns that case now.
-		//
-		// The edit-mode gap is not only about a hidden preview. `isSplit` is
-		// independent of `isEditing` — `setSplitEnabled` never touches it — so a
-		// tab split from EDIT mode has both flags set, and its preview is on
-		// screen next to the editor while this guard excludes it. A restored
-		// session in that shape showed raw LaTeX and `<pre>` diagram source with
-		// nothing scheduled to fix it. Split from READING mode leaves `isEditing`
-		// false and did reach this line, which is why the gap was only ever half
-		// of split view and took a while to see.
-		if (markdownBody && !isEditing) untrack(() => renderRichContent());
 	});
 
 	// ui state
