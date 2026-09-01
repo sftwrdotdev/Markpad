@@ -36,9 +36,9 @@
 		asBufferLine,
 		editorTopLineForTabAnchor,
 		lineCoordinates,
-		tabAnchorForEditorTopLine,
 		type BufferLine,
 	} from '../utils/lineCoordinates.js';
+	import { editorReadingPosition } from '../utils/editorPosition.js';
 	import {
 		documentParentDir,
 		imageEmbed,
@@ -860,37 +860,39 @@
 			// reading mode and back.
 			removedKeybindings.dispose();
 
-			if (editor && currentTabId) {
-				const state = editor.saveViewState();
-				tabManager.updateTabEditorState(currentTabId, state);
-
-				const scrollHeight = editor.getScrollHeight();
-				const clientHeight = editor.getLayoutInfo().height;
-				if (scrollHeight > clientHeight) {
-					const percentage =
-						editor.getScrollTop() / (scrollHeight - clientHeight);
-					tabManager.updateTabScrollPercentage(currentTabId, percentage);
-				}
-
-				const ranges = editor.getVisibleRanges();
-				const model = editor.getModel();
-				if (ranges.length > 0 && model) {
-					// Monaco counts from the first line of the FILE and the tab's
-					// anchor counts from the first line of the body, so this is a
-					// crossing; `EDITOR_ANCHOR_LINE_OFFSET` is the old `+ 2`,
-					// which is a separate decision and is documented as one.
-					tabManager.updateTabAnchorLine(
-						currentTabId,
-						tabAnchorForEditorTopLine(
-							lineCoordinates(model.getValue()),
-							asBufferLine(ranges[0].startLineNumber),
-						),
-					);
-				}
-			}
+			if (editor && currentTabId) writeEditorPosition(currentTabId);
 
 			editor.dispose();
 		};
+	}
+
+	/**
+	 * Record on `tabId` where the editor is: the Monaco view state, and the two
+	 * position fields `editorReadingPosition` derives from one reading.
+	 *
+	 * Three layout reads (`getScrollHeight`, `getLayoutInfo`,
+	 * `getVisibleRanges`), so this belongs at moments and never on the hot path
+	 * — the teardown above is one such moment, `flushPositionTo` below is the
+	 * other, and there are no others.
+	 *
+	 * The caller has already established that `editor` is up and that `tabId` is
+	 * the tab it is holding.
+	 */
+	function writeEditorPosition(tabId: string) {
+		tabManager.updateTabEditorState(tabId, editor.saveViewState());
+
+		const ranges = editor.getVisibleRanges();
+		const model = editor.getModel();
+		const { scrollPercentage, anchorLine } = editorReadingPosition({
+			scrollTop: editor.getScrollTop(),
+			contentHeight: editor.getScrollHeight(),
+			viewportHeight: editor.getLayoutInfo().height,
+			topLine: ranges.length > 0 && model ? ranges[0].startLineNumber : null,
+			text: model?.getValue() ?? '',
+		});
+
+		if (scrollPercentage !== null) tabManager.updateTabScrollPercentage(tabId, scrollPercentage);
+		if (anchorLine !== null) tabManager.updateTabAnchorLine(tabId, anchorLine);
 	}
 
 	// Editing primitives used by the context-menu actions. They live at
@@ -2488,6 +2490,28 @@
 	export const setValue = (val: string) => editor?.setValue(val);
 	export const focus = () => editor?.focus();
 	export const restoreViewState = (state: any) => editor?.restoreViewState(state);
+
+	/**
+	 * Bring `tabId`'s recorded reading position up to date with what the editor
+	 * is showing right now.
+	 *
+	 * Reading mode never needs this: `handleScroll` in MarkdownViewer writes the
+	 * same fields through on every scroll event, so a tab in the preview is
+	 * always current. Edit mode writes them once, when the editor comes down —
+	 * which is cheap, and which leaves anything that reads a tab's position
+	 * while the editor is still up reading the position from the LAST teardown,
+	 * or 0 for a tab that was opened straight into edit mode and never left it.
+	 * Those callers ask here first.
+	 *
+	 * A no-op unless this editor is up AND holding `tabId`. There is one Editor
+	 * per window and it swaps models between tabs (`utils/tabModels.ts`), so an
+	 * unguarded flush would copy the ACTIVE tab's position onto whichever record
+	 * the caller named — a wrong position on two tabs instead of one.
+	 */
+	export function flushPositionTo(tabId: string) {
+		if (!editorReady || !editor || currentTabId !== tabId) return;
+		writeEditorPosition(tabId);
+	}
 </script>
 
 <div class="editor-outer">

@@ -22,6 +22,13 @@ import { nextUntitledTitle } from './untitledTitle.js';
  *   open is the honest version of "this was rendered fresh here". Carrying it
  *   would mean a new required entry in the strict validator below, which is a
  *   change to make on its own terms.
+ * - `scrollHistory`/`scrollFuture`: raw preview pixels, and the destination
+ *   window is a different container of a different height — `scrollTop` only
+ *   travels because it is the LAST resort of a cascade that starts with
+ *   `anchorLine`, and a back stack has no such cascade to be wrong under.
+ *   Arriving empty means the back button walks the file history until the
+ *   reader jumps in the new window, which is what a freshly opened document
+ *   does anyway.
  */
 export interface TransferableTab {
 	path: string;
@@ -216,6 +223,9 @@ export function buildTransferredTab(
 		editorViewState: null,
 		scrollPercentage: snap.scrollPercentage,
 		anchorLine: snap.anchorLine,
+		// Not carried — see the header.
+		scrollHistory: [],
+		scrollFuture: [],
 		isSplit: snap.isSplit,
 		splitRatio: snap.splitRatio,
 		isScrollSynced: snap.isScrollSynced,

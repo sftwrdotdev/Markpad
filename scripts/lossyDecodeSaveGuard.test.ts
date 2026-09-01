@@ -216,6 +216,8 @@ function makeTab(overrides: Partial<Tab> = {}): Tab {
 		isScrollSynced: false,
 		hasReplacementChars: true,
 		encoding: 'UTF-8',
+		scrollHistory: [],
+		scrollFuture: [],
 		foldOverrides: new Set<string>(),
 		...overrides,
 	};

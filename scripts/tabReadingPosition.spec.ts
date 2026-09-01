@@ -66,7 +66,14 @@ import { test } from 'vitest';
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { processMarkdownHtml } = await import('../src/lib/utils/markdown.js');
-const { findAnchorElement } = await import('../src/lib/utils/previewAnchor.js');
+const {
+	findAnchorElement,
+	parseSourceposLineRange,
+	PREVIEW_ANCHOR_OFFSET,
+	restorePreviewReadingPosition,
+} = await import('../src/lib/utils/previewAnchor.js');
+type AnchorNode = Parameters<typeof findAnchorElement>[0];
+type AnchorBox = ReturnType<Parameters<typeof restorePreviewReadingPosition>[3]>;
 const { asRendererLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.js');
 const { snapshotTab, validateTransferPayload } = await import('../src/lib/utils/tabTransfer.js');
 
@@ -378,4 +385,119 @@ test('branding both sides of a snapshot changes none of its bytes', () => {
 
 	tabManager.restoreState(tabManager.serializeState());
 	assert.equal(tabManager.tabs.find((item) => item.path === '/notes/a.md')?.anchorLine, 812);
+});
+
+/* ------------------------------------------------------------------ */
+/* the arrival of a tab from another window                            */
+/* ------------------------------------------------------------------ */
+//
+// The transfer payload carries all three fields (`tabTransfer.ts`), so the
+// destination has everything it needs — and used to open the document at the
+// top anyway, because of WHEN it asked.
+//
+// `insertTransferredTab` pushes the tab and activates it synchronously, while
+// its rendered `content` is still the `''` every construction site seeds. The
+// preview's restore effect runs on that activation, against a host holding no
+// document; `acceptTransferredTab` only awaits `renderTabPreviewFromRaw`
+// afterwards, and nothing re-triggers the effect when that document lands (it
+// depends on the tab id, the article and the path — deliberately not on the
+// render, which also fires on every debounced re-render while the reader is
+// typing in split view).
+//
+// The two tests below are the two moments, run against the REAL cascade over
+// the REAL `processMarkdownHtml` output of the document being transferred.
+// What they cannot be is a live drag: two windows and a Rust broker are not
+// reachable from here, so the sequence is replayed rather than performed, and
+// the wiring that performs it is asserted in `tabTransferHandoff.test.ts`.
+
+/**
+ * A layout in which every source line is `LINE_HEIGHT` tall.
+ *
+ * jsdom reports 0 for every offset, so the geometry is the fixture — as in
+ * `scrollSyncAcrossFolds.test.ts` and `anchorJumpUnderZoom.spec.ts`. Deriving
+ * it from the element's own `data-sourcepos` is what makes the expected
+ * scrollTop below a number this file can state rather than read back.
+ */
+const LINE_HEIGHT = 24;
+
+function measureBySourcepos(node: AnchorNode): AnchorBox {
+	const range = parseSourceposLineRange(node.getAttribute?.('data-sourcepos'));
+	if (!range) return { top: Number.NaN, height: Number.NaN };
+	return {
+		top: (range.startLine - 1) * LINE_HEIGHT,
+		height: (range.endLine - range.startLine + 1) * LINE_HEIGHT,
+	};
+}
+
+/**
+ * The article the preview scrolls. Its scroll range is passed to the restore
+ * rather than read off it, so it is stated here: nothing to scroll while the
+ * host is empty, a tall document once one has been patched in.
+ */
+function emptyPreview(): HTMLElement {
+	const host = document.createElement('div');
+	host.className = 'markdown-body';
+	return host;
+}
+
+function scrollMaxOf(host: HTMLElement): number {
+	return host.innerHTML === '' ? 0 : 40_000 - 900;
+}
+
+/** A tab that left another window with its reader parked on `anchorLine`. */
+function arriveFromAnotherWindow(anchorLine: number): Tab {
+	tabManager.addTab('/notes/b.md', DOC_B.html());
+	const source = tabManager.tabs.find((item) => item.path === '/notes/b.md')!;
+	source.scrollTop = 4820;
+	source.scrollPercentage = 0.73;
+	source.anchorLine = asRendererLine(anchorLine);
+
+	const payload = validateTransferPayload(JSON.stringify(snapshotTab(source)));
+	assert.ok(payload, 'a snapshot of a real tab must validate');
+
+	// The destination window, which has never seen this document.
+	tabManager.closeAll();
+	const id = tabManager.insertTransferredTab(payload);
+	return tabManager.tabs.find((item) => item.id === id)!;
+}
+
+/** A heading line, so the block spans one line and the interpolation is exact. */
+const ARRIVAL_LINE = DOC_B.lines[Math.floor(DOC_B.lines.length / 2)];
+
+test('a transferred tab is activated before its document exists, so the restore then has nothing to work with', () => {
+	reset();
+	const arrived = arriveFromAnotherWindow(ARRIVAL_LINE);
+
+	// The three fields survived the wire, and the tab is already the active one.
+	assert.equal(arrived.anchorLine, ARRIVAL_LINE);
+	assert.equal(arrived.scrollPercentage, 0.73);
+	assert.equal(arrived.scrollTop, 4820);
+	assert.equal(tabManager.activeTabId, arrived.id);
+	assert.equal(arrived.content, '', 'the rendered document has not been built yet');
+
+	const host = emptyPreview();
+
+	// Every entry of the cascade in turn: no block owns the line because there
+	// are no blocks, there is no scroll range for the percentage, and the pixel
+	// offset has nowhere to go. Asserted on the returned entry rather than on
+	// `host.scrollTop`, because jsdom stores whatever is assigned to `scrollTop`
+	// while a real container clamps it to a range that here is empty.
+	assert.equal(restorePreviewReadingPosition(host, arrived, scrollMaxOf(host), measureBySourcepos), 'nothing');
+	assert.equal(findAnchorElement(host, arrived.anchorLine), null);
+});
+
+test('the same cascade, run once the arriving document is in, puts the reader back', () => {
+	reset();
+	const arrived = arriveFromAnotherWindow(ARRIVAL_LINE);
+	const host = emptyPreview();
+
+	// What `renderTabPreviewFromRaw` leaves behind: the tab's own buffer through
+	// the real pipeline, patched into the host it just awaited a flush for.
+	host.innerHTML = processMarkdownHtml(DOC_B.html(), arrived.path, new Set<string>());
+
+	assert.equal(restorePreviewReadingPosition(host, arrived, scrollMaxOf(host), measureBySourcepos), 'anchor');
+	// The first entry of the cascade answered, so the answer is the anchor's:
+	// the line's own box, pinned `PREVIEW_ANCHOR_OFFSET` below the top.
+	assert.equal(host.scrollTop, (ARRIVAL_LINE - 1) * LINE_HEIGHT - PREVIEW_ANCHOR_OFFSET);
+	assert.notEqual(host.scrollTop, 0);
 });

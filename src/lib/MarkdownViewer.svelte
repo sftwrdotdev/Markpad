@@ -49,12 +49,11 @@ import {
 import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
-	findAnchorElement,
 	findSourceLineRange,
-	getAnchorScrollTop,
 	getSourceLineAtPreviewOffset,
 	measureAnchorBox,
 	mergeSourceLineRanges,
+	restorePreviewReadingPosition,
 	PREVIEW_ANCHOR_OFFSET,
 	anchorScrollTop,
 	type AnchorBox,
@@ -235,6 +234,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		revealHeader: (sourceLine: BufferLine | null, text: string) => void;
 		revealSourceRange: (startLine: number, endLine: number) => void;
 		triggerFind: () => void;
+		flushPositionTo: (tabId: string) => void;
 		// The three the editor's context menu runs, which are the three its
 		// keyboard shortcuts run (#207).
 		cutToClipboard: () => Promise<void>;
@@ -344,9 +344,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	// in-page scroll position history for mouse 4/5 nav
-	let scrollHistory: number[] = [];
-	let scrollFuture: number[] = [];
 	let zoomData = $state<{ src?: string; html?: string } | null>(null);
 
 	// What a document with no tab behind it has folded. Never written to — every
@@ -694,7 +691,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
-		serializeState: () => tabManager.serializeState(),
+		serializeState: () => {
+			// Same reason as `transferPayload` below, at a different moment: this
+			// runs on window close with the editor still mounted, so the tab being
+			// edited would be persisted at the position it held when the editor
+			// last came down. Only the active tab can be the one the editor holds.
+			if (tabManager.activeTabId) editorPane?.flushPositionTo(tabManager.activeTabId);
+			return tabManager.serializeState();
+		},
 		shouldRestoreState: () => settings.restoreStateOnReopen,
 		isDisposed: () => isDisposed,
 		restoreState: (json) => tabManager.restoreState(json),
@@ -730,6 +734,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		transferPayload: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
 			if (!tab) throw new Error('Tab disappeared before transfer');
+			// The snapshot carries the reading position and is taken here,
+			// synchronously, with the editor still mounted — so a tab being
+			// edited would travel with the position from its last teardown, and a
+			// tab opened straight into edit mode with 0. The preview writes its
+			// own fields on every scroll and needs nothing; this is edit mode's
+			// equivalent, and it is a no-op for any tab the editor is not on.
+			editorPane?.flushPositionTo(tabId);
 			return JSON.stringify(snapshotTab(tab));
 		},
 		onTransferClaimed: (tabId) => tabManager.closeTab(tabId),
@@ -747,6 +758,30 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				if (isDisposed) {
 					tabManager.closeTab(id);
 					return false;
+				}
+				// The reading position travels with the tab, and until here nothing
+				// put it back. `insertTransferredTab` activates the tab
+				// synchronously, while its `content` is still `''`; the restore
+				// effect below runs on that activation against a host with no
+				// document in it, finds no anchor and no scroll range, and the
+				// document the reader left arrives afterwards at the top. That effect
+				// cannot cover this by depending on the render — it also runs while
+				// the reader is typing in split view, where a per-render dependency
+				// would drag the preview back on every debounce — so the arrival
+				// asks again, now that `renderTabPreviewFromRaw` has awaited the
+				// patch and the host holds the document.
+				//
+				// Guarded on the tab still being the active one: only the active
+				// host is displayed, and `markdownBody` is the article all of them
+				// share, so scrolling it for a tab the user has since switched away
+				// from would move somebody else's document.
+				if (markdownBody && tabManager.activeTabId === id) {
+					restorePreviewReadingPosition(
+						markdownBody,
+						transferred,
+						getPreviewScrollMax(markdownBody),
+						measurePreviewBox,
+					);
 				}
 				return true;
 			} catch (error) {
@@ -819,8 +854,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		setShowHome: (value) => (showHome = value),
 		currentFile: () => currentFile,
 		resetScrollHistory: () => {
-			scrollHistory = [];
-			scrollFuture = [];
+			if (tabManager.activeTabId) tabManager.clearScrollHistory(tabManager.activeTabId);
 		},
 		renderMarkdown: renderMarkdownPreview,
 		afterLoad: tick,
@@ -1004,10 +1038,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	//
 	// `folds` is a parameter rather than a read of the active tab because this
 	// renders documents that are NOT on screen: a window restore renders every
-	// restored tab, a cross-window arrival renders itself, and the background
+	// restored tab, a cross-window arrival renders itself, the background
 	// completion of a large file lands long after the user may have switched
-	// away. Each of those must fold the document it is rendering, not whichever
-	// one happens to be active when the promise resolves.
+	// away, and the first-stage read in `documentSession` resolves after three
+	// awaits a switch can happen inside — the four `previewHosts` lists. Each of
+	// those must fold the document it is rendering, not whichever one happens to
+	// be active when the promise resolves.
 	async function renderMarkdownPreview(raw: string, filePath: string, folds: Set<string>) {
 		const body = getMarkdownBodyWithoutFrontMatter(raw);
 		const html = (await invoke('render_markdown', { content: body })) as string;
@@ -1403,44 +1439,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (id && body) {
 			untrack(() => {
 				const tab = tabManager.tabs.find((t) => t.id === id);
-				if (tab) {
-					let scrolled = false;
-
-					if (tab.anchorLine > 0) {
-						// Interpolated restore: find the rendered element that owns the
-						// saved source line and put that line back under the anchor
-						// offset. This has to descend — `processMarkdownHtml` re-parents
-						// every block after a heading into a `.foldable-content-wrapper`
-						// with no `data-sourcepos`, so a scan of `body.children` only
-						// ever matched an anchor sitting exactly on a top-level heading
-						// line (see scripts/previewAnchorRestore.test.ts for the rate).
-						const match = findAnchorElement(body, tab.anchorLine);
-						if (match) {
-							// Through the same measurement the sync path uses: an anchor
-							// inside a table or a code block resolves to an element whose
-							// `offsetTop` is measured from that table or that block's shell,
-							// and restoring to it would open the tab at the top instead.
-							const box = measurePreviewBox(match.element);
-							body.scrollTop = getAnchorScrollTop(
-								box.top,
-								box.height,
-								match,
-								tab.anchorLine,
-								PREVIEW_ANCHOR_OFFSET,
-							);
-							scrolled = true;
-						}
-					}
-
-					if (!scrolled) {
-						if (body.scrollHeight > body.clientHeight && tab.scrollPercentage > 0) {
-							const targetScroll = tab.scrollPercentage * (body.scrollHeight - body.clientHeight);
-							body.scrollTop = targetScroll;
-						} else {
-							body.scrollTop = tab.scrollTop;
-						}
-					}
-				}
+				// The cascade itself is `restorePreviewReadingPosition` in
+				// previewAnchor.ts, next to the three measurements it runs. It is a
+				// function and not this block because the arrival of a transferred
+				// tab has to run the SAME cascade after its document lands (see
+				// `acceptTransferredTab`), and two copies consulting the same three
+				// fields in different orders would be two answers for one tab.
+				if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
 			});
 		}
 	});
@@ -1716,7 +1721,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!resolved) return;
 
 		tabManager.addTab(resolved);
-		await loadMarkdown(resolved, { skipTabManagement: true, resetScrollHistory: true });
+		await loadMarkdown(resolved, { skipTabManagement: true });
 		if (target.hash) {
 			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, resolved);
 		}
@@ -3174,42 +3179,46 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			: tabManager.goForward(activeTabId);
 
 		if (path) {
-			await loadMarkdown(path, { skipTabManagement: true, resetScrollHistory: true });
+			// No `resetScrollHistory` here, and none in `openMarkdownTargetInNewTab`
+			// either: goBack/goForward repoint the tab, so `clearReadingPosition`
+			// has already dropped its in-page stacks along with the rest of the
+			// position, and a tab opened by `addTab` never had any.
+			await loadMarkdown(path, { skipTabManagement: true });
 		}
 	}
 
+	// The in-page jump stacks belong to the tab the offsets were measured in —
+	// see `Tab.scrollHistory`. These three wrappers exist only to name that tab
+	// and to read the offset off the preview, which the store cannot see.
 	function pushScrollHistory() {
-		if (markdownBody) {
-			scrollHistory.push(markdownBody.scrollTop);
-			scrollFuture = [];
-			if (scrollHistory.length > 50) scrollHistory.shift();
+		if (markdownBody && tabManager.activeTabId) {
+			tabManager.pushScrollHistory(tabManager.activeTabId, markdownBody.scrollTop);
 		}
+	}
+
+	/**
+	 * Where an in-page back/forward would land, or null if this tab has no jump
+	 * to walk — the caller then falls through to the FILE history.
+	 */
+	function popScrollHistory(direction: 'back' | 'forward'): number | null {
+		if (!markdownBody || !tabManager.activeTabId) return null;
+		return direction === 'back'
+			? tabManager.popScrollHistoryBack(tabManager.activeTabId, markdownBody.scrollTop)
+			: tabManager.popScrollHistoryForward(tabManager.activeTabId, markdownBody.scrollTop);
 	}
 
 	async function handleMouseUp(e: MouseEvent) {
-		if (e.button === 3) {
-			// Back
-			e.preventDefault();
-			// try in-page scroll history first
-			if (scrollHistory.length > 0 && markdownBody) {
-				scrollFuture.push(markdownBody.scrollTop);
-				const pos = scrollHistory.pop()!;
-				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
-			} else {
-				await navigateFileHistory('back');
-			}
-		} else if (e.button === 4) {
-			// Forward
-			e.preventDefault();
-			if (scrollFuture.length > 0 && markdownBody) {
-				scrollHistory.push(markdownBody.scrollTop);
-				const pos = scrollFuture.pop()!;
-				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
-			} else {
-				await navigateFileHistory('forward');
-			}
+		if (e.button !== 3 && e.button !== 4) return;
+		const direction = e.button === 3 ? 'back' : 'forward';
+		e.preventDefault();
+		// In-page scroll history first; only a tab with no jump left to undo
+		// moves to another document.
+		const pos = popScrollHistory(direction);
+		if (pos !== null && markdownBody) {
+			isProgrammaticScroll = true;
+			markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
+		} else {
+			await navigateFileHistory(direction);
 		}
 	}
 

@@ -12,6 +12,16 @@ export type LoadMarkdownOptions = {
 	navigate?: boolean;
 	skipTabManagement?: boolean;
 	preserveEditState?: boolean;
+	/**
+	 * Drop the receiving tab's in-page jump stacks (`Tab.scrollHistory`).
+	 *
+	 * Only the two reloads ask for it: the tab keeps the document it already
+	 * had, so nothing repoints it and `clearReadingPosition` never runs, but
+	 * the text underneath is about to be replaced by whatever is on disk now
+	 * and the recorded offsets describe the version being thrown away. A caller
+	 * that changes which document a tab holds does not belong here — that route
+	 * clears the stacks with the rest of the reading position.
+	 */
 	resetScrollHistory?: boolean;
 	/**
 	 * Read the file even though the tab that will receive it holds unsaved
@@ -411,6 +421,12 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		let existing = null;
 		let pendingNavigateTabId: string | null = null;
 		try {
+			// The second arm predates the stacks being per tab and is kept as it
+			// was: this runs before tab management, so the tab it reaches is the
+			// one being LEFT, and opening another file has always cleared the
+			// in-page stacks of whatever was on screen. Narrowing that to "only
+			// the tab whose text actually changes" is a behaviour change on its
+			// own terms, not part of making the stacks per tab.
 			if (loadOptions.resetScrollHistory || filePath !== options.currentFile()) {
 				options.resetScrollHistory();
 			}
@@ -557,7 +573,18 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 						return targetTab?.path === filePath && loadRevisionByTab.get(activeId) === fullLoadRevision && !targetTab.isDirty && targetTab.isEditing === initialIsEditing && targetTab.isSplit === initialIsSplit;
 					};
 					updateLoading(activeId, true);
-					options.measureInitialViewport();
+					// Everything above addresses the tab by id, so a switch during
+					// the two reads costs nothing. This one cannot: it measures the
+					// single article on screen and writes the single `isAtBottom`
+					// flag, which gates the "loading full document" chip for
+					// whichever tab is active. Taken while another tab is showing,
+					// it answers for that document — a short one sets the flag, and
+					// switching back raises the chip at the top of a slice the
+					// reader has not scrolled. Same test as the full-load
+					// completion below, for the same reason: a measurement of the
+					// view only speaks for this load while this load's tab is the
+					// view.
+					if (tabManager.activeTabId === activeId) options.measureInitialViewport();
 					(invoke('read_file_content_checked', { path: filePath }) as Promise<[string, boolean, string]>)
 						.then(([fullContent, fullLossy, fullEncoding]) => {
 							const applyFull = () => {
