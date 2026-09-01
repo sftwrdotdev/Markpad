@@ -104,6 +104,7 @@ import {
 	import HomePage from './components/HomePage.svelte';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
+import { outgoingTabAnchorLine } from './utils/editorPosition.js';
 import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
 import { isTocOverhanging } from './utils/tocOverlay.js';
 import { splitRatioAfterMove } from './utils/splitPanes.js';
@@ -741,7 +742,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// own fields on every scroll and needs nothing; this is edit mode's
 			// equivalent, and it is a no-op for any tab the editor is not on.
 			editorPane?.flushPositionTo(tabId);
-			return JSON.stringify(snapshotTab(tab));
+			// The other half of the same problem: the flush can only speak for
+			// the tab the editor is holding, and any other tab can be sent from
+			// here too — the tab context menu names one, and `mergeSelfInto`
+			// walks all of them. `editorViewState` is what covers a background
+			// edit-mode tab in memory and it is excluded from the payload, so
+			// the anchor is recovered from it before it is dropped.
+			return JSON.stringify({
+				...snapshotTab(tab),
+				anchorLine: outgoingTabAnchorLine(tab, tabManager.activeTabId),
+			});
 		},
 		onTransferClaimed: (tabId) => tabManager.closeTab(tabId),
 		acceptTransferredTab: async (snapshot) => {

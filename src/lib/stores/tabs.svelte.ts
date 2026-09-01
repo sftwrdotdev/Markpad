@@ -6,6 +6,7 @@ import { HOME_TAB_PATH, isHomePath } from '../utils/homeTab.js';
 import { buildTransferredTab, type TransferableTab } from '../utils/tabTransfer.js';
 import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 import { asRendererLine, type RendererLine } from '../utils/lineCoordinates.js';
+import { outgoingTabAnchorLine } from '../utils/editorPosition.js';
 import { retainTabModels } from '../utils/tabModels.js';
 import {
 	canGoBackInHistory,
@@ -404,7 +405,13 @@ class TabManager {
 					isScrollSynced: t.isScrollSynced,
 					scrollTop: t.scrollTop,
 					scrollPercentage: t.scrollPercentage,
-					anchorLine: t.anchorLine
+					// Not `t.anchorLine`: a tab left in edit-only mode in the
+					// background has had no writer since it stopped being active,
+					// and its Monaco view state — which knows where it was, and
+					// which is not in the object above — is about to be dropped.
+					// `outgoingTabAnchorLine` recovers the line from it for that
+					// population and hands back `t.anchorLine` for every other.
+					anchorLine: outgoingTabAnchorLine(t, this.activeTabId)
 				}))
 		};
 		return JSON.stringify(stateData);
