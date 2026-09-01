@@ -83,7 +83,7 @@ test('the transfer payload flushes before it snapshots the tab', () => {
 	// `snapshotTab` is synchronous and runs with the editor still mounted, so
 	// without this the tab travels at the position of the last teardown.
 	const flushAt = offsetOf(viewer, 'editorPane?.flushPositionTo(tabId);');
-	const snapshotAt = offsetOf(viewer, 'JSON.stringify(snapshotTab(tab))');
+	const snapshotAt = offsetOf(viewer, 'snapshotTab(tab)');
 	assert.ok(flushAt < snapshotAt);
 });
 
