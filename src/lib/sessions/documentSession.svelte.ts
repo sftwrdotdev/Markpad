@@ -557,7 +557,18 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 						return targetTab?.path === filePath && loadRevisionByTab.get(activeId) === fullLoadRevision && !targetTab.isDirty && targetTab.isEditing === initialIsEditing && targetTab.isSplit === initialIsSplit;
 					};
 					updateLoading(activeId, true);
-					options.measureInitialViewport();
+					// Everything above addresses the tab by id, so a switch during
+					// the two reads costs nothing. This one cannot: it measures the
+					// single article on screen and writes the single `isAtBottom`
+					// flag, which gates the "loading full document" chip for
+					// whichever tab is active. Taken while another tab is showing,
+					// it answers for that document — a short one sets the flag, and
+					// switching back raises the chip at the top of a slice the
+					// reader has not scrolled. Same test as the full-load
+					// completion below, for the same reason: a measurement of the
+					// view only speaks for this load while this load's tab is the
+					// view.
+					if (tabManager.activeTabId === activeId) options.measureInitialViewport();
 					(invoke('read_file_content_checked', { path: filePath }) as Promise<[string, boolean, string]>)
 						.then(([fullContent, fullLossy, fullEncoding]) => {
 							const applyFull = () => {

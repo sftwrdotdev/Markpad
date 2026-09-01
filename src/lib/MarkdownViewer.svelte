@@ -1004,10 +1004,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	//
 	// `folds` is a parameter rather than a read of the active tab because this
 	// renders documents that are NOT on screen: a window restore renders every
-	// restored tab, a cross-window arrival renders itself, and the background
+	// restored tab, a cross-window arrival renders itself, the background
 	// completion of a large file lands long after the user may have switched
-	// away. Each of those must fold the document it is rendering, not whichever
-	// one happens to be active when the promise resolves.
+	// away, and the first-stage read in `documentSession` resolves after three
+	// awaits a switch can happen inside — the four `previewHosts` lists. Each of
+	// those must fold the document it is rendering, not whichever one happens to
+	// be active when the promise resolves.
 	async function renderMarkdownPreview(raw: string, filePath: string, folds: Set<string>) {
 		const body = getMarkdownBodyWithoutFrontMatter(raw);
 		const html = (await invoke('render_markdown', { content: body })) as string;
