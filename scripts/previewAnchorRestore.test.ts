@@ -465,3 +465,58 @@ test('the viewer restores through the measured resolver', async () => {
 	assert.doesNotMatch(viewer, /tab\.scrollPercentage/);
 	assert.doesNotMatch(viewer, /Array\.from\(body\.children\)/);
 });
+
+/**
+ * The cold start: the rich-content libraries arrive after the document is
+ * already in the preview and after the position has been restored against it.
+ *
+ * Measured in Chromium — the numbers and the method are in the patch effect's
+ * comment in `MarkdownViewer.svelte` — the anchored text moves down by up to
+ * 812px when the enrichment lands, and re-running this cascade afterwards
+ * brings it back to within 0.8px. jsdom has no layout, so that magnitude cannot
+ * be asserted here and this is a source assertion like the one above: what it
+ * pins is that the second restore is wired up at all, and that nothing has
+ * quietly gone back to the arrangement that had no owner for this case.
+ */
+test('a cold start restores again once its enrichment has landed', async () => {
+	const viewer = readSource('src/lib/MarkdownViewer.svelte');
+
+	// The patch effect is the owner: when the libraries land, the diff finds
+	// nothing to do, so the roots are the host and the restore follows it.
+	assert.match(
+		viewer,
+		/const cold = patch\.inserted\.length === 0 && !enrichedHosts\.has\(host\)/,
+		'the patch effect must recognise a document that was patched in without the libraries',
+	);
+	assert.match(
+		viewer,
+		/renderRichContent\(cold \? \[host\] : patch\.inserted\)/,
+		'the cold pass must enrich the whole host — `patch.inserted` is empty on that run',
+	);
+	assert.match(
+		viewer,
+		/if \(cold\) restoreAfterColdEnrichment\(/,
+		'and only that run may re-restore, or every no-op patch would move the reader',
+	);
+
+	// The restore itself goes through the shared cascade, waits for the
+	// enrichment, and speaks only for the tab still on screen.
+	const helper = viewer.match(
+		/async function restoreAfterColdEnrichment\([\s\S]*?\n\t\}/,
+	)?.[0];
+	assert.ok(helper, 'restoreAfterColdEnrichment must exist');
+	assert.match(helper, /await enrichment;/);
+	assert.match(helper, /tabManager\.activeTabId !== tabId/);
+	assert.match(helper, /restorePreviewReadingPosition\(body, tab,/);
+
+	// And the accident that used to stand in for it must not come back. The
+	// theme effect's `renderRichContent()` reads `richLibraries` before its
+	// first await, so without `untrack` that effect re-runs when the libraries
+	// land — re-enriching every open tab's host, never firing in split view,
+	// and leaving the reading position where the old layout put it.
+	assert.match(
+		viewer,
+		/if \(markdownBody && !isEditing\) untrack\(\(\) => renderRichContent\(\)\);/,
+		'the theme effect must depend on the theme, not on the libraries arriving',
+	);
+});
