@@ -47,14 +47,40 @@ test('the find-bar fold re-aim delay outlasts the CSS fold transition', () => {
 test('preview lifecycle starts and cleans up fold observation', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	assert.match(viewer, /observeFoldLayout\((?:markdownBody|body)\)/);
+	assert.match(viewer, /const host = previewBlocks;[\s\S]*?observeFoldLayout\(host\)/);
 	assert.match(viewer, /observation\.stop\(\)/);
+});
+
+// The direction the previous spelling could not state. `observeFoldLayout` used
+// to be handed `markdownBody`, and that was right while the article held one
+// document; it now holds one `.markdown-blocks` host per open tab, all but one
+// of them `display: none`. `updateFoldHeights` walks its root, measures each
+// wrapper with `getBoundingClientRect().height` — 0 for everything in a hidden
+// subtree — and writes what it measured into `--fold-content-height`, which
+// styles.css resolves to the wrapper's `height`. A walk rooted at the article
+// therefore collapses every fold of every background tab, and the reader sees
+// it a frame after switching back, because `scheduleUpdate` defers through
+// `requestAnimationFrame` and that runs in the step AFTER the ResizeObserver
+// delivery that would correct it.
+//
+// This cannot be a behaviour test: jsdom has no layout, so every rect is 0
+// whether or not the element is displayed, and the visible and the hidden case
+// are indistinguishable to it. The proposition is an absence — "nothing ever
+// measures from the article" — so it is pinned as one.
+test('fold measurement is rooted at the visible host, never at the article holding every tab', () => {
+	const viewer = readSource('src/lib/MarkdownViewer.svelte');
+
+	assert.doesNotMatch(
+		viewer,
+		/observeFoldLayout\(\s*markdownBody/,
+		'observing the article would measure every hidden tab and write zero heights into it',
+	);
 });
 
 test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	assert.match(viewer, /if \(!body \|\| \(isEditing && !isSplit\)\) return;/);
+	assert.match(viewer, /if \(!host \|\| \(isEditing && !isSplit\)\) return;/);
 });
 
 // The observation used to be torn down and rebuilt on every render, which is

@@ -74,7 +74,7 @@ function harness(html: string): Harness {
 		return queryAll(selector);
 	};
 
-	const props = runeProps({ markdownBody: body, previewRevision: 1 });
+	const props = runeProps({ markdownBody: body, contentRoot: body, previewRevision: 1 });
 	const component = mount(Toc, { target, props });
 	flushSync();
 

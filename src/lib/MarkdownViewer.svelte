@@ -140,9 +140,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isFocused = $state(true);
 	
 	let markdownBody: HTMLElement | null = $state(null);
+	let layoutContainerEl: HTMLElement | null = $state(null);
 	/**
-	 * The element holding the rendered document, and the only part of the
-	 * preview Svelte does not manage.
+	 * One element per tab holding that tab's rendered document, and the only
+	 * part of the preview Svelte does not manage.
 	 *
 	 * `{@html sanitizedHtml}` used to sit here, which meant every keystroke threw
 	 * the article away and built a new one — the defect three rounds of fixes
@@ -151,9 +152,64 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * has to be exclusive: Svelte's `{@html}` tracks the first and last node it
 	 * inserted and removes everything between them on the next update, which a
 	 * diff that removes either end quietly breaks. The front-matter panel stays
-	 * Svelte's, in the article, outside this element.
+	 * Svelte's, in the article, outside these elements.
+	 *
+	 * ## Why there is one per tab and not one for the preview
+	 *
+	 * `blockPatch.ts` exists because a rebuilt tree does not lay out to the
+	 * pixels the tree it replaced did, and its header comment says the only
+	 * stable tree is the one that is not rebuilt. That argument was applied to
+	 * the keystroke and not to the tab switch, and a single host made the switch
+	 * the worst case it has: two documents share no block keys, so the diff
+	 * replaced essentially every node, `renderRichContent` ran over the whole
+	 * document again (highlight.js and display maths are memoised;
+	 * `renderMathInElement` is not, and a Mermaid diagram has to be
+	 * re-identified), and the reading position was then restored against a
+	 * layout that was still settling. Reload, motion, and a position that moved
+	 * afterwards — one cause.
+	 *
+	 * Keeping a host per tab is what VS Code does for text editors (one widget,
+	 * `setModel` plus the saved view state — see `utils/tabModels.ts`, which
+	 * already holds that shape for the Monaco side) and what Obsidian does for
+	 * its tabs, where every leaf's container stays in the DOM and a switch is a
+	 * `display` toggle. Re-activating a tab re-runs the patch against a host
+	 * that already holds that document, every key matches, and `patch.inserted`
+	 * comes back empty: no nodes replaced, no enrichment, nothing to re-measure.
+	 *
+	 * `renderedKeys` in `blockPatch.ts` is a `WeakMap` keyed on the container,
+	 * so each host remembers what it was last given on its own, and a host that
+	 * Svelte destroys with its tab takes its entry with it. That is also why
+	 * there is no reconciliation here of the kind `retainTabModels` needs: a
+	 * keyed `{#each}` over `tabManager.tabs` creates and destroys these divs
+	 * with the tabs themselves, so the set of live hosts cannot drift from the
+	 * set of live tabs the way a hand-kept registry can.
+	 *
+	 * ## Only the active host is ever patched
+	 *
+	 * A tab's `content` can be rewritten while it is off screen — a window
+	 * restore renders every restored tab, a cross-window arrival renders itself,
+	 * the background completion of a large file lands whenever it lands, and the
+	 * first-stage read in `documentSession` resolves after three awaits that a
+	 * switch can happen inside. None of those patch anything: the effect below
+	 * reads the ACTIVE tab's host and the active tab's HTML, so a background
+	 * tab's DOM is brought up to date when it is next shown, against whatever
+	 * its `content` says by then.
+	 *
+	 * That is not only laziness. A hidden host must not be written into, because
+	 * measuring inside one is wrong in a way that is invisible until the tab is
+	 * shown again: `getBoundingClientRect().height` is 0 for everything in a
+	 * `display: none` subtree, and `foldLayout.updateFoldHeights` writes what it
+	 * measures into `--fold-content-height`, which `styles.css` resolves to the
+	 * wrapper's `height`. A single write there collapses a hidden document's
+	 * folds to nothing, and the reader sees it a frame after switching back.
+	 * Patching only the visible host, and observing only the visible host (see
+	 * the fold effect below), is what keeps the measurement and the layout it
+	 * measures in the same place.
 	 */
-	let previewBlocks: HTMLElement | null = $state(null);
+	let previewHosts = $state<Record<string, HTMLElement | null>>({});
+	let previewBlocks = $derived(
+		tabManager.activeTabId ? (previewHosts[tabManager.activeTabId] ?? null) : null,
+	);
 	let foldLayout: FoldLayoutObservation | null = null;
 	
 	const highlightColorMap: Record<string, string> = {
@@ -880,8 +936,42 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
+	/**
+	 * A tab switch is not a state change inside one view, and must not be drawn
+	 * as one.
+	 *
+	 * Nearly everything about the layout is a property of the TAB — `isEditing`,
+	 * `isSplit`, `splitRatio`, and `isMarkdown` off the path — so switching to a
+	 * tab in another mode changes exactly the values that toggling that mode
+	 * inside one tab changes, and the transitions written for the toggle fire
+	 * for the switch: `.pane` slides its `flex` over 0.3s, `.layout-container`
+	 * and `.editor-pane` slide their padding, the outline wrapper slides its
+	 * box-shadow and edges. Three hundred milliseconds of the text reflowing
+	 * under the reader, on a gesture whose whole content is "show me the other
+	 * document".
+	 *
+	 * The suppression is `foldLayout.ts`'s, for the same reason and in the same
+	 * shape: suppress, let the new values commit, restore. The class is added
+	 * through the element rather than through a `class:` directive because the
+	 * ordering is the entire mechanism — this effect runs after Svelte has
+	 * written the new `flex` into the DOM and before the browser has recomputed
+	 * style, so a class that lands in a later flush would land after the
+	 * transitions had already started. Reading `offsetHeight` forces that
+	 * recompute here, while the transitions are off; removing the class then
+	 * re-arms them against values that are already current, so nothing animates.
+	 *
+	 * It is deliberately not a `$state` flag that some later effect clears. A
+	 * window with no end is one an interrupted switch leaves open, and this one
+	 * closes in the same statement that opens it.
+	 */
 	$effect(() => {
 		const _ = tabManager.activeTabId;
+		const container = untrack(() => layoutContainerEl);
+		if (container) {
+			container.classList.add('tab-switching');
+			void container.offsetHeight;
+			container.classList.remove('tab-switching');
+		}
 		showHome = false;
 		findOpen = false;
 	});
@@ -1243,18 +1333,42 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	});
 
 	$effect(() => {
-		const body = markdownBody;
-		if (!body || (isEditing && !isSplit)) return;
+		const host = previewBlocks;
+		if (!host || (isEditing && !isSplit)) return;
 
-		// Keyed on the article, not on the document it is showing. This used to
-		// depend on `sanitizedHtml` and so tore the observation down and rebuilt
-		// it on every keystroke — and a fresh `ResizeObserver.observe` delivers an
-		// initial observation, so every fold in the document re-measured per
-		// character whether or not anything about it had changed. A keystroke no
-		// longer reaches here at all: the blocks the patch left alone keep the
-		// registration they already had, and the ones it inserted are handed to
-		// `observe` by the patch effect above.
-		const observation = observeFoldLayout(body);
+		// Keyed on the visible host, not on the document it is showing and not on
+		// the article that contains every tab's host.
+		//
+		// Not the document: this used to depend on `sanitizedHtml` and so tore the
+		// observation down and rebuilt it on every keystroke — and a fresh
+		// `ResizeObserver.observe` delivers an initial observation, so every fold
+		// in the document re-measured per character whether or not anything about
+		// it had changed. A keystroke still does not reach here: the host is the
+		// same element for as long as the tab is on screen, the blocks the patch
+		// left alone keep the registration they already had, and the ones it
+		// inserted are handed to `observe` by the patch effect above.
+		//
+		// Not the article, and this is the half that is new. `updateFoldHeights`
+		// walks its root, measures each wrapper's content with
+		// `getBoundingClientRect().height`, and writes that number into
+		// `--fold-content-height`, which `styles.css` resolves to the wrapper's
+		// `height`. In a `display: none` subtree every one of those rects is
+		// empty, so a walk rooted at the article would write `0px` onto every
+		// fold of every tab that is not on screen. Nothing looks wrong until the
+		// reader switches back, and then the whole document is collapsed for the
+		// frame it takes a fresh observation to correct it: `ResizeObserver`
+		// reports a target that leaves a hidden subtree, but `scheduleUpdate`
+		// defers through `requestAnimationFrame`, and that callback runs in the
+		// step AFTER the one that delivered the observation.
+		//
+		// So the observation follows the host that is displayed, and a hidden
+		// host is not observed at all. Its wrappers keep the inline heights they
+		// were last measured at, which are still right — nothing in a hidden
+		// document changes size — and re-registering on the way back in costs one
+		// batched re-measure of the one document being shown. That is a switch,
+		// not a keystroke, and it is the price of never measuring a box that is
+		// not being laid out.
+		const observation = observeFoldLayout(host);
 		foldLayout = observation;
 
 		return () => {
@@ -1529,8 +1643,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * and the read above is what makes a tab switch swap the whole set.
 	 */
 	const foldHost: FoldHost = {
+		// The active tab's host, not the article. `foldState` answers both of its
+		// questions with `root.querySelectorAll('[data-fold-key]')`, and the
+		// article holds a host per open tab — so from there a fold key would
+		// resolve against whichever document happened to be earlier in the DOM.
 		get root() {
-			return markdownBody ?? null;
+			return previewBlocks ?? null;
 		},
 		get folds() {
 			return foldOverrides;
@@ -1545,9 +1663,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (id.startsWith('^')) {
 			id = id.substring(1);
 		}
+		// Looked up in the visible host and scrolled on the article. Heading ids
+		// are minted per document, so with a host per open tab the same `#id`
+		// exists once per tab that has that heading; the article would hand back
+		// whichever came first in the DOM, which is not the document on screen.
 		const el =
-			(markdownBody?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null) ||
-			(markdownBody?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
+			(previewBlocks?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null) ||
+			(previewBlocks?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
 		if (el && markdownBody) {
 			if (options.pushHistory !== false) pushScrollHistory();
 			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: jumpBehavior });
@@ -2309,7 +2431,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// Awaited, unlike the on-screen path: Mermaid, KaTeX and
 			// highlight.js all replace nodes asynchronously, and the diagram
 			// re-theming below reads the nodes this produces.
-			await renderRichContent();
+			//
+			// Scoped to the tab being exported. Omitting the roots means the
+			// article, which now holds a host per open tab, so an export would
+			// re-typeset and re-draw every open document to print one.
+			await renderRichContent(previewBlocks ? [previewBlocks] : undefined);
 			await tick();
 		} catch (error) {
 			// Printing the stale DOM is still better than not printing, but the
@@ -2332,7 +2458,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// preview exports unreadable diagrams. Rebuild them light for the
 		// duration of the export rather than trying to recolour the output.
 		const restoreDiagrams = await renderDiagramsForPrint({
-			root: markdownBody,
+			// The tab being exported, not every open tab's diagrams.
+			root: previewBlocks,
 			mermaid,
 			sanitizeSvg: sanitizeDiagramSvg,
 			screenTheme: currentMermaidTheme(),
@@ -2684,9 +2811,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					if (selection) invoke('clipboard_write_text', { text: selection });
 				} }] : []),
 				{ label: t('menu.selectAll', settings.language), onClick: () => {
-					if (!markdownBody) return;
+					// The document on screen. Selecting the article would select
+					// every open tab's text, including the hosts that are hidden.
+					if (!previewBlocks) return;
 					const range = document.createRange();
-					range.selectNodeContents(markdownBody);
+					range.selectNodeContents(previewBlocks);
 					const selection = window.getSelection();
 					selection?.removeAllRanges();
 					selection?.addRange(range);
@@ -2712,7 +2841,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (rawHref.startsWith('#')) {
 				let id = rawHref.substring(1);
 				if (id.startsWith('^')) id = id.substring(1);
-				const el = markdownBody?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
+				const el = previewBlocks?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
 				if (el) {
 					// Use data-label if it's a block anchor, otherwise use textContent
 					let text = el.getAttribute('data-label') || el.textContent || '';
@@ -2729,8 +2858,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// footnote references: show footnote content instead of URL
 			if (anchor.hasAttribute('data-footnote-ref') || anchor.closest('[data-footnote-ref]') || rawHref.match(/#fn-|#fnref-|#user-content-fn/)) {
 				const fnId = rawHref.replace(/^#/, '');
-				const fnLi = markdownBody?.querySelector(`#${CSS.escape(fnId)}`) ||
-				              markdownBody?.querySelector(`li#${CSS.escape(fnId)}`);
+				const fnLi = previewBlocks?.querySelector(`#${CSS.escape(fnId)}`) ||
+				              previewBlocks?.querySelector(`li#${CSS.escape(fnId)}`);
 				if (fnLi) {
 					// clone to remove backref arrow from tooltip
 					const clone = fnLi.cloneNode(true) as HTMLElement;
@@ -3714,6 +3843,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				onwheel={handleWheel}
 				role="presentation">
 				<div class="layout-container" 
+					bind:this={layoutContainerEl}
 					class:split={isSplit} 
 					class:editor-on-right={isSplit && settings.splitEditorSide === 'right'} 
 					class:editing={isEditing} 
@@ -3790,7 +3920,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						<FindBar
 							bind:this={findBar}
 							bind:open={findOpen}
-							{markdownBody}
+							contentRoot={previewBlocks}
 							onunfold={(key: string) => revealFold(foldHost, key)}
 							language={settings.language} />
 
@@ -3910,8 +4040,24 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 										</details>
 									{/if}
-									<!-- Filled by the block patch, not by Svelte: see `previewBlocks`. -->
-									<div class="markdown-blocks" bind:this={previewBlocks}></div>
+									<!--
+										One host per tab, all mounted, only the active one displayed:
+										see `previewHosts`. The children are filled by the block patch,
+										not by Svelte.
+
+										`display` and not `visibility`, `opacity` or a zero height. A
+										hidden host must cost no layout — that is the point — and it is
+										also what keeps `@media print` in styles.css correct without
+										listing these divs: a `display: none` subtree does not print,
+										so the export captures the tab on screen rather than every open
+										document concatenated.
+									-->
+									{#each tabManager.tabs as tab (tab.id)}
+										<div
+											class="markdown-blocks"
+											style:display={tab.id === tabManager.activeTabId ? null : 'none'}
+											bind:this={previewHosts[tab.id]}></div>
+									{/each}
 								</article>
 								{#if tabManager.activeTabId && loadingTabs.includes(tabManager.activeTabId) && isAtBottom}
 								<div class="loading-chip" transition:fly={{ y: 20, duration: 300, easing: cubicOut }}>
@@ -3976,6 +4122,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								<Toc
 									activeLine={tocActiveLine} 
 										{markdownBody} 
+										contentRoot={previewBlocks}
 										{previewRevision}
 										onBeforeJump={pushScrollHistory} 
 										{foldOverrides} 
@@ -4852,6 +4999,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	.layout-container.toc-resizing .toc-toggle-floating {
 		transition: none !important;
 	}
+
 
 	.layout-container.has-pinned-toc.toc-on-left {
 		padding-left: var(--toc-width);

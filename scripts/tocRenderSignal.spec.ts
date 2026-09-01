@@ -30,7 +30,7 @@ function harness() {
 
 	// Mount time: the article exists and is still empty, which is exactly what
 	// the component sees in the flush the preview is first patched in.
-	const props = runeProps({ markdownBody: body, previewRevision: 0 });
+	const props = runeProps({ markdownBody: body, contentRoot: body, previewRevision: 0 });
 	const component = mount(Toc, { target, props });
 	flushSync();
 

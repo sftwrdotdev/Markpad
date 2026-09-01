@@ -15,12 +15,21 @@
 
 	let {
 		open = $bindable(false),
-		markdownBody,
+		contentRoot,
 		onunfold,
 		language,
 	} = $props<{
 		open: boolean;
-		markdownBody: HTMLElement | null;
+		/**
+		 * The element holding the document being read — the active tab's
+		 * `.markdown-blocks`, not the `.markdown-body` article around it. The
+		 * article now holds one such host per open tab and all but one of them
+		 * are `display: none`, so a search rooted there would count, highlight
+		 * and step through matches in documents the reader cannot see. Find
+		 * never needs the scroller: it reveals a match with `scrollIntoView` on
+		 * the mark itself.
+		 */
+		contentRoot: HTMLElement | null;
 		/** Open the fold with this key. Only the owner of the fold state can. */
 		onunfold?: (key: string) => void;
 		/**
@@ -99,7 +108,7 @@
 	 * function.
 	 */
 	function revealFoldsAround(mark: HTMLElement): boolean {
-		const root = markdownBody as HTMLElement | null;
+		const root = contentRoot as HTMLElement | null;
 		if (!root) return false;
 
 		// Outermost first, so a nested fold is already on screen by the time its
@@ -110,7 +119,7 @@
 	}
 
 	export function clearHighlights() {
-		const root = markdownBody as HTMLElement | null;
+		const root = contentRoot as HTMLElement | null;
 		if (!root) return;
 		const marks = Array.from(
 			root.querySelectorAll(`mark.${FIND_MARK_CLASS}`),
@@ -150,7 +159,7 @@
 	}
 
 	function applyHighlights() {
-		if (!markdownBody) {
+		if (!contentRoot) {
 			matchCount = 0;
 			activeIndex = -1;
 			truncated = false;
@@ -164,7 +173,7 @@
 			return;
 		}
 
-		const root = markdownBody;
+		const root = contentRoot;
 		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
 			acceptNode(node: Node) {
 				const text = (node as Text).nodeValue;
@@ -227,7 +236,7 @@
 	}
 
 	function getMarks(): HTMLElement[] {
-		const root = markdownBody as HTMLElement | null;
+		const root = contentRoot as HTMLElement | null;
 		if (!root) return [];
 		return Array.from(
 			root.querySelectorAll(`mark.${FIND_MARK_CLASS}`),

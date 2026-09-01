@@ -8,8 +8,21 @@
 	import { anchorScrollTop } from '../utils/previewAnchor.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
-	let { markdownBody, previewRevision, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
+	let { markdownBody, contentRoot, previewRevision, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
+		/**
+		 * The `.markdown-body` article — the scrolling box, and nothing else.
+		 * Every jump and the scroll listener go through this one.
+		 */
 		markdownBody: HTMLElement | null;
+		/**
+		 * The active tab's `.markdown-blocks`, which is where the headings
+		 * actually are. The article holds one host per open tab and all but one
+		 * are `display: none`, so an outline scanned from the article would list
+		 * every open document's headings at once. The two are separate props
+		 * because this component needs both halves and they are different
+		 * elements: read the outline out of the host, scroll the article.
+		 */
+		contentRoot: HTMLElement | null;
 		/**
 		 * How many documents the preview DOM has been given. Read as a signal and
 		 * never for its value: it says the article now HOLDS the document, which
@@ -97,16 +110,39 @@
 	/** How long a jump's own smooth scroll is given to settle. */
 	const CLICK_LOCK_MS = 600;
 
+	/**
+	 * Whether the entries about to be rendered belong to a different document
+	 * than the ones on screen, and so must not be animated into place.
+	 *
+	 * `transition:slide` on each entry is for the outline changing WITHIN a
+	 * document — folding a section away takes its headings with it, and they
+	 * should leave the way they arrived. A tab switch replaces the list wholly:
+	 * every old entry plays its outro and every new one its intro, 240ms of the
+	 * outline churning for a gesture that only asked to see another document.
+	 *
+	 * The signal is the host's identity, not a flag the viewer passes down.
+	 * There is one `.markdown-blocks` per open tab, so `contentRoot` changing to
+	 * a different element IS the switch, observed at the only moment that
+	 * matters — the scan that produces the new list. A flag would have to be
+	 * raised and lowered around that moment by someone else, and a window with
+	 * two ends is one an interrupted switch can leave open.
+	 */
+	let scannedRoot: HTMLElement | null = null;
+	let documentChanged = $state(false);
+
 	$effect(() => {
 		// The dependency, and the whole reason this runs. An empty document is
 		// not a special case: the scan below finds nothing in it and clears the
 		// outline the same way a document with no headings does.
 		void previewRevision;
 
-		if (markdownBody) {
+		documentChanged = contentRoot !== scannedRoot;
+		scannedRoot = contentRoot;
+
+		if (contentRoot) {
 			const result: TocItem[] = [];
 
-			const entries = markdownBody.querySelectorAll(ENTRY_SELECTOR) as NodeListOf<HTMLElement>;
+			const entries = contentRoot.querySelectorAll(ENTRY_SELECTOR) as NodeListOf<HTMLElement>;
 			for (const el of Array.from(entries)) {
 				if (el.classList.contains('block-id-anchor')) {
 					result.push({ id: el.id, text: el.getAttribute('data-label') || el.id, foldKey: '', level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
@@ -336,7 +372,7 @@
 	import { cubicOut } from 'svelte/easing';
 
 	function jumpTo(id: string) {
-		const el = markdownBody?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
+		const el = contentRoot?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
 		if (el && markdownBody) {
 			onBeforeJump?.();
 			// lock active id immediately so scroll handler doesn't override
@@ -404,7 +440,7 @@
 		<ul class="toc-list">
 			{#each visibleItems as item (item.id)}
 				<li 
-					transition:slide={{ duration: 240, easing: cubicOut }}
+					transition:slide={{ duration: documentChanged ? 0 : 240, easing: cubicOut }}
 					class="toc-item {item.isBlock ? 'block-item' : `level-${item.level}`}" 
 					style="padding-left: {(Math.max(1, item.level || 2) - 1) * 10 + 8}px !important">
 					{#if item.isBlock}

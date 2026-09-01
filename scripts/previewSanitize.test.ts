@@ -128,8 +128,15 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 	// Why the footnote sink is allowed, pinned as a direction rather than as a
 	// spelling: the tooltip body is read out of the rendered document, never
 	// built from a string the sanitizer has not seen.
+	//
+	// `previewBlocks` and not `markdownBody`, and the difference is the whole
+	// point of the assertion rather than a rename. The article now holds one
+	// host per open tab, and `previewBlocks` is the one `patchPreviewBlocks` was
+	// handed above — so this pins the tooltip to the exact element the sanitized
+	// string was parsed into, where the previous spelling only reached the box
+	// containing it.
 	const footnote = sliceBetween(viewerSource, "anchor.hasAttribute('data-footnote-ref')", 'isFootnote: true');
-	assert.match(footnote, /markdownBody\?\.querySelector/, 'the footnote body is found in the rendered document');
+	assert.match(footnote, /previewBlocks\?\.querySelector/, 'the footnote body is found in the rendered document');
 	assert.match(footnote, /\.innerHTML/, 'and taken from the DOM the shared sanitizer already filtered');
 	assert.doesNotMatch(footnote, /rawContent/, 'never from the unrendered buffer');
 
