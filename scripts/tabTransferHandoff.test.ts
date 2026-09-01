@@ -47,6 +47,34 @@ test('a failed render undoes the inserted tab', () => {
 	assert.match(accept, /if \(isDisposed\) \{\s*\n\s*tabManager\.closeTab\(id\);/);
 });
 
+test('the arriving tab is put back where its reader was, after its document lands', () => {
+	// The position travels in the payload (tabTransfer.ts) and nothing put it
+	// back. `insertTransferredTab` activates the tab synchronously, while its
+	// rendered `content` is still `''`, so the preview's restore effect runs on
+	// that activation against a host holding no document: no block owns the
+	// anchor line, there is no scroll range for the percentage, and the pixel
+	// offset has nowhere to go. The document arrives afterwards, at the top.
+	//
+	// The effect cannot cover this by depending on the render. It also runs
+	// while the reader is typing — split view and edit-with-outline re-render on
+	// a debounce — and a per-render dependency would drag the preview back to
+	// the saved position on every pause in typing. So the arrival asks again
+	// itself, once `renderTabPreviewFromRaw` has awaited the patch.
+	//
+	// Ordering is the whole assertion, which is why it is a source assertion:
+	// what goes wrong is WHEN the restore is called, and the two moments are one
+	// `await` apart inside a Svelte component.
+	const accept = sliceBetween(viewer, 'acceptTransferredTab: async (snapshot)', 'onError: (message, error)');
+	const rendered = accept.indexOf('await renderTabPreviewFromRaw(transferred);');
+	const restored = accept.indexOf('restorePreviewReadingPosition(');
+	assert.ok(rendered !== -1, 'the arrival must render the document it was handed');
+	assert.ok(restored > rendered, 'the restore must run after the render, not before it');
+	// Only the active tab's host is displayed, and they all share one scrolling
+	// article: restoring for a tab the user has since switched away from would
+	// move whichever document is on screen instead.
+	assert.match(accept, /tabManager\.activeTabId === id/);
+});
+
 test('a second transfer of the same tab is refused while one is in flight', () => {
 	// The menu entry becomes clickable again long before the transfer
 	// resolves; two payloads for one tab means two windows each build it.

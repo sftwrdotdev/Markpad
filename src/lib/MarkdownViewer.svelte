@@ -49,12 +49,11 @@ import {
 import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
-	findAnchorElement,
 	findSourceLineRange,
-	getAnchorScrollTop,
 	getSourceLineAtPreviewOffset,
 	measureAnchorBox,
 	mergeSourceLineRanges,
+	restorePreviewReadingPosition,
 	PREVIEW_ANCHOR_OFFSET,
 	anchorScrollTop,
 	type AnchorBox,
@@ -745,6 +744,30 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					tabManager.closeTab(id);
 					return false;
 				}
+				// The reading position travels with the tab, and until here nothing
+				// put it back. `insertTransferredTab` activates the tab
+				// synchronously, while its `content` is still `''`; the restore
+				// effect below runs on that activation against a host with no
+				// document in it, finds no anchor and no scroll range, and the
+				// document the reader left arrives afterwards at the top. That effect
+				// cannot cover this by depending on the render — it also runs while
+				// the reader is typing in split view, where a per-render dependency
+				// would drag the preview back on every debounce — so the arrival
+				// asks again, now that `renderTabPreviewFromRaw` has awaited the
+				// patch and the host holds the document.
+				//
+				// Guarded on the tab still being the active one: only the active
+				// host is displayed, and `markdownBody` is the article all of them
+				// share, so scrolling it for a tab the user has since switched away
+				// from would move somebody else's document.
+				if (markdownBody && tabManager.activeTabId === id) {
+					restorePreviewReadingPosition(
+						markdownBody,
+						transferred,
+						getPreviewScrollMax(markdownBody),
+						measurePreviewBox,
+					);
+				}
 				return true;
 			} catch (error) {
 				tabManager.closeTab(id);
@@ -1401,44 +1424,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (id && body) {
 			untrack(() => {
 				const tab = tabManager.tabs.find((t) => t.id === id);
-				if (tab) {
-					let scrolled = false;
-
-					if (tab.anchorLine > 0) {
-						// Interpolated restore: find the rendered element that owns the
-						// saved source line and put that line back under the anchor
-						// offset. This has to descend — `processMarkdownHtml` re-parents
-						// every block after a heading into a `.foldable-content-wrapper`
-						// with no `data-sourcepos`, so a scan of `body.children` only
-						// ever matched an anchor sitting exactly on a top-level heading
-						// line (see scripts/previewAnchorRestore.test.ts for the rate).
-						const match = findAnchorElement(body, tab.anchorLine);
-						if (match) {
-							// Through the same measurement the sync path uses: an anchor
-							// inside a table or a code block resolves to an element whose
-							// `offsetTop` is measured from that table or that block's shell,
-							// and restoring to it would open the tab at the top instead.
-							const box = measurePreviewBox(match.element);
-							body.scrollTop = getAnchorScrollTop(
-								box.top,
-								box.height,
-								match,
-								tab.anchorLine,
-								PREVIEW_ANCHOR_OFFSET,
-							);
-							scrolled = true;
-						}
-					}
-
-					if (!scrolled) {
-						if (body.scrollHeight > body.clientHeight && tab.scrollPercentage > 0) {
-							const targetScroll = tab.scrollPercentage * (body.scrollHeight - body.clientHeight);
-							body.scrollTop = targetScroll;
-						} else {
-							body.scrollTop = tab.scrollTop;
-						}
-					}
-				}
+				// The cascade itself is `restorePreviewReadingPosition` in
+				// previewAnchor.ts, next to the three measurements it runs. It is a
+				// function and not this block because the arrival of a transferred
+				// tab has to run the SAME cascade after its document lands (see
+				// `acceptTransferredTab`), and two copies consulting the same three
+				// fields in different orders would be two answers for one tab.
+				if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
 			});
 		}
 	});
