@@ -344,9 +344,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	// in-page scroll position history for mouse 4/5 nav
-	let scrollHistory: number[] = [];
-	let scrollFuture: number[] = [];
 	let zoomData = $state<{ src?: string; html?: string } | null>(null);
 
 	// What a document with no tab behind it has folded. Never written to — every
@@ -819,8 +816,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		setShowHome: (value) => (showHome = value),
 		currentFile: () => currentFile,
 		resetScrollHistory: () => {
-			scrollHistory = [];
-			scrollFuture = [];
+			if (tabManager.activeTabId) tabManager.clearScrollHistory(tabManager.activeTabId);
 		},
 		renderMarkdown: renderMarkdownPreview,
 		afterLoad: tick,
@@ -1718,7 +1714,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!resolved) return;
 
 		tabManager.addTab(resolved);
-		await loadMarkdown(resolved, { skipTabManagement: true, resetScrollHistory: true });
+		await loadMarkdown(resolved, { skipTabManagement: true });
 		if (target.hash) {
 			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, resolved);
 		}
@@ -3176,42 +3172,46 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			: tabManager.goForward(activeTabId);
 
 		if (path) {
-			await loadMarkdown(path, { skipTabManagement: true, resetScrollHistory: true });
+			// No `resetScrollHistory` here, and none in `openMarkdownTargetInNewTab`
+			// either: goBack/goForward repoint the tab, so `clearReadingPosition`
+			// has already dropped its in-page stacks along with the rest of the
+			// position, and a tab opened by `addTab` never had any.
+			await loadMarkdown(path, { skipTabManagement: true });
 		}
 	}
 
+	// The in-page jump stacks belong to the tab the offsets were measured in —
+	// see `Tab.scrollHistory`. These three wrappers exist only to name that tab
+	// and to read the offset off the preview, which the store cannot see.
 	function pushScrollHistory() {
-		if (markdownBody) {
-			scrollHistory.push(markdownBody.scrollTop);
-			scrollFuture = [];
-			if (scrollHistory.length > 50) scrollHistory.shift();
+		if (markdownBody && tabManager.activeTabId) {
+			tabManager.pushScrollHistory(tabManager.activeTabId, markdownBody.scrollTop);
 		}
+	}
+
+	/**
+	 * Where an in-page back/forward would land, or null if this tab has no jump
+	 * to walk — the caller then falls through to the FILE history.
+	 */
+	function popScrollHistory(direction: 'back' | 'forward'): number | null {
+		if (!markdownBody || !tabManager.activeTabId) return null;
+		return direction === 'back'
+			? tabManager.popScrollHistoryBack(tabManager.activeTabId, markdownBody.scrollTop)
+			: tabManager.popScrollHistoryForward(tabManager.activeTabId, markdownBody.scrollTop);
 	}
 
 	async function handleMouseUp(e: MouseEvent) {
-		if (e.button === 3) {
-			// Back
-			e.preventDefault();
-			// try in-page scroll history first
-			if (scrollHistory.length > 0 && markdownBody) {
-				scrollFuture.push(markdownBody.scrollTop);
-				const pos = scrollHistory.pop()!;
-				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
-			} else {
-				await navigateFileHistory('back');
-			}
-		} else if (e.button === 4) {
-			// Forward
-			e.preventDefault();
-			if (scrollFuture.length > 0 && markdownBody) {
-				scrollHistory.push(markdownBody.scrollTop);
-				const pos = scrollFuture.pop()!;
-				isProgrammaticScroll = true;
-				markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
-			} else {
-				await navigateFileHistory('forward');
-			}
+		if (e.button !== 3 && e.button !== 4) return;
+		const direction = e.button === 3 ? 'back' : 'forward';
+		e.preventDefault();
+		// In-page scroll history first; only a tab with no jump left to undo
+		// moves to another document.
+		const pos = popScrollHistory(direction);
+		if (pos !== null && markdownBody) {
+			isProgrammaticScroll = true;
+			markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
+		} else {
+			await navigateFileHistory(direction);
 		}
 	}
 
