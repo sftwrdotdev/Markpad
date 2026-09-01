@@ -235,6 +235,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		revealHeader: (sourceLine: BufferLine | null, text: string) => void;
 		revealSourceRange: (startLine: number, endLine: number) => void;
 		triggerFind: () => void;
+		flushPositionTo: (tabId: string) => void;
 		// The three the editor's context menu runs, which are the three its
 		// keyboard shortcuts run (#207).
 		cutToClipboard: () => Promise<void>;
@@ -694,7 +695,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
-		serializeState: () => tabManager.serializeState(),
+		serializeState: () => {
+			// Same reason as `transferPayload` below, at a different moment: this
+			// runs on window close with the editor still mounted, so the tab being
+			// edited would be persisted at the position it held when the editor
+			// last came down. Only the active tab can be the one the editor holds.
+			if (tabManager.activeTabId) editorPane?.flushPositionTo(tabManager.activeTabId);
+			return tabManager.serializeState();
+		},
 		shouldRestoreState: () => settings.restoreStateOnReopen,
 		isDisposed: () => isDisposed,
 		restoreState: (json) => tabManager.restoreState(json),
@@ -730,6 +738,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		transferPayload: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
 			if (!tab) throw new Error('Tab disappeared before transfer');
+			// The snapshot carries the reading position and is taken here,
+			// synchronously, with the editor still mounted — so a tab being
+			// edited would travel with the position from its last teardown, and a
+			// tab opened straight into edit mode with 0. The preview writes its
+			// own fields on every scroll and needs nothing; this is edit mode's
+			// equivalent, and it is a no-op for any tab the editor is not on.
+			editorPane?.flushPositionTo(tabId);
 			return JSON.stringify(snapshotTab(tab));
 		},
 		onTransferClaimed: (tabId) => tabManager.closeTab(tabId),
