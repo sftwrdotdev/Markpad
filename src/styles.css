@@ -500,7 +500,7 @@ body {
 
 .markdown-body a {
 	background-color: transparent;
-	color: var(--color-accent-fg);
+	color: var(--md-link, var(--color-accent-fg));
 	text-decoration: none;
 }
 
@@ -509,9 +509,26 @@ body {
 	text-decoration: underline dotted;
 }
 
+/*
+ * The colours an imported VS Code theme gives Markdown, applied to the rendered
+ * construct rather than to the markup that produced it (#682). Every fallback
+ * is the value the rule had before, so a built-in theme — which has no
+ * `tokenColors` to take — renders exactly as it did.
+ */
 .markdown-body b,
 .markdown-body strong {
 	font-weight: 600;
+	color: var(--md-strong, inherit);
+}
+
+.markdown-body em,
+.markdown-body i {
+	color: var(--md-emph, inherit);
+}
+
+.markdown-body del,
+.markdown-body s {
+	color: var(--md-strike, inherit);
 }
 
 .markdown-body dfn {
@@ -870,7 +887,11 @@ body {
 .markdown-body h6 {
 	font-weight: 600;
 	font-size: 0.85em;
-	color: var(--color-fg-muted);
+	color: var(--md-heading, var(--color-fg-muted));
+}
+
+.markdown-body :is(h1, h2, h3, h4, h5) {
+	color: var(--md-heading, inherit);
 }
 
 .markdown-body p {
@@ -883,7 +904,7 @@ body {
 .markdown-body blockquote {
 	margin: 0;
 	padding: 0 1em;
-	color: var(--color-fg-muted);
+	color: var(--md-quote, var(--color-fg-muted));
 	border-left: 0.25em solid var(--color-border-default);
 }
 
@@ -935,6 +956,10 @@ body {
 .markdown-body dl dd {
 	padding: 0 16px;
 	margin-bottom: 16px;
+}
+
+.markdown-body :not(pre) > code {
+	color: var(--md-code, inherit);
 }
 
 .markdown-body code {
