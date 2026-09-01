@@ -429,30 +429,39 @@ test('source position ranges parse the way comrak writes them', () => {
 });
 
 /**
- * The two assertions below are source assertions, not behavior assertions: the
- * restore effect lives inside a Svelte component and cannot be imported. They
- * pin the wiring — that the component calls the measured resolver, and that the
- * top-level-only scan the rates above were measured against does not come back.
+ * The assertions below are source assertions, not behavior assertions: the
+ * restore is triggered from inside a Svelte component and that effect cannot be
+ * imported. They pin the wiring — that the component restores through the
+ * measured cascade, and that the top-level-only scan the rates above were
+ * measured against does not come back.
+ *
+ * The cascade itself moved out of the component and into
+ * `restorePreviewReadingPosition`, next to the resolvers it runs, when the
+ * arrival of a transferred tab needed to run the same one after its document
+ * lands (see tabTransferHandoff.test.ts). So "it resolves through the measured
+ * helpers" is now a behavior claim, made by calling the function — every test
+ * above this one, and the arrival tests in tabReadingPosition.spec.ts. What is
+ * left here is what a source assertion is for: that there is no second copy.
  */
 test('the viewer restores through the measured resolver', async () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	// Read out of the one import statement rather than matched across the whole
-	// file: `import \{[\s\S]*findAnchorElement[\s\S]*\} from '…previewAnchor.js'`
-	// starts at the first import in the file and runs past every brace in
-	// between, so forking the two resolvers into another module while leaving
-	// the rest of the import behind satisfied it.
+	// file: `import \{[\s\S]*restorePreviewReadingPosition[\s\S]*\} from
+	// '…previewAnchor.js'` starts at the first import in the file and runs past
+	// every brace in between, so forking the cascade into another module while
+	// leaving the rest of the import behind satisfied it.
 	const anchorImport = viewer.match(/import \{([^}]*)\} from '\.\/utils\/previewAnchor\.js'/);
 	assert.ok(anchorImport, 'the viewer must import from previewAnchor.js');
 	const imported = anchorImport[1].split(',').map((name) => name.trim()).filter(Boolean);
-	assert.deepEqual(
-		['findAnchorElement', 'getAnchorScrollTop'].filter((name) => !imported.includes(name)),
-		[],
-		'the restore must resolve through the measured helpers, not a fork of them',
+	assert.ok(
+		imported.includes('restorePreviewReadingPosition'),
+		'the restore must go through the shared cascade, not a fork of it',
 	);
-	assert.match(
-		viewer,
-		/const match = findAnchorElement\(body, tab\.anchorLine\);[\s\S]*body\.scrollTop = getAnchorScrollTop\(/,
-	);
+	// And the component must not grow one of its own back: the cascade is an
+	// ORDER, and a second site consulting the same three fields in a different
+	// one is a different answer for the same tab.
+	assert.doesNotMatch(viewer, /scrollTop = getAnchorScrollTop\(/);
+	assert.doesNotMatch(viewer, /tab\.scrollPercentage/);
 	assert.doesNotMatch(viewer, /Array\.from\(body\.children\)/);
 });

@@ -538,6 +538,90 @@ export function getAnchorScrollTop(
 	return Math.max(0, elementTop + elementHeight * ratio - offset);
 }
 
+/**
+ * The preview's scroll container: the element the restore writes to, and the
+ * root the anchor is resolved under.
+ *
+ * Nothing about its geometry is read off it. The layout arrives as `measure`
+ * and the scroll range as `scrollMax`, as everywhere else in this file — neither
+ * the DOM shim nor jsdom has a layout, so a test supplies its own, and
+ * `scrollHeight` is not a measurement `src/lib/utils` is allowed to take (see
+ * the fold-height rule in singleImplementationConvention.test.ts).
+ */
+export type PreviewScrollContainer = AnchorNode & {
+	scrollTop: number;
+};
+
+/**
+ * The three ways a tab records where its reader was — see `Tab` in
+ * `stores/tabs.svelte.ts` for why there are three.
+ */
+export type ReadingPosition = {
+	readonly anchorLine: number;
+	readonly scrollPercentage: number;
+	readonly scrollTop: number;
+};
+
+/**
+ * Put `container` back where the reader of this tab was, and return which entry
+ * of the cascade answered.
+ *
+ * One function rather than one per caller, because the cascade is an ORDER and
+ * a second copy that consulted the same three fields in a different one would
+ * be a different answer for the same tab. It stops at the first entry that
+ * resolves:
+ *
+ *   - `anchorLine`, an interpolated restore: find the rendered element that owns
+ *     the saved source line and put that line back under the anchor offset. This
+ *     descends, because `processMarkdownHtml` re-parents every block after a
+ *     heading into a `.foldable-content-wrapper` with no `data-sourcepos`, so a
+ *     scan of the container's children only ever matched an anchor sitting
+ *     exactly on a top-level heading line (see previewAnchorRestore.test.ts).
+ *     Measured through `measure` — `measureAnchorBox` in the app — and not raw
+ *     `offsetTop`: an anchor inside a table or a code block sits in that
+ *     table's or that shell's space, and restoring to it would open the tab at
+ *     the top instead.
+ *   - `scrollPercentage`, when there is anything to scroll;
+ *   - `scrollTop`, the raw pixel offset, which is also what puts a tab that has
+ *     never been scrolled at the top.
+ *
+ * `'nothing'` means the container held no document to anchor to and could not
+ * scroll — every caller that renders a tab's document AFTER activating it gets
+ * this on the activation and has to ask again once the document is in.
+ */
+export function restorePreviewReadingPosition(
+	container: PreviewScrollContainer,
+	position: ReadingPosition,
+	scrollMax: number,
+	measure: MeasureAnchorBox,
+): 'anchor' | 'percentage' | 'pixels' | 'nothing' {
+	if (position.anchorLine > 0) {
+		const match = findAnchorElement(container, position.anchorLine);
+		if (match) {
+			const box = measure(match.element);
+			container.scrollTop = getAnchorScrollTop(
+				box.top,
+				box.height,
+				match,
+				position.anchorLine,
+				PREVIEW_ANCHOR_OFFSET,
+			);
+			return 'anchor';
+		}
+	}
+
+	if (scrollMax > 0 && position.scrollPercentage > 0) {
+		container.scrollTop = position.scrollPercentage * scrollMax;
+		return 'percentage';
+	}
+
+	container.scrollTop = position.scrollTop;
+	// A container with nothing to scroll cannot hold a position: the assignment
+	// above clamps to 0, so a reader who was part-way down was not restored —
+	// the caller was asked too early and has to ask again with the document in.
+	return scrollMax > 0 || position.scrollTop === 0 ? 'pixels' : 'nothing';
+}
+
 /* ------------------------------------------------------------------ */
 /* the sample table                                                    */
 /* ------------------------------------------------------------------ */
