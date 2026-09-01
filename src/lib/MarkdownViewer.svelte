@@ -538,10 +538,18 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// and that accident, not anything here, was what enriched a document
 		// patched in during a cold start. It was the wrong owner three ways over:
 		// it re-enriched every open tab's host rather than the one that needed it,
-		// it never fired in split view (the guard is `!isEditing`, so a restored
-		// split session showed raw LaTeX and `<pre>` diagram source), and it left
-		// the reading position restored against the layout the enrichment then
-		// changed. The patch effect owns that case now.
+		// it did not fire at all for a tab in edit mode (the guard is
+		// `!isEditing`), and it left the reading position restored against the
+		// layout the enrichment then changed. The patch effect owns that case now.
+		//
+		// The edit-mode gap is not only about a hidden preview. `isSplit` is
+		// independent of `isEditing` — `setSplitEnabled` never touches it — so a
+		// tab split from EDIT mode has both flags set, and its preview is on
+		// screen next to the editor while this guard excludes it. A restored
+		// session in that shape showed raw LaTeX and `<pre>` diagram source with
+		// nothing scheduled to fix it. Split from READING mode leaves `isEditing`
+		// false and did reach this line, which is why the gap was only ever half
+		// of split view and took a while to see.
 		if (markdownBody && !isEditing) untrack(() => renderRichContent());
 	});
 
