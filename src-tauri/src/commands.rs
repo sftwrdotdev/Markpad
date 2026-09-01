@@ -674,8 +674,46 @@ pub fn get_os_type() -> String {
     }
 }
 
+/// Keep one `arboard::Clipboard` alive for the rest of the process, so that
+/// what we copy survives the command that copied it (#729).
+///
+/// On X11 there is no clipboard store: the copying process owns the CLIPBOARD
+/// selection and hands the bytes over when another app asks for them. arboard
+/// serves those requests from a background thread and an invisible window it
+/// destroys when the last `Clipboard` drops — which, with one built and
+/// dropped per command, is the moment `clipboard_write_text` returns. Its only
+/// parting move is to offer the data to a clipboard manager, so on a desktop
+/// that ships one (GNOME) copying appears to work and on one that does not
+/// (XFCE, the reporter's) everything Markpad copies is gone before it can be
+/// pasted. Holding an instance keeps the window and the ownership; the
+/// per-command `Clipboard::new()`s below reuse arboard's global and their drop
+/// becomes a no-op.
+///
+/// Nowhere else needs this. Wayland goes through wl-clipboard-rs, which forks
+/// a process that outlives us, and macOS and Windows write into a store the
+/// system owns.
+#[cfg(all(unix, not(target_os = "macos")))]
+fn retain_clipboard_ownership() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static RETAINED: AtomicBool = AtomicBool::new(false);
+
+    // Racing threads would leak a second handle, not a second connection; both
+    // are `Arc`s onto the same global. Failure is not recorded, so a copy
+    // attempted before the display is reachable does not poison later ones.
+    if RETAINED.load(Ordering::Relaxed) {
+        return;
+    }
+    if let Ok(clipboard) = arboard::Clipboard::new() {
+        std::mem::forget(clipboard);
+        RETAINED.store(true, Ordering::Relaxed);
+    }
+}
+
 #[tauri::command]
 pub fn clipboard_write_text(text: String) -> Result<(), String> {
+    #[cfg(all(unix, not(target_os = "macos")))]
+    retain_clipboard_ownership();
+
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())
 }
