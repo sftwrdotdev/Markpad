@@ -20,6 +20,21 @@
 
 const SOURCE_ATTR = 'data-mermaid-source';
 
+/**
+ * The Mermaid theme the SVG on the container was drawn with.
+ *
+ * Kept next to the source because the colours are IN that SVG, so "is this
+ * diagram current" is a question about the drawing and not about the document.
+ * `renderRichContent` re-draws the containers whose answer no longer matches
+ * the theme it was asked for; without it a theme change reached no diagram at
+ * all, because a drawn diagram no longer has the `<pre>` that pass looks for.
+ *
+ * `renderDiagramsForPrint` deliberately does not write it: it swaps the print
+ * rendering in and the screen rendering back out again, and the attribute goes
+ * on describing what the container ends up holding.
+ */
+const THEME_ATTR = 'data-mermaid-theme';
+
 const MERMAID_PRINT_THEME = 'neutral';
 
 export interface MermaidConfig {
@@ -70,13 +85,18 @@ export function resolveMermaidTheme(input: {
 	return isDark ? 'dark' : 'neutral';
 }
 
-/** Keeps the source next to the rendered diagram so it can be rebuilt later. */
-export function rememberDiagramSource(container: Element, source: string) {
+/** Keeps the source and the theme next to the rendered diagram so it can be rebuilt later. */
+export function rememberDiagramSource(container: Element, source: string, theme: string) {
 	container.setAttribute(SOURCE_ATTR, source);
+	container.setAttribute(THEME_ATTR, theme);
 }
 
 export function readDiagramSource(container: Element): string | null {
 	return container.getAttribute(SOURCE_ATTR);
+}
+
+export function readDiagramTheme(container: Element): string | null {
+	return container.getAttribute(THEME_ATTR);
 }
 
 export function findRestorableDiagrams(root: ParentNode): Element[] {
