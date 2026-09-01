@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { markdownTokenRules, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
-import { readSource } from './sourceTree.js';
+import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
+import { filesMatching, readSource, readSourceFiles } from './sourceTree.js';
 
 // The editor's Markdown colours. Two things can make a rule here do nothing at
 // all, and neither is visible to the compiler: a token name no grammar emits
@@ -141,5 +141,58 @@ test('a formula reads as markup around content, not as one flat run', () => {
 		assert.notEqual(marker?.foreground, body?.foreground, 'delimiters must not vanish into the body');
 		assert.equal(body?.foreground, byToken.get('code')?.foreground, 'a formula is code-coloured');
 		assert.equal(body?.fontStyle, 'italic');
+	}
+});
+
+// ------------------------------------------- who tells Monaco which theme it is
+
+// `monaco.editor.setTheme` is global to the page, not scoped to an editor, so
+// the last caller in a flush decides what every editor is wearing. Two callers
+// disagreed: `Editor.svelte` asked for `app-theme-*` (the rules above) and
+// `MarkdownViewer.svelte` asked for Monaco's stock `vs`/`vs-dark` from a second
+// effect over the same `settings.theme`. Svelte 5 runs a child's effects before
+// its parent's and `Editor` is the viewer's child, so the stock name won every
+// theme change and the whole palette above stopped existing until the pane was
+// re-created.
+
+test('a settings value maps to one theme name', () => {
+	assert.equal(monacoThemeName('dark', false), 'app-theme-dark');
+	assert.equal(monacoThemeName('light', true), 'app-theme-light');
+	assert.equal(monacoThemeName('system', true), 'app-theme-dark');
+	assert.equal(monacoThemeName('system', false), 'app-theme-light');
+	// The OS preference is only consulted for `system`.
+	assert.equal(monacoThemeName('dark', true), 'app-theme-dark');
+	assert.equal(monacoThemeName('light', false), 'app-theme-light');
+	// An imported theme is one Monaco theme whatever its file is called, and
+	// carries its own appearance rather than the desktop's.
+	assert.equal(monacoThemeName('vscode:Dracula', false), 'vscode-custom');
+	assert.equal(monacoThemeName('vscode:Solarized Light', true), 'vscode-custom');
+});
+
+test('the editor pane and the theme importer are the only writers', () => {
+	assert.deepEqual(filesMatching(readSourceFiles('src'), /\.editor\.setTheme\(/), [
+		// The widget's owner: it defines `app-theme-*` and it is the only thing
+		// on screen a Monaco theme can be seen on.
+		'src/lib/components/Editor.svelte',
+		// `vscode-custom` does not exist as a theme until this file has read the
+		// JSON and called `defineTheme`, so the set has to happen where the
+		// define does — `Editor.svelte`'s change effect abstains for `vscode:`.
+		'src/lib/utils/theme.ts',
+	]);
+});
+
+test('every name the seam returns is a theme somebody defines', () => {
+	const defined = [
+		readSource('src/lib/components/Editor.svelte'),
+		readSource('src/lib/utils/theme.ts'),
+	]
+		.flatMap((text) => [...text.matchAll(/\.editor\.defineTheme\(\s*["']([\w-]+)["']/g)])
+		.map((match) => match[1]);
+	const asked = ['system', 'light', 'dark', 'vscode:whatever'].map((theme) => [
+		monacoThemeName(theme, false),
+		monacoThemeName(theme, true),
+	]);
+	for (const name of new Set(asked.flat())) {
+		assert.ok(defined.includes(name), `nothing defines ${name}; Monaco would fall back to vs`);
 	}
 });

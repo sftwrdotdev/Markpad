@@ -530,12 +530,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			clearVscodeTheme();
 			saveStartupAppearance(theme);
 			recolourDiagrams();
-			const monaco = (window as any).monaco;
-			if (monaco && monaco.editor) {
-				const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-				const effectiveTheme = theme === 'system' ? (isSystemDark ? 'dark' : 'light') : theme;
-				monaco.editor.setTheme(effectiveTheme === 'dark' ? 'vs-dark' : 'vs');
-			}
+			// No Monaco write here. It used to set `vs`/`vs-dark` through the
+			// `monaco` global, and because a child's effects run before its
+			// parent's it landed AFTER `Editor`'s own — stripping the editor of
+			// `app-theme-*` on every theme change. `editorTheme.ts`'s
+			// `monacoThemeName` is the one answer now, and `Editor` is the only
+			// pane that asks it; with no editor mounted there is nothing to
+			// paint, and a later mount reads the theme from the same seam.
 		} else {
 			const name = theme.replace('vscode:', '');
 			invoke('read_vscode_theme', { name }).then(async (json: any) => {
