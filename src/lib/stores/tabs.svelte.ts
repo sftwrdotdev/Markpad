@@ -168,6 +168,37 @@ export interface Tab {
 	 */
 	scrollPercentage: number;
 	anchorLine: RendererLine;
+	/**
+	 * Where the reader was standing before each in-page jump, and where they
+	 * came back from — the two stacks the mouse's back and forward buttons
+	 * walk. Raw preview pixels, in the same space as `scrollTop`: pushed by
+	 * every anchor jump (a heading in the outline, a link into the same
+	 * document), popped by `popScrollHistoryBack` / `popScrollHistoryForward`.
+	 *
+	 * Nothing to do with `history` / `historyIndex` above, which are the FILE
+	 * this tab points at. These two never leave the current document.
+	 *
+	 * Per tab for the reason the position fields above are per tab: an offset
+	 * only means anything in the document it was measured in. One window-wide
+	 * pair meant a back click in a short document scrolled it to an offset
+	 * recorded in a long one, because a tab switch reloads nothing and so reset
+	 * nothing.
+	 *
+	 * Cleared with the rest of the reading position when the tab is repointed
+	 * at another file — see `clearReadingPosition`. A reload of the SAME
+	 * document in place is a separate trigger and clears them separately; see
+	 * `resetScrollHistory` in documentSession.
+	 *
+	 * Neither persisted nor carried between windows: pixels measured in one
+	 * container are wrong in a container of another height, which is already
+	 * why `scrollTop` is the last resort of the restore cascade. A stack of
+	 * them is not worth a schema entry. See `serializeState` and tabTransfer.ts.
+	 *
+	 * Required, like `foldOverrides`: every consumer pushes and pops, so a
+	 * construction site that forgot one would hand them `undefined`.
+	 */
+	scrollHistory: number[];
+	scrollFuture: number[];
 	isSplit: boolean;
 	splitRatio: number;
 	isScrollSynced: boolean;
@@ -288,6 +319,9 @@ export interface Tab {
 	pathKey?: string;
 }
 
+/** How many in-page jumps back a tab remembers. See `Tab.scrollHistory`. */
+const SCROLL_HISTORY_LIMIT = 50;
+
 class TabManager {
 	tabs = $state<Tab[]>([]);
 	activeTabId = $state<string | null>(null);
@@ -346,6 +380,12 @@ class TabManager {
 	 * that the user never folded in the text now on screen — the failure this
 	 * per-tab state exists to remove. Scroll degrades (you scroll); a fold
 	 * hides text.
+	 *
+	 * Nor are `scrollHistory`/`scrollFuture`. Those are pixels too, but unlike
+	 * `scrollTop` they are not a position to approximate — they are a record of
+	 * jumps the reader made in a session that has ended, in a window that may
+	 * come back a different size. Restoring them would arm the back button with
+	 * offsets nobody in this session created.
 	 */
 	serializeState(): string {
 		const stateData = {
@@ -423,6 +463,9 @@ class TabManager {
 					// exactly why the read side has to re-declare what came back.
 					// `serializeState` wrote a renderer line; this says so again.
 					anchorLine: asRendererLine(typeof saved.anchorLine === 'number' ? saved.anchorLine : 0),
+					// Not persisted — see serializeState.
+					scrollHistory: [],
+					scrollFuture: [],
 					isSplit: saved.isSplit === true,
 					splitRatio: typeof saved.splitRatio === 'number' ? saved.splitRatio : 0.5,
 					isScrollSynced: saved.isScrollSynced === true,
@@ -564,6 +607,8 @@ class TabManager {
 			editorViewState: null,
 			scrollPercentage: 0,
 			anchorLine: asRendererLine(0),
+			scrollHistory: [],
+			scrollFuture: [],
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -605,6 +650,8 @@ class TabManager {
 			editorViewState: null,
 			scrollPercentage: 0,
 			anchorLine: asRendererLine(0),
+			scrollHistory: [],
+			scrollFuture: [],
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -642,6 +689,8 @@ class TabManager {
 			editorViewState: null,
 			scrollPercentage: 0,
 			anchorLine: asRendererLine(0),
+			scrollHistory: [],
+			scrollFuture: [],
 			isSplit: false,
 			splitRatio: 0.5,
 			isScrollSynced: false,
@@ -864,6 +913,64 @@ class TabManager {
 	}
 
 	/**
+	 * The in-page back/forward stacks — see `Tab.scrollHistory`. Three methods
+	 * rather than a field the viewer reaches into, because the tab they belong
+	 * to is the thing that used to be got wrong: the viewer holds the offsets
+	 * of the document ON SCREEN, and the only way to be sure of that is to name
+	 * the tab on every push and every pop.
+	 *
+	 * `from` is where the reader is standing right now, which the caller has
+	 * and this file does not. Popping records it on the opposite stack, so back
+	 * and forward walk the same path in both directions.
+	 */
+	pushScrollHistory(id: string, from: number) {
+		const tab = this.tabs.find((t) => t.id === id);
+		if (!tab) return;
+		tab.scrollHistory.push(from);
+		tab.scrollFuture = [];
+		// A reader who has jumped fifty times is not going back to the first
+		// one, and the stack is per tab now — a window full of documents would
+		// otherwise keep every offset any of them ever had.
+		if (tab.scrollHistory.length > SCROLL_HISTORY_LIMIT) tab.scrollHistory.shift();
+	}
+
+	/**
+	 * Where to scroll back to, or null if this tab has no in-page jump to undo
+	 * — which is the caller's cue to fall through to the FILE history
+	 * (`goBack`), a different thing entirely.
+	 */
+	popScrollHistoryBack(id: string, from: number): number | null {
+		const tab = this.tabs.find((t) => t.id === id);
+		if (!tab || tab.scrollHistory.length === 0) return null;
+		tab.scrollFuture.push(from);
+		return tab.scrollHistory.pop()!;
+	}
+
+	/** The mirror of `popScrollHistoryBack`; falls through to `goForward`. */
+	popScrollHistoryForward(id: string, from: number): number | null {
+		const tab = this.tabs.find((t) => t.id === id);
+		if (!tab || tab.scrollFuture.length === 0) return null;
+		tab.scrollHistory.push(from);
+		return tab.scrollFuture.pop()!;
+	}
+
+	/**
+	 * This tab still holds the same document, but its text has been replaced
+	 * from disk — a reload, or the "Reload" answer to an external change. The
+	 * offsets describe a document that is gone, so they go with it.
+	 *
+	 * Separate from `clearReadingPosition`, which answers a different question
+	 * (the tab now holds a DIFFERENT document) and is reached from the three
+	 * navigation routes rather than from a load.
+	 */
+	clearScrollHistory(id: string) {
+		const tab = this.tabs.find((t) => t.id === id);
+		if (!tab) return;
+		tab.scrollHistory = [];
+		tab.scrollFuture = [];
+	}
+
+	/**
 	 * Replace this tab's fold overrides. Callers build a NEW set rather
 	 * than mutating the old one — see `Tab.foldOverrides`.
 	 */
@@ -1062,6 +1169,13 @@ class TabManager {
 	 * source line, and the line the reader left in one file names an unrelated
 	 * block in the next one.
 	 *
+	 * `scrollHistory`/`scrollFuture` are here for the same reason one step
+	 * removed: they are not where the reader IS but where they were standing
+	 * before each jump, and an offset recorded in the document the tab has just
+	 * left is no more meaningful than the position it left. Left behind, the
+	 * next back click in the incoming document scrolls it somewhere the reader
+	 * has never been.
+	 *
 	 * Nothing here scrolls anything; a restore runs on tab activation and on
 	 * editor mount, which is why the symptom of getting this wrong shows up on
 	 * a later tab switch rather than at the moment of the navigation.
@@ -1074,6 +1188,8 @@ class TabManager {
 		tab.anchorLine = asRendererLine(0);
 		tab.scrollPercentage = 0;
 		tab.scrollTop = 0;
+		tab.scrollHistory = [];
+		tab.scrollFuture = [];
 	}
 
 	/**

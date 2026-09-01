@@ -12,6 +12,16 @@ export type LoadMarkdownOptions = {
 	navigate?: boolean;
 	skipTabManagement?: boolean;
 	preserveEditState?: boolean;
+	/**
+	 * Drop the receiving tab's in-page jump stacks (`Tab.scrollHistory`).
+	 *
+	 * Only the two reloads ask for it: the tab keeps the document it already
+	 * had, so nothing repoints it and `clearReadingPosition` never runs, but
+	 * the text underneath is about to be replaced by whatever is on disk now
+	 * and the recorded offsets describe the version being thrown away. A caller
+	 * that changes which document a tab holds does not belong here — that route
+	 * clears the stacks with the rest of the reading position.
+	 */
 	resetScrollHistory?: boolean;
 	/**
 	 * Read the file even though the tab that will receive it holds unsaved
@@ -411,6 +421,12 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		let existing = null;
 		let pendingNavigateTabId: string | null = null;
 		try {
+			// The second arm predates the stacks being per tab and is kept as it
+			// was: this runs before tab management, so the tab it reaches is the
+			// one being LEFT, and opening another file has always cleared the
+			// in-page stacks of whatever was on screen. Narrowing that to "only
+			// the tab whose text actually changes" is a behaviour change on its
+			// own terms, not part of making the stacks per tab.
 			if (loadOptions.resetScrollHistory || filePath !== options.currentFile()) {
 				options.resetScrollHistory();
 			}
