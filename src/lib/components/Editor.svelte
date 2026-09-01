@@ -15,7 +15,7 @@
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
-	import { markdownTokenRules, semanticTokenRules } from '../utils/editorTheme.js';
+	import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../utils/editorTheme.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
@@ -335,15 +335,11 @@
 		// active when this component was created.
 		currentTabId = tabManager.activeTabId;
 
-		const getTheme = () => {
-			if (theme && theme.startsWith("vscode:")) return "vscode-custom";
-			if (theme === "system") {
-				return window.matchMedia("(prefers-color-scheme: dark)").matches
-					? "app-theme-dark"
-					: "app-theme-light";
-			}
-			return theme === "dark" ? "app-theme-dark" : "app-theme-light";
-		};
+		const getTheme = () =>
+			monacoThemeName(
+				theme,
+				window.matchMedia("(prefers-color-scheme: dark)").matches,
+			);
 
 		// The editor is a VIEW; the document it shows is the active tab's model.
 		// Passing `model` rather than `value`/`language` also settles ownership:
@@ -2226,18 +2222,23 @@
 	});
 
 
+	// The only place a theme CHANGE reaches Monaco. `setTheme` is global to the
+	// page rather than per-editor, so a second effect writing it from anywhere
+	// else is not a redundancy, it is a coin toss — see `monacoThemeName`.
+	//
+	// `vscode:` is the one theme this pane cannot ask for on a change: its rules
+	// are read off disk, so it does not exist as a Monaco theme until
+	// `parseAndApplyVscodeTheme` has defined it, and asking for an undefined
+	// name gets `vs`. That function sets it itself the moment it can.
 	$effect(() => {
 		if (editorReady && editor && theme) {
 			if (theme.startsWith("vscode:")) return;
-			const targetTheme =
-				theme === "system"
-					? window.matchMedia("(prefers-color-scheme: dark)").matches
-						? "app-theme-dark"
-						: "app-theme-light"
-					: theme === "dark"
-						? "app-theme-dark"
-						: "app-theme-light";
-			monaco.editor.setTheme(targetTheme);
+			monaco.editor.setTheme(
+				monacoThemeName(
+					theme,
+					window.matchMedia("(prefers-color-scheme: dark)").matches,
+				),
+			);
 		}
 	});
 

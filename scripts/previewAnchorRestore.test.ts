@@ -512,11 +512,16 @@ test('a cold start restores again once its enrichment has landed', async () => {
 	// And the accident that used to stand in for it must not come back. The
 	// theme effect's `renderRichContent()` reads `richLibraries` before its
 	// first await, so without `untrack` that effect re-runs when the libraries
-	// land — re-enriching every open tab's host, never firing in split view,
-	// and leaving the reading position where the old layout put it.
+	// land — re-enriching every open tab's host on top of the pass below, and
+	// leaving the reading position where the old layout put it.
+	//
+	// Matched on the `untrack`, not on the guard beside it: the guard was
+	// `markdownBody && !isEditing` when this was written and is `markdownBody`
+	// alone now (scripts/diagramThemeRefresh.spec.ts owns that question). What
+	// this test is for is the tracking.
 	assert.match(
 		viewer,
-		/if \(markdownBody && !isEditing\) untrack\(\(\) => renderRichContent\(\)\);/,
+		/untrack\(\(\) => \{? ?if \(markdownBody\) renderRichContent\(\);/,
 		'the theme effect must depend on the theme, not on the libraries arriving',
 	);
 });

@@ -5,7 +5,12 @@ import {
 	storeDiagramTemplate,
 	templateDiagramSvg,
 } from './diagramCache.js';
-import { mermaidConfig, rememberDiagramSource } from './mermaidPrint.js';
+import {
+	mermaidConfig,
+	readDiagramSource,
+	readDiagramTheme,
+	rememberDiagramSource,
+} from './mermaidPrint.js';
 import { highlightedCode, renderedMath } from './richContentCache.js';
 
 /**
@@ -227,6 +232,52 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 
 	const codeBlocks = roots.flatMap((root) => selfAndDescendants(root, 'pre code'));
 
+	/**
+	 * Diagrams already on screen that were drawn for a different theme.
+	 *
+	 * Mermaid bakes its colours into the SVG, so a theme change has to draw them
+	 * again — and until this existed, nothing did. The loop below finds diagrams
+	 * by `pre code`, and a diagram that has been drawn once has no `<pre>` left:
+	 * this function replaced it with the `.mermaid-diagram` container. While the
+	 * preview was `{@html sanitizedHtml}` that was invisible, because every
+	 * render put the whole document back as source; `blockPatch.ts` keeps the
+	 * enriched nodes instead, so from #632 on a theme change reached no diagram
+	 * at all, in any mode. The source is on the container already —
+	 * `mermaidPrint.ts` keeps it there so the PDF path can rebuild the diagram
+	 * with a light theme — and the theme it was drawn for is kept beside it.
+	 *
+	 * Collected BEFORE the loop, so the containers the loop is about to build
+	 * are not scanned as if they were stale. On the keystroke path the roots are
+	 * the blocks the patch just inserted, which are freshly parsed markup with
+	 * no rendered diagram in them, so this is one selector that matches nothing.
+	 *
+	 * What a theme change costs, measured in Chromium over the real pipeline
+	 * (comrak -> `processMarkdownHtml` -> `sanitizeMarkdownHtml` -> `blockPatch`
+	 * -> here) in a 1000x800 preview box, as one whole-article
+	 * `renderRichContent` with highlight.js and the display-maths memo already
+	 * warm, two runs:
+	 *
+	 *                                 diagrams   theme moved   theme unchanged
+	 *     samples/katex-stress.md            0    8.6-10.6ms       11.9-12.2ms
+	 *     samples/markdown-syntax.md         4   61.2-76.1ms         2.6-3.0ms
+	 *     samples/stress-test.md             3  107.5-121.2ms      12.5-12.8ms
+	 *
+	 * So the diagrams are the whole of it: katex-stress has none and its two
+	 * columns are the same number, which is `renderMathInElement` scanning a
+	 * document with no memo behind it. Toggling back to a theme the diagram
+	 * cache has already seen costs 9.8-30.1ms rather than the figures above.
+	 * The right-hand column is what a mode toggle used to pay for nothing —
+	 * the theme effect re-ran on every one of them, drawing no diagram because
+	 * it could not find any.
+	 */
+	const staleDiagrams = roots
+		.flatMap((root) => selfAndDescendants(root, '.mermaid-diagram'))
+		.filter(
+			(container) =>
+				readDiagramSource(container) !== null &&
+				readDiagramTheme(container) !== options.mermaidTheme,
+		);
+
 	// The config itself lives in `mermaidPrint.ts` — `initialize` replaces the
 	// site config rather than merging into it, so the two callers that write to
 	// this singleton have to send the same keys or the last one wins. See
@@ -241,11 +292,46 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	// diagram on paper and configures it back, so a remembered theme here would
 	// be a claim about a global another module also writes to.
 	const hasDiagram = codeBlocks.some((block) => block.classList.contains('language-mermaid'));
-	if (hasDiagram) {
+	if (hasDiagram || staleDiagrams.length > 0) {
 		mermaid.initialize(mermaidConfig(options.mermaidTheme));
 	}
 
 	let diagramIndex = 0;
+
+	/**
+	 * The drawing itself, shared by the two callers below so a re-coloured
+	 * diagram is memoised, sanitized and identified exactly like a fresh one.
+	 *
+	 * The cache holds a *template* rather than the SVG: the id is stamped into
+	 * it, so a reused diagram is as uniquely identified as a fresh one. See
+	 * `diagramCache.ts` for why that is the whole difficulty.
+	 */
+	const drawDiagram = async (source: string, svgId: string): Promise<string> => {
+		const cached = lookupDiagramTemplate(source, options.mermaidTheme);
+		if (cached !== null) return fillDiagramTemplate(cached, svgId);
+		const { svg } = await mermaid.render(svgId, source);
+		// A source that contains the render id would have its own text rewritten
+		// by the substitution, so that one is left uncached.
+		if (!source.includes(svgId)) {
+			const template = templateDiagramSvg(svg, svgId);
+			if (template !== null) storeDiagramTemplate(source, options.mermaidTheme, template);
+		}
+		return svg;
+	};
+
+	for (const container of staleDiagrams) {
+		const source = readDiagramSource(container) as string;
+		try {
+			container.innerHTML = sanitizeDiagramSvg(await drawDiagram(source, idFactory(diagramIndex++)));
+			rememberDiagramSource(container, source, options.mermaidTheme);
+		} catch (error) {
+			// A diagram that fails to draw keeps the rendering it has. A diagram
+			// in the previous theme's colours still beats an empty box, which is
+			// the same call `renderDiagramsForPrint` makes.
+			options.onError?.(error);
+			console.error('Failed to re-render Mermaid diagram for the new theme:', error);
+		}
+	}
 	for (const block of codeBlocks) {
 		const codeEl = block as HTMLElement;
 		const preEl = codeEl.parentElement as HTMLPreElement;
@@ -253,33 +339,14 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		if (codeEl.classList.contains('language-mermaid')) {
 			const mermaidCode = codeEl.textContent || '';
 			try {
-				// The preview re-renders the whole article roughly once per keystroke
-				// and `{@html}` puts every diagram's source back, so drawing is the
-				// one step worth remembering between passes. The cache holds a
-				// *template* rather than the SVG: the id below is stamped into it, so
-				// a reused diagram is as uniquely identified as a fresh one. See
-				// `diagramCache.ts` for why that is the whole difficulty.
-				const svgId = idFactory(diagramIndex++);
-				const cached = lookupDiagramTemplate(mermaidCode, options.mermaidTheme);
-				let svg: string;
-				if (cached !== null) {
-					svg = fillDiagramTemplate(cached, svgId);
-				} else {
-					svg = (await mermaid.render(svgId, mermaidCode)).svg;
-					// A source that contains the render id would have its own text
-					// rewritten by the substitution, so that one is left uncached.
-					if (!mermaidCode.includes(svgId)) {
-						const template = templateDiagramSvg(svg, svgId);
-						if (template !== null) storeDiagramTemplate(mermaidCode, options.mermaidTheme, template);
-					}
-				}
+				const svg = await drawDiagram(mermaidCode, idFactory(diagramIndex++));
 
 				const container = doc.createElement('div');
 				container.className = 'mermaid-diagram';
 				carrySourcepos(preEl, container);
 				// Kept so the PDF path can rebuild the diagram with a light theme
 				// instead of recolouring Mermaid's output.
-				rememberDiagramSource(container, mermaidCode);
+				rememberDiagramSource(container, mermaidCode, options.mermaidTheme);
 				container.innerHTML = sanitizeDiagramSvg(svg);
 				preEl.replaceWith(container);
 			} catch (error) {
