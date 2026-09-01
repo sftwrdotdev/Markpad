@@ -367,8 +367,11 @@ test('the refresh actually lands before the print', () => {
 	assert.match(body_, /await renderMarkdownPreview\(rawContent, tab\.path[,)]/);
 	assert.match(body_, /tabManager\.updateTabContent\(tabId, processed\)/);
 	// Mermaid, KaTeX and highlight.js all replace nodes asynchronously. The
-	// on-screen path fires and forgets; the export cannot.
-	assert.match(body_, /await renderRichContent\(\)/);
+	// on-screen path fires and forgets; the export cannot. The argument is not
+	// pinned for the same reason the renderer's trailing ones are not: the
+	// roots are which document to enrich — one host per open tab now, so the
+	// export names the one it is printing — and this test is about the `await`.
+	assert.match(body_, /await renderRichContent\(/);
 	assert.equal(body_.match(/await tick\(\)/g)?.length, 2, 'flush before and after the rich pass');
 });
 

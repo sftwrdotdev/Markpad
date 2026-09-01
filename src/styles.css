@@ -1388,6 +1388,41 @@ body {
 	background-color: var(--color-accent-fg);
 }
 
+/*
+ * A tab switch is not a state change inside one view, and must not be drawn as
+ * one. `MarkdownViewer.svelte` adds this class to `.layout-container`, forces a
+ * style recalculation so the new geometry commits with the transitions off, and
+ * removes it again — all in one statement, before the browser has painted once.
+ * See the effect that does it for why the ordering is the whole mechanism.
+ *
+ * The list is every element whose transition is driven by a value belonging to
+ * the TAB rather than to something the user just did: `.pane` (flex, from
+ * `isEditing` / `isSplit` / `splitRatio`), `.layout-container` and
+ * `.editor-pane` (padding, from `has-pinned-toc`, gated on `isMarkdown`), and
+ * the outline wrapper (edges and shadow, from `is-overhanging`, computed from
+ * `isEditing` and `isSplit`). Each of those animations is worth keeping for the
+ * gesture it was written for: toggling edit mode inside a tab should slide,
+ * arriving at a tab that was already in edit mode should not, because nothing
+ * moved — the reader asked to see another document, not to watch this one
+ * change shape.
+ *
+ * HERE AND NOT IN THE COMPONENT'S `<style>`, and this is not a matter of taste.
+ * Svelte prunes scoped selectors it cannot see applied in the markup, and this
+ * class is added through `classList` precisely because a `class:` directive
+ * would land in a later flush than the geometry it has to precede. Written
+ * there, these five rules are deleted at compile time and every transition
+ * comes back with nothing failing — which is what
+ * `scripts/tabSwitchMotion.test.ts` is for. `!important` beats the scoped
+ * declarations regardless of the extra class Svelte adds to their specificity.
+ */
+.layout-container.tab-switching,
+.layout-container.tab-switching .pane,
+.layout-container.tab-switching .editor-pane,
+.layout-container.tab-switching .toc-overlay-wrapper,
+.layout-container.tab-switching .toc-toggle-floating {
+	transition: none !important;
+}
+
 /* print styles for pdf export */
 @media print {
 	@page {
