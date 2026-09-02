@@ -1,3 +1,3 @@
-declare module 'katex/dist/contrib/auto-render.js';
-declare module 'katex/dist/contrib/mhchem.js';
+declare module 'katex/contrib/auto-render';
+declare module 'katex/contrib/mhchem';
 declare module 'highlightjs-svelte';
