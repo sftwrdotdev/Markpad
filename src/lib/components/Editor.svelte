@@ -838,9 +838,9 @@
 		// After the view-state / anchor-line restore above, deliberately: an
 		// explicit "edit this fragment" beats the position the tab was left at.
 		if (pendingReveal) {
-			const { startLine, endLine } = pendingReveal;
+			const { startLine, endLine, placement } = pendingReveal;
 			pendingReveal = null;
-			revealSourceRange(startLine, endLine);
+			revealSourceRange(startLine, endLine, placement);
 		}
 
 		return () => {
@@ -2350,7 +2350,14 @@
 	 * put it, a jump issued in the same turn as the switch into edit mode is
 	 * simply dropped. `onMount` spends it once the editor is up.
 	 */
-	let pendingReveal: { startLine: number; endLine: number } | null = null;
+	/**
+	 * Where a revealed range lands in the viewport. The outline asks for `top`:
+	 * the preview answers the same click by putting the heading just under its
+	 * top edge, and with scroll sync off the two panes then show the same
+	 * place. The context menu's Edit keeps `center`, the reading it had.
+	 */
+	type RevealPlacement = 'center' | 'top';
+	let pendingReveal: { startLine: number; endLine: number; placement: RevealPlacement } | null = null;
 
 	/**
 	 * Put the reader on `startLine`..`endLine` of the buffer.
@@ -2366,9 +2373,9 @@
 	 * fades on a timer would be a second highlighting mechanism doing what this
 	 * one already does, and would leave the caret at the top of the file.
 	 */
-	export function revealSourceRange(startLine: number, endLine: number) {
+	export function revealSourceRange(startLine: number, endLine: number, placement: RevealPlacement = 'center') {
 		if (!editorReady || !editor) {
-			pendingReveal = { startLine, endLine };
+			pendingReveal = { startLine, endLine, placement };
 			return;
 		}
 
@@ -2384,7 +2391,8 @@
 		const start = Math.min(Math.max(1, Math.trunc(startLine)), lastLine);
 		const end = Math.min(Math.max(start, Math.trunc(endLine)), lastLine);
 
-		editor.revealLineInCenterIfOutsideViewport(start, monaco.editor.ScrollType.Smooth);
+		if (placement === 'top') editor.revealLineNearTop(start, monaco.editor.ScrollType.Smooth);
+		else editor.revealLineInCenterIfOutsideViewport(start, monaco.editor.ScrollType.Smooth);
 		editor.setSelection({
 			startLineNumber: start,
 			startColumn: 1,
@@ -2406,7 +2414,7 @@
 		if (!model) return;
 		const lineNumber = sourceLine ?? 0;
 		if (Number.isInteger(lineNumber) && lineNumber > 0) {
-			revealSourceRange(lineNumber, lineNumber);
+			revealSourceRange(lineNumber, lineNumber, 'top');
 			return;
 		}
 
@@ -2416,13 +2424,13 @@
 		const match = model.findNextMatch(regex.source, { lineNumber: 1, column: 1 }, true, false, null, true);
 		
 		if (match) {
-			editor.revealLineInCenterIfOutsideViewport(match.range.startLineNumber, monaco.editor.ScrollType.Smooth);
+			editor.revealLineNearTop(match.range.startLineNumber, monaco.editor.ScrollType.Smooth);
 			editor.setSelection(match.range);
 			editor.focus();
 		} else {
 			const fallbackMatch = model.findNextMatch(escapedText, { lineNumber: 1, column: 1 }, false, false, null, false);
 			if (fallbackMatch) {
-				editor.revealLineInCenterIfOutsideViewport(fallbackMatch.range.startLineNumber, monaco.editor.ScrollType.Smooth);
+				editor.revealLineNearTop(fallbackMatch.range.startLineNumber, monaco.editor.ScrollType.Smooth);
 				editor.setSelection(fallbackMatch.range);
 				editor.focus();
 			}

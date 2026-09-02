@@ -23,7 +23,7 @@ import test from 'node:test';
 import { functionSource, readSource, sliceBetween } from './sourceTree.js';
 
 import { activeTocIdForLine, sourceLineOf, type TocLineEntry } from '../src/lib/utils/tocFollow.js';
-import { asBufferLine, asRendererLine, lineCoordinates } from '../src/lib/utils/lineCoordinates.js';
+import { asBufferLine, asRendererLine, lineCoordinates, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
 
 /**
  * Every line in the outline is a BODY line, because the outline is built out of
@@ -114,13 +114,16 @@ test('the editor position reaches the outline whether or not scroll sync is on',
 	// The line is converted on the way in: `position` is in the editor's
 	// numbering and the outline is built from `data-sourcepos`, which counts
 	// from the body. See jumpToSelectedFragment.test.ts for that boundary.
+	// It goes through `tabAnchorForEditorTopLine`, the crossing the tab's own
+	// reading position takes, so the outline follows the line the reader is
+	// on rather than the one the viewport cuts in half (#744).
 	const handler = functionSource(viewerSource, 'handleEditorScrollSync');
 	const record = handler.indexOf('tocActiveLine =');
 	const syncCheck = handler.indexOf('isScrollSynced');
 
 	assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
 	assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');
-	assert.match(handler, /tocActiveLine = lineCoords\.toRendererLine\(position\.line\)/);
+	assert.match(handler, /tocActiveLine = tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)/);
 });
 
 test('the editor position is converted before the outline compares it', () => {
@@ -131,16 +134,26 @@ test('the editor position is converted before the outline compares it', () => {
 	const coords = lineCoordinates(raw);
 	assert.equal(coords.frontMatterLines, 6, 'the fixture must actually have front matter');
 
-	// The reader is on the last line of the intro section: body line 20, which
-	// is buffer line 26 because six lines of YAML sit above it.
-	const position = asBufferLine(20 + coords.frontMatterLines);
-	assert.equal(activeTocIdForLine(OUTLINE, coords.toRendererLine(position)), 'intro');
+	// The top of the editor's viewport is body line 18, which is buffer line
+	// 24 because six lines of YAML sit above it. The reader's anchor sits two
+	// lines below that, on body line 20: the last line of the intro section.
+	const topLine = asBufferLine(18 + coords.frontMatterLines);
+	assert.equal(activeTocIdForLine(OUTLINE, tabAnchorForEditorTopLine(coords, topLine)), 'intro');
 
 	// Handed over unconverted it is past the next heading, and the outline
 	// highlights the section the reader has not reached yet. That is the whole
 	// defect, and it is invisible in a document without front matter — which is
 	// every other fixture in this file.
-	assert.equal(activeTocIdForLine(OUTLINE, asRendererLine(position)), 'setup');
+	assert.equal(activeTocIdForLine(OUTLINE, asRendererLine(topLine)), 'setup');
+
+	// And with the top line one short of a heading — the heading is the first
+	// line fully on screen, the line above it is the one the viewport cuts —
+	// the anchor is on the heading and the outline has moved on. Fed the raw
+	// top line it would still say `intro`, one entry behind what the reader
+	// sees at the top of the editor.
+	const cutLine = asBufferLine(19 + coords.frontMatterLines);
+	assert.equal(activeTocIdForLine(OUTLINE, tabAnchorForEditorTopLine(coords, cutLine)), 'setup');
+	assert.equal(activeTocIdForLine(OUTLINE, coords.toRendererLine(cutLine)), 'intro');
 });
 
 test('the preview feeds the same state, off the line it already measures', () => {
