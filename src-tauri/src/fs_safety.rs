@@ -11,6 +11,45 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// DIAGNOSTIC BUILD for #722 — never merge. Appends one line per event to
+/// `%TEMP%\markpad-diag.log` (`std::env::temp_dir()`), so the reporter can
+/// show what `remove_file` returns on their machine.
+pub(crate) fn diag(msg: &str) {
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    if let Ok(mut f) = fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(std::env::temp_dir().join("markpad-diag.log"))
+    {
+        let _ = writeln!(f, "{ms} pid={} {msg}", std::process::id());
+    }
+}
+
+fn diag_remove(what: &str, path: &Path) {
+    let exists = path.exists();
+    let len = fs::metadata(path).map(|m| m.len()).ok();
+    if !exists {
+        diag(&format!("{what}: {} exists=false", path.display()));
+        return;
+    }
+    match fs::remove_file(path) {
+        Ok(()) => diag(&format!(
+            "{what}: {} exists=true len={len:?} remove=Ok still_exists={}",
+            path.display(),
+            path.exists()
+        )),
+        Err(e) => diag(&format!(
+            "{what}: {} exists=true len={len:?} remove=Err({e}) os_error={:?} still_exists={}",
+            path.display(),
+            e.raw_os_error(),
+            path.exists()
+        )),
+    }
+}
+
 /// Distinguishes the temp files of `atomic_write` calls that share a process.
 /// Never reset, and read with `fetch_add` so no two callers can be handed the
 /// same value — the property the wall clock could not supply.
@@ -81,6 +120,7 @@ pub(crate) fn sweep_document_temps(document: &Path) {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .insert(parent.join(&file_name));
+    diag(&format!("sweep_document_temps: {} first_time={first_time}", document.display()));
     if first_time {
         sweep_abandoned_temps(&parent, &file_name);
     }
@@ -124,11 +164,17 @@ fn sweep_abandoned_temps(parent: &Path, file_name: &str) {
         else {
             continue;
         };
+        diag(&format!(
+            "sweep candidate: {} len={} age_s={}",
+            entry.path().display(),
+            meta.len(),
+            age.as_secs()
+        ));
         if age < IN_FLIGHT_GRACE {
             continue;
         }
         if meta.len() == 0 || age >= ABANDONED_TEMP_AGE {
-            let _ = fs::remove_file(entry.path());
+            diag_remove("sweep", &entry.path());
         }
     }
 }
@@ -268,8 +314,26 @@ pub(crate) fn atomic_write(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
     // rename fails (e.g. target locked by another process on Windows),
     // we clean up the temp file and surface the original error without
     // touching the target.
-    if let Err(e) = fs::rename(&temp_path, target) {
+    let rename_result = fs::rename(&temp_path, target);
+    diag(&format!(
+        "rename: {} -> {} result={:?} os_error={:?}",
+        temp_path.display(),
+        target.display(),
+        rename_result.as_ref().map(|_| ()).map_err(|e| e.to_string()),
+        rename_result.as_ref().err().and_then(|e| e.raw_os_error())
+    ));
+    if let Err(e) = rename_result {
         return Err(remove_temp_or_say_why(e, &temp_path));
+    }
+    diag_remove("post-rename", &temp_path);
+    {
+        let later = temp_path.clone();
+        std::thread::spawn(move || {
+            for ms in [200u64, 2_000, 10_000] {
+                std::thread::sleep(Duration::from_millis(ms));
+                diag_remove(&format!("recheck+{ms}ms"), &later);
+            }
+        });
     }
 
     // A rename that reported success has left nothing at the old name, and on
