@@ -90,8 +90,6 @@ export function loadRichContentLibraries(): Promise<RichContentLibraries> {
 		}
 
 		const katex = (katexMainModule as any).default;
-		// mhchem is a KaTeX extension that binds to the global.
-		(window as any).katex = katex;
 
 		// `copy-tex` used to be loaded here too. It installs its own document
 		// `copy` listener, which fires only when the selection contains math and
@@ -100,9 +98,17 @@ export function loadRichContentLibraries(): Promise<RichContentLibraries> {
 		// Its two worthwhile behaviours, whole-formula expansion and TeX as the
 		// plain text, are implemented in `utils/previewCopy.ts` instead, where
 		// they apply to one copy path rather than a second one.
+		// The bare `katex/contrib/…` subpaths, not `katex/dist/contrib/….js`:
+		// KaTeX publishes every file twice, `.mjs` behind the `import` condition
+		// and `.js` (CommonJS, `require("katex")`) behind `require`. Ask for the
+		// `.js` and the bundler hands it the CommonJS copy of KaTeX — a second
+		// parser with its own macro table — so mhchem registered `\ce` on a
+		// KaTeX the preview never calls, and `$$\ce{…}$$` came out as a parse
+		// error (#745). The subpath resolves to the `.mjs`, which imports
+		// `../katex.mjs`: the same module `import('katex')` above returned.
 		const [autoRenderModule] = await Promise.all([
-			import('katex/dist/contrib/auto-render.js'),
-			import('katex/dist/contrib/mhchem.js'),
+			import('katex/contrib/auto-render'),
+			import('katex/contrib/mhchem'),
 		]);
 
 		return {
