@@ -361,6 +361,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let isEditing = $derived(activeTab?.isEditing ?? false);
 	let rawContent = $derived(activeTab?.rawContent ?? '');
 	let isSplit = $derived(activeTab?.isSplit ?? false);
+	/**
+	 * Is there an editor on screen? The two flags are independent — split
+	 * view is `isSplit` alone when entered from reading mode — so anything
+	 * that hands the reader over to the editor has to ask both. The outline
+	 * asked only `isEditing`, and a click on it in split view moved the
+	 * preview but not the editor beside it (#744).
+	 */
+	let hasEditorPane = $derived(isEditing || isSplit);
 	let frontMatterInfo = $derived(parseFrontMatter(rawContent));
 
 	// derived from tab manager
@@ -429,7 +437,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 */
 	let editorToolbarHeight = $state(0);
 	let paneTopChrome = $derived(
-		(isEditing || isSplit) && settings.showEditorToolbar ? editorToolbarHeight : 0,
+		hasEditorPane && settings.showEditorToolbar ? editorToolbarHeight : 0,
 	);
 	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
 	let isOverhanging = $derived(
@@ -3963,8 +3971,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					class:toc-resizing={isTocResizing}
 					style="--toc-width: {settings.tocWidth}px; --pane-top-chrome: {paneTopChrome}px;">
 					<!-- Editor Pane -->
-					<div bind:this={editorPaneEl} class="pane editor-pane" class:active={isEditing || isSplit} style="flex: {isSplit ? tabManager.activeTab.splitRatio : isEditing ? 1 : 0}">
-						{#if isEditing || isSplit}
+					<div bind:this={editorPaneEl} class="pane editor-pane" class:active={hasEditorPane} style="flex: {isSplit ? tabManager.activeTab.splitRatio : isEditing ? 1 : 0}">
+						{#if hasEditorPane}
 							{#if settings.showEditorToolbar}
 								<div bind:clientHeight={editorToolbarHeight} transition:slide={{ duration: 150 }}>
 									<EditorToolbar
@@ -4246,7 +4254,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 											// margin harming nothing, and closing it would take away a
 											// behaviour that was already fine.
 											if (isOverhanging && !settings.pinnedToc) settings.showToc = false;
-											if (isEditing && editorPane) {
+											if (hasEditorPane && editorPane) {
 												// Same renderer-to-buffer shift as the context menu: the
 												// outline reads `data-sourcepos` too, and has been landing
 												// short by the front matter's height for as long as both
@@ -4359,7 +4367,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	{#if isDragging}
 		<div class="drag-overlay" role="presentation">
 			<div class="drag-zones" class:split={isSplit} class:editor-on-right={isSplit && settings.splitEditorSide === 'right'}>
-				{#if isSplit || isEditing}
+				{#if hasEditorPane}
 					<div class="drag-zone editor-zone" class:active={dragTarget === 'editor'}>
 								<div class="drag-message">
 									<span>{t('dragAndDrop.embed', settings.language)}</span>
