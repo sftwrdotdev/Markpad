@@ -176,7 +176,14 @@ body {
 
 /* KaTeX Adjustment */
 .katex-display {
-	margin: 1.5em 0 !important;
+	/* `overflow-y: hidden` keeps a wide formula's horizontal scrollbar from
+	   bringing a vertical one, but it also clips at the padding edge. KaTeX
+	   sizes the block from its own font metrics, and a glyph it has no metrics
+	   for — the CJK label on an mhchem arrow, `->[燃烧]` — draws taller than
+	   the box, so its top was cut off. The padding is that headroom; the margin
+	   gives it back, so the block still sits 1.5em from its neighbours. */
+	margin: 1.1em 0 !important;
+	padding: 0.4em 0;
 	overflow-x: auto;
 	overflow-y: hidden;
 	text-align: center;
