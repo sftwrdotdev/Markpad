@@ -62,8 +62,10 @@ import {
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import {
+	asBufferLine,
 	asRendererLine,
 	lineCoordinates,
+	tabAnchorForEditorTopLine,
 	type BufferLine,
 	type BufferLineRange,
 	type RendererLine,
@@ -1660,8 +1662,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let tocActiveLine = $state<RendererLine | null>(null);
 
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
-		// The outline is built from `data-sourcepos`, so it counts from the body.
-		if (position.line !== undefined) tocActiveLine = lineCoords.toRendererLine(position.line);
+		// The line the tab would record as its reading position, not the line
+		// the viewport cuts in half: `tabAnchorForEditorTopLine` is the one
+		// crossing from a Monaco top line into the outline's numbering (it
+		// counts from the body, and sits `EDITOR_ANCHOR_LINE_OFFSET` lines
+		// down). Handing over the raw top line left the outline one entry
+		// behind whenever a heading was the first line on screen (#744).
+		if (position.line !== undefined) {
+			tocActiveLine = tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line));
+		}
 
 		if (tabManager.activeTab?.isScrollSynced) {
 			scrollPreviewToSyncPosition(position);

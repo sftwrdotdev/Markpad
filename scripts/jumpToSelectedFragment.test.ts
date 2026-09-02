@@ -212,7 +212,7 @@ test('the outline and the context menu share one line-to-editor jump', () => {
 	// singleImplementationConvention.test.ts exists to catch: the two would
 	// scroll differently, focus differently, and only one of them would clamp.
 	const revealHeader = functionSource(editorSource, 'revealHeader');
-	assert.match(revealHeader, /revealSourceRange\(lineNumber, lineNumber\)/);
+	assert.match(revealHeader, /revealSourceRange\(lineNumber, lineNumber, 'top'\)/);
 	assert.doesNotMatch(revealHeader, /setSelection\(\{[\s\S]*?startColumn: 1/);
 });
 
@@ -231,7 +231,7 @@ test('a jump asked for before Monaco has loaded is queued, not dropped', () => {
 	// frames after the component does — and the preview calls in immediately
 	// after flipping into edit mode.
 	const reveal = functionSource(editorSource, 'revealSourceRange');
-	assert.match(reveal, /if \(!editorReady \|\| !editor\) \{\s*\n\s*pendingReveal = \{ startLine, endLine \};/);
+	assert.match(reveal, /if \(!editorReady \|\| !editor\) \{\s*\n\s*pendingReveal = \{ startLine, endLine, placement \};/);
 
 	// Spent after the view-state / anchor-line restore, so an explicit "edit
 	// this fragment" wins over the position the tab was left at.
@@ -396,7 +396,7 @@ test('the outline is fed body lines from both panes', () => {
 	// lines (`getPreviewScrollAnchor`); the editor's has to be converted, or the
 	// highlighted heading changes depending on which pane you scrolled.
 	const fromEditor = functionSource(viewerSource, 'handleEditorScrollSync');
-	assert.match(fromEditor, /tocActiveLine = lineCoords\.toRendererLine\(position\.line\)/);
+	assert.match(fromEditor, /tocActiveLine = tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)/);
 
 	const fromPreview = functionSource(viewerSource, 'getPreviewScrollAnchor');
 	assert.doesNotMatch(fromPreview, /toBufferLine|toRendererLine/, 'already a body line');
