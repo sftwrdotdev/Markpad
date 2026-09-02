@@ -1,11 +1,14 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
+import { monacoImePatch } from "./scripts/monacoImePatch.mjs";
 
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [sveltekit()],
+  // See scripts/monacoImePatch.mjs: a build-time patch to Monaco, to delete
+  // once microsoft/vscode#333909 ships in a release.
+  plugins: [monacoImePatch, sveltekit()],
   build: {
     chunkSizeWarningLimit: 6000,
   },
