@@ -99,3 +99,64 @@ test('installer hooks write through the install-mode hive, not a hardcoded one',
 			`${[...new Set(hardcoded)].join('/')}.`
 	);
 });
+
+// `.md`'s default value is not what decides which app opens a Markdown file:
+// since Windows 8 an existing `.md\UserChoice` outranks it, and no installer is
+// allowed to write UserChoice. When that happens the user's only way back is
+// Explorer's Open With dialog, which reads `OpenWithProgids` on the extension
+// and `Software\Classes\Applications\<exe>\SupportedTypes` -- neither of which
+// APP_ASSOCIATE writes. #756 is what that looks like from the outside: Markpad
+// is not the default and cannot be picked as one either.
+//
+// The hook fills that gap, and it has to name both the ProgID and the
+// extensions as literals, because the bundler exports neither as a define. This
+// pins them to the config the template actually expands.
+test('the hook offers every associated extension to the Open With dialog', () => {
+	if (installerHooks === undefined) return;
+	// A `;` comment quoting a key would satisfy any of the assertions below.
+	const hooks = readSource(`src-tauri/${installerHooks}`)
+		.replace(/^[ \t]*[;#].*$/gm, '')
+		.replace(/[ \t];.*$/gm, '');
+
+	const associations = (
+		config as unknown as { bundle: { fileAssociations?: Array<{ ext: string[]; name?: string }> } }
+	).bundle.fileAssociations;
+	if (associations === undefined) return;
+
+	for (const association of associations) {
+		// The template expands `{{or association.name ext}}` into the
+		// APP_ASSOCIATE FILECLASS argument, so this is the ProgID it creates.
+		const progId = association.name ?? association.ext[0];
+		assert.match(
+			hooks,
+			new RegExp(`!define\\s+MARKPAD_PROGID\\s+"${progId}"`),
+			`hooks.nsi must define MARKPAD_PROGID as ${JSON.stringify(progId)}, the ProgID the bundler ` +
+				'template derives from bundle.fileAssociations[].name. A mismatch registers an Open With ' +
+				'entry pointing at a ProgID that does not exist.'
+		);
+
+		for (const ext of association.ext) {
+			assert.match(
+				hooks,
+				new RegExp(
+					`WriteRegStr\\s+SHCTX\\s+"Software\\\\Classes\\\\\\.${ext}\\\\OpenWithProgids"\\s+"\\$\\{MARKPAD_PROGID\\}"`
+				),
+				`.${ext} is in bundle.fileAssociations but hooks.nsi never adds it to OpenWithProgids, ` +
+					'so Markpad stays out of the Open With dialog for it.'
+			);
+			assert.match(
+				hooks,
+				new RegExp(`SupportedTypes"\\s+"\\.${ext}"`),
+				`.${ext} is in bundle.fileAssociations but is missing from the Applications SupportedTypes ` +
+					'entry, which is what filters Markpad into the dialog for a given extension.'
+			);
+			assert.match(
+				hooks,
+				new RegExp(
+					`DeleteRegValue\\s+SHCTX\\s+"Software\\\\Classes\\\\\\.${ext}\\\\OpenWithProgids"\\s+"\\$\\{MARKPAD_PROGID\\}"`
+				),
+				`hooks.nsi adds .${ext} to OpenWithProgids on install but never removes it on uninstall.`
+			);
+		}
+	}
+});
