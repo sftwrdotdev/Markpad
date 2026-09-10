@@ -952,6 +952,80 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		await windowSession.persistState();
 	}
 
+	/**
+	 * Resolve this window's unsaved tabs, then write the restore snapshot: the
+	 * work that has to happen before the window goes away. False when the reader
+	 * cancelled, and nothing has been written.
+	 *
+	 * The close button and the in-app update both run it. An update ends the
+	 * process without closing a window — the Windows updater exits inside
+	 * `downloadAndInstall`, `relaunch()` requests an exit elsewhere — so
+	 * CloseRequested never fires, and both jobs used to go down with it (#761).
+	 */
+	async function settleForExit(): Promise<boolean> {
+		// Unsaved content and session restore are separate concerns: dirty tabs
+		// are resolved FIRST through the per-tab dialogs, then the restore
+		// snapshot records window state only (open files, active tab, edit mode,
+		// split, scroll) — it never carries document content.
+		const dirtyTabs = tabManager.tabs.filter((t) => t.isDirty);
+		if (dirtyTabs.length > 0) {
+			isCloseWalkActive = true;
+			// The walk's dialogs are in-app modals inside THIS window: with
+			// multiple windows, another window may be covering it and the review
+			// would be invisible. Bring the reviewing window to the front first.
+			invoke('show_window').catch(console.error);
+			try {
+				// Auto-save without confirmation: silently save every dirty tab
+				// that has a real path. Untitled tabs need a Save dialog, so the
+				// walk below handles them. A failed silent save is surfaced and its
+				// tab also goes to the walk. `saveContent` cancels each tab's pending
+				// timer itself, so no writer here can be raced by its own debounce.
+				if (settings.autoSave) {
+					for (const tab of dirtyTabs.filter((t) => t.path !== '')) {
+						const ok = await saveContent(tab.id);
+						if (!ok) {
+							addToast(t('toast.autoSaveFailed', settings.language), 'error');
+							break;
+						}
+					}
+				}
+
+				// Close review (issue #189): walk the remaining dirty tabs one at a
+				// time — activate each and run the same localized unsaved-changes
+				// dialog a single tab close shows. Cancel stops the walk and keeps
+				// the window open. Strict tab-strip order (left to right) so the
+				// sequence is predictable; numbered untitled titles let the dialog
+				// name each tab. Re-find every round — a save can leave a tab dirty
+				// again (TOCTOU) and tabs can change while a dialog is up.
+				const resolved = await reviewDirtyTabs({
+					nextDirtyTab: () => tabManager.tabs.find((t) => t.isDirty),
+					setActive: (id) => tabManager.setActive(id),
+					settle: tick,
+					canCloseTab,
+					closeTab: (id) => tabManager.closeTab(id),
+					// Resolved tabs (saved, or reverted by Don't Save) stay open for
+					// the window-state snapshot when restore is enabled; untitled
+					// tabs have nothing to restore, and with restore off the red
+					// button closes tabs one by one.
+					shouldCloseAfterResolving: (tab) =>
+						!settings.restoreStateOnReopen || tab.path === '',
+				});
+				if (!resolved) return false;
+			} finally {
+				isCloseWalkActive = false;
+			}
+		}
+
+		// Session is clean now; record the window state for restore. Awaited:
+		// the caller holds the exit until the Rust write returns, so the process
+		// cannot exit under the snapshot.
+		await savePinnedTagIfNeeded();
+		if (settings.restoreStateOnReopen) {
+			await persistWindowState();
+		}
+		return true;
+	}
+
 	// Exit discards the snapshot on purpose — it is how "quit" differs from
 	// closing the window — but only once startup is over. Until `init` sets
 	// `mode` to 'app', the file on disk is still the only complete record of
@@ -3659,80 +3733,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						return;
 					}
 
-					// Unsaved content and session restore are separate concerns:
-					// dirty tabs are resolved FIRST through the per-tab dialogs,
-					// then the restore snapshot records window state only (open
-					// files, active tab, edit mode, split, scroll) — it never
-					// carries document content.
-					const dirtyTabs = tabManager.tabs.filter((t) => t.isDirty);
-					if (dirtyTabs.length > 0) {
-						event.preventDefault();
-						isCloseWalkActive = true;
-						// The walk's dialogs are in-app modals inside THIS
-						// window: with multiple windows, another window may be
-						// covering it and the review would be invisible. Bring
-						// the reviewing window to the front first.
-						invoke('show_window').catch(console.error);
-						try {
-							// Auto-save without confirmation: silently save every
-							// dirty tab that has a real path. Untitled tabs need a
-							// Save dialog, so the walk below handles them. A failed
-							// silent save is surfaced and its tab also goes to the
-							// walk. `saveContent` cancels each tab's pending timer
-							// itself, so no writer here can be raced by its own
-							// debounce.
-							if (settings.autoSave) {
-								for (const tab of dirtyTabs.filter((t) => t.path !== '')) {
-									const ok = await saveContent(tab.id);
-									if (!ok) {
-										addToast(t('toast.autoSaveFailed', settings.language), 'error');
-										break;
-									}
-								}
-							}
-
-							// Close review (issue #189): walk the remaining dirty
-							// tabs one at a time — activate each and run the same
-							// localized unsaved-changes dialog a single tab close
-							// shows. Cancel stops the walk and keeps the window
-							// open. Strict tab-strip order (left to right) so the
-							// sequence is predictable; numbered untitled titles
-							// let the dialog name each tab. Re-find every round —
-							// a save can leave a tab dirty again (TOCTOU) and
-							// tabs can change while a dialog is up.
-							const resolved = await reviewDirtyTabs({
-								nextDirtyTab: () => tabManager.tabs.find((t) => t.isDirty),
-								setActive: (id) => tabManager.setActive(id),
-								settle: tick,
-								canCloseTab,
-								closeTab: (id) => tabManager.closeTab(id),
-								// Resolved tabs (saved, or reverted by Don't Save)
-								// stay open for the window-state snapshot when
-								// restore is enabled; untitled tabs have nothing to
-								// restore, and with restore off the red button
-								// closes tabs one by one.
-								shouldCloseAfterResolving: (tab) =>
-									!settings.restoreStateOnReopen || tab.path === '',
-							});
-							if (!resolved) return;
-						} finally {
-							isCloseWalkActive = false;
-						}
-					}
-
-					// Session is clean now; record the window state for restore.
-					// Awaited: the close-requested handler holds the close open
-					// until the Rust write returns, so the process cannot exit
-					// under the snapshot.
-					await savePinnedTagIfNeeded();
-					if (settings.restoreStateOnReopen) {
-						await persistWindowState();
-					}
-
-					// If we intercepted the close to run the review, re-trigger
-					// it: the handler re-enters, finds nothing dirty, and the
-					// close proceeds.
-					if (dirtyTabs.length > 0) appWindow.close();
+					// With tabs to review the close is held open while their
+					// dialogs are up, then re-triggered: the handler re-enters,
+					// finds nothing dirty, and the close proceeds.
+					const hadDirtyTabs = tabManager.tabs.some((t) => t.isDirty);
+					if (hadDirtyTabs) event.preventDefault();
+					if (!(await settleForExit())) return;
+					if (hadDirtyTabs) appWindow.close();
 				}),
 			);
 
@@ -4328,6 +4335,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{/if}
 	</div>
 
+	<!-- Before the modals: installing runs the unsaved-tab review, whose dialogs
+	     share this z-index, so they have to come later to be on top. -->
+	<UpdateDialog {settleForExit} />
+
 	<Modal
 		show={modalState.show}
 		title={modalState.title}
@@ -4347,8 +4358,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		bind:inputValue={promptModal.value}
 		onconfirm={handlePromptConfirm}
 		oncancel={handlePromptCancel} />
-
-	<UpdateDialog />
 
 	{#if identifyFlash}
 		<div class="identify-flash" transition:fade={{ duration: 150 }}>

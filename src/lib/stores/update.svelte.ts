@@ -134,7 +134,7 @@ class UpdateStore {
 		}
 	}
 
-	async startDownload() {
+	async startDownload(settleForExit: () => Promise<boolean>) {
 		if (this.phase !== 'available' || !this.#pending) return;
 
 		const update = this.#pending;
@@ -142,6 +142,14 @@ class UpdateStore {
 		this.phase = 'downloading';
 		this.downloaded = 0;
 		this.total = 0;
+
+		// Installing ends the process without closing the window, so the close
+		// path's work — unsaved tabs, the restore snapshot — runs first (#761).
+		// Cancelling it keeps the update on offer.
+		if (!(await settleForExit())) {
+			this.phase = 'available';
+			return;
+		}
 
 		// Two separate try blocks so the error attribution is precise:
 		// downloadAndInstall failures map to errorSource='download' (the

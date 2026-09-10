@@ -19,7 +19,7 @@ test('the updater asks whether it can install before it checks', () => {
 	// The whole defect is a sequence: check first, discover the impossibility
 	// second. Asserting that both calls exist would pass on the broken order,
 	// so the assertion is where they sit relative to each other.
-	const runCheck = sliceBetween(store, 'async runCheck()', 'async startDownload()');
+	const runCheck = sliceBetween(store, 'async runCheck()', 'async startDownload(');
 	const gate = runCheck.indexOf("invoke<boolean>('self_update_supported')");
 	const checkCall = runCheck.indexOf('await check()');
 	assert.ok(gate !== -1, 'runCheck must ask self_update_supported');

@@ -4,6 +4,8 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 
+	let { settleForExit } = $props<{ settleForExit: () => Promise<boolean> }>();
+
 	let dialogEl = $state<HTMLDivElement>();
 	let previousActiveElement: HTMLElement | null = null;
 
@@ -42,7 +44,7 @@
 	}
 
 	function startDownload() {
-		updateStore.startDownload();
+		updateStore.startDownload(settleForExit);
 	}
 
 	function handleKeydown(e: KeyboardEvent) {

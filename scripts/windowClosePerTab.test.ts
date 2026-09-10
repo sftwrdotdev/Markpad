@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import test from 'node:test';
 
 import { reviewDirtyTabs, type ReviewTab } from '../src/lib/sessions/closeReview.js';
-import { offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { functionSource, offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 const documentSessionPath = 'src/lib/sessions/documentSession.svelte.ts';
@@ -17,6 +17,11 @@ const documentSession = existsSync(documentSessionPath) ? readSource(documentSes
 
 function closeHandler(): string {
 	return sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
+}
+
+/** The walk and the snapshot, which the in-app update runs too (#761). */
+function settle(): string {
+	return functionSource(viewer, 'settleForExit');
 }
 
 /**
@@ -49,14 +54,15 @@ function window_(paths: string[], answers: Record<string, boolean> = {}) {
 }
 
 test('the aggregate unsaved-files modal is gone from the close handler', () => {
-	const handler = closeHandler();
-	assert.doesNotMatch(handler, /youHaveUnsavedFiles/);
-	// and the old "clear all dirty flags then close" discard path with it.
-	// Pinned as the assignment rather than as the `forEach` one-liner it was
-	// written in: the same silent discard spelled `for (const t of
-	// tabManager.tabs) t.isDirty = false;` passed the old regex, and the walk
-	// below then found nothing to review.
-	assert.doesNotMatch(handler, /\.isDirty\s*=\s*false/);
+	for (const scope of [closeHandler(), settle()]) {
+		assert.doesNotMatch(scope, /youHaveUnsavedFiles/);
+		// and the old "clear all dirty flags then close" discard path with it.
+		// Pinned as the assignment rather than as the `forEach` one-liner it was
+		// written in: the same silent discard spelled `for (const t of
+		// tabManager.tabs) t.isDirty = false;` passed the old regex, and the walk
+		// below then found nothing to review.
+		assert.doesNotMatch(scope, /\.isDirty\s*=\s*false/);
+	}
 });
 
 test('every dirty tab is activated, asked about, and then closed, one at a time', async () => {
@@ -116,44 +122,49 @@ test('a resolved tab is kept open when the window state is about to be snapshott
 
 test('the close is prevented synchronously before the walk starts', () => {
 	const handler = closeHandler();
-	const branchStart = offsetOf(handler, 'if (dirtyTabs.length > 0) {');
-	const prevent = offsetOf(handler, 'event.preventDefault()', branchStart);
-	const walk = offsetOf(handler, 'reviewDirtyTabs({', branchStart);
-	assert.ok(prevent < walk, 'the close is prevented before the walk starts');
+	// Not the re-entry guard's `preventDefault`: the one between that guard and
+	// the walk.
+	const guardEnd = offsetOf(handler, 'return;', offsetOf(handler, 'if (isCloseWalkActive)'));
+	const walk = offsetOf(handler, 'await settleForExit()');
+	const prevent = handler.lastIndexOf('event.preventDefault()', walk);
+	assert.ok(guardEnd < prevent, 'the close is prevented before the walk starts');
+	assert.match(settle(), /reviewDirtyTabs\(\{/, 'and the walk is what settleForExit runs');
 });
 
 test('the window closes only after every dirty tab is resolved', () => {
 	const handler = closeHandler();
-	const walk = offsetOf(handler, 'reviewDirtyTabs({');
+	const walk = offsetOf(handler, 'await settleForExit()');
 	const close = offsetOf(handler, 'appWindow.close()', walk);
 	assert.ok(walk < close, 'the window closes after the walk, not during it');
 });
 
 test('a cancelled walk stops the handler before it persists or closes', () => {
+	const body = settle();
+	const walk = offsetOf(body, 'reviewDirtyTabs({');
+	const bail = offsetOf(body, 'if (!resolved) return false;', walk);
+	assert.ok(bail < offsetOf(body, 'persistWindowState()', walk), 'cancel returns before the snapshot');
+
 	const handler = closeHandler();
-	const walk = offsetOf(handler, 'reviewDirtyTabs({');
-	const bail = offsetOf(handler, 'if (!resolved) return;', walk);
-	assert.ok(bail < offsetOf(handler, 'persistWindowState()', walk), 'cancel returns before the snapshot');
-	assert.ok(bail < offsetOf(handler, 'appWindow.close()', walk), 'and before the close is re-triggered');
+	const stop = offsetOf(handler, 'if (!(await settleForExit())) return;');
+	assert.ok(stop < offsetOf(handler, 'appWindow.close()', stop), 'and before the close is re-triggered');
 });
 
 test('a second close request cannot start a competing walk', () => {
-	const handler = closeHandler();
 	// The native red button bypasses the dialog overlay; re-entry must be
 	// swallowed while a walk is active, or two walks fight over setActive
 	// and the highlighted tab stops matching the dialog.
-	assert.match(handler, /if \(isCloseWalkActive\) \{\s*event\.preventDefault\(\);\s*return;\s*\}/);
+	assert.match(closeHandler(), /if \(isCloseWalkActive\) \{\s*event\.preventDefault\(\);\s*return;\s*\}/);
 	// and the flag is always released, even when the user cancels mid-walk
-	assert.match(handler, /finally \{\s*isCloseWalkActive = false;\s*\}/);
+	assert.match(settle(), /finally \{\s*isCloseWalkActive = false;\s*\}/);
 });
 
 test('the walk proceeds in strict tab-strip order', () => {
 	// Which tab is next is the component's half of the walk: the order comes
 	// from the tab array, and an active-first shortcut made the sequence look
 	// random to the reader. The walking itself is covered above.
-	const handler = closeHandler();
-	assert.match(handler, /nextDirtyTab: \(\) => tabManager\.tabs\.find\(\(t\) => t\.isDirty\)/);
-	assert.doesNotMatch(handler, /active\?\.isDirty/);
+	const body = settle();
+	assert.match(body, /nextDirtyTab: \(\) => tabManager\.tabs\.find\(\(t\) => t\.isDirty\)/);
+	assert.doesNotMatch(body, /active\?\.isDirty/);
 });
 
 test('the untitled save dialog prefills the numbered tab title', () => {
@@ -170,8 +181,7 @@ test('save-as writes a snapshot rather than the buffer as it stands', () => {
 });
 
 test('the restore-on-reopen branch persists window state via the shared helper', () => {
-	const handler = closeHandler();
-	assert.match(handler, /persistWindowState\(\);/);
+	assert.match(settle(), /persistWindowState\(\);/);
 	// no durable-write experiment left behind
 	assert.doesNotMatch(viewer, /saveSessionState|sessionState\.js/);
 });
