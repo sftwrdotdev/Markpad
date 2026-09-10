@@ -157,9 +157,22 @@ test('editor options are applied by a single updateOptions effect', () => {
 			'smoothScrolling',
 			'wordWrap',
 			'wordWrapColumn',
+			'wrappingStrategy',
 		],
 		'and the set is exactly the options both call sites share',
 	);
+});
+
+test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
+	// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
+	// window edge. Both values are asserted because 'advanced' everywhere would
+	// also fix the report, and would make every large file pay for it.
+	assert.equal(editorOptionsFromSettings(SETTINGS, 100, true).wrappingStrategy, 'simple');
+	assert.equal(editorOptionsFromSettings(SETTINGS, 100, false).wrappingStrategy, 'advanced');
+
+	// The measurement only helps if the update effect passes it: its stub is
+	// false, so a call that drops the argument falls back to 'simple' here.
+	assert.equal(optionsPassedTo('editor.updateOptions', SETTINGS).wrappingStrategy, 'advanced');
 });
 
 test('tab cycling avoids Cmd+Tab, which macOS never delivers to the app', () => {
@@ -332,7 +345,7 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 	}).outputText;
 
-	// The literals close over six locals and one import, stubbed rather than
+	// The literals close over seven locals and one import, stubbed rather than
 	// reconstructed — except the import, which is the real function: the
 	// settings-derived options live there now, and stubbing them would leave
 	// the evaluated object missing exactly what these tests read.
@@ -340,6 +353,8 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 	// model (or `value`/`language` when there is no tab); an empty object is the
 	// right stub because nothing it can contain is an option this file asserts
 	// on. `zoomLevel` is 100, the neutral factor, for the same reason.
+	// `fontIsMonospace` is false, the opposite of the parameter's default, so a
+	// literal that forgets to pass it is visible.
 	return new Function(
 		'settings',
 		'value',
@@ -347,9 +362,10 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		'getTheme',
 		'documentOptions',
 		'zoomLevel',
+		'fontIsMonospace',
 		'editorOptionsFromSettings',
 		`return ${js};`,
-	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, editorOptionsFromSettings) as Record<
+	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, false, editorOptionsFromSettings) as Record<
 		string,
 		unknown
 	>;
