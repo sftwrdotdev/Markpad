@@ -92,8 +92,9 @@ test('the list is read from Rust, and re-read only when the buffer changes', () 
 	assert.match(editorSource, /invoke\("list_heading_anchors", \{\s*\n?\s*markdown: model\.getValue\(\),/);
 	assert.match(rustSource, /async fn list_heading_anchors\(markdown: String\)/);
 	// Completion fires per keystroke while the dropdown is open; the headings
-	// cannot have moved between two keystrokes of one edit.
-	assert.match(editorSource, /if \(anchorCache\?\.version === version\) return anchorCache\.anchors;/);
+	// cannot have moved between two keystrokes of one edit. Keyed on the model
+	// too, because version ids are counted per model and each tab has its own.
+	assert.match(editorSource, /if \(anchorCache\?\.model === model && anchorCache\.version === version\) return anchorCache\.anchors;/);
 });
 
 test('the Rust side numbers repeated headings the way the renderer does', () => {
