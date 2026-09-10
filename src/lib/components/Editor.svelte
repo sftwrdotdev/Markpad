@@ -25,6 +25,7 @@
 		headingQueryStart,
 		type HeadingAnchor,
 	} from '../utils/headingCompletion.js';
+	import { headingSymbols } from '../utils/headingSymbols.js';
 	import {
 		getLineAtVerticalOffset,
 		getScrollSyncPositionFromPixels,
@@ -600,18 +601,21 @@
 	 * Asked of Rust rather than derived here: the ids come out of comrak's
 	 * anchorizer, and a second implementation in TypeScript would drift from
 	 * it silently, producing links that look right and land nowhere.
+	 *
+	 * Keyed on the model as well: each tab has its own, and version ids are
+	 * counted per model, so two tabs can stand at the same one.
 	 */
-	let anchorCache: { version: number; anchors: HeadingAnchor[] } | null = null;
+	let anchorCache: { model: Monaco.editor.ITextModel; version: number; anchors: HeadingAnchor[] } | null = null;
 
 	async function headingAnchors(model: Monaco.editor.ITextModel): Promise<HeadingAnchor[]> {
 		const version = model.getVersionId();
-		if (anchorCache?.version === version) return anchorCache.anchors;
+		if (anchorCache?.model === model && anchorCache.version === version) return anchorCache.anchors;
 
 		try {
 			const anchors = (await invoke("list_heading_anchors", {
 				markdown: model.getValue(),
 			})) as HeadingAnchor[];
-			anchorCache = { version, anchors };
+			anchorCache = { model, version, anchors };
 			return anchors;
 		} catch {
 			return [];
@@ -626,6 +630,15 @@
 		MARKDOWN_LANGUAGE_ID,
 		semanticTokensProvider,
 	);
+
+	// What sticky scroll pins (#759), from the same heading list link completion
+	// uses.
+	const documentSymbols = monaco.languages.registerDocumentSymbolProvider(MARKDOWN_LANGUAGE_ID, {
+		provideDocumentSymbols: async (model) => {
+			const lineCount = model.getLineCount();
+			return headingSymbols(await headingAnchors(model), lineCount, monaco.languages.SymbolKind.String);
+		},
+	});
 
 	const completionProvider = monaco.languages.registerCompletionItemProvider(
 			"markdown",
@@ -850,6 +863,7 @@
 			container.removeEventListener("wheel", wheelListener, { capture: true });
 			completionProvider.dispose();
 			semanticTokens.dispose();
+			documentSymbols.dispose();
 			// The keybinding rules are global to the Monaco module, not to this
 			// editor, so they are disposed with it rather than left to pile up one
 			// copy per mount — this component is rebuilt every time a tab goes to
