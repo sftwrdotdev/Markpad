@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, offsetOf, readSource, sliceBetween } from './sourceTree.js';
 
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
 // Svelte plugin, so the store and the session run under real reactivity, and jsdom
@@ -26,9 +26,9 @@ const session = readSource('src/lib/sessions/windowSession.svelte.ts');
 // always lives on disk — the snapshot never carries rawContent, so unsaved
 // changes are handled exclusively by the per-tab close dialogs.
 
-/** The `onCloseRequested` registration, up to the next window listener. */
-function closeHandler(): string {
-	return sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
+/** What the close handler and the in-app update run before the window goes away. */
+function settleForExit(): string {
+	return functionSource(viewer, 'settleForExit');
 }
 
 test('the snapshot carries window state and no document content', () => {
@@ -136,9 +136,9 @@ test('startup restore reads content from disk, not from the snapshot', () => {
 });
 
 test('the close flow resolves dirty tabs before serializing window state', () => {
-	const handler = closeHandler();
-	const walk = offsetOf(handler, 'reviewDirtyTabs({');
-	const persist = offsetOf(handler, 'persistWindowState()');
+	const body = settleForExit();
+	const walk = offsetOf(body, 'reviewDirtyTabs({');
+	const persist = offsetOf(body, 'persistWindowState()');
 	assert.ok(walk < persist, 'dirty tabs must be resolved before the snapshot is written');
 });
 
@@ -193,7 +193,7 @@ test('exit discards the snapshot only once startup has finished', () => {
 });
 
 test('with restore enabled resolved titled tabs stay open for the snapshot', () => {
-	const handler = closeHandler();
+	const handler = settleForExit();
 	// tabs are closed one-by-one only when restore is off (or untitled).
 	// The walk itself is covered by windowClosePerTab, which runs it; what is
 	// asserted here is the policy the component hands it.
@@ -201,7 +201,7 @@ test('with restore enabled resolved titled tabs stay open for the snapshot', () 
 });
 
 test('auto-save fast path silently saves titled tabs before the walk', () => {
-	const handler = closeHandler();
+	const handler = settleForExit();
 	const fastPath = offsetOf(handler, 'if (settings.autoSave) {');
 	const walk = offsetOf(handler, 'reviewDirtyTabs({');
 	assert.ok(fastPath < walk, 'the silent save runs before the per-tab walk');
