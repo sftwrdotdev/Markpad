@@ -6,9 +6,12 @@ import { test, vi } from 'vitest';
 // updater exits inside `downloadAndInstall`, `relaunch()` requests an exit
 // elsewhere — so CloseRequested never fires and nothing reviews unsaved tabs or
 // writes the restore snapshot unless the store asks for it first.
-const { log } = vi.hoisted(() => ({ log: [] as string[] }));
+const { log, windows } = vi.hoisted(() => ({ log: [] as string[], windows: [{ label: 'main' }] }));
 
-vi.mock('@tauri-apps/api/core', () => ({ invoke: async () => true }));
+vi.mock('@tauri-apps/api/core', () => ({
+	invoke: async (cmd: string) => (cmd === 'list_viewer_windows' ? windows : true),
+}));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: 'main' }) }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: async () => '2.7.6' }));
 vi.mock('@tauri-apps/plugin-updater', () => ({
 	check: async () => ({ version: '2.7.7', body: '', downloadAndInstall: async () => void log.push('install') }),
@@ -55,4 +58,27 @@ test('backing out of the review installs nothing, and leaves the update on offer
 
 	await updateStore.startDownload(settleAnswering(true));
 	assert.deepEqual(log, ['settled', 'settled', 'install', 'relaunch'], 'and it can still be installed');
+});
+
+// #767. The install ends every window, and only the one it starts from reviews
+// its tabs, so another open window has to close first.
+test('with another window open, nothing is reviewed or installed until it has closed', async () => {
+	await offered();
+	windows.push({ label: 'window-abc' });
+	try {
+		await updateStore.startDownload(settleAnswering(true));
+		assert.deepEqual(log, []);
+		assert.equal(updateStore.phase, 'available', 'the update stays on offer');
+		assert.deepEqual(
+			updateStore.otherWindows.map((window) => window.label),
+			['window-abc'],
+			'and the dialog can name the window in the way',
+		);
+	} finally {
+		windows.pop();
+	}
+
+	await updateStore.startDownload(settleAnswering(true));
+	assert.deepEqual(log, ['settled', 'install', 'relaunch'], 'once it has closed, the install goes ahead');
+	assert.equal(updateStore.otherWindows.length, 0);
 });
