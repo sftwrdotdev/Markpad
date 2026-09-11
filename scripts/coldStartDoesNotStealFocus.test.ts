@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readRustBackend, readSource } from './sourceTree.js';
+import { readRustBackend } from './sourceTree.js';
 
 const backend = readRustBackend();
 
@@ -33,20 +33,12 @@ test('the main window is shown without being activated on a cold start', () => {
 	assert.ok(guard > 0 && guard < focus, 'the cold-start path falls through to set_focus');
 });
 
-test('the main window builder carries the Windows half of the fix', () => {
-	const app = readSource('src-tauri/src/app.rs');
-
-	// `show()` maps to `SW_SHOW` on Windows, which activates: skipping
-	// `set_focus` does not by itself keep the first show quiet there.
-	// `.focused(false)` sets tao's one-shot `MARKER_DONT_FOCUS` so that show
-	// uses `SW_SHOWNOACTIVATE` instead.
-	assert.match(app, /\.focused\(false\)/);
-
-	// The comment on that line, and its no-op status on macOS and Linux, both
-	// depend on the window still being built hidden.
-	assert.match(app, /\.visible\(false\)/);
-
-	// Detached tab windows are built hidden too, and they SHOULD activate when
-	// revealed — the user just asked for them. Exactly one builder opts out.
-	assert.equal(backend.match(/\.focused\(false\)/g)?.length, 1);
+test('no window builder opts out of focus', () => {
+	// `.focused(false)` on a window built hidden leaves WebView2 on Windows with
+	// no drop target, so every file dragged onto the window is refused (#768,
+	// tauri-apps/wry#1639). Comments are stripped first: the builder explains
+	// why the call is absent by naming it.
+	const code = backend.replace(/\/\/.*$/gm, '');
+	const found = code.match(/\.focused\(false\)/g)?.length ?? 0;
+	assert.equal(found, 0, `found ${found} .focused(false) in the Rust backend`);
 });

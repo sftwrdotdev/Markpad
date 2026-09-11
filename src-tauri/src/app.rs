@@ -82,15 +82,10 @@ pub fn run() {
             .inner_size(900.0, 650.0)
             .min_inner_size(400.0, 300.0)
             .visible(false)
-            // Half of "a cold start does not steal focus"; the other half is
-            // `show_window`. Windows maps `show()` to `SW_SHOW`, which
-            // activates, so dropping the `set_focus` call there is not enough
-            // on its own. This sets tao's one-shot `MARKER_DONT_FOCUS`, which
-            // makes the FIRST show use `SW_SHOWNOACTIVATE` and is then cleared,
-            // so every later show still comes to the front. On macOS and Linux
-            // it is a no-op: tao only reads `focused` for a window that is
-            // built visible, and this one is not.
-            .focused(false)
+            // Not `.focused(false)`: on a window built hidden it leaves WebView2
+            // on Windows with no drop target, so every file dragged in is
+            // refused (#768, tauri-apps/wry#1639). `show_window` skipping
+            // `set_focus` is what keeps a cold start from stealing focus.
             .resizable(true)
             .shadow(false)
             .center();
