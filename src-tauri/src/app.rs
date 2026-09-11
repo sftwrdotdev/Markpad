@@ -226,6 +226,7 @@ pub fn run() {
             commands::clipboard_write_text,
             commands::clipboard_read_text,
             commands::clipboard_read_image,
+            commands::clipboard_read_file_list,
             commands::open_markdown_preview,
             commands::render_markdown,
             commands::markdown_semantic_spans,
