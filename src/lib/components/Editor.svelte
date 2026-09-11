@@ -161,6 +161,7 @@
 	// the editor has to gate on this flag, or it runs once against a missing
 	// editor and never runs again.
 	let editorReady = $state(false);
+	let fontIsMonospace = $state(true);
 	let localizedActions: Monaco.IDisposable[] = [];
 
 	// `settings.osType` is resolved asynchronously from the Rust side, so it can
@@ -571,6 +572,16 @@
 				);
 			} else {
 				selectionCount = 0;
+			}
+		});
+
+		// Feeds the wrapping strategy in `editorOptionsFromSettings`. `fontInfo`
+		// changes with the font setting and when Monaco remeasures after a font
+		// finishes loading.
+		fontIsMonospace = editor.getOption(monaco.editor.EditorOption.fontInfo).isMonospace;
+		editor.onDidChangeConfiguration((e) => {
+			if (e.hasChanged(monaco.editor.EditorOption.fontInfo)) {
+				fontIsMonospace = editor.getOption(monaco.editor.EditorOption.fontInfo).isMonospace;
 			}
 		});
 
@@ -2231,7 +2242,7 @@
 
 	$effect(() => {
 		if (editorReady && editor) {
-			editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel));
+			editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace));
 		}
 	});
 

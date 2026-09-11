@@ -24,16 +24,23 @@ import { animatesCursor, animatesJumpScroll } from "./motion.js";
  *
  * `zoomPercent` is a parameter rather than another settings field because the
  * two call sites genuinely pass different things — see the note at the
- * creation site.
+ * creation site. `fontIsMonospace` is Monaco's own measurement of the chosen
+ * font, which only exists once an editor has rendered with it.
  */
 export function editorOptionsFromSettings(
 	settings: EditorOptionSettings,
 	zoomPercent: number,
+	fontIsMonospace = true,
 ): MonacoEditor.IEditorOptions {
 	return {
 		minimap: { enabled: settings.minimap },
 		wordWrap: settings.wordWrap as "on" | "off" | "wordWrapColumn" | "bounded",
 		wordWrapColumn: settings.editorMaxWidth,
+		// 'simple' counts every character as wide as `n`, which only holds for a
+		// monospace font: in Times New Roman or Roboto a line wrapped well short
+		// of the window edge (#758). 'advanced' measures in the DOM and is slow
+		// on large files, so only a proportional font pays for it.
+		wrappingStrategy: fontIsMonospace ? "simple" : "advanced",
 		lineNumbers: settings.lineNumbers as "on" | "off" | "relative" | "interval",
 		// A Monaco string enum, not a flag. Any non-empty string is truthy, so
 		// a ternary on it can only ever produce "line" — which defeats both the
