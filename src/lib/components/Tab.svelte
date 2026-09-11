@@ -9,6 +9,7 @@
 	import { getTabFileActions, hasRealFilePath } from '../utils/tabFileActions.js';
 	import { isHomePath } from '../utils/homeTab.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
+	import { windowDisplay, type ViewerWindowEntry } from '../utils/viewerWindows.js';
 
 	let { tab, folderSuffix, isActive, isLast, onclick, onclose } = $props<{
 		tab: Tab;
@@ -74,19 +75,6 @@
 	function openTabFileLocation() {
 		if (!hasRealFilePath(tab.path)) return;
 		invoke('open_file_folder', { path: tab.path }).catch(console.error);
-	}
-
-	type ViewerWindowEntry = {
-		label: string;
-		number: number;
-		tag_name: string | null;
-		active_tab_title: string;
-		tab_count: number;
-	};
-
-	function windowDisplay(window: ViewerWindowEntry, lang: typeof settings.language): string {
-		const identity = window.tag_name ?? `${t('menu.window', lang)} ${window.number}`;
-		return window.active_tab_title ? `${identity} · ${window.active_tab_title}` : identity;
 	}
 
 	async function handleContextMenu(e: MouseEvent) {

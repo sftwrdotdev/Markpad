@@ -2,6 +2,8 @@ import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { ViewerWindowEntry } from '../utils/viewerWindows.js';
 
 type UpdatePhase =
 	| 'idle'
@@ -46,6 +48,8 @@ class UpdateStore {
 	// when this is true.
 	errorIsNotConfigured = $state(false);
 	notes = $state('');
+	/** Windows open beside this one when an install was last asked for (#767). */
+	otherWindows = $state<ViewerWindowEntry[]>([]);
 	#pending: Update | null = null;
 	#checkToken = 0;
 
@@ -67,6 +71,7 @@ class UpdateStore {
 		this.latest = '';
 		this.downloaded = 0;
 		this.total = 0;
+		this.otherWindows = [];
 		this.#pending = null;
 	}
 
@@ -82,6 +87,7 @@ class UpdateStore {
 		this.latest = '';
 		this.downloaded = 0;
 		this.total = 0;
+		this.otherWindows = [];
 		this.#pending = null;
 
 		try {
@@ -142,6 +148,17 @@ class UpdateStore {
 		this.phase = 'downloading';
 		this.downloaded = 0;
 		this.total = 0;
+
+		// An install ends every window at once, and only this one reviews its
+		// unsaved tabs and writes the session. So the others close first, each
+		// through its own close review, and the update waits on offer (#767).
+		// No list to go on is how this behaved before it asked.
+		const windows = (await invoke<ViewerWindowEntry[]>('list_viewer_windows').catch(() => null)) ?? [];
+		this.otherWindows = windows.filter((window) => window.label !== getCurrentWindow().label);
+		if (this.otherWindows.length > 0) {
+			this.phase = 'available';
+			return;
+		}
 
 		// Installing ends the process without closing the window, so the close
 		// path's work — unsaved tabs, the restore snapshot — runs first (#761).

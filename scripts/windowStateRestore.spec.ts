@@ -156,9 +156,6 @@ test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys 
 	assert.match(scope, /removeItem\(options\.windowStateKey\)/);
 	assert.match(scope, /removeItem\(options\.legacyStateKey\)/);
 	assert.match(viewer, /const WINDOW_STATE_KEY = 'savedTabsDataV2';/);
-	// only the main window persists: secondary labels are per-session, and a
-	// shared write slot would let the last window closed overwrite the rest
-	assert.match(scope, /if \(!options\.isMainWindow\) return;/);
 	// startup prefers the Rust file and falls back to the localStorage keys
 	// (v2 first, then legacy) for one-time migration of older snapshots
 	assert.match(session, /invoke\('load_window_state'\)/);

@@ -352,6 +352,7 @@ export const translations: Record<LanguageCode, Translation> = {
             cancel: 'Cancel',
             ok: 'OK',
             downloadInstall: 'Download & Install',
+            closeOtherWindows: 'Close these windows first, or move their tabs here with Merge All Windows Here. After the update, Markpad reopens the tabs in this window.',
             close: 'Close',
             retry: 'Retry'
         },
@@ -725,6 +726,7 @@ export const translations: Record<LanguageCode, Translation> = {
             cancel: '取消',
             ok: '确定',
             downloadInstall: '下载并安装',
+            closeOtherWindows: '请先关闭这些窗口，或用“将所有窗口合并到此处”把它们的标签页移到这里。更新后，Markpad 会重新打开此窗口中的标签页。',
             close: '关闭',
             retry: '重试'
         },
@@ -1380,6 +1382,7 @@ export const translations: Record<LanguageCode, Translation> = {
             cancel: '取消',
             ok: '確定',
             downloadInstall: '下載並安裝',
+            closeOtherWindows: '請先關閉這些視窗，或使用「將所有視窗合併至此」把它們的分頁移到這裡。更新後，Markpad 會重新開啟此視窗中的分頁。',
             close: '關閉',
             retry: '重試'
         },
@@ -1725,6 +1728,7 @@ export const translations: Record<LanguageCode, Translation> = {
             cancel: '취소',
             ok: '확인',
             downloadInstall: '다운로드 및 설치',
+            closeOtherWindows: '먼저 이 창들을 닫거나 Merge All Windows Here로 탭을 이 창으로 옮기세요. 업데이트 후 Markpad는 이 창의 탭을 다시 엽니다.',
             close: '닫기',
             retry: '재시도'
         },

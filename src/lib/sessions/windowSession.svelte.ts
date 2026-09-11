@@ -173,8 +173,20 @@ export function createWindowSession(options: WindowSessionOptions) {
 		await writeProgress({ ...progress, deferred });
 	}
 
+	/**
+	 * Main writes the snapshot, and so does the last window left. Startup
+	 * restores the one slot into main whoever wrote it, so a lone detached
+	 * window overwrites nobody, and skipping it brought back main's older tabs
+	 * instead of the ones on screen (#767).
+	 */
+	async function ownsSnapshot(): Promise<boolean> {
+		if (options.isMainWindow) return true;
+		const windows = ((await invoke('list_viewer_windows').catch(() => null)) ?? []) as Array<{ label: string }>;
+		return windows.length === 1 && windows[0].label === appWindow.label;
+	}
+
 	async function persistState() {
-		if (!options.isMainWindow) return;
+		if (!(await ownsSnapshot())) return;
 		await releaseReadableDeferrals();
 		try {
 			await invoke('save_window_state', { json: options.serializeState() });
