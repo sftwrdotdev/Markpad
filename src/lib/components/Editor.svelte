@@ -45,6 +45,7 @@
 		imageEmbed,
 		resolveImageDirectory,
 	} from '../utils/imageEmbed.js';
+	import { routeDroppedFile } from '../utils/fileDrop.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
 	// parse+eval, paid once per window because every window is its own webview)
@@ -1961,50 +1962,67 @@
 		// A no-op on the ⌘V path, where the editor is focused by definition.
 		editor?.focus();
 			try {
-				// check for image in clipboard via Rust
-				const base64Image = await invoke("clipboard_read_image", { macosImageScaling: settings.macosImageScaling }).catch(() => null) as string | null;
-				if (base64Image && tabManager.activeTab?.path) {
-					const ext = "png"; // output of Rust command is always PNG
-					const filename = `paste_${Date.now()}.${ext}`;
+				const tabPath = tabManager.activeTab?.path;
+				const parentDir = tabPath ? documentParentDir(tabPath) : null;
+				if (tabPath && parentDir !== null) {
+					const imgDirName = resolveImageDirectory(
+						settings.imageDirectory,
+						tabPath,
+					);
+					const embeds: string[] = [];
 
-					const tabPath = tabManager.activeTab.path;
-					const parentDir = documentParentDir(tabPath);
-					if (parentDir !== null) {
-						const imgDirName = resolveImageDirectory(
-							settings.imageDirectory,
-							tabPath,
-						);
-						const relPath = (await invoke("save_image", {
+					// A file copied in Explorer or Finder is a path on the clipboard,
+					// not pixels (#768). Read it first and copy it as a drop does, so
+					// it keeps its own name and bytes rather than whatever preview the
+					// file manager put beside it.
+					const files = await invoke("clipboard_read_file_list").catch(() => null) as string[] | null;
+					for (const srcPath of files ?? []) {
+						if (routeDroppedFile(srcPath, "editor") !== "insert") continue;
+						const relPath = (await invoke("copy_file_to_img", {
+							srcPath,
 							parentDir,
-							filename,
-							base64Data: base64Image,
 							imageDirectory: imgDirName,
 						})) as string;
-						const embed = imageEmbed(relPath);
+						embeds.push(imageEmbed(relPath));
+					}
 
-						const position = editor.getPosition();
-						if (position) {
-							const selection = editor.getSelection();
-							const range =
-								selection && !selection.isEmpty()
-									? selection
-									: new monaco.Range(
-											position.lineNumber,
-											position.column,
-											position.lineNumber,
-											position.column,
-										);
-
-							editor.executeEdits("paste-image", [
-								{
-									range,
-									text: embed,
-									forceMoveMarkers: true,
-								},
-							]);
-
-							return;
+					if (embeds.length === 0) {
+						// check for image in clipboard via Rust
+						const base64Image = await invoke("clipboard_read_image", { macosImageScaling: settings.macosImageScaling }).catch(() => null) as string | null;
+						if (base64Image) {
+							const filename = `paste_${Date.now()}.png`; // output of Rust command is always PNG
+							const relPath = (await invoke("save_image", {
+								parentDir,
+								filename,
+								base64Data: base64Image,
+								imageDirectory: imgDirName,
+							})) as string;
+							embeds.push(imageEmbed(relPath));
 						}
+					}
+
+					const position = editor.getPosition();
+					if (embeds.length > 0 && position) {
+						const selection = editor.getSelection();
+						const range =
+							selection && !selection.isEmpty()
+								? selection
+								: new monaco.Range(
+										position.lineNumber,
+										position.column,
+										position.lineNumber,
+										position.column,
+									);
+
+						editor.executeEdits("paste-image", [
+							{
+								range,
+								text: embeds.join("\n"),
+								forceMoveMarkers: true,
+							},
+						]);
+
+						return;
 					}
 				}
 

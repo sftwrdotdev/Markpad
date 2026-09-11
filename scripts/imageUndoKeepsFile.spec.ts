@@ -67,6 +67,7 @@ const { countWords } = await import('../src/lib/utils/wordCount.js');
 const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
 	'../src/lib/utils/imageEmbed.js'
 );
+const { routeDroppedFile } = await import('../src/lib/utils/fileDrop.js');
 
 // ------------------------------------------------- the component, as written
 
@@ -198,13 +199,15 @@ type Backend = {
 	commandsSince: (mark: number) => string[];
 };
 
-function createBackend(clipboardImage: string | null): Backend {
+function createBackend(clipboardImage: string | null, clipboardFiles: string[] | null): Backend {
 	const calls: { cmd: string; args: Record<string, any> }[] = [];
 	return {
 		calls,
 		invoke: async (cmd: string, args: Record<string, any> = {}) => {
 			calls.push({ cmd, args });
 			switch (cmd) {
+				case 'clipboard_read_file_list':
+					return clipboardFiles;
 				case 'clipboard_read_image':
 					return clipboardImage;
 				case 'clipboard_read_text':
@@ -238,7 +241,7 @@ type Component = {
  * the statements that run are the component's own.
  */
 const factorySource = ts.transpileModule(
-	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed) => {
+	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed, routeDroppedFile) => {
 		let wordCount = 0;
 		let currentLanguage = 'markdown';
 		let lineEnding = 'LF';
@@ -312,6 +315,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		resolveImageDir: unknown,
 		parentDir: unknown,
 		embed: unknown,
+		routeDroppedFile: unknown,
 	) => Component;
 
 	return factory(
@@ -325,14 +329,17 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		resolveImageDirectory,
 		documentParentDir,
 		imageEmbed,
+		routeDroppedFile,
 	);
 }
 
 const PASTED_IMAGE = 'iVBORw0KGgo=';
 
-function setup(options: { clipboardImage?: string | null; initial?: string } = {}) {
+function setup(
+	options: { clipboardImage?: string | null; clipboardFiles?: string[] | null; initial?: string } = {},
+) {
 	tabManager.closeAll();
-	const backend = createBackend(options.clipboardImage ?? null);
+	const backend = createBackend(options.clipboardImage ?? null, options.clipboardFiles ?? null);
 	const doc = createDocument(options.initial ?? '');
 	const component = createComponent(backend, doc.editor);
 	doc.listeners.push(...component.contentChange);
@@ -448,6 +455,25 @@ test('pasting an image still copies it and inserts the embed', async () => {
 	assert.equal(save!.args.imageDirectory, 'img');
 	assert.equal(save!.args.base64Data, PASTED_IMAGE);
 	assert.match(doc.text(), /^!\[alt\]\(img\/paste_\d+\.png\)$/);
+});
+
+test('pasting image files copied in a file manager copies them as a drop does (#768)', async () => {
+	// Finder can put a preview image on the clipboard beside the files; the
+	// files are what the user copied, so they win and the preview is not read.
+	const { backend, doc, component } = setup({
+		clipboardFiles: ['/Users/me/pictures/a.png', '/Users/me/notes/other.md', '/Users/me/pictures/b.JPG'],
+		clipboardImage: PASTED_IMAGE,
+	});
+	openTab('/Users/me/notes/report.md');
+
+	await component.paste();
+
+	assert.deepEqual(
+		backend.calls.filter((call) => call.cmd === 'copy_file_to_img').map((call) => call.args.srcPath),
+		['/Users/me/pictures/a.png', '/Users/me/pictures/b.JPG'],
+	);
+	assert.equal(backend.calls.filter((call) => call.cmd === 'save_image').length, 0);
+	assert.equal(doc.text(), '![alt](img/a.png)\n![alt](img/b.JPG)');
 });
 
 test('dropping a file still copies it and inserts the embed', async () => {

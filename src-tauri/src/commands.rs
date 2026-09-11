@@ -724,6 +724,19 @@ pub fn clipboard_read_text() -> Result<String, String> {
     clipboard.get_text().map_err(|e| e.to_string())
 }
 
+/// Files copied in Explorer or Finder: the clipboard holds their paths, not
+/// their pixels (#768). A path that is not valid UTF-8 is skipped, since the
+/// frontend could not hand it back to `copy_file_to_img`.
+#[tauri::command]
+pub fn clipboard_read_file_list() -> Result<Vec<String>, String> {
+    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+    let paths = clipboard.get().file_list().map_err(|e| e.to_string())?;
+    Ok(paths
+        .into_iter()
+        .filter_map(|path| path.into_os_string().into_string().ok())
+        .collect())
+}
+
 #[tauri::command]
 pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
