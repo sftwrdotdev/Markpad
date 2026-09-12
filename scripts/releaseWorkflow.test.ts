@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const workflow = readSource('.github/workflows/build.yml');
 const publishWorkflow = readSource('.github/workflows/publish-packages.yml');
@@ -454,14 +454,100 @@ test('a signing identity that is only half configured stops the release', () => 
 	assert.match(step, /if \[ -z "\$\{MACOS_SIGNING_IDENTITY:-\}" \]; then[\s\S]*?exit 1/);
 });
 
+/** A workflow job as text, comment lines removed. */
+function jobBody(start: string, end: string): string {
+	return sliceBetween(workflow, start, end)
+		.split('\n')
+		.filter((line) => !/^\s*#/.test(line))
+		.join('\n');
+}
+
+test('no unsigned Windows executable can reach the release page', () => {
+	// The Windows halves of the matrix used to `gh release upload` straight from
+	// the runner, which puts the bytes users download on the page before anything
+	// has signed them -- and a later failure leaves them there. They now leave the
+	// matrix as build artifacts, and `sign-windows` is the only place a Windows
+	// file is uploaded.
+	const matrix = jobBody('\n  build:', '\n  sign-windows:');
+	const uploads = matrix.split('\n').filter((line) => /gh release upload/.test(line) && /\.exe/.test(line));
+	assert.deepEqual(uploads, [], 'the build matrix uploads a Windows executable to the release');
+	assert.match(jobBody('\n  sign-windows:', '\n  generate-update-feed:'), /gh release upload "v\$VERSION" windows\/\*\.exe/);
+});
+
+test('one approval covers every Windows executable', () => {
+	// SignPath signs the contents of one Actions artifact and an approver
+	// releases each request by hand, so a request per architecture is two clicks
+	// for one release -- and two chances to sign half of it. The four executables
+	// are collected into one artifact first, and the count is asserted in the job
+	// rather than left to whichever files the matrix happened to produce.
+	const job = jobBody('\n  sign-windows:', '\n  generate-update-feed:');
+	const submits = [...job.matchAll(/uses: signpath\/github-action-submit-signing-request@/g)];
+	assert.equal(submits.length, 1, `expected one signing request per release, found ${submits.length}`);
+	assert.match(job, /pattern: windows-\*/);
+	assert.match(job, /merge-multiple: true/);
+	assert.match(job, /\[ "\$found" -ne 4 \]/);
+	assert.match(job, /\[ "\$signed" -ne 4 \]/);
+});
+
+test('the updater signature describes the bytes Authenticode left behind', () => {
+	// `tauri build` signs the installer, SignPath then rewrites it, and
+	// `*-setup.exe.sig` is a minisign signature over the pre-signing bytes. Ship
+	// that and every Windows install rejects its next update -- the same defect
+	// the repacked AppImage had. So the `.sig` is regenerated from the signed
+	// file, and both the regeneration and the upload come after the signed
+	// executables land.
+	const job = jobBody('\n  sign-windows:', '\n  generate-update-feed:');
+	assert.match(job, /rm -f "\$installer\.sig"[\s\S]*?npm run tauri signer sign -- "\$installer"/);
+	assert.ok(
+		offsetOf(job, 'cp signed/*.exe windows/') < offsetOf(job, 'npm run tauri signer sign'),
+		'the installer is re-signed before the signed one replaces it',
+	);
+	assert.ok(
+		offsetOf(job, 'npm run tauri signer sign') < offsetOf(job, 'gh release upload'),
+		'the release gets the signature that was made before signing',
+	);
+
+	// And the feed that points at those signatures cannot be built from a run
+	// where this job failed: it reads the `.sig` files back off the release.
+	const feed = sliceBetween(workflow, '\n  generate-update-feed:', '\n    steps:');
+	assert.match(feed, /needs: \[create-release, build, sign-windows\]/);
+	assert.match(feed, /needs\.sign-windows\.result == 'success'/);
+});
+
+test('a release without the SignPath token still ships Windows', () => {
+	// #294 again: a workflow that requires signing credentials blocks every
+	// release until someone configures them. Each step that talks to SignPath is
+	// conditional on the token; the upload that puts Windows on the release page
+	// is not, so an unconfigured repository gets exactly today's release.
+	const job = jobBody('\n  sign-windows:', '\n  generate-update-feed:');
+	const upload = sliceFrom(job, '- name: Upload Windows Artifacts');
+	assert.doesNotMatch(upload, /if: env\.SIGNPATH_API_TOKEN/);
+	for (const step of ['Assemble the signing request', 'Upload the signing request', 'Sign the Windows executables', 'Re-sign the signed installers']) {
+		assert.match(
+			sliceFrom(job, `- name: ${step}`),
+			/^\s+if: env\.SIGNPATH_API_TOKEN != ''$/m,
+			`${step} runs whether or not signing is configured`,
+		);
+	}
+
+	// The release notes tell people which of the two happened, from the same
+	// value. A note that says the executables are unsigned, on a release that
+	// signed them, is two places answering one question differently.
+	const notes = sliceBetween(workflow, '- name: Compose the download table', '- name: Create Release');
+	assert.match(notes, /SIGNPATH_API_TOKEN: \$\{\{ secrets\.SIGNPATH_API_TOKEN \}\}/);
+	assert.match(notes, /if \[ -z "\$\{SIGNPATH_API_TOKEN:-\}" \]; then[\s\S]*?Windows SmartScreen Notice[\s\S]*?else[\s\S]*?Windows executables are signed/);
+});
+
 test('RELEASING.md names the signing secrets the workflow reads', () => {
 	// Whoever configures the secrets works from the runbook and never opens the
 	// workflow, so a rename on either side sends them to create a secret nothing
 	// reads. The failure is the quiet one this step is built to allow: the import
 	// exits 0, the build stays green, and the bundle ships unsigned -- which
 	// reaches users as folder access being asked for all over again.
-	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
-	const secrets = [...new Set(step.match(/secrets\.[A-Z_]+/g) ?? [])];
+	const step =
+		sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)') +
+		sliceBetween(workflow, '\n  sign-windows:', '\n  generate-update-feed:');
+	const secrets = [...new Set(step.match(/secrets\.[A-Z_]+/g) ?? [])].filter((s) => s !== 'secrets.GITHUB_TOKEN');
 	assert.ok(secrets.length > 0, 'the signing step reads no secrets at all');
 	for (const secret of secrets) {
 		const name = secret.slice('secrets.'.length);

@@ -5,6 +5,10 @@ on:
 
 permissions:
   contents: write
+  # The SignPath action downloads the artifact it submits through the Actions
+  # API. `permissions:` being spelled out at all makes every scope not named
+  # here `none`, so the read has to be named.
+  actions: read
 
 # One release build at a time, per version.
 #
@@ -151,6 +155,12 @@ jobs:
       # names that carry no version.
       - name: Compose the download table
         id: download_table
+        # The Windows note below says the executables are unsigned, and
+        # `sign-windows` signs them only when this token is set. Two places
+        # answering the same question from one value, rather than a note that
+        # has to be remembered when signing is turned on.
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
         run: |
           VERSION='${{ steps.get_version.outputs.version }}'
           BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${VERSION}"
@@ -169,9 +179,15 @@ jobs:
             echo "| | x86-64 | [\`Markpad_${VERSION}_amd64.deb\`](${BASE}/Markpad_${VERSION}_amd64.deb) | Debian, Ubuntu |"
             echo "| | x86-64 | [\`Markpad-${VERSION}-1.x86_64.rpm\`](${BASE}/Markpad-${VERSION}-1.x86_64.rpm) | Fedora, RHEL, openSUSE |"
             echo
-            echo '> [!NOTE]'
-            echo '> **Windows SmartScreen Notice**: Windows executables are not signed with an Authenticode certificate, so SmartScreen shows them as an unrecognized app. Click *"More info"* → *"Run anyway"*. The antivirus heuristic that used to flag the portable `.exe` no longer does.'
-            echo
+            if [ -z "${SIGNPATH_API_TOKEN:-}" ]; then
+              echo '> [!NOTE]'
+              echo '> **Windows SmartScreen Notice**: Windows executables are not signed with an Authenticode certificate, so SmartScreen shows them as an unrecognized app. Click *"More info"* → *"Run anyway"*. The antivirus heuristic that used to flag the portable `.exe` no longer does.'
+              echo
+            else
+              echo '> [!NOTE]'
+              echo '> **Windows executables are signed** with an Authenticode certificate provided by [SignPath Foundation](https://signpath.org). SmartScreen can still warn until a new certificate has been seen enough times; the publisher it names is the certificate rather than *Unknown publisher*.'
+              echo
+            fi
             echo '> [!NOTE]'
             echo '> **macOS Gatekeeper Notice**: the `.dmg` is not yet notarized, so the first launch is refused — *"Markpad cannot be opened because the developer cannot be verified"* — and the dialog offers only **Cancel** and **Move to Trash**. Two ways past it, both one-time:'
             echo '>'
@@ -307,17 +323,29 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri build
 
+      # Windows leaves the matrix as a build artifact rather than as a release
+      # asset. Authenticode signing is one request over all four executables
+      # (#562) and the two architectures are two jobs, so the release upload
+      # happens once both have finished, in `sign-windows`.
       - name: Upload Windows x64 Artifacts
         if: matrix.os == 'windows' && matrix.arch == 'x64'
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.create-release.outputs.version }}"
-          cp src-tauri/target/release/Markpad.exe "Markpad_${VERSION}_x64.exe"
-          gh release upload v$VERSION "Markpad_${VERSION}_x64.exe" --clobber
-          find src-tauri/target/release/bundle/nsis -name "*-setup.exe" -exec gh release upload v$VERSION {} --clobber \;
-          find src-tauri/target/release/bundle/nsis -name "*-setup.exe.sig" -exec gh release upload v$VERSION {} --clobber \;
+          mkdir -p windows-build
+          cp src-tauri/target/release/Markpad.exe "windows-build/Markpad_${VERSION}_x64.exe"
+          find src-tauri/target/release/bundle/nsis -name "*-setup.exe" -exec cp {} windows-build/ \;
+          find src-tauri/target/release/bundle/nsis -name "*-setup.exe.sig" -exec cp {} windows-build/ \;
+
+      - name: Hand the Windows x64 build to the signing job
+        if: matrix.os == 'windows' && matrix.arch == 'x64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-x64
+          path: windows-build/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
 
       # --- Windows Build (ARM64) ---
       - name: Build Windows ARM64
@@ -330,14 +358,22 @@ jobs:
       - name: Upload Windows ARM64 Artifacts
         if: matrix.os == 'windows' && matrix.arch == 'arm64'
         shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ needs.create-release.outputs.version }}"
-          cp src-tauri/target/aarch64-pc-windows-msvc/release/Markpad.exe "Markpad_${VERSION}_arm64.exe"
-          gh release upload v$VERSION "Markpad_${VERSION}_arm64.exe" --clobber
-          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe" -exec gh release upload v$VERSION {} --clobber \;
-          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe.sig" -exec gh release upload v$VERSION {} --clobber \;
+          mkdir -p windows-build
+          cp src-tauri/target/aarch64-pc-windows-msvc/release/Markpad.exe "windows-build/Markpad_${VERSION}_arm64.exe"
+          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe" -exec cp {} windows-build/ \;
+          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe.sig" -exec cp {} windows-build/ \;
+
+      - name: Hand the Windows ARM64 build to the signing job
+        if: matrix.os == 'windows' && matrix.arch == 'arm64'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-arm64
+          path: windows-build/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
 
       # --- Linux Build ---
       - name: Pre-download AppImage Dependencies
@@ -504,16 +540,143 @@ jobs:
           find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
           find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
 
-  generate-update-feed:
+  # Authenticode signing for Windows, through SignPath Foundation (#562).
+  #
+  # A job of its own because one signing request covers all four executables
+  # and the two architectures are two matrix entries. SignPath signs the
+  # contents of one Actions artifact, an approver clicks once, and the signed
+  # files come back; two requests would be two approvals for one release.
+  #
+  # It is also where Windows reaches the release page at all. The matrix now
+  # uploads a build artifact instead, so an approval that never comes leaves the
+  # draft without Windows assets rather than with unsigned ones.
+  #
+  # Without SIGNPATH_API_TOKEN the job still runs and uploads what the matrix
+  # built, unsigned. Same shape as the macOS certificate and for the same reason
+  # (#294): a release must not be blocked on credentials nobody has configured.
+  sign-windows:
     needs: [create-release, build]
+    runs-on: ubuntu-24.04
+    env:
+      # At job level so the steps below can branch on whether signing is
+      # configured -- `if:` cannot read `secrets` directly.
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+      VERSION: ${{ needs.create-release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # For `tauri signer sign`, which regenerates the updater signatures below.
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Collect the Windows builds
+        uses: actions/download-artifact@v8
+        with:
+          pattern: windows-*
+          merge-multiple: true
+          path: windows
+
+      # The signing request is the four executables and nothing else: SignPath's
+      # artifact configuration names them by those file names, and the `.sig`
+      # files beside them are minisign signatures for the updater, which
+      # Authenticode has nothing to do with.
+      - name: Assemble the signing request
+        if: env.SIGNPATH_API_TOKEN != ''
+        run: |
+          set -euo pipefail
+          mkdir -p to-sign
+          cp windows/*.exe to-sign/
+          found=$(ls to-sign | wc -l)
+          if [ "$found" -ne 4 ]; then
+            echo "::error::expected four Windows executables to sign, found $found" >&2
+            exit 1
+          fi
+
+      # Named outside `windows-*` on purpose: a re-run of this job downloads
+      # that pattern, and an artifact from the previous attempt would come back
+      # as a second copy of the same four file names.
+      - name: Upload the signing request
+        id: signing_request
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: signing-request
+          path: to-sign/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      - name: Sign the Windows executables
+        if: env.SIGNPATH_API_TOKEN != ''
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: '005f9e34-9ae9-453d-998e-d73e2390ce6b'
+          project-slug: 'markpad'
+          signing-policy-slug: 'release-signing'
+          artifact-configuration-slug: 'initial'
+          github-artifact-id: ${{ steps.signing_request.outputs.artifact-id }}
+          wait-for-completion: true
+          # The request waits for an approver to click, so the default ten
+          # minutes is a timeout on a person rather than on a service. An hour
+          # makes an unattended release pause instead of fail; a job that does
+          # time out is re-runnable, because nothing has been uploaded yet.
+          wait-for-completion-timeout-in-seconds: '3600'
+          output-artifact-directory: 'signed'
+
+      # Authenticode rewrites the executable, so the `.sig` `tauri build`
+      # produced for each installer no longer describes the bytes the updater
+      # downloads -- every Windows install would reject its next update. Same
+      # problem the repacked AppImage has, and the same fix: re-sign, then let
+      # generate-update-feed read the signatures back off the release.
+      - name: Re-sign the signed installers
+        if: env.SIGNPATH_API_TOKEN != ''
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          signed=$(ls signed/*.exe | wc -l)
+          if [ "$signed" -ne 4 ]; then
+            echo "::error::SignPath returned $signed executables, expected four" >&2
+            exit 1
+          fi
+          cp signed/*.exe windows/
+          for installer in windows/*-setup.exe; do
+            rm -f "$installer.sig"
+            npm run tauri signer sign -- "$installer"
+            if [ ! -f "$installer.sig" ]; then
+              echo "::error::signer sign did not produce $installer.sig" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload Windows Artifacts
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          ls -la windows
+          gh release upload "v$VERSION" windows/*.exe windows/*.exe.sig --clobber
+
+  generate-update-feed:
+    needs: [create-release, build, sign-windows]
     # Pinned like every other runner that this pipeline names. This job only runs
     # `gh` and `jq`, so the version buys little on its own -- what it buys is that
     # `ubuntu-latest` moving is a thing that happens to us with a commit rather
     # than without one.
     runs-on: ubuntu-24.04
     # The updater feed must describe a complete release. Do not publish an
-    # update if any platform build failed or was cancelled.
-    if: ${{ always() && needs.create-release.result == 'success' && needs.build.result == 'success' }}
+    # update if any platform build failed or was cancelled -- including the
+    # Windows signing job, which is where the two Windows `.sig` files this job
+    # reads are uploaded.
+    if: ${{ always() && needs.create-release.result == 'success' && needs.build.result == 'success' && needs.sign-windows.result == 'success' }}
     steps:
       - name: Generate latest.json
         env:

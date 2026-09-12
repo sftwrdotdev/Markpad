@@ -92,6 +92,29 @@ Apple can revoke a Developer ID certificate. Nobody can revoke this one. Two con
 
 Back it up in the same place as the minisign private key, and treat it with the same care.
 
+### 8. Optional: Authenticode signing for Windows
+
+The certificate comes from [SignPath Foundation](https://signpath.org), free for open-source projects, and it is what stops SmartScreen calling Markpad an unrecognized app from an unknown publisher ([#334](https://github.com/sftwrdotdev/Markpad/issues/334), [#466](https://github.com/sftwrdotdev/Markpad/issues/466), [#562](https://github.com/sftwrdotdev/Markpad/issues/562)). Skip it and Windows releases behave exactly as they did before.
+
+Set up in [app.signpath.io](https://app.signpath.io), once:
+
+1. Install the **SignPath GitHub App** on `sftwrdotdev` with access to this repository, and add **GitHub.com** as a trusted build system linked to the project. Both are how SignPath establishes that the artifact came from a workflow run rather than from whoever holds the API token.
+2. The **artifact configuration** describes the artifact the workflow submits — a ZIP holding the four executables, each `<pe-file>` with `<authenticode-sign/>`: `Markpad_*_x64-setup.exe`, `Markpad_*_x64.exe`, `Markpad_*_arm64-setup.exe`, `Markpad_*_arm64.exe`.
+3. Put yourself in the signing policy's **approvers**. Every release stops for that click.
+4. Create a **CI user with submitter permission** and generate an API token for it.
+
+**Add one secret** (Settings → Secrets and variables → Actions):
+
+| Name | Value |
+|---|---|
+| `SIGNPATH_API_TOKEN` | the CI user's API token |
+
+The other four values — organization id, project slug, signing policy slug, artifact configuration slug — are not secrets and are written into the `sign-windows` job in [`build.yml`](.github/workflows/build.yml). Change them there.
+
+With the secret set, `sign-windows` submits one request for all four executables and waits up to an hour for approval; nothing is uploaded before it comes back, so a timeout is a re-run of one job rather than a half-signed release. Without it, the job uploads what the matrix built, unsigned, and the release notes keep the SmartScreen note.
+
+**Authenticode changes the installer's bytes, so `*-setup.exe.sig` is regenerated after signing** — that file is the updater's minisign signature, and a stale one makes every Windows install reject its next update. This is why signing lives in a job of its own rather than in the build matrix.
+
 ## Per-release workflow
 
 The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. `scripts/releaseWorkflow.test.ts` guards that.
@@ -122,12 +145,13 @@ The workflow uses `npm ci`, so its installed dependency graph is exactly the com
 
    Only one release build runs at a time — a second dispatch queues behind the
    first instead of racing it to the same draft.
-4. **Wait** ~30 min for matrix builds to finish, plus ~2 min for `generate-update-feed`.
+4. **Wait** ~30 min for matrix builds to finish, plus ~2 min for `generate-update-feed`. Once one-time setup step 8 is done, the `sign-windows` job pauses in between until you approve the signing request in SignPath — it emails you, and the job's log holds the link.
 5. **Open the draft release** on the [Releases page](https://github.com/sftwrdotdev/Markpad/releases). Verify the assets:
    - **macOS**: `*.dmg`, `*.app.tar.gz`, `*.app.tar.gz.sig`
      - Once one-time setup step 6 is done, check the signature took as well: mount the `.dmg` and run `codesign -d -r-` against the `.app` inside it. It must print `certificate leaf = H"…"`. `code object is not signed at all` means the secrets are missing or the import step exited early — the build is green either way, and shipping it costs every macOS user their folder grants again.
    - **Windows x64**: `Markpad_<version>_x64.exe` (portable), `*_x64-setup.exe` (NSIS installer), `*_x64-setup.exe.sig`
    - **Windows ARM64**: `Markpad_<version>_arm64.exe` (portable), `*_arm64-setup.exe` (NSIS installer), `*_arm64-setup.exe.sig`
+     - Once one-time setup step 8 is done, check the signature took: right-click a downloaded `.exe` → *Properties* → *Digital Signatures*, which must list a certificate. An unsigned build is green either way, and the release notes will have said the executables are signed.
    - **Linux**: `*.deb`, `*.rpm`, `*.AppImage`, `*.AppImage.sig`
    - **Update feed**: `latest.json` (one entry per successfully built platform)
 6. **Click "Publish release"** — this is the gate. It activates auto-update for all clients pointing at `releases/latest/download/latest.json`, **and** it starts [`publish-packages.yml`](.github/workflows/publish-packages.yml), which pushes to Chocolatey and the Snap Store.
@@ -163,6 +187,8 @@ Say so in that release's notes, e.g.:
 | Build fails: "missing `TAURI_SIGNING_PRIVATE_KEY`" | Step 2 of one-time setup wasn't done, or Secret name doesn't match. |
 | macOS build fails at `security import` | The `.p12` was exported by a recent `openssl` with its default cipher, which `security` cannot read (it reports a MAC failure, not a cipher failure). Re-export from Keychain Access, or pass `-legacy -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1`. |
 | macOS build logs `no identity found` | The certificate is a CA rather than a leaf — `codesign` will not sign with it. Keychain Access's *Create a Certificate…* produces the right kind; `openssl req -x509` needs an explicit `basicConstraints=critical,CA:FALSE`. |
+| `sign-windows` fails with a timeout | Nobody approved the signing request within the hour. Nothing was uploaded; re-run the job and approve it. |
+| `sign-windows` fails before submitting | Usually the SignPath GitHub App is not installed on the repository, or GitHub.com is not a trusted build system for the project — one-time setup step 8.1. |
 | `generate-update-feed` succeeds but `latest.json` lacks a platform | That platform's matrix build failed silently (or the `.sig` file wasn't produced). Check the failed build's logs. |
 | `latest.json` missing entirely | The `generate-update-feed` job didn't run — usually because no `*.sig` files were uploaded. Check the `Upload * Artifacts` steps. |
 | Users don't see the update | (1) Did you click *Publish release*? Drafts aren't visible to clients. (2) Is the user on a version older than the first auto-update-capable release? They need a one-time manual reinstall. |
@@ -174,5 +200,5 @@ Say so in that release's notes, e.g.:
 ## Out of scope (not handled by this workflow)
 
 - **Apple Developer ID code-signing & notarization** — not done, and one-time setup step 6 is not a substitute: a self-signed certificate gives the bundle a stable identity for TCC, but macOS still shows a Gatekeeper warning on first launch because the app is not notarized. Minisign verification by the updater is independent of both.
-- **Windows Authenticode signing** — neither the portable `.exe` nor the `*-setup.exe` NSIS installer is signed with a code-signing certificate. Users may see a SmartScreen warning. Minisign verification by the updater is independent.
+- **Windows Authenticode signing without SignPath** — one-time setup step 8 is the only path wired here. With it unconfigured, neither the portable `.exe` nor the `*-setup.exe` NSIS installer is signed, and users may see a SmartScreen warning. Minisign verification by the updater is independent of both.
 - **Retroactive signing** of older releases.
