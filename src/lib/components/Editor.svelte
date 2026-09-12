@@ -2709,6 +2709,13 @@
 		min-height: 20px;
 	}
 
+	/* This bar's height must not depend on its content. Monaco cancels an
+	   in-progress drag-selection whenever the editor's height changes
+	   (`MouseHandler.onConfigurationChanged` -> `stopMonitoring`), and the bar
+	   sits directly above the editor. Without `nowrap` the items wrapped their
+	   text in a narrow window the moment a selection added the "N selected"
+	   item, the bar grew a line, the editor lost one, and the drag the user was
+	   still making died where it stood (#762). */
 	.status-bar {
 		padding: 0 10px;
 		font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -2718,10 +2725,19 @@
 		color: var(--text-primary);
 		display: flex;
 		align-items: center;
-		justify-content: flex-end;
 		min-height: 22px;
 		gap: 20px;
 		user-select: none;
+		white-space: nowrap;
+		overflow: hidden;
+	}
+
+	/* Right-aligns the row while it fits, and drops the overflow off the right
+	   end when it does not. `justify-content: flex-end` would clip the other
+	   end, taking the cursor position — the one reading that changes as you
+	   work — before the encoding, which never changes at all. */
+	.status-bar > .status-item:first-child {
+		margin-left: auto;
 	}
 
 	.status-item {
