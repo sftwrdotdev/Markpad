@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import ts from 'typescript';
+
+import { getMarkdownLinkTarget } from '../src/lib/utils/markdownLinks.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
 import { functionSource, offsetOf, readSource } from './sourceTree.js';
 
@@ -168,4 +171,80 @@ test('an asset URL is never treated as a link to a local file', () => {
 	// Ordinary links keep working: this guard must not swallow them.
 	assert.equal(resolveLocalFileLinkPath('./data.csv', CURRENT), '/notes/data.csv');
 	assert.equal(resolveLocalFileLinkPath('https://example.com/page', CURRENT), null);
+});
+
+// --- the preview claims the click before the router does ----------------------
+
+/*
+ * #772: `[PDF_1](Files/PDF_1.pdf)` opened the file AND left the app on a 404
+ * page that could only be closed from Task Manager.
+ *
+ * Both, from one click, because three listeners see it in this order:
+ *
+ *   <article>            handleLinkClick      — declined a non-markdown link
+ *   document.documentElement   SvelteKit's router  — `if (event.defaultPrevented) return`
+ *   document             handleDocumentClick  — resolves the path, calls openPath
+ *
+ * The router claimed the undecided click and navigated client-side to a route
+ * an SPA does not have, so its 404 page replaced the app — the title bar with
+ * it, which on Windows (`decorations(false)`) is the only way to close the
+ * window. `handleDocumentClick` then ran and opened the PDF, its own
+ * `preventDefault()` two listeners too late.
+ *
+ * A markdown link never had the bug because its branch calls
+ * `stopPropagation()`, so the event never reaches the router at all.
+ */
+
+const linkClick = ts.transpileModule(functionSource(viewer, 'handleLinkClick'), {
+	compilerOptions: { target: ts.ScriptTarget.ES2022 },
+}).outputText;
+
+const handleLinkClick = new Function(
+	'deps',
+	`"use strict";
+	const {
+		tooltip, foldHost, toggleFoldFromClick, getRelativeMarkdownTarget, opensInNewTab,
+		settings, openMarkdownTargetInNewTab, openRelativeMarkdownTarget, scrollToAnchorWhenReady,
+	} = deps;
+	let zoomData;
+	${linkClick}
+	return handleLinkClick;`,
+)({
+	tooltip: { show: true },
+	foldHost: null,
+	toggleFoldFromClick: () => false,
+	getRelativeMarkdownTarget: getMarkdownLinkTarget,
+	opensInNewTab: () => false,
+	settings: { osType: 'macos', linksOpenInNewTab: false },
+	openMarkdownTargetInNewTab: async () => {},
+	openRelativeMarkdownTarget: async () => {},
+	scrollToAnchorWhenReady: async () => {},
+}) as (e: unknown) => Promise<void>;
+
+async function clickLink(href: string) {
+	const anchor = { getAttribute: () => href };
+	const result = { defaultPrevented: false, propagationStopped: false };
+	await handleLinkClick({
+		detail: 1,
+		target: { closest: (selector: string) => (selector === 'a' ? anchor : null) },
+		preventDefault: () => { result.defaultPrevented = true; },
+		stopPropagation: () => { result.propagationStopped = true; },
+	});
+	return result;
+}
+
+test('a link the document handler opens leaves the preview already claimed', async () => {
+	for (const href of ['Files/PDF_1.pdf', './Files/MP4_1.mp4', '/srv/data.csv', 'https://example.com']) {
+		const { defaultPrevented, propagationStopped } = await clickLink(href);
+		assert.equal(defaultPrevented, true, `${href} must not reach the router undecided`);
+		// Claimed, not swallowed: `handleDocumentClick` is one listener further
+		// up and is the thing that opens it.
+		assert.equal(propagationStopped, false, `${href} must still reach the document handler`);
+	}
+});
+
+test('a markdown link is handled here and goes no further', async () => {
+	const { defaultPrevented, propagationStopped } = await clickLink('./other.md');
+	assert.equal(defaultPrevented, true);
+	assert.equal(propagationStopped, true);
 });
