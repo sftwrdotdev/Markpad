@@ -1503,14 +1503,10 @@ pub(crate) fn block_fold_ranges(markdown: &str) -> Vec<FoldRange> {
                 _ => return None,
             }
             let (start, mut end) = (data.sourcepos.start.line, data.sourcepos.end.line);
-            while end > start
-                && lines
-                    .get(end - 1)
-                    .map_or(true, |line| line.trim().is_empty())
-            {
+            while end > start && lines.get(end - 1).is_none_or(|line| line.trim().is_empty()) {
                 end -= 1;
             }
-            (end > start).then(|| FoldRange {
+            (end > start).then_some(FoldRange {
                 start: start as u32,
                 end: end as u32,
             })
