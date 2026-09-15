@@ -19,6 +19,7 @@
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
+	import { installVimClipboardRegisters } from '../utils/vimClipboardRegisters.js';
 	import { countWords } from '../utils/wordCount.js';
 	import {
 		headingLinkContext,
@@ -2307,6 +2308,10 @@
 				// effect, and it is idempotent. See vimScrollCommands.ts for what
 				// 0.4.4 does to `zz`, `zt`, `zb`, `z.`, `z-` and `z<CR>` (#104).
 				installVimScrollCommands(VimMode);
+				// Same reason, for `"+` and `"*` (#775).
+				installVimClipboardRegisters(VimMode, (text) => {
+					invoke('clipboard_write_text', { text }).catch(console.error);
+				});
 				if (disposed) return;
 				vim = initVimMode(currentEditor, currentStatusNode);
 			});
