@@ -1088,10 +1088,10 @@
 
 	<div class="window-controls-right" data-tauri-drag-region>
 		{#if !isMac}
-			<button class="control-btn" onclick={() => appWindow.minimize()} aria-label={t('common.minimize', currentLanguage)}>
+			<button class="control-btn" onclick={() => invoke('title_bar_action', { action: 'minimize' }).catch(console.error)} aria-label={t('common.minimize', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6" /></svg>
 			</button>
-			<button class="control-btn" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize', currentLanguage)}>
+			<button class="control-btn" onclick={() => invoke('title_bar_action', { action: 'toggle_maximize' }).catch(console.error)} aria-label={t('common.maximize', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5" /></svg>
 			</button>
 			<button

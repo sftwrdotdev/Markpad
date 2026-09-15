@@ -59,7 +59,7 @@ encoding_rs = "0.8"
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
 webview2-com = "0.38.2"
-windows = "0.61.3"
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [profile.release]
 panic = "abort" # Strip expensive panic clean-up logic
