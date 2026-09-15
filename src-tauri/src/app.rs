@@ -218,6 +218,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::title_bar_action,
             commands::clipboard_write_text,
             commands::clipboard_read_text,
             commands::clipboard_read_image,

@@ -80,6 +80,62 @@ pub async fn create_transfer_window(app: AppHandle, token: String) -> Result<(),
     window_runtime::create_transfer_window(app, token)
 }
 
+/// What the Windows and Linux title bar buttons ask for.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TitleBarAction {
+    Minimize,
+    ToggleMaximize,
+}
+
+/// The title bar's minimize and maximize buttons (#776). On Windows they post
+/// the `WM_SYSCOMMAND` the taskbar and the system menu send, so Windows runs
+/// the minimize and maximize itself. Tauri's `minimize()` goes through tao,
+/// which on a maximized window calls `ShowWindow(SW_MAXIMIZE)` and then
+/// `SW_MINIMIZE`; the reporter saw that flash to the restored size four times
+/// in five, and never when minimizing from the taskbar. Elsewhere the Tauri
+/// calls are unchanged.
+#[tauri::command]
+pub fn title_bar_action(window: tauri::Window, action: TitleBarAction) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            IsZoomed, PostMessageW, SC_MAXIMIZE, SC_MINIMIZE, SC_RESTORE, WM_SYSCOMMAND,
+        };
+
+        let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+        let command = match action {
+            TitleBarAction::Minimize => SC_MINIMIZE,
+            TitleBarAction::ToggleMaximize if unsafe { IsZoomed(hwnd) }.as_bool() => SC_RESTORE,
+            TitleBarAction::ToggleMaximize => SC_MAXIMIZE,
+        };
+        unsafe {
+            PostMessageW(
+                Some(hwnd),
+                WM_SYSCOMMAND,
+                WPARAM(command as usize),
+                LPARAM(0),
+            )
+        }
+        .map_err(|e| e.to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        match action {
+            TitleBarAction::Minimize => window.minimize(),
+            TitleBarAction::ToggleMaximize
+                if window.is_maximized().map_err(|e| e.to_string())? =>
+            {
+                window.unmaximize()
+            }
+            TitleBarAction::ToggleMaximize => window.maximize(),
+        }
+        .map_err(|e| e.to_string())
+    }
+}
+
 /// Returns `(html, content, is_full, lossy, encoding)`. See `DecodedText`: the
 /// frontend refuses to write a `lossy` buffer back over its file, and saves a
 /// faithful one as the `encoding` it came in.
