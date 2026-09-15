@@ -7,7 +7,10 @@ use crate::fs_safety::{
     atomic_write, canonical_identity, encode_text, ensure_path_within_root, read_to_string_lossy,
     resolve_image_directory, safe_path_component,
 };
-use crate::markdown::{build_markdown_preview, convert_markdown, heading_anchors, HeadingAnchor};
+use crate::markdown::{
+    block_fold_ranges, build_markdown_preview, convert_markdown, heading_anchors, FoldRange,
+    HeadingAnchor,
+};
 use crate::window_runtime::{self, WatcherState};
 use std::fs;
 use std::path::Path;
@@ -102,6 +105,14 @@ pub async fn open_markdown_preview(
 #[tauri::command]
 pub async fn list_heading_anchors(markdown: String) -> Result<Vec<HeadingAnchor>, String> {
     tauri::async_runtime::spawn_blocking(move || Ok(heading_anchors(&markdown)))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+}
+
+/// Off the main thread like `markdown_semantic_spans`: Monaco asks on every edit.
+#[tauri::command]
+pub async fn list_fold_ranges(markdown: String) -> Result<Vec<FoldRange>, String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(block_fold_ranges(&markdown)))
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
 }

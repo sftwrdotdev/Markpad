@@ -226,6 +226,7 @@ pub fn run() {
             commands::render_markdown,
             commands::markdown_semantic_spans,
             commands::list_heading_anchors,
+            commands::list_fold_ranges,
             window_runtime::send_markdown_path,
             commands::read_file_content_checked,
             commands::canonicalize_path,
