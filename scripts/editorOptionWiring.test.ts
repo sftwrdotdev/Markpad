@@ -266,11 +266,18 @@ test('custom copy keeps Monaco\'s whole-line copy on an empty selection', () => 
 	);
 
 	// One writer, so cut and copy cannot drift apart, and the whole-line rule
-	// above cannot be implemented twice with two different answers.
+	// above cannot be implemented twice with two different answers. The third
+	// call is Vim's `"+` register (#775): it writes the text monaco-vim already
+	// chose, so it never derives text from a selection and cannot disagree.
 	assert.equal(
 		count(editor, /invoke\('clipboard_write_text'/g),
-		2,
-		'clipboard_write_text is called from copyToClipboard and cutToClipboard, nowhere else',
+		3,
+		'clipboard_write_text is called from copyToClipboard, cutToClipboard and the Vim clipboard register, nowhere else',
+	);
+	assert.match(
+		editor,
+		/installVimClipboardRegisters\(VimMode, \(text\) => \{\s*invoke\('clipboard_write_text', \{ text \}\)/,
+		'the third call is the Vim register writer',
 	);
 	assert.match(functionSource(editor, 'copyToClipboard'), /clipboardTextForSelection\(\)/);
 	assert.match(functionSource(editor, 'cutToClipboard'), /clipboardTextForSelection\(\)/);

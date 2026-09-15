@@ -411,6 +411,8 @@ test('Editor.svelte installs the commands on the module it just imported', async
 
 	const run = new Function(
 		'installVimScrollCommands',
+		'installVimClipboardRegisters',
+		'invoke',
 		'initVimMode',
 		'VimMode',
 		'currentEditor',
@@ -431,11 +433,24 @@ test('Editor.svelte installs the commands on the module it just imported', async
 		return { dispose() {} };
 	};
 
-	const vim = run(install, initVimMode, VimMode, {}, {}, false);
-	assert.deepEqual(calls, ['install', 'initVimMode'], 'the commands must be in place before the adapter attaches');
+	const written: unknown[] = [];
+	const installClipboard = (mode: unknown, write: (text: string) => void) => {
+		assert.equal(mode, VimMode, 'the clipboard registers go on the same module');
+		calls.push('clipboard');
+		write('yanked');
+		return true;
+	};
+	const invoke = (command: string, args: unknown) => {
+		written.push([command, args]);
+		return Promise.resolve();
+	};
+
+	const vim = run(install, installClipboard, invoke, initVimMode, VimMode, {}, {}, false);
+	assert.deepEqual(calls, ['install', 'clipboard', 'initVimMode'], 'the commands must be in place before the adapter attaches');
 	assert.ok(vim, 'the adapter is still handed back for disposal');
+	assert.deepEqual(written, [['clipboard_write_text', { text: 'yanked' }]], '"+ writes through the Rust clipboard');
 
 	calls.length = 0;
-	assert.ok(!run(install, initVimMode, VimMode, {}, {}, true), 'a disposed effect attaches nothing');
-	assert.deepEqual(calls, ['install'], 'a disposed effect still patches the package');
+	assert.ok(!run(install, installClipboard, invoke, initVimMode, VimMode, {}, {}, true), 'a disposed effect attaches nothing');
+	assert.deepEqual(calls, ['install', 'clipboard'], 'a disposed effect still patches the package');
 });
