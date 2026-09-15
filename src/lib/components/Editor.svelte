@@ -7,7 +7,7 @@
 	import {
 		INLINE_WRAP_LOOKAROUND,
 		inlineWrapEdit,
-		inlineWrapSelectionEnd,
+		inlineWrapSelectionAfter,
 		toggleLineMarker,
 		type InlineWrapToolId,
 		type LineMarkerToolId,
@@ -941,6 +941,7 @@
 		// clicking a word inside `~~word~~` selects `word`. `inlineWrapEdit` reads
 		// the few characters on either side and says how far the edit has to grow
 		// to reach them — 0 whenever growing would break a neighbouring pair.
+		const selected = model.getValueInRange(selection);
 		const { reach, text } = inlineWrapEdit(
 			id,
 			model.getValueInRange({
@@ -949,7 +950,7 @@
 				endLineNumber: selection.startLineNumber,
 				endColumn: selection.startColumn,
 			}),
-			model.getValueInRange(selection),
+			selected,
 			model.getValueInRange({
 				startLineNumber: selection.endLineNumber,
 				startColumn: selection.endColumn,
@@ -964,7 +965,7 @@
 		// clamps columns 3-7 to 3-5, leaving `rd` selected, and a second click
 		// wraps that instead — `wo~~rd~~`.
 		const startColumn = selection.startColumn - reach;
-		const end = inlineWrapSelectionEnd(startColumn, text);
+		const after = inlineWrapSelectionAfter(id, startColumn, selected, text);
 
 		editor.executeEdits(
 			"toggle-format",
@@ -982,9 +983,9 @@
 			[
 				new monaco.Selection(
 					selection.startLineNumber,
-					startColumn,
-					selection.startLineNumber + end.lineOffset,
-					end.column,
+					after.startColumn,
+					selection.startLineNumber + after.lineOffset,
+					after.endColumn,
 				),
 			],
 		);
@@ -1006,7 +1007,16 @@
 				? text.slice(startTag.length, -endTag.length)
 				: `${startTag}${text}${endTag}`;
 
-		editor.executeEdits("toggle-format", [{ range: selection, text: newText }]);
+		// Nothing selected: the caret goes between the tags, as it does between
+		// the Markdown markers above (#778).
+		const caret = startTag.length + selection.startColumn;
+		editor.executeEdits(
+			"toggle-format",
+			[{ range: selection, text: newText }],
+			selection.isEmpty()
+				? [new monaco.Selection(selection.startLineNumber, caret, selection.startLineNumber, caret)]
+				: undefined,
+		);
 	};
 
 	const transformSelectedLines = (

@@ -12,7 +12,7 @@ import {
 	normalizeEditorToolbarHidden,
 	normalizeEditorToolbarOrder,
 	inlineWrapEdit,
-	inlineWrapSelectionEnd,
+	inlineWrapSelectionAfter,
 	toggleInlineWrap,
 	toggleLineMarker,
 	type InlineWrapToolId,
@@ -463,10 +463,11 @@ function clickTwice(id: InlineWrapToolId, buffer: string, selected: string): str
 	for (let click = 0; click < 2; click += 1) {
 		const edit = inlineWrapEdit(id, text.slice(0, start), text.slice(start, end), text.slice(end));
 		const from = start - edit.reach;
+		const after = inlineWrapSelectionAfter(id, from, text.slice(start, end), edit.text);
 		text = text.slice(0, from) + edit.text + text.slice(end + edit.reach);
-		// What the edit wrote is what is selected when the next click arrives.
-		start = from;
-		end = from + edit.text.length;
+		// What the edit leaves selected is what the next click arrives with.
+		start = after.startColumn;
+		end = after.endColumn;
 	}
 	return text;
 }
@@ -495,14 +496,52 @@ test('clicking the same button twice puts the line back', () => {
 	}
 });
 
-test('the edit reports the end of what it wrote', () => {
+test('the edit selects what it wrote', () => {
 	// Single line: the column after the text. Columns are 1-based.
-	assert.deepEqual(inlineWrapSelectionEnd(3, 'word'), { lineOffset: 0, column: 7 });
-	assert.deepEqual(inlineWrapSelectionEnd(1, ''), { lineOffset: 0, column: 1 });
+	assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 3, 'word', 'word'), {
+		startColumn: 3,
+		lineOffset: 0,
+		endColumn: 7,
+	});
+	// Stripping an empty pair leaves a caret where the pair was.
+	assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 1, '', ''), {
+		startColumn: 1,
+		lineOffset: 0,
+		endColumn: 1,
+	});
 
 	// A selection can span lines, and then the end column belongs to the last
 	// line of the replacement, not to the column the edit started at.
-	assert.deepEqual(inlineWrapSelectionEnd(5, '**one\ntwo**'), { lineOffset: 1, column: 6 });
+	assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 5, 'one\ntwo', '**one\ntwo**'), {
+		startColumn: 5,
+		lineOffset: 1,
+		endColumn: 6,
+	});
+});
+
+test('with nothing selected, typing goes between the markers and a second click removes them', () => {
+	// #778: the empty pair used to be selected, so the first keystroke replaced
+	// `****` instead of landing inside it.
+	for (const [id, typed] of [
+		['fmt-bold', 'a **x**b'],
+		['fmt-italic', 'a *x*b'],
+		['fmt-strikethrough', 'a ~~x~~b'],
+		['fmt-inline-code', 'a `x`b'],
+	] as [InlineWrapToolId, string][]) {
+		const buffer = 'a b';
+		const caret = 2;
+		const wrap = inlineWrapEdit(id, buffer.slice(0, caret), '', buffer.slice(caret));
+		const wrapped = buffer.slice(0, caret) + wrap.text + buffer.slice(caret);
+		const inside = inlineWrapSelectionAfter(id, caret, '', wrap.text);
+		assert.equal(inside.startColumn, inside.endColumn, `${id}: a caret, not a selection`);
+		const at = inside.startColumn;
+		assert.equal(wrapped.slice(0, at) + 'x' + wrapped.slice(at), typed, id);
+
+		const strip = inlineWrapEdit(id, wrapped.slice(0, at), '', wrapped.slice(at));
+		const from = at - strip.reach;
+		assert.equal(wrapped.slice(0, from) + strip.text + wrapped.slice(at + strip.reach), buffer, id);
+		assert.equal(inlineWrapSelectionAfter(id, from, '', strip.text).startColumn, caret, id);
+	}
 });
 
 test('a selection with nothing before it reaches nowhere', () => {

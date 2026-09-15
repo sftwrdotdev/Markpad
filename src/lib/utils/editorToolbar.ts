@@ -353,9 +353,8 @@ export function inlineWrapEdit(
 }
 
 /**
- * Where `text` ends when it is written starting at `startColumn`, as a line
- * offset from the start and a column — what the caller needs to leave exactly
- * the written text selected.
+ * The selection to leave once `text` has replaced `selected`, written starting
+ * at `startColumn`: both columns, and the end's line offset from the start.
  *
  * WHY THE EDIT HAS TO SAY. An `executeEdits` with no end-cursor state leaves
  * the old selection to be adjusted against the new text, and once the replaced
@@ -369,17 +368,29 @@ export function inlineWrapEdit(
  * Selecting what was written keeps the two directions symmetric — strip and
  * the word stays selected, wrap and the marked-up word does — so a second
  * click on the same button is always the inverse of the first.
+ *
+ * Except with nothing selected. What was written is then an empty pair, and
+ * selecting `****` made the next keystroke replace the markers (#778). The
+ * caret goes between them, which is also where a second click finds and strips
+ * them.
  */
-export function inlineWrapSelectionEnd(
+export function inlineWrapSelectionAfter(
+	id: InlineWrapToolId,
 	startColumn: number,
+	selected: string,
 	text: string,
-): { lineOffset: number; column: number } {
+): { startColumn: number; lineOffset: number; endColumn: number } {
+	if (selected === '' && text !== '') {
+		const caret = startColumn + INLINE_WRAPS[id].write.length;
+		return { startColumn: caret, lineOffset: 0, endColumn: caret };
+	}
 	const lines = text.split('\n');
 	const lineOffset = lines.length - 1;
 	return {
+		startColumn,
 		lineOffset,
 		// Columns are 1-based, so the column after a line of length n is n + 1.
-		column: lineOffset === 0 ? startColumn + text.length : lines[lineOffset].length + 1,
+		endColumn: lineOffset === 0 ? startColumn + text.length : lines[lineOffset].length + 1,
 	};
 }
 
