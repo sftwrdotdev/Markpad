@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import type * as Monaco from 'monaco-editor';
 
-import { headingSymbols } from '../src/lib/utils/headingSymbols.js';
+import { headingFoldRanges, headingSymbols } from '../src/lib/utils/headingSymbols.js';
 
 const heading = (line: number, level: number, text: string) => ({ line, level, text, slug: '' });
 
@@ -34,4 +34,17 @@ test('#759: a section nests under the heading above it, and ends where a peer or
 test('a skipped level still nests, and a shallower heading closes every deeper section', () => {
 	const symbols = headingSymbols([heading(1, 1, 'A'), heading(2, 3, 'deep'), heading(4, 2, 'B'), heading(6, 1, 'C')], 8, 0);
 	assert.deepEqual(outline(symbols), ['A 1-5', '  deep 2-3', '  B 4-5', 'C 6-8']);
+});
+
+test('#777: a heading folds to the last non-blank line of its section, and an empty one does not fold', () => {
+	const lines = ['# A', 'text', '', '## B', '', '# C', '', 'end', ''];
+	const ranges = headingFoldRanges(
+		[heading(1, 1, 'A'), heading(4, 2, 'B'), heading(6, 1, 'C')],
+		lines.length,
+		(n) => lines[n - 1],
+	);
+	assert.deepEqual(ranges, [
+		{ start: 1, end: 4 },
+		{ start: 6, end: 8 },
+	]);
 });

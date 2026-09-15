@@ -20,7 +20,6 @@ export function headingSymbols(
 	const roots: Monaco.languages.DocumentSymbol[] = [];
 	const open: { level: number; children: Monaco.languages.DocumentSymbol[] }[] = [];
 	anchors.forEach((anchor, i) => {
-		const next = anchors.slice(i + 1).find((later) => later.level <= anchor.level);
 		const children: Monaco.languages.DocumentSymbol[] = [];
 		const line = { startLineNumber: anchor.line, startColumn: 1, endLineNumber: anchor.line, endColumn: 1 };
 		const symbol = {
@@ -28,7 +27,7 @@ export function headingSymbols(
 			detail: '',
 			kind,
 			tags: [],
-			range: { ...line, endLineNumber: next ? next.line - 1 : lineCount },
+			range: { ...line, endLineNumber: sectionEnd(anchors, i, lineCount) },
 			selectionRange: line,
 			children,
 		};
@@ -37,4 +36,27 @@ export function headingSymbols(
 		open.push({ level: anchor.level, children });
 	});
 	return roots;
+}
+
+/**
+ * The same sections as fold ranges for the editor (#777). A fold stops at the
+ * section's last non-blank line, so the gap before the next heading stays on
+ * screen, as in VS Code; a heading with nothing under it does not fold.
+ */
+export function headingFoldRanges(
+	anchors: HeadingAnchor[],
+	lineCount: number,
+	lineAt: (lineNumber: number) => string,
+): { start: number; end: number }[] {
+	return anchors.flatMap((anchor, i) => {
+		let end = sectionEnd(anchors, i, lineCount);
+		while (end > anchor.line && lineAt(end).trim() === '') end -= 1;
+		return end > anchor.line ? [{ start: anchor.line, end }] : [];
+	});
+}
+
+/** The line before the next heading at the same level or above, or the last line. */
+function sectionEnd(anchors: HeadingAnchor[], i: number, lineCount: number): number {
+	const next = anchors.slice(i + 1).find((later) => later.level <= anchors[i].level);
+	return next ? next.line - 1 : lineCount;
 }

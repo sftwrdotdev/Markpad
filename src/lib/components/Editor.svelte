@@ -26,7 +26,7 @@
 		headingQueryStart,
 		type HeadingAnchor,
 	} from '../utils/headingCompletion.js';
-	import { headingSymbols } from '../utils/headingSymbols.js';
+	import { headingFoldRanges, headingSymbols } from '../utils/headingSymbols.js';
 	import {
 		getLineAtVerticalOffset,
 		getScrollSyncPositionFromPixels,
@@ -653,6 +653,20 @@
 		},
 	});
 
+	// Headings, plus the list items, code blocks, quotes and tables that
+	// indentation folding covered: registering this turns that fallback off (#777).
+	const foldingRanges = monaco.languages.registerFoldingRangeProvider(MARKDOWN_LANGUAGE_ID, {
+		provideFoldingRanges: async (model) => {
+			const [anchors, blocks] = await Promise.all([
+				headingAnchors(model),
+				(invoke("list_fold_ranges", { markdown: model.getValue() }) as Promise<Monaco.languages.FoldingRange[]>).catch(
+					() => [],
+				),
+			]);
+			return [...headingFoldRanges(anchors, model.getLineCount(), (n) => model.getLineContent(n)), ...blocks];
+		},
+	});
+
 	const completionProvider = monaco.languages.registerCompletionItemProvider(
 			"markdown",
 			{
@@ -877,6 +891,7 @@
 			completionProvider.dispose();
 			semanticTokens.dispose();
 			documentSymbols.dispose();
+			foldingRanges.dispose();
 			// The keybinding rules are global to the Monaco module, not to this
 			// editor, so they are disposed with it rather than left to pile up one
 			// copy per mount — this component is rebuilt every time a tab goes to

@@ -1460,6 +1460,60 @@ pub(crate) fn build_markdown_preview(
     })
 }
 
+/// The preprocessing the renderer runs before comrak, for a caller that reads
+/// line numbers off the parse. Every step is line-preserving, so sourcepos
+/// still addresses the caller's buffer.
+fn preprocess_for_positions(markdown: &str) -> MaskedMath {
+    let autolinks = process_parenthesized_autolinks(markdown);
+    let embeds = process_internal_embeds(&autolinks);
+    let preprocessed = process_wikilinks(&embeds);
+    mask_math_spans(&preprocessed)
+}
+
+/// Lines the editor can fold, 1-based and inclusive.
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct FoldRange {
+    start: u32,
+    end: u32,
+}
+
+/// What the editor folds besides headings (#777): list items, code blocks,
+/// quotes and tables that span more than one line. Registering a folding
+/// provider turns Monaco's indentation folding off, and list items are what
+/// that used to fold. Read off the renderer's parse, so a `- item` inside a
+/// fence is not a list.
+///
+/// comrak ends a list item on the blank line after it, which would make every
+/// one-line item in a loose list a fold hiding that blank line, so trailing
+/// blank lines are dropped first — the same rule the heading folds use.
+pub(crate) fn block_fold_ranges(markdown: &str) -> Vec<FoldRange> {
+    let masked = preprocess_for_positions(markdown);
+    let lines: Vec<&str> = markdown.lines().collect();
+    let arena = Arena::new();
+    let root = parse_document(&arena, &masked.text, &markdown_options());
+    root.descendants()
+        .filter_map(|node| {
+            let data = node.data.borrow();
+            match data.value {
+                NodeValue::Item(_)
+                | NodeValue::TaskItem(_)
+                | NodeValue::CodeBlock(_)
+                | NodeValue::BlockQuote
+                | NodeValue::Table(_) => {}
+                _ => return None,
+            }
+            let (start, mut end) = (data.sourcepos.start.line, data.sourcepos.end.line);
+            while end > start && lines.get(end - 1).is_none_or(|line| line.trim().is_empty()) {
+                end -= 1;
+            }
+            (end > start).then_some(FoldRange {
+                start: start as u32,
+                end: end as u32,
+            })
+        })
+        .collect()
+}
+
 /// A heading, and the id a link has to name to reach it.
 #[derive(serde::Serialize)]
 pub(crate) struct HeadingAnchor {
@@ -1502,10 +1556,7 @@ pub(crate) struct HeadingAnchor {
 /// anchorizing is a per-character map with no collapsing, so doing it to the
 /// pieces and doing it to the whole give the same string.
 pub(crate) fn heading_anchors(markdown: &str) -> Vec<HeadingAnchor> {
-    let autolinks = process_parenthesized_autolinks(markdown);
-    let embeds = process_internal_embeds(&autolinks);
-    let preprocessed = process_wikilinks(&embeds);
-    let masked = mask_math_spans(&preprocessed);
+    let masked = preprocess_for_positions(markdown);
 
     let arena = Arena::new();
     let options = markdown_options();
@@ -2476,6 +2527,35 @@ pub(crate) mod tests {
         assert_eq!(anchors[0].line, 1);
         assert_eq!(anchors[0].level, 1);
         assert_eq!(anchors[1].level, 2);
+    }
+
+    /// #777: a list item folds over its children, and markup inside a fence
+    /// is text — the fence folds, the `- ` and `# ` lines in it do not.
+    #[test]
+    fn block_fold_ranges_are_the_blocks_the_renderer_parsed() {
+        let markdown = concat!(
+            "- parent\n",        // 1
+            "  - child\n",       // 2
+            "  - child\n",       // 3
+            "- single\n",        // 4
+            "\n",                // 5
+            "```md\n",           // 6
+            "- not a list\n",    // 7
+            "# not a heading\n", // 8
+            "```\n",             // 9
+            "\n",                // 10
+            "> quote\n",         // 11
+            "> more\n",          // 12
+            "\n",                // 13
+            "| a | b |\n",       // 14
+            "|---|---|\n",       // 15
+            "| 1 | 2 |\n",       // 16
+        );
+        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown)
+            .iter()
+            .map(|r| (r.start, r.end))
+            .collect();
+        assert_eq!(ranges, vec![(1, 3), (6, 9), (11, 12), (14, 16)]);
     }
 
     /// comrak never sees the buffer: four preprocessing steps run first, and
