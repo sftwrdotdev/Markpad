@@ -173,12 +173,12 @@ jobs:
             echo '> **Windows SmartScreen Notice**: Windows executables are not signed with an Authenticode certificate, so SmartScreen shows them as an unrecognized app. Click *"More info"* → *"Run anyway"*. The antivirus heuristic that used to flag the portable `.exe` no longer does.'
             echo
             echo '> [!NOTE]'
-            echo '> **macOS Gatekeeper Notice**: the `.dmg` is not yet notarized, so the first launch is refused — *"Markpad cannot be opened because the developer cannot be verified"* — and the dialog offers only **Cancel** and **Move to Trash**. Two ways past it, both one-time:'
+            echo '> **macOS first launch**: if Gatekeeper refuses to open the app — *"Markpad cannot be opened because the developer cannot be verified"* — use **System Settings → Privacy & Security → Open Anyway**. For releases without Apple notarization, these one-time options are available:'
             echo '>'
             echo '> - **Control-click** (right-click) `Markpad.app` in Finder → **Open** → **Open**. That dialog has the button the double-click one does not.'
             echo '> - Or double-click once and press **Cancel**, then go to **System Settings → Privacy & Security**, scroll to **Security**, and press **Open Anyway** beside the message naming Markpad. Authenticate with your password or Touch ID and confirm.'
             echo '>'
-            echo '> **Folder access is remembered across updates**, from 2.7.5 on. macOS ties a folder grant to the app'"'"'s signing identity, and Markpad now carries one that does not change when the code does, so the permission survives an update instead of being asked for again. Updating from a release older than 2.7.5 asks once more — the signature changes the identity, and the old grants belonged to the unsigned one. Signing is not notarization: the first-launch dialog above is unaffected.'
+            echo '> **Folder access**: switching from the earlier signing identity to Developer ID may require granting access once more. macOS associates folder access with the signing identity.'
             echo
             echo 'The two Windows files differ only in that one installs and one does not.'
             echo 'Package managers: `choco install markpad-app` (Windows), `sudo snap install markpad` (Linux).'
@@ -418,30 +418,39 @@ jobs:
           find src-tauri/target/release/bundle/appimage -name "*.AppImage.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
 
       # --- MacOS Build ---
-      # macOS binds a persisted file-access grant to the app's *designated
-      # requirement*, not to its bytes. An unsigned bundle has no certificate to
-      # pin, so the requirement falls back to a content hash that changes with
-      # every build -- which is why the folder permission has to be granted
-      # again after each update (#209).
-      #
-      # Signing with a certificate that stays the same across releases replaces
-      # that hash with `identifier <bundle-id> and certificate leaf = H"..."`,
-      # which does not move when the code does. The certificate does NOT have to
-      # come from Apple for this: TCC compares the requirement, it does not ask
-      # who issued the certificate.
-      #
-      # Without the three secrets below this step prints one line and does
-      # nothing, and the build stays exactly as it is today. This is not Apple
-      # notarization -- Gatekeeper still warns on first launch either way.
+      # Developer ID takes precedence; without it the legacy signing path remains.
       - name: Import macOS signing certificate
         if: matrix.os == 'macos'
         shell: bash
         env:
+          APPLE_DEVELOPER_ID_P12: ${{ secrets.APPLE_DEVELOPER_ID_P12 }}
+          APPLE_DEVELOPER_ID_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_PASSWORD }}
+          APPLE_DEVELOPER_ID_SHA1: ${{ secrets.APPLE_DEVELOPER_ID_SHA1 }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
           MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
+          umask 077
+          if [ -n "${APPLE_DEVELOPER_ID_P12:-}${APPLE_DEVELOPER_ID_PASSWORD:-}${APPLE_DEVELOPER_ID_SHA1:-}" ]; then
+            for name in APPLE_DEVELOPER_ID_P12 APPLE_DEVELOPER_ID_PASSWORD APPLE_DEVELOPER_ID_SHA1 APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+              if [ -z "${!name:-}" ]; then
+                echo "::error::Developer ID signing requires $name; refusing to fall back."
+                exit 1
+              fi
+            done
+            [[ "$APPLE_DEVELOPER_ID_SHA1" =~ ^[A-Fa-f0-9]{40}$ && "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || {
+              echo '::error::Invalid Developer ID SHA-1 or Apple team ID.'
+              exit 1
+            }
+            MACOS_CERTIFICATE="$APPLE_DEVELOPER_ID_P12"
+            MACOS_CERTIFICATE_PASSWORD="$APPLE_DEVELOPER_ID_PASSWORD"
+            MACOS_SIGNING_IDENTITY="$(printf '%s' "$APPLE_DEVELOPER_ID_SHA1" | tr '[:lower:]' '[:upper:]')"
+            echo 'MACOS_DEVELOPER_ID=true' >> "$GITHUB_ENV"
+          fi
           if [ -z "${MACOS_CERTIFICATE:-}" ]; then
             echo "No MACOS_CERTIFICATE secret; leaving the bundle unsigned (unchanged behaviour)."
             exit 0
@@ -463,6 +472,7 @@ jobs:
           KEYCHAIN="$RUNNER_TEMP/markpad-signing.keychain"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           CERTIFICATE="$RUNNER_TEMP/certificate.p12"
+          trap 'rm -f "$CERTIFICATE"' EXIT
 
           printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
@@ -482,6 +492,11 @@ jobs:
             $(security list-keychains -d user | tr -d '"') "$KEYCHAIN"
           rm -f "$CERTIFICATE"
 
+          if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ]; then
+            security find-identity -v -p codesigning "$KEYCHAIN" \
+              | awk -v sha="$MACOS_SIGNING_IDENTITY" '$2 == sha && /Developer ID Application/ { found=1 } END { exit !found }'
+          fi
+
           # `tauri build` reads this and signs with it; unset means no signing.
           echo "APPLE_SIGNING_IDENTITY=$MACOS_SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
@@ -492,7 +507,52 @@ jobs:
           NODE_OPTIONS: "--max-old-space-size=8192"
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target universal-apple-darwin
+          APPLE_ID: ${{ env.MACOS_DEVELOPER_ID == 'true' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ env.MACOS_DEVELOPER_ID == 'true' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ env.MACOS_DEVELOPER_ID == 'true' && secrets.APPLE_TEAM_ID || '' }}
+        run: |
+          if [ "${MACOS_DEVELOPER_ID:-}" != true ]; then
+            unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          npm run tauri build -- --target universal-apple-darwin
+
+      - name: Verify notarized macOS artifacts
+        if: matrix.os == 'macos' && env.MACOS_DEVELOPER_ID == 'true'
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          BUNDLE=src-tauri/target/universal-apple-darwin/release/bundle
+          REQUIREMENT="anchor apple generic and certificate leaf = H\"$APPLE_SIGNING_IDENTITY\" and certificate leaf[subject.OU] = \"$APPLE_TEAM_ID\""
+          APP_ID="$(node -p "require('./src-tauri/tauri.conf.json').identifier")"
+          verify_app() {
+            codesign --verify --deep --strict -R="$REQUIREMENT and identifier \"$APP_ID\"" "$1"
+            xcrun stapler validate "$1"
+            spctl -a -t exec "$1"
+          }
+          verify_app "$BUNDLE/macos/Markpad.app"
+          # Verify the updater's exact archive without changing its minisign signature.
+          WORK="$(mktemp -d)"
+          trap 'hdiutil detach "$WORK/mount" -quiet 2>/dev/null || true; rm -rf "$WORK"' EXIT
+          ARCHIVES=("$BUNDLE"/macos/*.app.tar.gz)
+          DMGS=("$BUNDLE"/dmg/*.dmg)
+          [[ ${#ARCHIVES[@]} == 1 && ${#DMGS[@]} == 1 ]]
+          mkdir "$WORK/archive" "$WORK/mount"
+          tar -xzf "${ARCHIVES[0]}" -C "$WORK/archive"
+          verify_app "$WORK/archive/Markpad.app"
+          # Tauri notarizes the app. Also staple the downloadable disk image.
+          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "${DMGS[0]}"
+          codesign --verify --strict -R="$REQUIREMENT" "${DMGS[0]}"
+          xcrun notarytool submit "${DMGS[0]}" --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple "${DMGS[0]}"
+          xcrun stapler validate "${DMGS[0]}"
+          spctl -a -t open --context context:primary-signature "${DMGS[0]}"
+          hdiutil attach "${DMGS[0]}" -readonly -nobrowse -mountpoint "$WORK/mount"
+          verify_app "$WORK/mount/Markpad.app"
 
       - name: Upload MacOS Artifacts
         if: matrix.os == 'macos'
