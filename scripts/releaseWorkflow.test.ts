@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { parse } from 'yaml';
 
 import { readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
@@ -461,7 +466,7 @@ test('RELEASING.md names the signing secrets the workflow reads', () => {
 	// exits 0, the build stays green, and the bundle ships unsigned -- which
 	// reaches users as folder access being asked for all over again.
 	const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
-	const secrets = [...new Set(step.match(/secrets\.[A-Z_]+/g) ?? [])];
+	const secrets = [...new Set(step.match(/secrets\.[A-Z_0-9]+/g) ?? [])];
 	assert.ok(secrets.length > 0, 'the signing step reads no secrets at all');
 	for (const secret of secrets) {
 		const name = secret.slice('secrets.'.length);
@@ -540,4 +545,73 @@ test('one release build runs at a time, and none of its runners drift', () => {
 		.filter((line) => /runs-on:\s*(ubuntu|macos|windows)-latest/.test(line))
 		.filter((line) => !/matrix\./.test(line));
 	assert.deepEqual(drifting, [], 'a release job runs on a moving runner label');
+});
+
+
+test('official macOS signing refuses partial credentials before touching the keychain', () => {
+	const step = parse(workflow).jobs.build.steps.find((step: { name: string }) => step.name === 'Import macOS signing certificate');
+	const names = ['APPLE_DEVELOPER_ID_P12', 'APPLE_DEVELOPER_ID_PASSWORD', 'APPLE_DEVELOPER_ID_SHA1', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
+	const complete: Record<string, string> = Object.fromEntries(names.map(name => [name, 'fixture']));
+	complete.APPLE_DEVELOPER_ID_P12 = 'Zml4dHVyZQ==';
+	complete.APPLE_DEVELOPER_ID_SHA1 = 'A'.repeat(40);
+	complete.APPLE_TEAM_ID = 'ABCDEFGHIJ';
+	const dir = mkdtempSync(join(tmpdir(), 'markpad-signing-test-'));
+	try {
+		// A mock command prevents any real keychain access even if a guard regresses.
+		writeFileSync(join(dir, 'security'), '#!/bin/sh\necho keychain-touched >&2\nexit 97\n', { mode: 0o755 });
+		for (const missing of names) {
+			const env = { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: join(dir, 'env'), ...complete, [missing]: '' };
+			const result = spawnSync('/bin/bash', ['-c', step.run], { env, encoding: 'utf8' });
+			assert.notEqual(result.status, 0, `${missing} was silently accepted`);
+			assert.doesNotMatch(result.stderr, /keychain-touched/, `${missing} was not checked before import`);
+		}
+		writeFileSync(join(dir, 'security'), `#!/bin/sh
+if [ "$1" = find-identity ]; then
+  echo '1) ${complete.APPLE_DEVELOPER_ID_SHA1} "Developer ID Application: Test (ABCDEFGHIJ)"'
+fi
+`, { mode: 0o755 });
+		const envFile = join(dir, 'env');
+		const configured = spawnSync('/bin/bash', ['-c', step.run], {
+			env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete,
+				MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
+			encoding: 'utf8',
+		});
+		assert.equal(configured.status, 0, configured.stderr);
+		assert.equal(readFileSync(envFile, 'utf8'), `MACOS_DEVELOPER_ID=true\nAPPLE_SIGNING_IDENTITY=${complete.APPLE_DEVELOPER_ID_SHA1}\n`);
+		const wrongIdentity = spawnSync('/bin/bash', ['-c', step.run], {
+			env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete, APPLE_DEVELOPER_ID_SHA1: 'B'.repeat(40) },
+			encoding: 'utf8',
+		});
+		assert.notEqual(wrongIdentity.status, 0, 'a different imported identity must not be accepted');
+		writeFileSync(envFile, '');
+		const legacy = spawnSync('/bin/bash', ['-c', step.run], {
+			env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile,
+				MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
+			encoding: 'utf8',
+		});
+		assert.equal(legacy.status, 0, legacy.stderr);
+		assert.equal(readFileSync(envFile, 'utf8'), 'APPLE_SIGNING_IDENTITY=legacy\n');
+
+		const absent = spawnSync('/bin/bash', ['-c', step.run], { env: { PATH: `${dir}:/usr/bin:/bin` }, encoding: 'utf8' });
+		assert.equal(absent.status, 0, absent.stderr);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test('official macOS artifacts are verified before upload and Tauri receives notarization credentials', () => {
+	const steps = parse(workflow).jobs.build.steps;
+	const build = steps.find((step: { name: string }) => step.name === 'Build MacOS (Universal)');
+	assert.match(build.env.APPLE_PASSWORD ?? '', /secrets.APPLE_APP_SPECIFIC_PASSWORD/);
+	assert.match(build.run, /unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID/);
+	const verifyIndex = steps.findIndex((step: { name: string }) => step.name === 'Verify notarized macOS artifacts');
+	const uploadIndex = steps.findIndex((step: { name: string }) => step.name === 'Upload MacOS Artifacts');
+	assert.ok(verifyIndex >= 0 && verifyIndex < uploadIndex);
+	const verify = steps[verifyIndex];
+	assert.match(verify.if, /MACOS_DEVELOPER_ID/);
+	assert.match(verify.run, /stapler validate/);
+	assert.match(verify.run, /spctl.*-a/);
+	assert.match(verify.run, /certificate leaf = H/);
+	assert.match(verify.run, /tar -xzf/);
+	assert.match(verify.run, /hdiutil attach.*-readonly/);
 });

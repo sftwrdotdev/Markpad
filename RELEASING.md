@@ -58,6 +58,35 @@ The failure is quiet and unfixable from here: `latest.json` 404s, the updater re
 
 **`build.yml` checks this before creating a release.** It fetches that URL and asserts the feed's download URLs still name this repository. A network failure warns instead of blocking.
 
+### Official macOS signing and notarization
+
+Configure these repository Actions secrets before the next release:
+
+| Name | Value |
+|---|---|
+| `APPLE_DEVELOPER_ID_P12` | Base64 of the project's Developer ID Application certificate and private key exported as PKCS#12 |
+| `APPLE_DEVELOPER_ID_PASSWORD` | PKCS#12 export password |
+| `APPLE_DEVELOPER_ID_SHA1` | The certificate's 40-character SHA-1 fingerprint, not its shared common name |
+| `APPLE_ID` | Apple account email authorized for notarization |
+| `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for that account |
+| `APPLE_TEAM_ID` | The certificate's 10-character Apple team ID |
+
+The new certificate takes precedence over the legacy `MACOS_*` secrets below.
+Setting any `APPLE_DEVELOPER_ID_*` secret requires all six values. Missing or
+invalid credentials stop the release; they never fall back to legacy signing.
+With none of the three new certificate secrets, the existing flow is unchanged.
+Tauri receives the app-specific password as `APPLE_PASSWORD` and notarizes the
+app before creating the updater archive. The workflow checks the extracted
+archive and the app inside the DMG, then uploads only after verifying their
+Developer ID signatures and stapled tickets. The DMG is also signed, notarized
+and stapled. See [Tauri's macOS signing guide](https://v2.tauri.app/distribute/sign/macos/).
+
+Keep `TAURI_SIGNING_PRIVATE_KEY`, its password, `plugins.updater.pubkey` and the
+updater endpoint unchanged. Apple signing and the existing updater signature are
+independent. The first Developer ID build may require users to grant folder
+access once more when migrating from the earlier identity. Do not claim a release
+is notarized until the macOS verification step passes.
+
 ### 6. Optional: a stable macOS signing identity
 
 This is unrelated to the minisign keypair above, and it is not the Apple Developer Program. Skip it and macOS releases behave exactly as they did before.
@@ -83,7 +112,7 @@ This is unrelated to the minisign keypair above, and it is not the Apple Develop
 
 With all three set, the macOS job imports the certificate into a throwaway keychain and `tauri build` signs with it. With `MACOS_CERTIFICATE` absent, the step prints one line and exits.
 
-### 7. CRITICAL: the signing certificate has no revocation path
+### 7. CRITICAL: the legacy self-signed certificate has no revocation path
 
 Apple can revoke a Developer ID certificate. Nobody can revoke this one. Two consequences worth accepting deliberately before step 6:
 
@@ -173,6 +202,5 @@ Say so in that release's notes, e.g.:
 
 ## Out of scope (not handled by this workflow)
 
-- **Apple Developer ID code-signing & notarization** — not done, and one-time setup step 6 is not a substitute: a self-signed certificate gives the bundle a stable identity for TCC, but macOS still shows a Gatekeeper warning on first launch because the app is not notarized. Minisign verification by the updater is independent of both.
 - **Windows Authenticode signing** — neither the portable `.exe` nor the `*-setup.exe` NSIS installer is signed with a code-signing certificate. Users may see a SmartScreen warning. Minisign verification by the updater is independent.
 - **Retroactive signing** of older releases.
