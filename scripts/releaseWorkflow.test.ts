@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { parse } from 'yaml';
@@ -577,7 +577,7 @@ fi
 			encoding: 'utf8',
 		});
 		assert.equal(configured.status, 0, configured.stderr);
-		assert.equal(readFileSync(envFile, 'utf8'), `MACOS_DEVELOPER_ID=true\nAPPLE_SIGNING_IDENTITY=${complete.APPLE_DEVELOPER_ID_SHA1}\n`);
+		assert.equal(readSource(envFile), `MACOS_DEVELOPER_ID=true\nAPPLE_SIGNING_IDENTITY=${complete.APPLE_DEVELOPER_ID_SHA1}\n`);
 		const wrongIdentity = spawnSync('/bin/bash', ['-c', step.run], {
 			env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete, APPLE_DEVELOPER_ID_SHA1: 'B'.repeat(40) },
 			encoding: 'utf8',
@@ -590,7 +590,7 @@ fi
 			encoding: 'utf8',
 		});
 		assert.equal(legacy.status, 0, legacy.stderr);
-		assert.equal(readFileSync(envFile, 'utf8'), 'APPLE_SIGNING_IDENTITY=legacy\n');
+		assert.equal(readSource(envFile), 'APPLE_SIGNING_IDENTITY=legacy\n');
 
 		const absent = spawnSync('/bin/bash', ['-c', step.run], { env: { PATH: `${dir}:/usr/bin:/bin` }, encoding: 'utf8' });
 		assert.equal(absent.status, 0, absent.stderr);
