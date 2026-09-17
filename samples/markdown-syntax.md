@@ -337,7 +337,7 @@ A reference-style image, where the destination lives elsewhere in the document:
 
 [dnd]: ../pics/drag-and-drop.png "Dropping a file onto the editor"
 
-Obsidian's embed syntax works for local files too — `![[lightmode.png]]` — resolved the same way. Dragging an image into the editor writes the reference for you; dragging a `.md` file onto either pane opens it in a tab.
+Obsidian's embed syntax works for local files too — `![[lightmode.png]]` — resolved the same way. Dragging an image into the editor writes the reference for you; dragging a `.md` file onto either pane opens it in a tab. An image *file* copied in Finder or Explorer pastes as an image too — it is saved beside the document and referenced, rather than arriving as a path.
 
 **Where a pasted or dropped image lands** is a setting: a folder name, created next to the document. `${filename}` in it stands for the document's own name without its extension, so `${filename}.assets` beside `notes/trip.md` writes into `notes/trip.assets`, and a folder of notes stops sharing one flat `img/`. The token is spelled the way Typora and SoloMD spell it. It expands to a folder *name* rather than a path — separators, `..` and absolute paths are refused — so the images stay beside the document they belong to.
 
@@ -425,7 +425,19 @@ $$
 \end{aligned}
 $$
 
-Rendered by KaTeX. An escaped `\$5` stays a dollar sign rather than opening a formula.
+Chemistry, through KaTeX's mhchem extension:
+
+$$
+\ce{CO2 + C -> 2 CO}
+$$
+
+$$
+\ce{SO4^2- + Ba^2+ -> BaSO4 v}
+$$
+
+Inline as well: $\ce{H2O}$, and a unit written as $\pu{123 kJ//mol}$.
+
+Rendered by KaTeX, with mhchem loaded on the same instance, so `\ce` and `\pu` work wherever a formula does. An escaped `\$5` stays a dollar sign rather than opening a formula.
 
 ## 12. Diagrams
 
@@ -506,7 +518,7 @@ Some of what Markpad adds is not a spelling to learn but behaviour you get for f
 - **Click a task box** in the preview and the file is edited. The `[ ]` becomes `[x]` on disk, on the right line, even in a nested list.
 - **Hover a heading** and an anchor appears. Right-click it for **Copy Reference**, which writes a link in whichever style this document already uses — `[[…]]` if the document uses wikilinks, `[…](#…)` if it uses standard links.
 - **Right-click any paragraph, list item or heading** and choose **Edit**: the editor opens on exactly those lines, with them selected. `Ctrl`/`Cmd` + `E` does the same for whatever you have selected in the preview.
-- **Fold a heading** with the chevron beside it, and everything under it collapses. The folds are remembered per document.
+- **Fold a heading** with the chevron beside it, and everything under it collapses. The folds are remembered per document. The editor folds the same headings from its own gutter, alongside the list folding it already had.
 - **Scroll either pane of the split view** and the other follows by source line rather than by ratio, so the two stay together even this far down the document. The two panes can trade sides, in Settings.
 - **Copy from the preview** and the formatting comes with it: headings, emphasis, lists, tables and links arrive as themselves in Word, Mail or Docs, and as the Markdown behind them anywhere that takes plain text.
 - **Sticky scroll** keeps the heading you are currently inside pinned to the top of the editor. Toggle it in Settings.
