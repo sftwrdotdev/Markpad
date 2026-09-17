@@ -173,12 +173,8 @@ jobs:
             echo '> **Windows SmartScreen Notice**: Windows executables are not signed with an Authenticode certificate, so SmartScreen shows them as an unrecognized app. Click *"More info"* → *"Run anyway"*. The antivirus heuristic that used to flag the portable `.exe` no longer does.'
             echo
             echo '> [!NOTE]'
-            echo '> **macOS first launch**: if Gatekeeper refuses to open the app — *"Markpad cannot be opened because the developer cannot be verified"* — use **System Settings → Privacy & Security → Open Anyway**. For releases without Apple notarization, these one-time options are available:'
-            echo '>'
-            echo '> - **Control-click** (right-click) `Markpad.app` in Finder → **Open** → **Open**. That dialog has the button the double-click one does not.'
-            echo '> - Or double-click once and press **Cancel**, then go to **System Settings → Privacy & Security**, scroll to **Security**, and press **Open Anyway** beside the message naming Markpad. Authenticate with your password or Touch ID and confirm.'
-            echo '>'
-            echo '> **Folder access**: switching from the earlier signing identity to Developer ID may require granting access once more. macOS associates folder access with the signing identity.'
+            # One-time: the first Developer ID release changes the identity folder grants are bound to. Remove after that release.
+            echo '> **macOS folder access**: macOS asks for folder access once more after this update. From now on the grant carries across updates.'
             echo
             echo 'The two Windows files differ only in that one installs and one does not.'
             echo 'Package managers: `choco install markpad-app` (Windows), `sudo snap install markpad` (Linux).'
