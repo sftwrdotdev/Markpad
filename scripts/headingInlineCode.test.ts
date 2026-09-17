@@ -10,16 +10,14 @@ import { readSource } from './sourceTree.js';
 const styles = readSource('src/styles.css');
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-test('a heading stands its content on the text baseline', () => {
-	// The heading is a flex container so the fold chevron can sit beside the
-	// text, which makes every element inside it a flex item. `flex-start` pinned
-	// each one to the top of the line — the smaller the element, the higher it
-	// floated. Measured on `## Heading \x60code\x60 Test`: the code chip's bottom sat
-	// 8px above the heading text's, and 2px below it after.
+test('a heading lays its content out as one line of text', () => {
+	// A flex heading makes every text run, `<em>`, `<code>` and image its own
+	// flex item: #681 floated inline code above the words, #791 ate the spaces
+	// around `*not*` and broke it into `n`/`o`/`t` on a narrow pane. The fold
+	// chevron is absolutely positioned, so inline layout costs it nothing.
 	const rule = styles.match(/\.foldable-header \{[^}]*\}/);
 	assert.ok(rule, 'styles.css must still define .foldable-header');
-	assert.match(rule[0], /align-items:\s*baseline;/);
-	assert.doesNotMatch(rule[0], /align-items:\s*flex-start;/);
+	assert.doesNotMatch(rule[0], /display:\s*(inline-)?(flex|grid)/);
 });
 
 test('inline code in a heading scales with the heading', () => {
