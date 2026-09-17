@@ -316,8 +316,6 @@ export const translations: Record<LanguageCode, Translation> = {
             close: 'Close'
         },
         modal: {
-            confirmExit: 'Confirm Exit',
-            areYouSureYouWantToExit: 'Are you sure you want to exit? All unsaved tabs and local history will be lost.',
             unsavedChanges: 'Unsaved Changes',
             youHaveUnsavedChanges: 'You have unsaved changes in "{title}". Do you want to save them before closing?',
             youHaveUnsavedChangesBeforeReturning: 'You have unsaved changes. Do you want to save them before returning to view mode?',
@@ -690,8 +688,6 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '关闭'
         },
         modal: {
-            confirmExit: '确认退出',
-            areYouSureYouWantToExit: '确定要退出吗？所有未保存的标签和本地历史记录将丢失。',
             unsavedChanges: '未保存的更改',
             youHaveUnsavedChanges: '"{title}"中有未保存的更改。关闭前要保存吗？',
             youHaveUnsavedChangesBeforeReturning: '您有未保存的更改。返回查看模式前要保存吗？',
@@ -1012,8 +1008,6 @@ export const translations: Record<LanguageCode, Translation> = {
             encodingUnmappable: '保存しませんでした：{{encoding}} ではこの文書に含まれる一部の文字（多くは絵文字）を表現できません。「名前を付けて保存」で UTF-8 の複製を作成してください'
         },
         modal: {
-            confirmExit: '終了を確認',
-            areYouSureYouWantToExit: '終了しますか？すべての未保存のタブとローカル履歴が失われます。',
             unsavedChanges: '未保存の変更',
             youHaveUnsavedChanges: '"{title}"に未保存の変更があります。閉じる前に保存しますか？',
             youHaveUnsavedChangesBeforeReturning: '未保存の変更があります。表示モードに戻る前に保存しますか？',
@@ -1346,8 +1340,6 @@ export const translations: Record<LanguageCode, Translation> = {
             close: '關閉'
         },
         modal: {
-            confirmExit: '確認結束',
-            areYouSureYouWantToExit: '確定要結束嗎？所有未儲存的分頁及本機記錄將會遺失。',
             unsavedChanges: '有未儲存的變更',
             youHaveUnsavedChanges: '「{title}」有未儲存的變更，關閉前要儲存嗎？',
             youHaveUnsavedChangesBeforeReturning: '有未儲存的變更，返回檢視模式前要儲存嗎？',
@@ -1692,8 +1684,6 @@ export const translations: Record<LanguageCode, Translation> = {
             encodingUnmappable: '저장하지 않음: {{encoding}}(으)로는 이 문서에 포함된 일부 문자(대개 이모지)를 표현할 수 없습니다. "다른 이름으로 저장"으로 UTF-8 사본을 만드세요'
         },
         modal: {
-            confirmExit: '종료 확인',
-            areYouSureYouWantToExit: '정말 종료하시겠습니까? 저장되지 않은 모든 탭과 로컬 기록이 손실됩니다.',
             unsavedChanges: '저장되지 않은 변경 사항',
             youHaveUnsavedChanges: '"{title}"에 저장되지 않은 변경 사항이 있습니다. 닫기 전에 저장하시겠습니까?',
             youHaveUnsavedChangesBeforeReturning: '저장되지 않은 변경 사항이 있습니다. 보기 모드로 돌아가기 전에 저장하시겠습니까?',
@@ -2013,8 +2003,6 @@ export const translations: Record<LanguageCode, Translation> = {
             encodingUnmappable: 'Не сохранено: кодировка {{encoding}} не может представить некоторые символы этого документа (скорее всего, эмодзи). Используйте «Сохранить как», чтобы записать копию в UTF-8'
         },
         modal: {
-            confirmExit: 'Подтвердить выход',
-            areYouSureYouWantToExit: 'Вы уверены, что хотите выйти? Все несохранённые вкладки и локальная история будут потеряны.',
             unsavedChanges: 'Несохранённые изменения',
             youHaveUnsavedChanges: 'У вас есть несохранённые изменения в "{title}". Вы хотите сохранить их перед закрытием?',
             youHaveUnsavedChangesBeforeReturning: 'У вас есть несохранённые изменения. Вы хотите сохранить их перед возвратом в режим просмотра?',
@@ -2271,8 +2259,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Guardado — se mantiene el modo de edición porque hay cambios más recientes'
         },
         modal: {
-            confirmExit: 'Confirmar salida',
-            areYouSureYouWantToExit: '¿Está seguro de que desea salir? Se perderán todas las pestañas sin guardar y el historial local.',
             unsavedChanges: 'Cambios sin guardar',
             youHaveUnsavedChanges: 'Tiene cambios sin guardar en "{title}". ¿Desea guardarlos antes de cerrar?',
             youHaveUnsavedChangesBeforeReturning: 'Tiene cambios sin guardar. ¿Desea guardarlos antes de volver al modo de vista?',
@@ -2529,8 +2515,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Enregistré — maintien du mode édition car des modifications plus récentes existent'
         },
         modal: {
-            confirmExit: 'Confirmer la sortie',
-            areYouSureYouWantToExit: 'Êtes-vous sûr de vouloir quitter ? Tous les onglets non enregistrés et l\'historique local seront perdus.',
             unsavedChanges: 'Modifications non enregistrées',
             youHaveUnsavedChanges: 'Vous avez des modifications non enregistrées dans "{title}". Voulez-vous les enregistrer avant de fermer ?',
             youHaveUnsavedChangesBeforeReturning: 'Vous avez des modifications non enregistrées. Voulez-vous les enregistrer avant de revenir en mode aperçu ?',
@@ -2787,8 +2771,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Gespeichert — Bearbeitungsmodus bleibt aktiv, da neuere Änderungen vorliegen'
         },
         modal: {
-            confirmExit: 'Beenden bestätigen',
-            areYouSureYouWantToExit: 'Sind Sie sicher, dass Sie beenden möchten? Alle ungespeicherten Tabs und der lokale Verlauf gehen verloren.',
             unsavedChanges: 'Ungespeicherte Änderungen',
             youHaveUnsavedChanges: 'Sie haben ungespeicherte Änderungen in "{title}". Möchten Sie diese vor dem Schließen speichern?',
             youHaveUnsavedChangesBeforeReturning: 'Sie haben ungespeicherte Änderungen. Möchten Sie diese vor der Rückkehr zum Vorschau-Modus speichern?',
@@ -3045,8 +3027,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Salvo — mantendo o modo de edição porque há edições mais recentes'
         },
         modal: {
-            confirmExit: 'Confirmar saída',
-            areYouSureYouWantToExit: 'Tem certeza de que deseja sair? Todas as abas não salvas e o histórico local serão perdidos.',
             unsavedChanges: 'Alterações não salvas',
             youHaveUnsavedChanges: 'Você tem alterações não salvas em "{title}". Deseja salvá-las antes de fechar?',
             youHaveUnsavedChangesBeforeReturning: 'Você tem alterações não salvas. Deseja salvá-las antes de retornar ao modo de visualização?',
@@ -3303,8 +3283,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Salvato — mantengo la modalità modifica perché ci sono modifiche più recenti'
         },
         modal: {
-            confirmExit: 'Conferma uscita',
-            areYouSureYouWantToExit: 'Sei sicuro di voler uscire? Tutte le schede non salvate e la cronologia locale andranno perse.',
             unsavedChanges: 'Modifiche non salvate',
             youHaveUnsavedChanges: 'Hai modifiche non salvate in "{title}". Vuoi salvarle prima di chiudere?',
             youHaveUnsavedChangesBeforeReturning: 'Hai modifiche non salvate. Vuoi salvarle prima di tornare alla modalità anteprima?',
@@ -3572,8 +3550,6 @@ export const translations: Record<LanguageCode, Translation> = {
             openExportedFileFailed: 'Nie udało się otworzyć wyeksportowanego pliku'
         },
         modal: {
-            confirmExit: 'Potwierdź wyjście',
-            areYouSureYouWantToExit: 'Czy na pewno chcesz wyjść? Wszystkie niezapisane karty i historia lokalna zostaną utracone.',
             unsavedChanges: 'Niezapisane zmiany',
             youHaveUnsavedChanges: 'Masz niezapisane zmiany w "{title}". Czy chcesz je zapisać przed zamknięciem?',
             youHaveUnsavedChangesBeforeReturning: 'Masz niezapisane zmiany. Czy chcesz je zapisać przed powrotem do trybu podglądu?',
@@ -3834,8 +3810,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Opgeslagen — bewerkmodus blijft actief omdat er nieuwere wijzigingen zijn'
         },
         modal: {
-            confirmExit: 'Bevestig afsluiten',
-            areYouSureYouWantToExit: 'Weet je zeker dat je wilt afsluiten? Alle niet-opgeslagen tabbladen en lokale geschiedenis gaan verloren.',
             unsavedChanges: 'Niet-opgeslagen wijzigingen',
             youHaveUnsavedChanges: 'Je hebt niet-opgeslagen wijzigingen in "{title}". Wil je deze opslaan voordat je sluit?',
             youHaveUnsavedChangesBeforeReturning: 'Je hebt niet-opgeslagen wijzigingen. Wil je deze opslaan voordat je terugkeert naar voorbeeldmodus?',
@@ -4092,8 +4066,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Sparat — stannar i redigeringsläge eftersom det finns nyare ändringar'
         },
         modal: {
-            confirmExit: 'Bekräfta avslut',
-            areYouSureYouWantToExit: 'Är du säker på att du vill avsluta? Alla osparade flikar och lokal historik kommer att förloras.',
             unsavedChanges: 'Osparade ändringar',
             youHaveUnsavedChanges: 'Du har osparade ändringar i "{title}". Vill du spara dem innan du stänger?',
             youHaveUnsavedChangesBeforeReturning: 'Du har osparade ändringar. Vill du spara dem innan du återgår till förhandsgranskningsläge?',
@@ -4350,8 +4322,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Đã lưu — vẫn ở chế độ chỉnh sửa vì bạn có chỉnh sửa mới hơn'
         },
         modal: {
-            confirmExit: 'Xác nhận thoát',
-            areYouSureYouWantToExit: 'Bạn có chắc muốn thoát không? Tất cả các tab chưa lưu và lịch sử cục bộ sẽ bị mất.',
             unsavedChanges: 'Thay đổi chưa lưu',
             youHaveUnsavedChanges: 'Bạn có thay đổi chưa lưu trong "{title}". Bạn có muốn lưu trước khi đóng không?',
             youHaveUnsavedChangesBeforeReturning: 'Bạn có thay đổi chưa lưu. Bạn có muốn lưu trước khi quay lại chế độ xem trước không?',
@@ -4608,8 +4578,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Guardado — a manter o modo de edição porque tem edições mais recentes'
         },
         modal: {
-            confirmExit: 'Confirmar saída',
-            areYouSureYouWantToExit: 'Tem a certeza de que pretende sair? Todos os separadores não guardados e o histórico local serão perdidos.',
             unsavedChanges: 'Alterações não guardadas',
             youHaveUnsavedChanges: 'Tem alterações não guardadas em "{title}". Pretende guardá-las antes de fechar?',
             youHaveUnsavedChangesBeforeReturning: 'Tem alterações não guardadas. Pretende guardá-las antes de voltar ao modo de pré-visualização?',
@@ -4866,8 +4834,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Salvat — rămân în modul de editare deoarece există modificări mai noi'
         },
         modal: {
-            confirmExit: 'Confirmare ieșire',
-            areYouSureYouWantToExit: 'Sigur doriți să ieșiți? Toate filele nesalvate și istoricul local vor fi pierdute.',
             unsavedChanges: 'Modificări nesalvate',
             youHaveUnsavedChanges: 'Aveți modificări nesalvate în "{title}". Doriți să le salvați înainte de închidere?',
             youHaveUnsavedChangesBeforeReturning: 'Aveți modificări nesalvate. Doriți să le salvați înainte de a reveni la modul de previzualizare?',
@@ -5124,8 +5090,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Elmentve — a szerkesztési mód marad, mert újabb módosítások vannak'
         },
         modal: {
-            confirmExit: 'Kilépés megerősítése',
-            areYouSureYouWantToExit: 'Biztosan ki szeretne lépni? Minden nem mentett lap és helyi előzmény elveszik.',
             unsavedChanges: 'Nem mentett módosítások',
             youHaveUnsavedChanges: 'Nem mentett módosításai vannak a(z) "{title}" fájlban. Menteni szeretné bezárás előtt?',
             youHaveUnsavedChangesBeforeReturning: 'Nem mentett módosításai vannak. Menteni szeretné az előnézeti módba való visszatérés előtt?',
@@ -5382,8 +5346,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Uloženo — zůstávám v režimu úprav, protože máte novější změny'
         },
         modal: {
-            confirmExit: 'Potvrdit ukončení',
-            areYouSureYouWantToExit: 'Opravdu chcete ukončit? Všechny neuložené karty a místní historie budou ztraceny.',
             unsavedChanges: 'Neuložené změny',
             youHaveUnsavedChanges: 'Máte neuložené změny v "{title}". Chcete je uložit před zavřením?',
             youHaveUnsavedChangesBeforeReturning: 'Máte neuložené změny. Chcete je uložit před návratem do režimu náhledu?',
@@ -5644,8 +5606,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Uložené — zostávam v režime úprav, pretože máte novšie zmeny'
         },
         modal: {
-            confirmExit: 'Potvrdiť ukončenie',
-            areYouSureYouWantToExit: 'Naozaj chcete ukončiť? Všetky neuložené karty a miestna história budú stratené.',
             unsavedChanges: 'Neuložené zmeny',
             youHaveUnsavedChanges: 'Máte neuložené zmeny v "{title}". Chcete ich uložiť pred zatvorením?',
             youHaveUnsavedChangesBeforeReturning: 'Máte neuložené zmeny. Chcete ich uložiť pred návratom do režimu náhľadu?',
@@ -5902,8 +5862,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Αποθηκεύτηκε — παραμένω σε λειτουργία επεξεργασίας επειδή υπάρχουν νεότερες αλλαγές'
         },
         modal: {
-            confirmExit: 'Επιβεβαίωση εξόδου',
-            areYouSureYouWantToExit: 'Είστε σίγουροι ότι θέλετε να εξέλθετε; Όλες οι μη αποθηκευμένες καρτέλες και το τοπικό ιστορικό θα χαθούν.',
             unsavedChanges: 'Μη αποθηκευμένες αλλαγές',
             youHaveUnsavedChanges: 'Έχετε μη αποθηκευμένες αλλαγές στο "{title}". Θέλετε να τις αποθηκεύσετε πριν το κλείσιμο;',
             youHaveUnsavedChangesBeforeReturning: 'Έχετε μη αποθηκευμένες αλλαγές. Θέλετε να τις αποθηκεύσετε πριν την επιστροφή σε λειτουργία προεπισκόπησης;',
@@ -6160,8 +6118,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Tallennettu — pysytään muokkaustilassa, koska sinulla on uudempia muutoksia'
         },
         modal: {
-            confirmExit: 'Vahvista poistuminen',
-            areYouSureYouWantToExit: 'Haluatko varmasti poistua? Kaikki tallentamattomat välilehdet ja paikallinen historia menetetään.',
             unsavedChanges: 'Tallentamattomia muutoksia',
             youHaveUnsavedChanges: 'Tiedostossa "{title}" on tallentamattomia muutoksia. Haluatko tallentaa ne ennen sulkemista?',
             youHaveUnsavedChangesBeforeReturning: 'Sinulla on tallentamattomia muutoksia. Haluatko tallentaa ne ennen palaamista esikatselutilaan?',
@@ -6418,8 +6374,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Gemt — bliver i redigeringstilstand, fordi du har nyere ændringer'
         },
         modal: {
-            confirmExit: 'Bekræft afslutning',
-            areYouSureYouWantToExit: 'Er du sikker på, at du vil afslutte? Alle ikke-gemte faner og lokal historik vil gå tabt.',
             unsavedChanges: 'Ikke-gemte ændringer',
             youHaveUnsavedChanges: 'Du har ikke-gemte ændringer i "{title}". Vil du gemme dem før lukning?',
             youHaveUnsavedChangesBeforeReturning: 'Du har ikke-gemte ændringer. Vil du gemme dem før du vender tilbage til forhåndsvisningstilstand?',
@@ -6676,8 +6630,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Lagret — forblir i redigeringsmodus fordi du har nyere endringer'
         },
         modal: {
-            confirmExit: 'Bekreft avslutning',
-            areYouSureYouWantToExit: 'Er du sikker på at du vil avslutte? Alle ulagrede faner og lokal historikk vil gå tapt.',
             unsavedChanges: 'Ulagrede endringer',
             youHaveUnsavedChanges: 'Du har ulagrede endringer i "{title}". Vil du lagre dem før lukking?',
             youHaveUnsavedChangesBeforeReturning: 'Du har ulagrede endringer. Vil du lagre dem før du går tilbake til forhåndsvisningsmodus?',
@@ -6934,8 +6886,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Tersimpan — tetap di mode edit karena ada perubahan yang lebih baru'
         },
         modal: {
-            confirmExit: 'Konfirmasi Keluar',
-            areYouSureYouWantToExit: 'Anda yakin ingin keluar? Semua tab yang belum disimpan dan riwayat lokal akan hilang.',
             unsavedChanges: 'Perubahan Belum Disimpan',
             youHaveUnsavedChanges: 'Anda memiliki perubahan yang belum disimpan di "{title}". Apakah Anda ingin menyimpannya sebelum menutup?',
             youHaveUnsavedChangesBeforeReturning: 'Anda memiliki perubahan yang belum disimpan. Apakah Anda ingin menyimpannya sebelum kembali ke mode pratinjau?',
@@ -7192,8 +7142,6 @@ export const translations: Record<LanguageCode, Translation> = {
             savedNewerEdits: 'Kaydedildi — daha yeni düzenlemeleriniz olduğu için düzenleme modunda kalınıyor'
         },
         modal: {
-            confirmExit: 'Çıkışı Onayla',
-            areYouSureYouWantToExit: 'Çıkmak istediğinizden emin misiniz? Tüm kaydedilmemiş sekmeler ve yerel geçmiş kaybolacak.',
             unsavedChanges: 'Kaydedilmemiş Değişiklikler',
             youHaveUnsavedChanges: '"{title}" içinde kaydedilmemiş değişiklikleriniz var. Kapatmadan önce kaydetmek istiyor musunuz?',
             youHaveUnsavedChangesBeforeReturning: 'Kaydedilmemiş değişiklikleriniz var. Önizleme moduna dönmeden önce kaydetmek istiyor musunuz?',

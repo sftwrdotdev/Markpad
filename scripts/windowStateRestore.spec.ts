@@ -164,29 +164,28 @@ test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys 
 		/localStorage\.getItem\(options\.windowStateKey\) \?\?\n?\s*localStorage\.getItem\(options\.legacyStateKey\)/,
 	);
 	// The shared helper clears the Rust snapshot and both localStorage keys.
-	// Only explicit exit uses it: a restore that goes wrong must never delete
-	// the record of which documents were open (interruptedSessionRestore.test.ts).
+	// Only turning the setting off uses it: a restore that goes wrong must never
+	// delete the record of which documents were open
+	// (interruptedSessionRestore.test.ts), and quitting writes the snapshot now
+	// rather than discarding it (#390).
 	const discardScope = sliceBetween(session, 'async function discardPersistedState', 'async function readProgress');
 	assert.match(discardScope, /clear_window_state/);
 	assert.match(discardScope, /removeItem\(options\.windowStateKey\)/);
 	assert.match(discardScope, /removeItem\(options\.legacyStateKey\)/);
-	// Explicit exit delegates to the same cleanup path.
-	const exitScope = sliceBetween(viewer, 'async function appExit', '\n\t}');
-	assert.match(exitScope, /await discardPersistedWindowState\(\)/);
 });
 
-test('exit discards the snapshot only once startup has finished', () => {
+test('quitting writes the session instead of discarding it', () => {
+	// ⌘Q used to discard the snapshot, so it and the red button disagreed
+	// about whether the session came back — silently, because the dialog that
+	// explained the difference only appeared when a tab was dirty (#390).
+	// Quitting now closes every window and each one persists through its own
+	// close handler.
 	const exitScope = sliceBetween(viewer, 'async function appExit', '\n\t}');
-	// Until `init` flips `mode` to 'app', the file on disk is the only complete
-	// record of the session: restore has rebuilt the tab list but is still
-	// reading those files back. An unreachable restored path stretches that
-	// window to one share timeout per tab, and the loading screen renders the
-	// ☰ menu while every keyboard shortcut is inert — so Exit is the control
-	// the user reaches for, and discarding there costs them the session.
-	assert.match(exitScope, /restoreStateOnReopen && mode === 'app'/);
-	const gate = offsetOf(exitScope, "mode === 'app'");
-	const discard = offsetOf(exitScope, 'discardPersistedWindowState()');
-	assert.ok(gate < discard, 'the discard must sit behind the startup gate');
+	assert.doesNotMatch(exitScope, /discardPersistedWindowState/);
+	assert.match(exitScope, /await getAllWindows\(\)/, 'every window is asked, not just the focused one');
+	assert.match(exitScope, /other\.label !== appWindow\.label/, 'this window closes last');
+	// Nothing may skip the close handler's review and persist step any more.
+	assert.doesNotMatch(viewer, /isForceExiting/);
 });
 
 test('with restore enabled resolved titled tabs stay open for the snapshot', () => {
