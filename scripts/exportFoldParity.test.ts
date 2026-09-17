@@ -287,7 +287,9 @@ test('folding still works on screen', () => {
 });
 
 test('an expanded section is unaffected by the reveal', () => {
-	assert.equal(printedValue(openSection, 'height'), 'auto');
+	// The reveal is scoped to `.is-collapsed` now: the printed article is built
+	// from the buffer, so no fold in it was ever animated to a measured height.
+	assert.notEqual(printedValue(openSection, 'height'), '0');
 	assert.notEqual(printedValue(openSection, 'opacity'), '0');
 });
 

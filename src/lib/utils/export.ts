@@ -21,9 +21,10 @@ import {
 	inlineKatexFontFaces,
 	katexFontUrlsToEmbed,
 } from './exportFonts.js';
+import { MERMAID_PRINT_THEME } from './mermaidPrint.js';
 import { normalizePreviewMaxWidth } from './previewWidth.js';
 
-interface ExportContext {
+export interface ExportContext {
 	rawContent: string;
 	tabTitle: string;
 	tabPath: string;
@@ -59,10 +60,13 @@ type ExportHtmlResult = {
 	missingImages: number;
 };
 
-export interface PdfExportContext {
-	tabPath: string;
+export interface PdfExportContext extends ExportContext {
 	osType: 'macos' | 'windows' | 'linux' | 'unknown';
+	/** The empty `#print-root` article in the viewer's markup, filled here. */
+	printRoot: HTMLElement;
 }
+
+const IMAGE_LOAD_TIMEOUT_MS = 3000;
 
 // An exported file leaves the app: it is opened in the user's default browser
 // straight from the export prompt, mailed on, dropped in a shared folder. None
@@ -327,7 +331,14 @@ async function renderExportRichContent(root: HTMLElement, ctx: ExportContext): P
 	}
 }
 
-async function buildExportArticle(ctx: ExportContext): Promise<{ root: HTMLElement; embeddedImages: number; missingImages: number }> {
+async function buildExportArticle(
+	ctx: ExportContext,
+	// A file that leaves the app has to carry its images; one printed from this
+	// window does not, and `asset:` resolves here exactly as it does in the
+	// preview. Base64 of every image in the document, for paper, is a cost with
+	// nothing on the other side of it.
+	{ embedImages = true }: { embedImages?: boolean } = {},
+): Promise<{ root: HTMLElement; embeddedImages: number; missingImages: number }> {
 	const body = getMarkdownBodyWithoutFrontMatter(ctx.rawContent);
 	const rendered = (await invoke('render_markdown', { content: body })) as string;
 	// The export used to write `rendered` to disk untouched. comrak runs with
@@ -371,7 +382,7 @@ async function buildExportArticle(ctx: ExportContext): Promise<{ root: HTMLEleme
 
 	let embeddedImages = 0;
 	let missingImages = 0;
-	for (const img of Array.from(wrapper.querySelectorAll('img[src]'))) {
+	for (const img of embedImages ? Array.from(wrapper.querySelectorAll('img[src]')) : []) {
 		const src = img.getAttribute('src');
 		if (!src) continue;
 
@@ -467,18 +478,82 @@ export async function exportAsHtml(ctx: ExportContext): Promise<ExportHtmlResult
 	}
 }
 
+/**
+ * Prints the same article the HTML export writes to disk.
+ *
+ * The PDF used to be `window.print()` over the live window, so the paper was
+ * whatever was on screen — title bar, tab strip, splitter, find highlights,
+ * fold state, screen theme — and `@media print` was a list of app parts being
+ * subtracted back out, one entry longer with every new part. Fifteen issues
+ * over five months were that list missing an entry (#668). Now the document is
+ * rendered from `rawContent` into `#print-root`, the print sheet reveals that
+ * element and hides the rest of the body, and a new UI part cannot reach paper
+ * at all.
+ *
+ * `printRoot` is handed in rather than created here: it lives in the viewer's
+ * markup, where the component's own `.markdown-body` rules reach it.
+ */
 export async function exportAsPdf(ctx: PdfExportContext) {
-	if (ctx.osType !== 'windows') {
-		await invoke('print_pdf');
-		return;
+	// Windows writes the file itself, so it asks for the path first: a reader
+	// who cancels the dialog should not have waited for a render.
+	let windowsTarget = '';
+	if (ctx.osType === 'windows') {
+		const defaultName = ctx.tabPath ? ctx.tabPath.replace(/\.[^.]+$/, '.pdf') : 'export.pdf';
+		const selected = await save({
+			filters: [{ name: 'PDF', extensions: ['pdf'] }],
+			defaultPath: defaultName,
+		});
+		if (!selected) return;
+		windowsTarget = selected;
 	}
 
-	const defaultName = ctx.tabPath ? ctx.tabPath.replace(/\.[^.]+$/, '.pdf') : 'export.pdf';
-	const selected = await save({
-		filters: [{ name: 'PDF', extensions: ['pdf'] }],
-		defaultPath: defaultName,
-	});
-	if (!selected) return;
+	// Whatever the last export left behind, this one starts empty.
+	ctx.printRoot.replaceChildren();
 
-	await invoke('export_pdf_windows', { path: selected });
+	// Paper is white whatever the screen is wearing, so the diagrams are drawn
+	// for paper. The rest of the appearance comes from the light palette
+	// `#print-root` carries in styles.css.
+	const article = await buildExportArticle(
+		{ ...ctx, mermaidTheme: MERMAID_PRINT_THEME },
+		{ embedImages: false },
+	);
+	ctx.printRoot.replaceChildren(...Array.from(article.root.childNodes));
+	ctx.printRoot.style.setProperty('--preview-max-width', exportContentMaxWidth(ctx.contentWidth));
+
+	// Taken down when the printing is over, not when the command returns:
+	// `print_pdf` opens the platform's print sheet and comes back while it is
+	// still up, so clearing the article in a `finally` would race the sheet for
+	// the page it is about to render — and losing that race prints nothing at
+	// all. `afterprint` is the event that actually says the job is done; a
+	// platform that never sends it leaves the article mounted, hidden, until
+	// the next export replaces it.
+	window.addEventListener('afterprint', () => ctx.printRoot.replaceChildren(), { once: true });
+
+	// Print before the images have decoded and they arrive on paper as empty
+	// boxes — the failure that made a screen-printed PDF look plausible and
+	// ship half a document.
+	await waitForImages(ctx.printRoot);
+	if (ctx.osType === 'windows') await invoke('export_pdf_windows', { path: windowsTarget });
+	else await invoke('print_pdf');
+}
+
+/** Resolves when every image in `root` has loaded, failed, or run out of time. */
+async function waitForImages(root: HTMLElement): Promise<void> {
+	const pending = Array.from(root.querySelectorAll('img')).filter((img) => !img.complete);
+	if (pending.length === 0) return;
+	await Promise.race([
+		Promise.all(
+			pending.map(
+				(img) =>
+					new Promise<void>((resolve) => {
+						img.addEventListener('load', () => resolve(), { once: true });
+						img.addEventListener('error', () => resolve(), { once: true });
+					}),
+			),
+		),
+		// An unreachable image must not hold the export open indefinitely: a
+		// document printed without one picture beats a menu item that does
+		// nothing.
+		new Promise<void>((resolve) => setTimeout(resolve, IMAGE_LOAD_TIMEOUT_MS)),
+	]);
 }

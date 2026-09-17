@@ -29,13 +29,11 @@
 import { processMarkdownHtml } from './utils/markdown';
 import { MARKDOWN_LINK_EXTENSIONS, sanitizeMarkdownHtml } from './utils/sanitize.js';
 import {
-	renderDiagramsForPrint,
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
 import {
 	loadRichContentLibraries,
 	renderRichContent as renderRichContentInto,
-	sanitizeDiagramSvg,
 	type RichContentLibraries,
 } from './utils/richContent.js';
 import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
@@ -209,6 +207,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * measures in the same place.
 	 */
 	let previewHosts = $state<Record<string, HTMLElement | null>>({});
+	// Filled by `exportAsPdf` for the duration of a print and emptied again;
+	// `@media print` reveals it and hides everything else under `#app`.
+	let printRootEl = $state<HTMLElement | null>(null);
+
 	let previewBlocks = $derived(
 		tabManager.activeTabId ? (previewHosts[tabManager.activeTabId] ?? null) : null,
 	);
@@ -2600,57 +2602,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	/**
-	 * Bring the preview DOM up to date with the buffer before it is printed.
-	 *
-	 * The effect that keeps `tab.content` in step with `tab.rawContent` only
-	 * runs while the preview is on screen — split view, or the editor with the
-	 * TOC open, because the TOC is built from the rendered headings. In plain
-	 * edit mode with the TOC closed nothing re-renders, so `tab.content` is
-	 * still whatever was rendered when the file was opened.
-	 *
-	 * Export PDF prints the live DOM. Revealing the pane (see the `#app
-	 * .pane.viewer-pane` rule in styles.css) without this would export the
-	 * document as it was before the editing session — a worse failure than the
-	 * blank page it replaces, because it looks like it worked. Rendering here
-	 * pays the cost once per export instead of once per keystroke, which is
-	 * what the narrow effect condition exists to avoid.
-	 *
-	 * Reading mode is left alone: its DOM came from `renderTabPreviewFromRaw`
-	 * rendering this same buffer, and re-rendering would throw away the scroll
-	 * position and the fold/find state the user is looking at.
-	 */
-	async function syncPreviewForPrint() {
-		const tab = tabManager.activeTab;
-		if (!tab || !(tab.isEditing || tab.isSplit)) return;
-		const tabId = tab.id;
-		const rawContent = tab.rawContent;
-		if (rawContent === undefined) return;
-		if (tab.previewedRawContent === rawContent) return;
-		try {
-			const processed = await renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides);
-			const current = tabManager.activeTab;
-			if (tabManager.activeTabId !== tabId || current?.rawContent !== rawContent) return;
-			tabManager.updateTabContent(tabId, processed);
-			current.previewedRawContent = rawContent;
-			await tick();
-			// Awaited, unlike the on-screen path: Mermaid, KaTeX and
-			// highlight.js all replace nodes asynchronously, and the diagram
-			// re-theming below reads the nodes this produces.
-			//
-			// Scoped to the tab being exported. Omitting the roots means the
-			// article, which now holds a host per open tab, so an export would
-			// re-typeset and re-draw every open document to print one.
-			await renderRichContent(previewBlocks ? [previewBlocks] : undefined);
-			await tick();
-		} catch (error) {
-			// Printing the stale DOM is still better than not printing, but the
-			// user must not be told a fresh export happened.
-			console.error('Failed to refresh the preview before export', error);
-			addToast(t('toast.exportPdfStale', settings.language), 'warning');
-		}
-	}
-
 	async function exportAsPdf() {
 		// The gate belongs here rather than at each caller: the menu hides its
 		// item behind the same condition, but the chord reaches this function
@@ -2658,29 +2609,25 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// and the editor's own action in edit mode — and a guard on one of them
 		// still printed a blank page from the other (#673).
 		if (!hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)) return;
-		await syncPreviewForPrint();
 		const tab = tabManager.activeTab;
-		// Mermaid bakes the screen theme into the SVG it emits, so a dark
-		// preview exports unreadable diagrams. Rebuild them light for the
-		// duration of the export rather than trying to recolour the output.
-		const restoreDiagrams = await renderDiagramsForPrint({
-			// The tab being exported, not every open tab's diagrams.
-			root: previewBlocks,
-			mermaid,
-			sanitizeSvg: sanitizeDiagramSvg,
-			screenTheme: currentMermaidTheme(),
-			onError: (error) => console.error('Failed to re-render diagram for export', error),
-		});
+		if (!printRootEl) return;
 		try {
+			// The same context the HTML export is given: the PDF is now rendered
+			// from the buffer through the same path, so neither the preview's
+			// state nor the window's has anything to do with what prints (#668).
 			await _exportPdf({
+				rawContent,
+				tabTitle: tab?.title || '',
 				tabPath: tab?.path || '',
+				mermaidTheme: currentMermaidTheme(),
+				libraries: richLibraries,
+				contentWidth: previewContentWidth,
 				osType: settings.osType,
+				printRoot: printRootEl,
 			});
 		} catch (error) {
 			console.error('Failed to export PDF', error);
 			addToast(t('toast.exportPdfFailed', settings.language), 'error');
-		} finally {
-			restoreDiagrams();
 		}
 	}
 
@@ -4414,6 +4361,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 {/if}
 
 <ContextMenu {...docContextMenu} onhide={() => (docContextMenu.show = false)} />
+
+<!-- What a PDF is rendered from: empty on screen, filled for the duration of a
+     print by `exportAsPdf`. It is a sibling of the app's own markup so that the
+     print sheet can hide everything else under `#app` in one rule, rather than
+     naming each part of the interface (#668). -->
+<article id="print-root" class="markdown-body" bind:this={printRootEl}></article>
 
 <style>
 	:root {
