@@ -60,7 +60,8 @@ body {
 	--hljs-type: #953800;
 }
 
-:root[data-theme="light"] {
+:root[data-theme="light"],
+#print-root {
 	/* Explicit Light Theme Override */
 	--color-fg-default: #1f2328;
 	--color-fg-muted: #656d76;
@@ -1446,140 +1447,69 @@ body {
 }
 
 /* print styles for pdf export */
+/* The PDF/print route renders the document from the buffer into `#print-root`
+   (see `exportAsPdf`), the same article the HTML export writes to disk. The
+   sheet below reveals that element and hides the rest of the app, so nothing on
+   screen — title bar, tab strip, splitter, find highlights, fold state — can
+   reach paper, and a new part of the interface cannot leak onto a page by being
+   forgotten here. It used to print the live window, and this block was a list of
+   app parts being subtracted back out: fifteen issues over five months were that
+   list missing an entry (#668).
+
+   What is left is typography for paper. */
 @media print {
 	@page {
 		margin: 0;
 		size: auto;
 	}
 
-	/* A fold is a reading convenience of this session, not part of the
-	   document. Exporting is the act of handing the document to someone who
-	   has neither the app nor a way to open a collapsed section, so a print
-	   that clips one to zero height silently deletes text the author can
-	   still see two clicks away — and it disagreed with the HTML export,
-	   which renders every fold open (see utils/export.ts). Both routes now
-	   ship the whole document.
-
-	   Both collapse mechanisms have to be undone, and `opacity` matters as
-	   much as the size: the screen rules pair `height: 0` /
-	   `grid-template-rows: 0fr` with `opacity: 0`, so restoring only the
-	   size would print blank space where the section is. */
-	.foldable-content-wrapper {
-		height: auto !important;
-		transition: none !important;
-		overflow: visible !important;
+	/* `#app` is `display: contents`, so the viewer's own markup and the print
+	   article are siblings here. Structural rather than a list of names: a part
+	   added to the interface tomorrow is hidden by the same rule. */
+	body > :not(#app) {
+		display: none !important;
+	}
+	#app > :not(#print-root) {
+		display: none !important;
+	}
+	#print-root {
+		display: block !important;
 	}
 
+	html,
+	body {
+		background: white !important;
+		overflow: visible !important;
+		height: auto !important;
+		min-height: auto !important;
+		margin: 0 !important;
+		padding: 0 !important;
+	}
+
+	/* A callout written as "> [!note]-" carries its collapsed state in the
+	   markup itself, so it arrives here collapsed: text that is in the document,
+	   clipped to zero height, on a page that has no way to open it. Heading
+	   folds arrive open — the render is handed an empty fold state. The HTML
+	   export takes the same position from the other side (see
+	   `buildExportDocument`). */
 	.foldable-content-wrapper.is-collapsed {
 		height: auto !important;
 		overflow: visible !important;
 		opacity: 1 !important;
 	}
-
-	.markdown-alert-content {
-		transition: none !important;
-		overflow: visible !important;
-	}
-
 	.markdown-alert-content.is-collapsed {
 		grid-template-rows: 1fr !important;
 		overflow: visible !important;
 		opacity: 1 !important;
 	}
-
 	.foldable-content-wrapper .content-inner,
 	.markdown-alert-content .content-inner {
 		overflow: visible !important;
 	}
-
-	/* The chevrons are the control for that fold. On paper they control
-	   nothing, and a collapsed one is rotated to point at content that is
-	   now printed open, so it would be actively misleading. */
 	.markdown-body .header-fold-icon,
-	.markdown-body .callout-fold-icon {
+	.markdown-body .callout-fold-icon,
+	.lang-label {
 		display: none !important;
-	}
-
-	.custom-title-bar,
-	.tab-area,
-	.window-controls-left,
-	.window-controls-right,
-	.title-actions-container,
-	.tooltip,
-	.custom-tooltip,
-	.drag-overlay,
-	.pane.editor-pane,
-	.split-bar,
-	.home-menu-container,
-	.kebab-btn,
-	.title-action-btn,
-	.theme-dropdown-container,
-	.control-btn,
-	.lang-label,
-	.top-fade-mask,
-	.toc-overlay-wrapper,
-	.toc-toggle-floating,
-	.find-bar {
-		display: none !important;
-	}
-
-	/* The find bar is hidden above, but its marks wrap document text. Adding
-	   them to the list would delete the matched words from the export, so the
-	   highlight is neutralised instead of removed. `!important` is what
-	   decides here: FindBar.svelte paints the mark from a `:global()` rule of
-	   equal specificity, and the order between a component style and this
-	   sheet is not guaranteed. */
-	.markdown-body mark.markpad-find-match,
-	.markdown-body mark.markpad-find-match.active {
-		background-color: transparent !important;
-		box-shadow: none !important;
-		color: inherit !important;
-		border-radius: 0 !important;
-		padding: 0 !important;
-	}
-
-	html,
-	body,
-	#app,
-	.markdown-container,
-	.layout-container,
-	.pane.viewer-pane,
-	.viewer-content {
-		background: white !important;
-		overflow: visible !important;
-		height: auto !important;
-		min-height: auto !important;
-		position: static !important;
-		margin: 0 !important;
-		padding: 0 !important;
-		width: 100% !important;
-		border-radius: 0 !important;
-	}
-
-	/* The viewer pane carries an inline split ratio during normal interaction.
-	   Width alone cannot override that flex value in the print layout.
-
-	   The `#app` is not decoration. Edit mode collapses the preview with a
-	   MarkdownViewer.svelte rule that Svelte scopes to
-	   `.layout-container:not(.split).editing.svelte-xxx .viewer-pane:where(...)`
-	   — five classes, against two for `.pane.viewer-pane`. Two `!important`
-	   declarations are decided by specificity, so the component won and the
-	   pane the whole print layout is built around stayed at `width: 0`. That
-	   is why Export PDF from the editor printed a blank page. `#app` is the
-	   application root element (see app.html); its id is the only handle this
-	   sheet has that outranks a component's scoped selector.
-
-	   `opacity` is listed for the same reason `.foldable-content-wrapper`
-	   above lists it: the collapse is size *and* opacity, so restoring the
-	   width alone prints a correctly sized blank rectangle.
-
-	   The pane also animates its flex, and a print taken mid-transition would
-	   capture an intermediate width. */
-	#app .pane.viewer-pane {
-		width: 100% !important;
-		flex: none !important;
-		opacity: 1 !important;
-		transition: none !important;
 	}
 
 	.markdown-body {
@@ -1598,7 +1528,6 @@ body {
 		-webkit-print-color-adjust: exact !important;
 		position: static !important;
 	}
-
 	.markdown-body pre,
 	.markdown-body pre code {
 		white-space: pre-wrap !important;
@@ -1606,9 +1535,6 @@ body {
 		word-break: normal !important;
 		overflow: visible !important;
 	}
-
-	/* Paper has no horizontal scrollbar. Let the browser distribute columns from
-	   their content so wide tables wrap at words instead of one glyph at a time. */
 	.markdown-body table {
 		display: table !important;
 		table-layout: auto !important;
@@ -1616,19 +1542,16 @@ body {
 		max-width: 100% !important;
 		overflow: visible !important;
 	}
-
 	.markdown-body table th,
 	.markdown-body table td {
 		overflow-wrap: break-word !important;
 		word-break: normal !important;
 	}
-
 	.markdown-body p,
 	.markdown-body li {
 		orphans: 3;
 		widows: 3;
 	}
-
 	.markdown-body h1,
 	.markdown-body h2,
 	.markdown-body h3,
@@ -1637,8 +1560,9 @@ body {
 	.markdown-body h6 {
 		break-after: avoid;
 		break-inside: avoid;
+		line-height: 1.2;
+		margin: 1.4em 0 0.55em;
 	}
-
 	.markdown-body pre,
 	.markdown-body blockquote,
 	.markdown-body .markdown-alert,
@@ -1649,82 +1573,40 @@ body {
 	.markdown-body .katex-display {
 		break-inside: avoid;
 	}
-
-	.markdown-body .markdown-alert {
+	.markdown-body .markdown-alert,
+	.markdown-body details.markdown-alert {
 		page-break-inside: avoid !important;
 		break-inside: avoid !important;
 		box-decoration-break: clone !important;
 		-webkit-box-decoration-break: clone !important;
 	}
-
-	.markdown-body details.markdown-alert {
-		page-break-inside: avoid !important;
-		break-inside: avoid !important;
-	}
-
 	.markdown-body tr {
 		break-inside: avoid;
 		page-break-inside: avoid;
 	}
-
-	/* Diagrams are re-rendered with Mermaid's light theme before an
-	   export (see utils/mermaidPrint.ts), so the printed SVG already
-	   carries paper colours and needs no overrides here. Recolouring
-	   Mermaid's output from CSS meant enumerating its internal class
-	   names, which differ per diagram type and change between
-	   releases. */
-
 	.markdown-body .frontmatter-panel,
-	.markdown-body .frontmatter-summary {
+	.markdown-body .frontmatter-summary,
+	.markdown-body .export-frontmatter-panel {
 		box-sizing: border-box !important;
 		max-width: 100% !important;
 	}
-
-	.markdown-body .frontmatter-title {
-		min-width: 0 !important;
-		overflow: hidden !important;
-		text-overflow: ellipsis !important;
-	}
-
-	.markdown-body .frontmatter-count {
-		flex-shrink: 0 !important;
-	}
-
-	/* Keep screen chrome out of the export while giving the document its own
-	   compact paper rhythm. These rules intentionally do not affect preview. */
-	.markdown-body h1,
-	.markdown-body h2,
-	.markdown-body h3,
-	.markdown-body h4,
-	.markdown-body h5,
-	.markdown-body h6 {
-		line-height: 1.2;
-		margin: 1.4em 0 0.55em;
-	}
-
 	.markdown-body p {
 		margin: 0 0 0.75em;
 	}
-
 	.markdown-body ul,
 	.markdown-body ol {
 		margin: 0.4em 0 0.8em;
 		padding-left: 1.5em;
 	}
-
 	.markdown-body li + li {
 		margin-top: 0.2em;
 	}
-
 	.markdown-body blockquote {
 		margin: 1em 0;
 		padding: 0.15em 1em;
 		color: #333;
 		border-left: 3px solid #bbb;
 	}
-
-	/* Code should retain a paper boundary but may split across pages rather
-	   than force a near-page-sized block onto the following page. */
 	.markdown-body pre {
 		margin: 1em 0;
 		padding: 0.75em 1em;
@@ -1734,50 +1616,40 @@ body {
 		break-inside: auto;
 		page-break-inside: auto;
 	}
-
 	.markdown-body img {
 		display: block;
 		max-width: 100% !important;
 		height: auto !important;
 		margin: 1em auto;
 	}
-
-	/* Images and diagrams are replaced content: they cannot be fragmented, so
-	   the `break-inside: avoid` above crops anything taller than the printable
-	   column instead of moving it to the next page. Cap the height so they
-	   scale to fit — `height: auto` and the intrinsic ratio bring the width
-	   down with it.
-
-	   `@page` has no margin and `.markdown-body` adds 0.75in top and bottom,
-	   leaving 9.5in on Letter and 10.19in on A4. One absolute cap below both
-	   fits either sheet; viewport units would be shorter to write but resolve
-	   against the page box inconsistently across the platform webviews. */
+	/* An image or a diagram taller than the paper used to be clipped at the page
+	   break rather than scaled; 9.5in is what both Letter and A4 hold with the
+	   0.75in margins above. */
 	.markdown-body img,
 	.markdown-body .mermaid-diagram svg {
 		max-height: 9in !important;
 		object-fit: contain !important;
 	}
-
-	/* `.mermaid-diagram` scrolls horizontally on screen, and that same overflow
-	   would clip on paper the diagram the cap just made fit. */
 	.markdown-body .mermaid-diagram {
 		overflow: visible !important;
 	}
-
 	.markdown-body table {
 		margin: 1em 0;
 		font-size: 0.9em;
 	}
-
 	.markdown-body table th,
 	.markdown-body table td {
 		padding: 0.4em 0.55em;
 		vertical-align: top;
 	}
+}
 
-	.markdown-container {
-		zoom: 1 !important;
-	}
+/* Paper is white whatever the screen is wearing, so the print article carries
+   the light palette rather than the app's current theme. Declared on the
+   element, so it wins over the theme's own `:root` definitions for this
+   subtree. */
+#print-root {
+	display: none;
 }
 
 /* ===== Extended markdown features ===== */

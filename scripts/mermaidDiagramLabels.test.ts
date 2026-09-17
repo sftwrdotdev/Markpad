@@ -90,7 +90,7 @@ const WITHOUT_A_DOM = { isSupported: DOMPurify.isSupported, sanitize: typeof DOM
 DOMPurify.sanitize = (html: string) => html;
 
 const { renderRichContent } = await import('../src/lib/utils/richContent.ts');
-const { renderDiagramsForPrint } = await import('../src/lib/utils/mermaidPrint.ts');
+const { MERMAID_PRINT_THEME } = await import('../src/lib/utils/mermaidPrint.ts');
 const { resetDiagramCache } = await import('../src/lib/utils/diagramCache.ts');
 
 interface Corpus {
@@ -160,7 +160,7 @@ interface RenderedDiagrams {
 }
 
 /** Runs the real preview pipeline over one code block per captured diagram. */
-async function renderDiagrams(): Promise<RenderedDiagrams> {
+async function renderDiagrams(mermaidTheme = 'neutral'): Promise<RenderedDiagrams> {
 	resetDiagramCache();
 	const root = (globalThis as any).document.createElement('div');
 	root.innerHTML = Object.values(CORPUS.diagrams)
@@ -174,7 +174,7 @@ async function renderDiagrams(): Promise<RenderedDiagrams> {
 	await renderRichContent({
 		roots: [root as any],
 		libraries: libs as any,
-		mermaidTheme: 'neutral',
+		mermaidTheme,
 		idFactory: (index: number) => `diagram-${index}`,
 		onError: (error) => assert.fail(`renderRichContent reported: ${error}`),
 	});
@@ -267,30 +267,18 @@ test('the preview asks Mermaid for labels a sanitizer cannot delete', async () =
  * The stand-in answers `render()` from the config it was last initialized with,
  * so this fails on the real symptom rather than on the spelling of a call.
  */
-test('the PDF re-render keeps the labels the preview asked for', async () => {
-	const { diagrams, root, mermaid } = await renderDiagrams();
-
-	const restore = await renderDiagramsForPrint({
-		root: root as any,
-		mermaid: mermaid as any,
-		sanitizeSvg: (svg: string) => svg,
-		screenTheme: 'dark',
-		idFactory: (index: number) => `print-${index}`,
-		onError: (error) => assert.fail(`renderDiagramsForPrint reported: ${error}`),
-	});
+test('the article a PDF is printed from keeps those labels too', async () => {
+	// The print route renders its own copy of the document with the print
+	// theme (see `exportAsPdf`), so the label question has to be answered for
+	// that theme as well: `mermaidConfig` is the only place htmlLabels is set,
+	// and every render goes through it.
+	const { diagrams, mermaid } = await renderDiagrams(MERMAID_PRINT_THEME);
 
 	for (const name of Object.keys(CORPUS.diagrams)) {
-		assertLabelsSurvived(name, diagrams.get(name)!, 'the diagram re-rendered for print');
+		assertLabelsSurvived(name, diagrams.get(name)!, 'the diagram rendered for print');
 	}
-
-	// The restore puts the screen rendering back, and leaves the singleton
-	// configured for the screen — the next preview pass must not inherit the
-	// print config either.
-	restore();
-	for (const name of Object.keys(CORPUS.diagrams)) {
-		assertLabelsSurvived(name, diagrams.get(name)!, 'the diagram restored after print');
-	}
-	assert.equal((mermaid.config as Record<string, unknown>).htmlLabels, false, 'the restore must leave the screen config in place');
+	assert.equal((mermaid.config as Record<string, unknown>).htmlLabels, false);
+	assert.equal((mermaid.config as Record<string, unknown>).theme, MERMAID_PRINT_THEME);
 });
 
 /**
