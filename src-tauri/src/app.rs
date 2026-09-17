@@ -84,7 +84,9 @@ pub fn run() {
             .visible(false)
             // Not `.focused(false)`: on a window built hidden it leaves WebView2
             // on Windows with no drop target, so every file dragged in is
-            // refused (#768, tauri-apps/wry#1639). `show_window` skipping
+            // refused (#768, tauri-apps/wry#1639). tao also keeps applying it
+            // after the first show, so minimizing a maximized window flashes it
+            // at its restored size (#776, tauri-apps/tao#1338). `show_window` skipping
             // `set_focus` is what keeps a cold start from stealing focus.
             .resizable(true)
             .shadow(false)
@@ -218,7 +220,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::title_bar_action,
             commands::clipboard_write_text,
             commands::clipboard_read_text,
             commands::clipboard_read_image,
