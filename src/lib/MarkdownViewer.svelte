@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 	import { emitTo } from '@tauri-apps/api/event';
-	import { getCurrentWindow } from '@tauri-apps/api/window';
+	import { getAllWindows, getCurrentWindow } from '@tauri-apps/api/window';
 	import { onMount, tick, untrack } from 'svelte';
 	import { fade, fly, slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
@@ -690,7 +690,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	let isForceExiting = $state(false);
 	// True while the window-close walk is showing per-tab dialogs; the native
 	// red button is not blocked by the dialog overlay, so this keeps a second
 	// close request from starting a competing walk.
@@ -1026,33 +1025,28 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		return true;
 	}
 
-	// Exit discards the snapshot on purpose — it is how "quit" differs from
-	// closing the window — but only once startup is over. Until `init` sets
-	// `mode` to 'app', the file on disk is still the only complete record of
-	// the session: `restore()` has rebuilt the tab list but is partway through
-	// reading those files back. That window is short unless a restored path is
-	// unreachable, and then it is the share timeout, once per tab, serially —
-	// which is exactly when the user starts looking for a way out. The loading
-	// screen renders the ☰ menu while every keyboard shortcut is inert
-	// (`handleKeyDown` returns on `mode !== 'app'`), so Exit is the control
-	// they reach. Discarding there costs them the session they were waiting
-	// for; falling through to a plain close writes it back instead.
+	/**
+	 * Quit is the red button applied to every window. Each one runs its own
+	 * `onCloseRequested`: reviews its unsaved tabs, writes its own restore
+	 * snapshot, and closes.
+	 *
+	 * It used to discard the snapshot instead, so ⌘Q and the red button
+	 * disagreed about whether the session came back — and the dialog that
+	 * explained the difference only appeared when a tab was dirty, which is
+	 * not the path most people take (#390). It also closed nothing but the
+	 * focused window, so quitting with two windows open did not quit.
+	 *
+	 * Every other window is asked at once rather than one after another:
+	 * `close()` resolves when the request is sent, not when the window is
+	 * gone, and there is no reply saying whether the reader cancelled. Two
+	 * windows with unsaved work therefore show their own dialogs side by side,
+	 * each still guarding its own buffers.
+	 */
 	async function appExit() {
-		await savePinnedTagIfNeeded();
-		if (settings.restoreStateOnReopen && mode === 'app') {
-			const hasUnsaved = tabManager.tabs.some((t) => t.isDirty || (t.path === '' && t.rawContent.trim() !== ''));
-			if (hasUnsaved) {
-				const response = await askCustom(t('modal.areYouSureYouWantToExit', settings.language), {
-					title: t('modal.confirmExit', settings.language),
-					kind: 'warning',
-					showSave: false,
-				});
-				if (response !== 'discard') return;
-			}
-			await discardPersistedWindowState();
-			isForceExiting = true;
+		for (const other of await getAllWindows()) {
+			if (other.label !== appWindow.label) await other.close();
 		}
-		appWindow.close();
+		await appWindow.close();
 	}
 
 	function getLanguage(path: string) {
@@ -3729,8 +3723,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			unlisteners.push(await appWindow.listen('menu-app-quit',         () => appExit()));
 			unlisteners.push(
 				await appWindow.onCloseRequested(async (event) => {
-					if (isForceExiting) return;
-
 					// The red button is a native control, so it is NOT blocked
 					// by the in-app dialog overlay: a second click while the
 					// walk below is showing a dialog would re-enter this handler
