@@ -106,7 +106,7 @@ type Fakes = {
 /** `renderMarkdownPreview`'s stand-in: the output names what it was given. */
 const rendered = (raw: string, path: string) => `<html path="${path}">${raw}</html>`;
 
-function buildHarness(fakes: Fakes, isEditing: boolean): Harness {
+function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, unknown> = {}): Harness {
 	const source = [
 		pluck('renderTabPreviewFromRaw'),
 		// Absent on the pre-fix baseline, where both toggles inline their own
@@ -129,7 +129,8 @@ function buildHarness(fakes: Fakes, isEditing: boolean): Harness {
 			tabManager, settings, t, addToast, askCustom, saveContent,
 			cancelPendingAutoSave, renderMarkdownPreview, loadMarkdown,
 			documentSession, invoke, isEditing, liveMode, toggleLiveMode,
-			tick, renderRichContent,
+			tick, renderRichContent, editorPane, markdownBody,
+			getPreviewScrollSyncPosition, restoreAfterLeavingEditor,
 		} = deps;
 		${js}
 		return { toggleEdit, toggleSplitView };`,
@@ -181,6 +182,11 @@ function buildHarness(fakes: Fakes, isEditing: boolean): Harness {
 		toggleLiveMode: () => {},
 		tick: async () => {},
 		renderRichContent: () => {},
+		// No panes unless a test asks: where the reader lands (#799) is not
+		// what the rest of this file is about.
+		editorPane: undefined,
+		markdownBody: undefined,
+		...panes,
 	});
 }
 
@@ -431,4 +437,32 @@ test('the view toggles no longer re-read the file to leave an editable pane', ()
 	const closeSplit = sliceFrom(toggleSplit, 'setSplitEnabled(tab.id, false)');
 	assert.doesNotMatch(closeSplit, /loadMarkdown/);
 	assert.doesNotMatch(toggleSplit, /askCustom/);
+});
+
+// ------------------------------------------------ where the reader lands (#799)
+
+test('Ctrl+E hands each pane the line the other one was showing', async () => {
+	setSettings(false);
+	const { tab, fakes } = dirtyTab('edit');
+	const fromEditor = { section: 'body', ratio: 0.4, line: 120 };
+	const fromPreview = { section: 'body', ratio: 0.7, line: 300 };
+	const synced: unknown[] = [];
+	const restored: unknown[] = [];
+	const panes = {
+		editorPane: {
+			scrollSyncPosition: () => fromEditor,
+			syncScrollToPosition: (position: unknown) => synced.push(position),
+		},
+		markdownBody: {},
+		getPreviewScrollSyncPosition: () => fromPreview,
+		restoreAfterLeavingEditor: (_id: string, position: unknown) => restored.push(position),
+	};
+
+	await buildHarness(fakes, true, panes).toggleEdit();
+	assert.equal(tab.isEditing, false);
+	assert.deepEqual(restored, [fromEditor], 'the preview was not sent to the editor\'s line');
+
+	await buildHarness(fakes, false, panes).toggleEdit();
+	assert.equal(tab.isEditing, true);
+	assert.deepEqual(synced, [fromPreview], 'the editor was not sent to the preview\'s line');
 });

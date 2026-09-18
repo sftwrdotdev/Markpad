@@ -230,6 +230,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	let editorPane = $state<{ 
 		syncScrollToPosition: (position: ScrollSyncPosition) => void;
+		scrollSyncPosition: () => ScrollSyncPosition | null;
 		handleDroppedFile: (path: string, x: number, y: number) => Promise<void>;
 		updateDragCaret: (x: number, y: number) => void;
 		hideDragCaret: () => void;
@@ -2146,10 +2147,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// disappear — closing the tab (`canCloseTab`) and closing the window
 			// (`appExit`) — still ask. A view toggle is not one of them.
 			await flushBeforeLeavingEditableMode(tab);
+			// Ctrl+E lands on the line the other pane was showing, mapped the way
+			// split view maps it (#799).
+			const position = editorPane?.scrollSyncPosition() ?? null;
 			tab.isEditing = false;
 			await renderPreviewLeavingEditableMode(tab);
+			if (position) void restoreAfterLeavingEditor(tab.id, position);
 		} else {
 			// Switch to edit
+			const position = markdownBody ? getPreviewScrollSyncPosition(markdownBody) : null;
 			if (tab.path !== '') {
 				if (tab.isDirty) {
 					// Already have unsaved in-memory edits (e.g. from an
@@ -2179,7 +2185,28 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			} else {
 				tab.isEditing = true;
 			}
+			if (position && tab.isEditing) {
+				await tick();
+				editorPane?.syncScrollToPosition(position);
+			}
 		}
+	}
+
+	/**
+	 * The preview half of #799. The restore effect cannot do it: the article
+	 * stays mounted at zero width in edit mode, so nothing it depends on changes
+	 * with the mode, and the pane slides open over 0.3s, so the line has to be
+	 * placed once it has its real width.
+	 */
+	async function restoreAfterLeavingEditor(tabId: string, position: ScrollSyncPosition) {
+		await tick();
+		if (viewerPaneEl) await Promise.all(viewerPaneEl.getAnimations().map((a) => a.finished.catch(() => {})));
+		const body = markdownBody;
+		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
+		scrollPreviewToSyncPosition(position);
+		// That scroll is marked programmatic, so the tab's anchor is written here.
+		const anchorLine = getPreviewScrollAnchor(body);
+		if (anchorLine !== null) tabManager.updateTabAnchorLine(tabId, anchorLine);
 	}
 
 	/**

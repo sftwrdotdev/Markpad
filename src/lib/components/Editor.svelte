@@ -877,6 +877,11 @@
 
 		// After the view-state / anchor-line restore above, deliberately: an
 		// explicit "edit this fragment" beats the position the tab was left at.
+		if (pendingSync) {
+			const position = pendingSync;
+			pendingSync = null;
+			syncScrollToPosition(position);
+		}
 		if (pendingReveal) {
 			const { startLine, endLine, placement } = pendingReveal;
 			pendingReveal = null;
@@ -1907,6 +1912,11 @@
 		return editor ? editor.getTopForLineNumber(line) : 0;
 	}
 
+	/** Where the editor is, in split view's terms; null before Monaco has loaded. */
+	export function scrollSyncPosition(): ScrollSyncPosition | null {
+		return editorReady && editor ? getEditorScrollSyncPosition() : null;
+	}
+
 	function getEditorScrollSyncPosition() {
 		if (!editor) {
 			return { section: 'body', ratio: 0 } satisfies ScrollSyncPosition;
@@ -2162,8 +2172,14 @@
 		editor.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
 	}
 
+	/** A sync asked for before Monaco loaded, spent right after the view-state restore. */
+	let pendingSync: ScrollSyncPosition | null = null;
+
 	export function syncScrollToPosition(position: ScrollSyncPosition) {
-		if (!editor) return;
+		if (!editorReady || !editor) {
+			pendingSync = position;
+			return;
+		}
 
 		const scrollMax = getEditorContentScrollMax();
 		let targetScroll: number | null = null;
