@@ -59,6 +59,7 @@ export type ViewerCommand =
 	| 'toggle-split-view'
 	| 'toggle-edit-view'
 	| 'toggle-live-mode'
+	| 'toggle-zen-mode'
 	| 'save-as'
 	| 'save'
 	| 'undo-close-tab'
@@ -250,6 +251,9 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// the exact inverse of where the Auto-Reload button was drawn (#692). The
 	// panel advertised the chord in every mode regardless.
 	if (mod && key === 'l') return 'toggle-live-mode';
+	// Zen had only the Monaco half, so it did nothing in the preview (#800).
+	// `code`, not `key`: Option turns Z into Ω on a Mac.
+	if (modAlt && code === 'KeyZ') return 'toggle-zen-mode';
 	// Save As. The app menu advertised this chord for as long as the menu has
 	// existed, but nothing ever bound it: the branch below matched on
 	// `cmdOrCtrl && key === 's'` with no Shift guard, so the advertised

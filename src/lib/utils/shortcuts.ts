@@ -377,6 +377,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+Alt+Z'],
 		group: 'view',
 		editorAction: true,
+		documentCommands: ['toggle-zen-mode'],
 	},
 	{
 		id: 'toggle-tabs',
