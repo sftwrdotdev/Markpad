@@ -3255,6 +3255,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return;
 			case 'toggle-live-mode':
 				return void toggleLiveMode();
+			case 'toggle-zen-mode':
+				return settings.toggleZenMode();
 			case 'toggle-edit-view':
 				// The `silentSave` argument this used to pass meant "suppress the
 				// unsaved-changes modal on the hotkey path". There is no modal on a

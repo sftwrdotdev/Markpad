@@ -174,3 +174,20 @@ test('Mod+L reaches Auto-Reload from every mode, including the preview', () => {
 	assert.equal(viewerCommandFor(chord('l', 'KeyL', { ctrlKey: true, altKey: true }), READING), null);
 	assert.equal(viewerCommandFor(chord('l', 'KeyL'), READING), null);
 });
+
+test('Mod+Alt+Z reaches Zen mode from the preview', () => {
+	// #800. Zen was only an `editorAction`, so the chord did nothing without
+	// Monaco on screen.
+	const zen = chord('z', 'KeyZ', { ctrlKey: true, altKey: true });
+	assert.equal(viewerCommandFor(zen, READING), 'toggle-zen-mode');
+	assert.equal(viewerCommandFor(zen, { ...READING, isSplit: true }), 'toggle-zen-mode');
+
+	// Option rewrites the key on a Mac; the physical key is what the chord names.
+	const macZen = chord('Ω', 'KeyZ', { metaKey: true, altKey: true });
+	assert.equal(viewerCommandFor(macZen, { ...READING, osType: 'macos' }), 'toggle-zen-mode');
+
+	// Mod+Z is undo and Mod+Shift+Z redo; neither may land here.
+	assert.equal(viewerCommandFor(chord('z', 'KeyZ', { ctrlKey: true }), READING), null);
+	assert.equal(viewerCommandFor(chord('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), READING), null);
+	assert.equal(viewerCommandFor(chord('z', 'KeyZ', { ctrlKey: true, altKey: true, shiftKey: true }), READING), null);
+});
