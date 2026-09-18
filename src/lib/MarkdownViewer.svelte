@@ -4385,7 +4385,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		overflow-x: hidden;
 		transform: translate3d(0, 0, 0);
 		max-width: var(--preview-max-width, 880px);
-		text-align: left;
+		text-align: start;
 		overflow-wrap: anywhere;
 	}
 
