@@ -45,6 +45,7 @@ let handleInvoke: (cmd: string, args: any) => unknown = () => {
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
+const { settings } = await import('../src/lib/stores/settings.svelte.js');
 
 function makeSession() {
 	return createDocumentSession({
@@ -271,4 +272,43 @@ test('it is marked before anything can be awaited', () => {
 	const awaited = fn.indexOf('await saveContent');
 	assert.ok(marked > 0, 'the toggle marks the preview');
 	assert.ok(marked < awaited, 'marked before the first await after the write');
+});
+
+// #804: with auto-save off the toggle is an unsaved edit like any other. It used
+// to save the whole buffer, taking the user's unsaved typing to disk with it.
+test('with auto-save off a toggle leaves the tab unsaved', async () => {
+	const doc = ['- [ ] one'].join('\n') + '\n';
+	tabManager.closeAll();
+	invokeCalls = [];
+	handleInvoke = (cmd) => {
+		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', doc, false, false];
+		if (cmd === 'read_file_content_checked') return [doc, false];
+		return null;
+	};
+	const session = makeSession();
+	await session.loadMarkdown('/docs/tasks.md');
+	const tab = tabManager.activeTab!;
+	settings.autoSave = false;
+	try {
+		assert.equal(await session.toggleTaskCheckbox(1, true), true);
+	} finally {
+		settings.autoSave = true;
+	}
+	assert.equal(tab.rawContent, '- [x] one\n');
+	assert.equal(tab.isDirty, true);
+	assert.equal(invokeCalls.some((call) => call.cmd === 'save_file_content'), false);
+});
+
+test('a task in an untitled tab can be toggled', async () => {
+	tabManager.closeAll();
+	invokeCalls = [];
+	handleInvoke = () => null;
+	const session = makeSession();
+	tabManager.addNewTab();
+	const tab = tabManager.activeTab!;
+	tabManager.updateTabRawContent(tab.id, '- [ ] one\n');
+
+	assert.equal(await session.toggleTaskCheckbox(1, true), true);
+	assert.equal(tab.rawContent, '- [x] one\n');
+	assert.equal(invokeCalls.some((call) => call.cmd === 'save_file_content'), false);
 });
