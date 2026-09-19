@@ -825,7 +825,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 
 	async function toggleTaskCheckbox(sourceLine: number, nowChecked: boolean) {
 		const tab = tabManager.activeTab;
-		if (!tab || !tab.path) return false;
+		if (!tab) return false;
 		// Reading mode can reach a large file before its full buffer arrives.
 		// Editing and saving the preview slice would drop everything past it.
 		if (!(await ensureFullContent(tab.id))) return false;
@@ -871,7 +871,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// current, because it is the one place that knows the DOM was updated
 		// by hand.
 		tab.previewedRawContent = updated;
-		await saveContent(tab.id);
+		// Saved here rather than left to the auto-save timer, which skips a tab
+		// in reading mode. With auto-save off the toggle is an unsaved edit (#804).
+		if (settings.autoSave && tab.path) await saveContent(tab.id);
 		return true;
 	}
 
