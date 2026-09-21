@@ -3,6 +3,21 @@ import type { editor as MonacoEditor } from "monaco-editor";
 import { animatesCursor, animatesJumpScroll } from "./motion.js";
 
 /**
+ * "Line Numbers: off" without giving up the gutter they sit in.
+ *
+ * Monaco reserves that gutter on `renderType !== Off`, and a render function
+ * validates as `Custom` — so an empty string keeps the width and draws nothing
+ * in it. `'off'` is the one value that collapses it, and the floating table of
+ * contents button stands on what it collapsed (#810).
+ *
+ * A module constant rather than an inline arrow because
+ * `editorOptionsFromSettings` runs inside an effect: a new closure per call is
+ * a new option value, and Monaco would see this option change on every
+ * `updateOptions`.
+ */
+const BLANK_LINE_NUMBER = () => "";
+
+/**
  * The Monaco options derived from the settings store, in one place.
  *
  * These ten were written twice: once in the `monaco.editor.create()` literal
@@ -41,7 +56,10 @@ export function editorOptionsFromSettings(
 		// of the window edge (#758). 'advanced' measures in the DOM and is slow
 		// on large files, so only a proportional font pays for it.
 		wrappingStrategy: fontIsMonospace ? "simple" : "advanced",
-		lineNumbers: settings.lineNumbers as "on" | "off" | "relative" | "interval",
+		lineNumbers:
+			settings.lineNumbers === "off"
+				? BLANK_LINE_NUMBER
+				: (settings.lineNumbers as "on" | "relative" | "interval"),
 		// A Monaco string enum, not a flag. Any non-empty string is truthy, so
 		// a ternary on it can only ever produce "line" — which defeats both the
 		// line-highlight toggle and Zen mode, whose whole effect is 'none'.

@@ -752,3 +752,25 @@ test('space-delimited languages are left exactly as they were', () => {
 		);
 	}
 });
+
+test('turning line numbers off keeps the gutter the TOC button stands on', () => {
+	// #810: the floating table-of-contents button is positioned against the
+	// pane, and what it floats over is the line-number gutter. `'off'` is the
+	// one `lineNumbers` value that collapses that gutter, which dropped the
+	// button onto the text; a render function validates as `Custom` instead, so
+	// Monaco keeps the width and this draws nothing in it. The assertion is
+	// therefore that 'off' does NOT reach Monaco as 'off'.
+	const off = editorOptionsFromSettings({ ...SETTINGS, lineNumbers: 'off' }, 100).lineNumbers;
+	assert.equal(typeof off, 'function');
+	assert.equal((off as (lineNumber: number) => string)(7), '');
+
+	// One value, not a closure per call: `editorOptionsFromSettings` runs in an
+	// effect, and a fresh arrow would be a changed option on every
+	// `updateOptions`.
+	assert.equal(off, editorOptionsFromSettings({ ...SETTINGS, lineNumbers: 'off' }, 100).lineNumbers);
+
+	// The modes that already reserved the gutter are passed through untouched.
+	for (const lineNumbers of ['on', 'relative', 'interval']) {
+		assert.equal(editorOptionsFromSettings({ ...SETTINGS, lineNumbers }, 100).lineNumbers, lineNumbers);
+	}
+});
