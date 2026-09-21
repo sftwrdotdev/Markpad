@@ -212,7 +212,7 @@ test('an exported file contains typeset math, not its LaTeX source', async () =>
 	// assertion is about what the element *contains*.)
 	assert.match(
 		run.document,
-		/<p data-math="display" data-math-source="E = mc\^2"><span class="katex">/,
+		/<p data-math="display" data-math-source="E = mc\^2"[^>]*><span class="katex">/,
 	);
 	assert.doesNotMatch(run.document, /<p data-math="display"[^>]*>E = mc\^2<\/p>/);
 

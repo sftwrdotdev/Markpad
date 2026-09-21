@@ -575,6 +575,33 @@ function processSoftLineAnchors(root: Element, doc: Document) {
 	}
 }
 
+/**
+ * Mark the direction of each text block so Arabic, Hebrew and other
+ * right-to-left scripts render correctly.
+ *
+ * comrak (the Rust renderer) has no concept of text direction: it emits
+ * plain `<p>` / `<li>` / `<h1>` blocks with no `dir` attribute, so Arabic
+ * content renders left-to-right — paragraphs line up on the left, and mixed
+ * text (digits, URLs, a Latin word inside an Arabic sentence) scrambles.
+ * `dir="auto"` hands each block to the browser, which resolves its direction
+ * from the block's own first strong directional character. That is the same
+ * rule GitHub renders markdown with, and it keeps a bilingual document
+ * readable block by block.
+ *
+ * Code is deliberately left out: `pre` and inline `code` stay LTR because
+ * source code is written left-to-right regardless of the prose around it.
+ * A `dir` the author already set is never overridden.
+ */
+function processBidiDirection(root: Element) {
+	const blocks = root.querySelectorAll(
+		"p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption, dt, dd",
+	);
+	for (const el of Array.from(blocks)) {
+		if (el.hasAttribute("dir")) continue;
+		el.setAttribute("dir", "auto");
+	}
+}
+
 export function processMarkdownHtml(
 	html: string,
 	filePath: string,
@@ -865,6 +892,8 @@ export function processMarkdownHtml(
 			p.remove();
 		}
 	});
+
+	processBidiDirection(doc.body);
 
 	return doc.body.innerHTML;
 }

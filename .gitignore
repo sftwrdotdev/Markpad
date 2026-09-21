@@ -20,3 +20,6 @@ dist/
 # Downloaded by the snap jobs; snapcraft.yaml packages it. Never committed.
 markpad.deb
 pack.log
+
+# Local RTL demo / proof artifacts (not part of the app)
+.demo/
