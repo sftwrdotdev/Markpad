@@ -1,3 +1,5 @@
+import { previewZoomFactor } from './previewAnchor.js';
+
 const FOLD_WRAPPER_SELECTOR = '.foldable-content-wrapper';
 const FOLD_CONTENT_SELECTOR = ':scope > .content-inner';
 
@@ -67,7 +69,19 @@ function updateFoldHeights(root: HTMLElement) {
 	// Nothing is clipped by the smaller number: both the wrapper and
 	// `.content-inner` are `overflow: visible` while expanded, and a collapsed
 	// wrapper takes `height: 0` from the more specific rule either way.
-	const heights = pending.map(({ content }) => content.getBoundingClientRect().height);
+	//
+	// And a rect is reported in viewport pixels, which have the preview's CSS
+	// `zoom` folded in, while `height` is resolved in the wrapper's own pixels,
+	// which get that same zoom applied again. Publishing a rect unconverted
+	// therefore made every expanded wrapper exactly `zoom` times too short: at
+	// 90% each section overflowed its box by a tenth and lightly overlapped the
+	// next, at 70% by a third and the document collapsed into itself (#807).
+	// `scrollHeight` never showed this — it counts in the element's own pixels —
+	// so the switch above brought it in. Dividing by the accumulated factor puts
+	// the measurement back in the pixels the style property is read in. The
+	// factor is one read of the same clean layout, so it costs no extra reflow.
+	const zoom = previewZoomFactor(root);
+	const heights = pending.map(({ content }) => content.getBoundingClientRect().height / zoom);
 
 	// Write pass 2: publish the measured heights without reading anything back.
 	pending.forEach(({ wrapper }, index) => {
