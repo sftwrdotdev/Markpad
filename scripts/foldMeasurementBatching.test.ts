@@ -19,7 +19,7 @@ type LayoutEvent =
 
 const isWrite = (event: LayoutEvent) => event.type !== 'read' && event.type !== 'commit';
 
-function createFoldRoot(specs: { id: string; height: number | null }[]) {
+function createFoldRoot(specs: { id: string; height: number | null }[], zoom = 1) {
 	const events: LayoutEvent[] = [];
 
 	const wrappers = specs.map(({ id, height }) => {
@@ -49,10 +49,24 @@ function createFoldRoot(specs: { id: string; height: number | null }[]) {
 		};
 	});
 
+	// `previewZoomFactor` reads both of these off the root to recover the CSS
+	// `zoom` the preview applies above it. Recorded as measurements so the
+	// batching assertions below cover them too: a zoom read taken after the
+	// first height is published would cost the same per-wrapper reflow the
+	// content reads are batched to avoid.
+	const LAYOUT_WIDTH = 800;
 	const root = {
 		// The article, which is never itself a fold wrapper.
 		matches: () => false,
 		querySelectorAll: () => wrappers,
+		get offsetWidth() {
+			events.push({ type: 'read', id: 'root:zoom' });
+			return LAYOUT_WIDTH;
+		},
+		getBoundingClientRect() {
+			events.push({ type: 'read', id: 'root:zoom' });
+			return { width: LAYOUT_WIDTH * zoom };
+		},
 		get offsetHeight() {
 			events.push({ type: 'commit' });
 			return 0;
@@ -62,10 +76,10 @@ function createFoldRoot(specs: { id: string; height: number | null }[]) {
 	return { root, events };
 }
 
-async function runFoldLayout(specs: { id: string; height: number | null }[]) {
+async function runFoldLayout(specs: { id: string; height: number | null }[], zoom = 1) {
 	// Imported before the stubs go in, so only the synchronous run below sees them.
 	const { observeFoldLayout } = await import('../src/lib/utils/foldLayout.js');
-	const { root, events } = createFoldRoot(specs);
+	const { root, events } = createFoldRoot(specs, zoom);
 	const frames: (() => void)[] = [];
 	const globals = globalThis as Record<string, unknown>;
 	const saved = {
@@ -111,7 +125,7 @@ test('fold measurement reads every height before it writes any of them', async (
 	);
 
 	const reads = events.filter((event) => event.type === 'read').map((event) => (event as { id: string }).id);
-	assert.deepEqual(reads.slice().sort(), ['deepest', 'inner', 'outer']);
+	assert.deepEqual(reads.slice().sort(), ['deepest', 'inner', 'outer', 'root:zoom', 'root:zoom']);
 
 	const firstHeightWrite = events.findIndex((event) => event.type === 'write');
 	assert.ok(firstHeightWrite > lastRead, 'every height must be published after the last measurement');
@@ -176,5 +190,42 @@ test('wrappers without rendered content are skipped instead of measured', async 
 	assert.deepEqual(
 		events.filter((event) => event.type === 'write'),
 		[{ type: 'write', id: 'real', value: '--fold-content-height:80px' }],
+	);
+});
+
+// A rect is reported in viewport pixels, which have the preview's CSS `zoom`
+// folded in; `height` is resolved in the wrapper's own pixels, which get that
+// zoom applied again. Publishing the rect as measured made every expanded
+// wrapper exactly `zoom` times too short, so its content overflowed and the
+// next section was drawn on top of it — worse the further the reader zoomed
+// out (#807). The published number has to be the layout height, whatever the
+// zoom, so these lock the conversion rather than any one factor.
+test('published heights are converted out of the zoomed pixels they were measured in', async () => {
+	for (const zoom of [0.7, 0.9, 1.5]) {
+		const events = await runFoldLayout([{ id: 'section', height: 240 * zoom }], zoom);
+		const writes = events.filter((event) => event.type === 'write') as { id: string; value: string }[];
+
+		assert.equal(writes.length, 1);
+		assert.equal(writes[0].id, 'section');
+
+		const published = Number(writes[0].value.replace('--fold-content-height:', '').replace('px', ''));
+		// Not an exact comparison: the round trip through the test's own
+		// `240 * zoom` is what carries the float error, not the conversion.
+		assert.ok(
+			Math.abs(published - 240) < 0.001,
+			`a rect measured at zoom ${zoom} must publish the wrapper's own layout height, got ${published}`,
+		);
+	}
+});
+
+// `previewZoomFactor` is a ratio of two measurements, and a container that is
+// not being laid out reports 0 for both. Dividing by the zoom that falls out of
+// that would publish `Infinity` or `NaN` onto every wrapper in the document.
+test('a root with no rendered width publishes the measured height unchanged', async () => {
+	const events = await runFoldLayout([{ id: 'section', height: 240 }], 0);
+
+	assert.deepEqual(
+		events.filter((event) => event.type === 'write'),
+		[{ type: 'write', id: 'section', value: '--fold-content-height:240px' }],
 	);
 });
