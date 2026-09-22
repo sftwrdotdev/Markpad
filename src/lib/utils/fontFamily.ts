@@ -6,6 +6,24 @@
  * case-insensitive because CSS keywords are, which is also what keeps the
  * Linux defaults working: `defaultFontsFor('linux')` picks `Monospace` and
  * `system-ui`, and `Monospace` is the generic, spelled with a capital M.
+ *
+ * The list is `<generic-font-complete>` plus `<generic-font-incomplete>` from
+ * CSS Fonts 4 §2.1.2, and nothing else. Two names that look like they belong
+ * are deliberately absent:
+ *
+ * - `fangsong` and the other script-specific generics are spelled
+ *   `generic(fangsong)` now, so the bare word is an ordinary family name —
+ *   and a real one: macOS ships `FangSong` and `STFangsong`. Exempting it
+ *   would hand a user who picked their 仿宋 face an unquoted name, which an
+ *   engine that still treats the bare word as a keyword resolves to a generic
+ *   instead of to their font.
+ * - `emoji` is not in the grammar at all.
+ *
+ * The CSS-wide keywords — `inherit`, `initial`, `unset`, `revert`,
+ * `revert-layer` — and `default` must never be added here. §2.1.1 requires a
+ * family with one of those names to be quoted, and measurement agrees: bare,
+ * the whole declaration is rejected, which is the defect this module exists to
+ * fix rather than a case it should reintroduce.
  */
 const GENERIC_FAMILIES = new Set([
 	'serif',
@@ -19,8 +37,6 @@ const GENERIC_FAMILIES = new Set([
 	'ui-monospace',
 	'ui-rounded',
 	'math',
-	'emoji',
-	'fangsong',
 ]);
 
 /**

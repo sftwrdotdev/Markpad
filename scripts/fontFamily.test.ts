@@ -40,6 +40,24 @@ test('generic families stay unquoted, which is what keeps the Linux defaults wor
 	assert.equal(fontFamilyValue('ui-rounded', 'sans-serif'), 'ui-rounded, sans-serif');
 });
 
+test('the generics table holds the grammar and nothing that only looks like it', () => {
+	// `generic(fangsong)` is how CSS Fonts 4 §2.1.2 spells the script-specific
+	// generics, so the bare word is an ordinary family name — and macOS ships two
+	// real ones. Exempting it would emit a user's 仿宋 face unquoted, which an
+	// engine that does treat the bare word as a keyword resolves to a generic.
+	assert.equal(fontFamilyValue('FangSong', 'serif'), '"FangSong", serif');
+	assert.equal(fontFamilyValue('fangsong', 'serif'), '"fangsong", serif');
+	assert.equal(fontFamilyValue('emoji', 'sans-serif'), '"emoji", sans-serif');
+	// The other direction, and the one that must never be "fixed" by adding an
+	// entry: §2.1.1 requires a family named after a CSS-wide keyword to be
+	// quoted. Measured in a WKWebView, `font-family: inherit, serif` and
+	// `font-family: default, serif` are rejected outright, while the quoted form
+	// is accepted.
+	for (const reserved of ['inherit', 'initial', 'unset', 'revert', 'revert-layer', 'default']) {
+		assert.equal(fontFamilyValue(reserved, 'serif'), `"${reserved}", serif`);
+	}
+});
+
 test('a blank preference is the fallback alone, not a leading comma', () => {
 	// `stringSetting` applies any non-null raw value, so an empty `preview.font`
 	// key lands as an empty family. Interpolated bare it produced
