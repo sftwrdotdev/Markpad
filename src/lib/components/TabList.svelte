@@ -220,8 +220,8 @@
 					class:drag-opacity={draggingId === tab.id}
 					onmousedown={(e) => handleMouseDown(e, tab, e.currentTarget as HTMLElement)}
 					onclick={(e) => {
-						// Only reachable when maximized, where the wrapper is taller
-						// than the tab (#823). Clicks inside the tab are the tab's own.
+						// Only reachable when maximized, where the wrapper reaches up to
+						// the screen edge (#823). Clicks inside the tab are the tab's own.
 						if (e.target === e.currentTarget) selectTab(tab);
 					}}>
 					<Tab
@@ -352,12 +352,11 @@
 
 	/* Maximized on Windows/Linux, the strip above a tab is the screen's top
 	   edge. Give it to the tab, as Chrome does, so a flick to the edge picks the
-	   tab instead of dragging the window (#823). Restored windows keep the strip
-	   as drag region. */
+	   tab instead of dragging the window (#823). Only the top strip: the one
+	   below is not an edge and stays drag region, as do restored windows. */
 	:global(.custom-title-bar.maximized) .tab-item-wrapper {
-		display: flex;
-		align-items: center;
-		height: 100%;
+		align-self: flex-start;
+		padding-top: 4px; /* (36px bar - 28px tab) / 2 */
 	}
 
 	.tab-item-wrapper.drag-opacity {
