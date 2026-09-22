@@ -232,6 +232,8 @@ body {
 	word-wrap: break-word;
 	overflow-wrap: anywhere;
 	text-align: left;
+	/* Space CJK from Latin. Ignored where unsupported. */
+	text-autospace: normal;
 	user-select: text;
 	-webkit-user-select: text;
 }
@@ -590,6 +592,7 @@ body {
 .markdown-body samp {
 	font-family: monospace, monospace;
 	font-size: 1em;
+	text-autospace: no-autospace;
 }
 
 .markdown-body figure {
@@ -717,6 +720,7 @@ body {
 	white-space: normal;
 	overflow-wrap: anywhere;
 	word-break: normal;
+	font-variant-numeric: tabular-nums;
 }
 
 .markdown-body table tr {
@@ -772,6 +776,7 @@ body {
 	margin-bottom: 16px;
 	font-weight: 600;
 	line-height: 1.25;
+	text-wrap-style: balance;
 	position: relative;
 }
 
