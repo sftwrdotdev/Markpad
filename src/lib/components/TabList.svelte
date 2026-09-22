@@ -61,12 +61,20 @@
 		items: [],
 	});
 
+	function selectTab(tab: TabData) {
+		if (justDragged) return;
+		tabManager.setActive(tab.id);
+		ontabclick?.();
+	}
+
 	function handleMouseDown(e: MouseEvent, tab: TabData, element: HTMLElement) {
 		if (e.button !== 0) return;
 		e.stopPropagation();
 		e.preventDefault();
 
-		const rect = element.getBoundingClientRect();
+		// The wrapper is as tall as the title bar; the drag proxy has to line up
+		// with the tab drawn inside it.
+		const rect = (element.firstElementChild ?? element).getBoundingClientRect();
 		dragState = {
 			startX: e.clientX,
 			currentX: e.clientX,
@@ -204,22 +212,24 @@
 			}}>
 			{#each tabManager.tabs as tab, i (tab.id)}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
 					class="tab-item-wrapper"
 					animate:flip={{ duration: 200 }}
 					role="listitem"
 					class:drag-opacity={draggingId === tab.id}
-					onmousedown={(e) => handleMouseDown(e, tab, e.currentTarget as HTMLElement)}>
+					onmousedown={(e) => handleMouseDown(e, tab, e.currentTarget as HTMLElement)}
+					onclick={(e) => {
+						// Only reachable when maximized, where the wrapper is taller
+						// than the tab (#823). Clicks inside the tab are the tab's own.
+						if (e.target === e.currentTarget) selectTab(tab);
+					}}>
 					<Tab
 						{tab}
 						folderSuffix={folderSuffixes.get(tab.id)}
 						isActive={!showHome && tabManager.activeTabId === tab.id}
 						isLast={i === tabManager.tabs.length - 1}
-						onclick={() => {
-							if (justDragged) return;
-							tabManager.setActive(tab.id);
-							ontabclick?.();
-						}}
+						onclick={() => selectTab(tab)}
 						onclose={() => oncloseTab?.(tab.id)} />
 				</div>
 			{/each}
@@ -338,6 +348,16 @@
 
 	.tab-item-wrapper {
 		transition: opacity 0.1s;
+	}
+
+	/* Maximized on Windows/Linux, the strip above a tab is the screen's top
+	   edge. Give it to the tab, as Chrome does, so a flick to the edge picks the
+	   tab instead of dragging the window (#823). Restored windows keep the strip
+	   as drag region. */
+	:global(.custom-title-bar.maximized) .tab-item-wrapper {
+		display: flex;
+		align-items: center;
+		height: 100%;
 	}
 
 	.tab-item-wrapper.drag-opacity {
