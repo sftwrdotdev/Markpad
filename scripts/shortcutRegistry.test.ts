@@ -737,9 +737,8 @@ test('Mod+K belongs to Insert Link, on every platform', () => {
  * than sitting here next to the one the code follows: Delete Column destroys
  * more than Delete Row does and has a chord (`Mod+Shift+Backspace`), so the old
  * rationale could not have been what was being applied. The hazard it named is
- * also gone in fact: `Mod+Shift+K` is unbound on this branch and the `Mod+K`
- * namespace no longer exists, so the near-neighbour that started all this is not
- * there to slip onto.
+ * also gone in fact: the `Mod+K` namespace no longer exists, so no table verb
+ * sits one slip from Monaco's delete-line (`Mod+Shift+K`) any more.
  *
  * The four verbs, and what each one is worth a key for:
  *
