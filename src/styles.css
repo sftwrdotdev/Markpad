@@ -232,6 +232,8 @@ body {
 	word-wrap: break-word;
 	overflow-wrap: anywhere;
 	text-align: left;
+	/* Space CJK from Latin. Ignored where unsupported. */
+	text-autospace: normal;
 	user-select: text;
 	-webkit-user-select: text;
 }
@@ -590,6 +592,7 @@ body {
 .markdown-body samp {
 	font-family: monospace, monospace;
 	font-size: 1em;
+	text-autospace: no-autospace;
 }
 
 .markdown-body figure {
