@@ -1,5 +1,6 @@
 import type { editor as MonacoEditor } from "monaco-editor";
 
+import { fontFamilyValue } from "./fontFamily.js";
 import { animatesCursor, animatesJumpScroll } from "./motion.js";
 
 /**
@@ -75,7 +76,7 @@ export function editorOptionsFromSettings(
 		// does not control the thing its label names.
 		selectionHighlight: settings.occurrencesHighlight,
 		fontSize: settings.editorFontSize * (zoomPercent / 100),
-		fontFamily: settings.editorFont,
+		fontFamily: fontFamilyValue(settings.editorFont, "monospace"),
 		renderWhitespace: settings.showWhitespace ? "all" : "none",
 		// Monaco animates the scroll when it is sent to a position — a find
 		// match, a go-to-line, the scroll sync. That is the same jump the

@@ -574,7 +574,10 @@ function occurrenceHighlighting(
 	callee: string,
 	occurrencesHighlight: boolean,
 ): { occurrencesHighlight: string; selectionHighlight: boolean } {
-	const options = optionsPassedTo(callee, { occurrencesHighlight });
+	// The full fixture, not the one setting under test: `editorOptionsFromSettings`
+	// reads the chosen font family now, and a stub missing it is a `string` field
+	// that is `undefined` — a shape the type forbids and production cannot hand it.
+	const options = optionsPassedTo(callee, { ...SETTINGS, occurrencesHighlight });
 	return {
 		occurrencesHighlight: EditorOptions.occurrencesHighlight.validate(options.occurrencesHighlight),
 		selectionHighlight: EditorOptions.selectionHighlight.validate(options.selectionHighlight),

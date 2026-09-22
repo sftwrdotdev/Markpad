@@ -45,6 +45,7 @@ import {
 	type FoldHost,
 } from './utils/foldState.js';
 import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
+import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
 	findSourceLineRange,
@@ -4049,7 +4050,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										if(e.key === 'Enter' || e.key === ' ') handleLinkClick(e as unknown as MouseEvent);
 									}}
 									tabindex="-1"
-									style="outline: none; font-family: {settings.previewFont}, sans-serif; font-size: {settings.previewFontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
+									style="outline: none; font-family: {fontFamilyValue(settings.previewFont, 'sans-serif')}; font-size: {settings.previewFontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
 									{#if frontMatterInfo.exists}
 										<details
 											class="frontmatter-panel"
