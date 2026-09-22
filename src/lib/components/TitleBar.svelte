@@ -255,6 +255,19 @@
 			});
 	});
 
+	// Windows and Linux only: on macOS the top of the screen is the menu bar, so
+	// a maximized window's tabs never sit on the screen edge (#823).
+	let isMaximized = $state(false);
+	$effect(() => {
+		if (isMac) return;
+		const sync = () => appWindow.isMaximized().then((v) => (isMaximized = v)).catch(() => {});
+		sync();
+		const unlisten = appWindow.onResized(sync);
+		return () => {
+			unlisten.then((f) => f());
+		};
+	});
+
 	let tooltip = $state({
 		visible: false,
 		text: '',
@@ -402,7 +415,7 @@
 
 <svelte:window bind:innerWidth />
 
-<div class="custom-title-bar {isScrolled ? 'scrolled' : ''} {!isMac ? 'windows' : ''} {useNativeMacChrome ? 'native-mac' : ''}">
+<div class="custom-title-bar {isScrolled ? 'scrolled' : ''} {!isMac ? 'windows' : ''} {useNativeMacChrome ? 'native-mac' : ''}" class:maximized={isMaximized}>
 	{#if !isMac && !isWin11}
 		<div class="window-top-border"></div>
 	{/if}
