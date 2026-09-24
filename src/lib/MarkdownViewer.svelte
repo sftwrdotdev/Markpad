@@ -115,7 +115,7 @@ import {
 	getScrollTopForSyncPosition,
 	type ScrollSyncPosition,
 } from './utils/scrollSync.js';
-import { resolveTheme, settings, TOC_WIDTH_RANGE } from './stores/settings.svelte.js';
+import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior, watchReducedMotion } from './utils/motion.js';
@@ -3124,11 +3124,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function handleWheel(e: WheelEvent) {
 		if (e.ctrlKey || e.metaKey) {
-			if (e.deltaY < 0) {
-				settings.zoomIn();
-			} else {
-				settings.zoomOut();
-			}
+			settings.zoomBy(wheelZoomFactor(e.deltaY));
 		}
 	}
 

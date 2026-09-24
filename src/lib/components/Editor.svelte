@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
 	import { tabManager } from "../stores/tabs.svelte.js";
-	import { settings } from "../stores/settings.svelte.js";
+	import { settings, wheelZoomFactor } from "../stores/settings.svelte.js";
 	import { t, type LanguageCode } from '../utils/i18n.js';
 	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
 	import {
@@ -593,11 +593,7 @@
 			if (e.ctrlKey || e.metaKey) {
 				e.preventDefault();
 				e.stopPropagation();
-				if (e.deltaY < 0) {
-					settings.zoomIn();
-				} else {
-					settings.zoomOut();
-				}
+				settings.zoomBy(wheelZoomFactor(e.deltaY));
 			}
 		};
 

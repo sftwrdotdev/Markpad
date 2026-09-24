@@ -230,6 +230,20 @@ export const TOC_WIDTH_RANGE: NumericSettingRange = { min: 180, max: 420, step: 
 // preview rendered `zoom: NaN` until the reset button was found.
 export const ZOOM_LEVEL_RANGE: NumericSettingRange = { min: 25, max: 500, step: 10, default: 100 };
 
+/**
+ * The zoom factor one Ctrl/Cmd+wheel event asks for (#831).
+ *
+ * WebKit and Chromium both deliver a trackpad pinch as ctrl+wheel events with
+ * `deltaY = -100·ln(scale)`, so `exp(-deltaY / 100)` hands back the fingers'
+ * own scale: a pinch zooms as far as the fingers move, not a fixed step per
+ * event. The clamp caps one event near 10%, which is what a mouse notch still
+ * gets where it reports a large delta (100 on Windows); a slow notch on macOS
+ * reports a few pixels and zooms by that much less.
+ */
+export function wheelZoomFactor(deltaY: number): number {
+	return Math.exp(-Math.max(-10, Math.min(10, deltaY)) / 100);
+}
+
 /** True when `value` is a finite number the user is allowed to commit as-is. */
 export function isWithinRange(value: unknown, range: NumericSettingRange): boolean {
 	return typeof value === 'number' && Number.isFinite(value) && value >= range.min && value <= range.max;
@@ -844,6 +858,21 @@ export class SettingsStore {
 
 	zoomOut() {
 		this.zoomLevel = stepWithinRange(this.zoomLevel, -ZOOM_LEVEL_RANGE.step, ZOOM_LEVEL_RANGE);
+	}
+
+	// zoomLevel is whole percent and one pinch event is often a fraction of
+	// one: rounding every step would stall a slow pinch where it started. The
+	// unrounded level carries between events until something else moves zoomLevel.
+	#exactZoom: number | null = null;
+
+	zoomBy(factor: number) {
+		const current =
+			this.#exactZoom !== null && Math.round(this.#exactZoom) === this.zoomLevel
+				? this.#exactZoom
+				: clampToRange(this.zoomLevel, ZOOM_LEVEL_RANGE);
+		const next = Math.min(ZOOM_LEVEL_RANGE.max, Math.max(ZOOM_LEVEL_RANGE.min, current * factor));
+		this.#exactZoom = next;
+		this.zoomLevel = Math.round(next);
 	}
 
 	resetZoom() {
