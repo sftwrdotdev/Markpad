@@ -4057,6 +4057,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 									bind:this={markdownBody}
 									contenteditable="false"
 									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''} {settings.showToc ? 'toc-active' : ''}"
+									class:toc-in-gutter={settings.showToc && !settings.pinnedToc && !isOverhanging}
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
 									onchange={handleTaskCheckboxChange}
@@ -4421,18 +4422,47 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		overflow: hidden;
 	}
 
+	/*
+	 * The article is the scroller, so anything it clips cannot be wider than it.
+	 * It fills the pane and its padding centres the text column instead of a
+	 * `max-width` doing so; that leaves the side margins inside the article for
+	 * a wide table to extend into (#811).
+	 */
+	.viewer-content {
+		container-type: inline-size;
+	}
+
 	.markdown-body {
+		--gutter: clamp(24px, 5vw, 50px);
+		--measure: min(100cqi, var(--preview-max-width, 880px));
+		--breakout-inset: var(--gutter);
 		box-sizing: border-box;
 		min-width: 200px;
-		margin: 0 auto;
-		padding: 50px clamp(24px, 5vw, 50px);
+		padding: 50px max(var(--gutter), (100cqi - var(--measure)) / 2 + var(--gutter));
 		height: 100%;
 		overflow-y: auto;
 		overflow-x: hidden;
 		transform: translate3d(0, 0, 0);
-		max-width: var(--preview-max-width, 880px);
 		text-align: left;
 		overflow-wrap: anywhere;
+	}
+
+	/* An outline floating in the margin keeps a wide table from sliding under it. */
+	.markdown-body.toc-in-gutter {
+		--breakout-inset: calc(var(--toc-width) + var(--gutter));
+	}
+
+	/*
+	 * A table wider than the text column grows into the margins, centred on the
+	 * column, up to `--breakout-inset` from the pane edge; past that it scrolls.
+	 * `translate` because only it can use the table's own width: the shift is
+	 * half of what the table exceeds the column by, and 0 for one that fits.
+	 * Nested tables are left out, since their column does not start where the
+	 * text column does.
+	 */
+	.viewer-content :global(.markdown-body table:not(:is(li, blockquote, td, th, details, .markdown-alert, .footnotes) table)) {
+		max-width: max(100%, 100cqi - 2 * var(--breakout-inset));
+		translate: min(0px, (var(--measure) - 2 * var(--gutter)) / 2 - 50%);
 	}
 
 	.loading-chip {
@@ -4493,8 +4523,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	.markdown-body.full-width {
-		max-width: 100%;
-		margin: 0;
+		--measure: 100cqi;
 	}
 
 
