@@ -75,7 +75,7 @@ test('preview layout derives width and ToC geometry from the same preference', (
 	assert.match(viewerSource, /isTocOverhanging\(\{[\s\S]*?previewContentWidth,[\s\S]*?\}\)/);
 	assert.match(tocOverlaySource, /input\.viewerWidth - input\.previewContentWidth/);
 	assert.match(viewerSource, /--preview-max-width:/);
-	assert.match(viewerSource, /max-width: var\(--preview-max-width, 880px\)/);
+	assert.match(viewerSource, /--measure: min\(100cqi, var\(--preview-max-width, 880px\)\)/);
 });
 
 test('Settings exposes a bounded preview-width input and reset action', () => {
