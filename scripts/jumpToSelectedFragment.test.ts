@@ -455,9 +455,11 @@ test('one function owns what ⌘E means, and every entry point uses it', () => {
 	assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
 	assert.equal(
 		(viewerSource.match(/ontoggleEdit=\{\(\) => toggleEditView\(\)\}/g) ?? []).length,
-		3,
-		'all three component entry points',
+		1,
+		'the editor entry point',
 	);
+	// The title bar's Edit button, now one of three mode buttons (#806).
+	assert.match(functionSource(viewerSource, 'setViewMode'), /target === 'edit' \? toggleEditView\(\)/);
 	assert.doesNotMatch(viewerSource, /ontoggleEdit=\{\(\) => toggleEdit\(\)\}/, 'none left on the raw toggle');
 });
 

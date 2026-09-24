@@ -25,6 +25,7 @@
 	import { isHomePath } from './utils/homeTab.js';
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
+	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { processMarkdownHtml } from './utils/markdown';
 import { MARKDOWN_LINK_EXTENSIONS, sanitizeMarkdownHtml } from './utils/sanitize.js';
@@ -3225,6 +3226,24 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
+	/** The title bar's three mode buttons (#806): go straight to one, from any. */
+	async function setViewMode(target: ViewMode) {
+		const tab = tabManager.activeTab;
+		if (!tab || viewModeOf(tab) === target) return;
+		if (target === 'split') return toggleSplitView(tab.id);
+		if (!tab.isSplit) return target === 'edit' ? toggleEditView() : toggleEdit();
+		// Leaving split: the editor is already on screen and holds the full
+		// buffer, so Edit only drops the preview. Preview goes through the
+		// normal close, which flushes and renders.
+		if (target === 'edit') {
+			tab.isEditing = true;
+			tabManager.setSplitEnabled(tab.id, false);
+			return;
+		}
+		tab.isEditing = false;
+		await toggleSplitView(tab.id);
+	}
+
 	/*
 	 * WHICH command a keystroke means is decided by `viewerKeymap.ts`; what is
 	 * left here is which of this component's functions each command runs.
@@ -3851,8 +3870,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontoggleHome={toggleHome}
 		ononpenFileLocation={openFileLocation}
 		ontoggleLiveMode={toggleLiveMode}
-		ontoggleEdit={() => toggleEditView()}
-		ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
+		onsetViewMode={setViewMode}
 		onswapPanes={() => settings.toggleSplitEditorSide()}
 		{isEditing}
 		ondetach={handleDetach}
@@ -3892,9 +3910,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontoggleHome={toggleHome}
 		ononpenFileLocation={openFileLocation}
 		ontoggleLiveMode={toggleLiveMode}
-		ontoggleEdit={() => toggleEditView()}
 		ontoggleEditorToolbar={() => settings.toggleEditorToolbar()}
-		ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
+		onsetViewMode={setViewMode}
 		onswapPanes={() => settings.toggleSplitEditorSide()}
 		{isEditing}
 		ondetach={handleDetach}
