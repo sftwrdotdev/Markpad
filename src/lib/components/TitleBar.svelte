@@ -9,7 +9,7 @@
 	import { tabManager } from '../stores/tabs.svelte.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
-	import { getConfiguredTitlebarToolbarIds, visibleTitlebarActionIds } from '../utils/titlebarToolbar.js';
+	import { getConfiguredTitlebarToolbarIds, visibleTitlebarActionIds, type ViewMode, viewModeOf } from '../utils/titlebarToolbar.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
 	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
@@ -47,9 +47,8 @@
 		canGoBack = false,
 		canGoForward = false,
 
-		ontoggleEdit,
 		ontoggleEditorToolbar,
-		ontoggleSplit,
+		onsetViewMode,
 		onswapPanes,
 		isEditing,
 		ondetach,
@@ -91,9 +90,8 @@
 		canGoBack?: boolean;
 		canGoForward?: boolean;
 
-		ontoggleEdit: () => void;
 		ontoggleEditorToolbar?: () => void;
-		ontoggleSplit?: () => void;
+		onsetViewMode: (mode: ViewMode) => void;
 		onswapPanes?: () => void;
 		isEditing: boolean;
 		ondetach: (tabId: string) => void;
@@ -349,6 +347,14 @@
 			zoomLevel,
 		}),
 	);
+
+	let viewModes: { id: ViewMode; label: string; shortcut?: string }[] = $derived([
+		{ id: 'preview', label: t('settings.preview', currentLanguage) },
+		{ id: 'split', label: t('menu.splitView', currentLanguage), shortcut: 'view-toggle-split' },
+		{ id: 'edit', label: t('menu.editor', currentLanguage), shortcut: 'view-toggle-edit' },
+	]);
+
+	let currentViewMode = $derived(viewModeOf({ isEditing, isSplit: Boolean(tabManager.activeTab?.isSplit) }));
 
 	let configuredActionIds = $derived.by(() =>
 		getConfiguredTitlebarToolbarIds(
@@ -868,28 +874,35 @@
 							></svg>
 						<span class="action-label">{t('menu.openLocation', currentLanguage)}</span>
 					</button>
-				{:else if id === 'split'}
-					<button
-						class="title-action-btn {tabManager.activeTab?.isSplit ? 'active' : ''}"
-						onclick={() => ontoggleSplit?.()}
-						aria-label={t('tooltip.toggleSplitView', currentLanguage)}
-											onmouseenter={(e) => showTooltip(e, t('tooltip.splitView', currentLanguage), shortcutLabel('view-toggle-split', modifier))}
-						onmousedown={(e) => e.preventDefault()}
-						onmouseleave={hideTooltip}
-						transition:fly={{ x: 10, duration: 200 }}>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-							><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line><rect
-								x="13"
-								y="2"
-								width="9"
-								height="20"
-								rx="2"
-								ry="2"
-								transform="rotate(0 13 2)"></rect
-							></svg>
-						<span class="action-label">{t('menu.splitView', currentLanguage)}</span>
-						<span class="menu-shortcut">{shortcutLabel('view-toggle-split', modifier)}</span>
-					</button>
+				{:else if id === 'viewMode'}
+					<div class="view-mode-group" role="group" aria-label={t('menu.view', currentLanguage)} transition:fly={{ x: 10, duration: 200 }}>
+						{#each viewModes as mode (mode.id)}
+							<button
+								class="title-action-btn {currentViewMode === mode.id ? 'active' : ''}"
+								aria-pressed={currentViewMode === mode.id}
+								onclick={() => {
+									hideTooltip();
+									kebabMenuOpen = false;
+									onsetViewMode(mode.id);
+								}}
+								aria-label={mode.label}
+								onmouseenter={(e) => showTooltip(e, mode.label, mode.shortcut ? shortcutLabel(mode.shortcut, modifier) : '')}
+								onmousedown={(e) => e.preventDefault()}
+								onmouseleave={hideTooltip}>
+								<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+									{#if mode.id === 'preview'}
+										<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle>
+									{:else if mode.id === 'split'}
+										<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="12" y1="3" x2="12" y2="21"></line>
+									{:else}
+										<path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+									{/if}
+								</svg>
+								<span class="action-label">{mode.label}</span>
+								{#if mode.shortcut}<span class="menu-shortcut">{shortcutLabel(mode.shortcut, modifier)}</span>{/if}
+							</button>
+						{/each}
+					</div>
 				{:else if id === 'swap'}
 					<button
 						class="title-action-btn"
@@ -963,19 +976,6 @@
 								d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path
 							></svg>
 						<span class="action-label">{t('menu.autoReload', currentLanguage)}</span>
-					</button>
-				{:else if id === 'edit'}
-					<button
-						class="title-action-btn {isEditing ? 'active' : ''}"
-						onclick={ontoggleEdit}
-						aria-label={t('tooltip.editFile', currentLanguage)}
-											onmouseenter={(e) => showTooltip(e, t('tooltip.editFile', currentLanguage), shortcutLabel('view-toggle-edit', modifier))}
-						onmousedown={(e) => e.preventDefault()}
-						onmouseleave={hideTooltip}>
-						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-							><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
-						<span class="action-label">{t('menu.editor', currentLanguage)}</span>
-						<span class="menu-shortcut">{shortcutLabel('view-toggle-edit', modifier)}</span>
 					</button>
 				{:else if id === 'editorToolbar'}
 					<button
@@ -1375,6 +1375,32 @@
 	.title-action-btn.active {
 		color: var(--color-accent-fg);
 		background: var(--color-canvas-subtle);
+	}
+
+	/* One bordered control, so the three modes read as a set (#806). */
+	.view-mode-group {
+		display: flex;
+		align-items: center;
+		gap: 1px;
+		padding: 1px;
+		border: 1px solid var(--color-border-default);
+		border-radius: 6px;
+	}
+
+	.view-mode-group .title-action-btn {
+		width: 26px;
+		height: 24px;
+	}
+
+	.title-actions.show-dropdown .view-mode-group {
+		flex-direction: column;
+		align-items: stretch;
+		margin: 2px 0;
+	}
+
+	.title-actions.show-dropdown .view-mode-group .title-action-btn {
+		width: 100%;
+		height: auto;
 	}
 
 	.title-action-btn:hover {
