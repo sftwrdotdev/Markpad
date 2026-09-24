@@ -32,6 +32,7 @@ export const TOKEN_TYPES = [
 	'code',
 	'strong',
 	'emph',
+	'strongemph',
 	'strike',
 	'highlight',
 	'insert',

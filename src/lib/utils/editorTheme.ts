@@ -146,6 +146,8 @@ const SEMANTIC_TOKEN_ROLES: ReadonlyArray<readonly [token: string, role: Role, s
 	// the grammar leaves its text with no colour of its own.
 	['strong', 'emphasis', 'bold'],
 	['emph', 'emphasis', 'italic'],
+	// Inside both at once (`***x***`), which one kind has to say (#830).
+	['strongemph', 'emphasis', 'bold italic'],
 	['link', 'link'],
 	['image', 'link'],
 	// A formula body is set in italics, which is the one thing about it a colour

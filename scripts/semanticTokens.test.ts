@@ -62,6 +62,7 @@ test('a semantic rule spells out every font style it wants', () => {
 	assert.equal(byToken.get('strike'), 'strikethrough');
 	assert.equal(byToken.get('strong'), 'bold');
 	assert.equal(byToken.get('emph'), 'italic');
+	assert.equal(byToken.get('strongemph'), 'bold italic');
 	assert.equal(byToken.get('math'), 'italic');
 });
 
