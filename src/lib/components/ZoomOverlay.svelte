@@ -2,7 +2,7 @@
 	import { fade } from 'svelte/transition';
 	import { onMount } from 'svelte';
 	import { t } from '../utils/i18n.js';
-	import { settings } from '../stores/settings.svelte.js';
+	import { settings, wheelZoomFactor } from '../stores/settings.svelte.js';
 
 	let { src, html, onclose } = $props<{
 		src?: string;
@@ -23,9 +23,7 @@
 
 	function handleWheel(e: WheelEvent) {
 		e.preventDefault();
-		const delta = -e.deltaY;
-		const factor = delta > 0 ? 1.1 : 0.9;
-		const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * factor));
+		const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom * wheelZoomFactor(e.deltaY)));
 
 		// zoom toward cursor
 		const rect = overlayEl.getBoundingClientRect();

@@ -55,6 +55,7 @@ const {
 	resolveLanguageTag,
 	resolveTheme,
 	stepWithinRange,
+	wheelZoomFactor,
 	writeStoredSetting,
 } = settingsModule;
 
@@ -582,6 +583,33 @@ test('the zoom operations are bounded by one range, and recover a corrupt level'
 	store.zoomLevel = Number.NaN;
 	store.zoomIn();
 	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.default + ZOOM_LEVEL_RANGE.step);
+});
+
+test('a pinch zooms as far as the fingers move, not 10% per event (#831)', () => {
+	resetStorage();
+	const store = createStore();
+
+	// A pinch that doubles the fingers' spread, delivered the way WebKit and
+	// Chromium deliver it: many small ctrl+wheel events, deltaY = -100·ln(step).
+	const events = 40;
+	for (let i = 0; i < events; i++) store.zoomBy(wheelZoomFactor((-100 * Math.log(2)) / events));
+	assert.equal(store.zoomLevel, 200, 'forty events used to be forty 10-point steps, i.e. the 500 ceiling');
+
+	// A slow pinch at the bottom of the range moves by a fraction of a percent
+	// per event. Rounding each one would leave it stuck at 25.
+	store.zoomLevel = ZOOM_LEVEL_RANGE.min;
+	for (let i = 0; i < 20; i++) store.zoomBy(wheelZoomFactor(-1));
+	assert.ok(store.zoomLevel > ZOOM_LEVEL_RANGE.min + 4, `slow pinch stalled at ${store.zoomLevel}`);
+
+	// A mouse notch that reports a large delta is capped near one old step.
+	store.resetZoom();
+	store.zoomBy(wheelZoomFactor(-100));
+	assert.equal(store.zoomLevel, 111);
+	store.zoomBy(wheelZoomFactor(100));
+	assert.equal(store.zoomLevel, 100, 'in then out by one notch comes back to where it was');
+
+	store.zoomBy(1e9);
+	assert.equal(store.zoomLevel, ZOOM_LEVEL_RANGE.max);
 });
 
 test('zoom and preview width follow the other windows too', () => {
