@@ -501,3 +501,50 @@ test('the same cascade, run once the arriving document is in, puts the reader ba
 	assert.equal(host.scrollTop, (ARRIVAL_LINE - 1) * LINE_HEIGHT - PREVIEW_ANCHOR_OFFSET);
 	assert.notEqual(host.scrollTop, 0);
 });
+
+// ------------------------------------------ one article, a host for every tab
+
+/**
+ * The article as the viewer builds it: one `.markdown-blocks` host per open
+ * tab, every one of them filled, and only the active one displayed. Each host
+ * here holds the same file, so every source line exists in all three.
+ */
+function articleWithHosts(activeIndex: number): { article: HTMLElement; hosts: HTMLElement[] } {
+	const article = emptyPreview();
+	const hosts = [0, 1, 2].map((index) => {
+		const host = document.createElement('div');
+		host.className = 'markdown-blocks';
+		host.innerHTML = processMarkdownHtml(DOC_B.html(), '/notes/b.md', new Set<string>());
+		if (index !== activeIndex) host.style.display = 'none';
+		article.appendChild(host);
+		return host;
+	});
+	return { article, hosts };
+}
+
+/**
+ * What the browser reports inside a `display: none` host: no box at all, so
+ * `measureAnchorBox` puts it at the top of the article.
+ */
+function measureDisplayedOnly(node: AnchorNode): AnchorBox {
+	const hidden = (node as unknown as HTMLElement).closest('.markdown-blocks[style*="none"]');
+	return hidden ? { top: 0, height: 0 } : measureBySourcepos(node);
+}
+
+test('a tab switched back to restores in its own host, not in a hidden tab showing the same file', () => {
+	reset();
+	const { article } = articleWithHosts(1);
+	const position = { anchorLine: ARRIVAL_LINE, scrollPercentage: 0.5, scrollTop: 4820 };
+
+	assert.equal(restorePreviewReadingPosition(article, position, 40_000 - 900, measureDisplayedOnly), 'anchor');
+	assert.equal(article.scrollTop, (ARRIVAL_LINE - 1) * LINE_HEIGHT - PREVIEW_ANCHOR_OFFSET);
+});
+
+test('the line saved while scrolling comes from the displayed host, not from a hidden one after it', () => {
+	const { article } = articleWithHosts(0);
+	const coords = lineCoordinates(DOC_B.html());
+
+	// The top of a heading's box is that heading's own line, exactly.
+	const offset = (ARRIVAL_LINE - 1) * LINE_HEIGHT;
+	assert.equal(coords.bufferLineAtPreviewOffset(article, offset, measureDisplayedOnly), ARRIVAL_LINE);
+});
