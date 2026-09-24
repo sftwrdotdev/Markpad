@@ -1965,14 +1965,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return;
 			}
 
-			// Every other link is opened by `handleDocumentClick` on `document`,
-			// and SvelteKit's router sits in between (on
-			// `document.documentElement`), claiming any same-origin href whose
-			// click nobody else has: `[a](Files/a.pdf)` became a client-side
-			// navigation to a route that does not exist, and its 404 page
-			// replaced the app — including the title bar it draws, which on
-			// Windows is the only way to close the window (#772). The router
-			// bails on `event.defaultPrevented`.
+			// Claim links during capture, before SvelteKit's router can navigate
+			// to a nonexistent app route. A regular `onclick` is delegated by
+			// Svelte and can run after the router, even when written on the article.
+			// Keep bubbling so `handleDocumentClick` can open the file or URL.
 			e.preventDefault();
 			return;
 		}
@@ -4042,7 +4038,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 									contenteditable="false"
 									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''} {settings.showToc ? 'toc-active' : ''}"
 									onscroll={handleScroll}
-									onclick={handleLinkClick}
+									onclickcapture={handleLinkClick}
 									onchange={handleTaskCheckboxChange}
 									onkeydown={(e) => {
 										const target = e.target as HTMLElement;

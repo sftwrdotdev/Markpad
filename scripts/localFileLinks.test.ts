@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import ts from 'typescript';
+import { compile } from 'svelte/compiler';
 
 import { getMarkdownLinkTarget } from '../src/lib/utils/markdownLinks.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
@@ -179,25 +180,29 @@ test('an asset URL is never treated as a link to a local file', () => {
  * #772: `[PDF_1](Files/PDF_1.pdf)` opened the file AND left the app on a 404
  * page that could only be closed from Task Manager.
  *
- * Both, from one click, because three listeners see it in this order:
- *
- *   <article>            handleLinkClick      — declined a non-markdown link
- *   document.documentElement   SvelteKit's router  — `if (event.defaultPrevented) return`
- *   document             handleDocumentClick  — resolves the path, calls openPath
- *
- * The router claimed the undecided click and navigated client-side to a route
- * an SPA does not have, so its 404 page replaced the app — the title bar with
- * it, which on Windows (`decorations(false)`) is the only way to close the
- * window. `handleDocumentClick` then ran and opened the PDF, its own
- * `preventDefault()` two listeners too late.
- *
- * A markdown link never had the bug because its branch calls
- * `stopPropagation()`, so the event never reaches the router at all.
+ * Calling preventDefault in handleLinkClick alone is insufficient: Svelte
+ * delegates onclick to the app root, where the router may already have run.
+ * The article must bind in capture so the router sees defaultPrevented, while
+ * the document's bubble listener still opens the file. Keep a compiler wiring
+ * assertion: invoking an extracted handler cannot catch a late event binding.
  */
 
 const linkClick = ts.transpileModule(functionSource(viewer, 'handleLinkClick'), {
 	compilerOptions: { target: ts.ScriptTarget.ES2022 },
 }).outputText;
+
+test('preview link handling is a native capture listener, before router bubbling', () => {
+	const { js } = compile(viewer, { filename: 'MarkdownViewer.svelte', generate: 'client' });
+	assert.match(js.code, /\$\.event\('click',\s*\w+,\s*handleLinkClick,\s*true\)/);
+	assert.doesNotMatch(js.code, /\.__click\s*=\s*handleLinkClick/);
+});
+
+test('the review index image resolves beside the markdown document on Windows', () => {
+	assert.equal(
+		resolveLocalFileLinkPath('tool-all-rows.png', 'D:\\tapmaker\\farm-maker\\source\\design\\review\\tapnow-collection\\proof\\INDEX.md'),
+		'D:/tapmaker/farm-maker/source/design/review/tapnow-collection/proof/tool-all-rows.png',
+	);
+});
 
 const handleLinkClick = new Function(
 	'deps',
@@ -234,7 +239,7 @@ async function clickLink(href: string) {
 }
 
 test('a link the document handler opens leaves the preview already claimed', async () => {
-	for (const href of ['Files/PDF_1.pdf', './Files/MP4_1.mp4', '/srv/data.csv', 'https://example.com']) {
+	for (const href of ['tool-all-rows.png', '../full/purchase-confirm.png', 'Files/PDF_1.pdf', './Files/MP4_1.mp4', '/srv/data.csv', 'https://example.com']) {
 		const { defaultPrevented, propagationStopped } = await clickLink(href);
 		assert.equal(defaultPrevented, true, `${href} must not reach the router undecided`);
 		// Claimed, not swallowed: `handleDocumentClick` is one listener further
