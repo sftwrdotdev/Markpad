@@ -462,6 +462,7 @@ export class SettingsStore {
 	highlightColor = $state('yellow');
 	showTabs = $state(true);
 	restoreStateOnReopen = $state(true);
+	closeWindowWithLastTab = $state(true);
 	zenMode = $state(false);
 	showToc = $state(false);
 	preZenState = $state<PreZenState | null>(null);
@@ -667,6 +668,10 @@ export class SettingsStore {
 
 	toggleRestoreStateOnReopen() {
 		this.restoreStateOnReopen = !this.restoreStateOnReopen;
+	}
+
+	toggleCloseWindowWithLastTab() {
+		this.closeWindowWithLastTab = !this.closeWindowWithLastTab;
 	}
 
 	toggleShowRecentFiles() {
@@ -964,6 +969,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		stringSetting('editor.renderLineHighlight', (s) => s.renderLineHighlight, (s, v) => { s.renderLineHighlight = v; }),
 		booleanSetting('editor.showTabs', (s) => s.showTabs, (s, v) => { s.showTabs = v; }),
 		booleanSetting('editor.restoreStateOnReopen', (s) => s.restoreStateOnReopen, (s, v) => { s.restoreStateOnReopen = v; }),
+		booleanSetting('editor.closeWindowWithLastTab', (s) => s.closeWindowWithLastTab, (s, v) => { s.closeWindowWithLastTab = v; }),
 		booleanSetting('editor.zenMode', (s) => s.zenMode, (s, v) => { s.zenMode = v; }),
 		booleanSetting('editor.occurrencesHighlight', (s) => s.occurrencesHighlight, (s, v) => { s.occurrencesHighlight = v; }),
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),

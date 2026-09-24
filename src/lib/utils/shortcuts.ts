@@ -402,6 +402,15 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		nativeMenuAccelerator: 'CmdOrCtrl+,',
 	},
 	{
+		id: 'app-home',
+		labelKey: 'menu.home',
+		// Shift+Cmd+H is Home in Finder and Safari. Monaco binds nothing to it.
+		chords: ['Mod+Shift+H'],
+		group: 'view',
+		editorAction: true,
+		documentCommands: ['toggle-home'],
+	},
+	{
 		id: 'view-preview-width',
 		labelKey: 'settings.previewMaxWidth',
 		// One row, two chords: `[` narrows and `]` widens, the same pair the

@@ -71,6 +71,7 @@ export type ViewerCommand =
 	| 'zoom-out'
 	| 'zoom-reset'
 	| 'open-settings'
+	| 'toggle-home'
 	| 'export-pdf'
 	| 'find';
 
@@ -285,6 +286,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	if (mod && key === '-') return 'zoom-out';
 	if (mod && key === '0') return 'zoom-reset';
 	if (mod && key === ',') return 'open-settings';
+	if (modShift && key === 'h') return 'toggle-home';
 	// Export as PDF. Not the `Mod+Shift+E` the request asked for: Inline Code has
 	// held that since the formatting chords were added, and the editor toolbar
 	// prints it. `P` is the print mnemonic every app shares, and the unshifted

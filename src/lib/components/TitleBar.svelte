@@ -477,6 +477,7 @@
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 					><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
 				{t('menu.home', currentLanguage)}
+				<span class="menu-shortcut">{shortcutLabel('app-home', modifier)}</span>
 			</button>
 					<button
 				class="home-menu-item"
@@ -713,7 +714,25 @@
 
 	{#snippet actionItems(ids: string[])}
 			{#each ids as id (id)}
-				{#if id === 'back'}
+				{#if id === 'home'}
+					<button
+						class="title-action-btn {showHome ? 'active' : ''}"
+						onclick={() => {
+							hideTooltip();
+							kebabMenuOpen = false;
+							ontoggleHome();
+						}}
+						aria-label={t('menu.home', currentLanguage)}
+						onmouseenter={(e) => showTooltip(e, t('menu.home', currentLanguage), shortcutLabel('app-home', modifier))}
+						onmousedown={(e) => e.preventDefault()}
+						onmouseleave={hideTooltip}
+						transition:fly={{ x: 10, duration: 200 }}>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+							><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+						<span class="action-label">{t('menu.home', currentLanguage)}</span>
+						<span class="menu-shortcut">{shortcutLabel('app-home', modifier)}</span>
+					</button>
+				{:else if id === 'back'}
 					<button
 						class="title-action-btn"
 						disabled={!canGoBack}

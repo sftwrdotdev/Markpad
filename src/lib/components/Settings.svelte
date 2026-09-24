@@ -1340,6 +1340,14 @@
 							</div>
 
 							<div class="setting-item">
+								<label for="appearance-close-window-last-tab">{t('settings.closeWindowWithLastTab', settings.language)}</label>
+								<label class="toggle">
+									<input id="appearance-close-window-last-tab" type="checkbox" checked={settings.closeWindowWithLastTab} onchange={() => settings.toggleCloseWindowWithLastTab()} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
+
+							<div class="setting-item">
 								<label for="appearance-open-file-mode">{t('settings.openFileMode', settings.language)}</label>
 								<div class="select-wrapper">
 									<select id="appearance-open-file-mode" bind:value={settings.openFileMode}>

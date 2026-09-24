@@ -2714,7 +2714,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (tabManager.tabs.length > 0) return;
 
 		if (liveMode) invoke('unwatch_file').catch(console.error);
-		await destroyWindowAfterTabsClosed();
+		// Off, the empty window stays and renders Home.
+		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
 	}
 
 	async function closeTabsWithConfirmation(tabIds: string[]) {
@@ -3323,6 +3324,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			case 'open-settings':
 				showSettings = true;
 				return;
+			case 'toggle-home':
+				return toggleHome();
 			case 'export-pdf':
 				return void exportAsPdf();
 			case 'find':
@@ -4002,7 +4005,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								ontoggleEdit={() => toggleEditView()}
 								ontoggleLive={toggleLiveMode}
 								ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
-								onhome={() => (showHome = true)}
+								onhome={toggleHome}
 								onnextTab={() => tabManager.cycleTab('next')}
 								onprevTab={() => tabManager.cycleTab('prev')}
 								onundoClose={handleUndoCloseTab}
