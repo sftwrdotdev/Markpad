@@ -199,13 +199,25 @@ fn collect_node<'a>(
         // token, and its heading rule takes the whole line as one `keyword`.
         // Inside either, an emphasis the parse can see would otherwise arrive
         // with no colour of its own.
+        //
+        // `***x***` is an Emph wrapping a Strong, and each claims only its own
+        // direct text, so `x` was bold and not italic (#830). A run inside
+        // both says so, since one character can carry only one kind.
         NodeValue::Strong => {
             emit_gaps(node, lines, "strong.marker", out);
-            emit_text_children(node, lines, "strong", out);
+            if inside(node, |value| matches!(value, NodeValue::Emph)) {
+                emit_text_children(node, lines, "strongemph", out);
+            } else {
+                emit_text_children(node, lines, "strong", out);
+            }
         }
         NodeValue::Emph => {
             emit_gaps(node, lines, "emph.marker", out);
-            emit_text_children(node, lines, "emph", out);
+            if inside(node, |value| matches!(value, NodeValue::Strong)) {
+                emit_text_children(node, lines, "strongemph", out);
+            } else {
+                emit_text_children(node, lines, "emph", out);
+            }
         }
         NodeValue::Strikethrough => {
             emit_gaps(node, lines, "strike.marker", out);
@@ -350,6 +362,13 @@ fn emit_delimited<'a>(
             ));
         }
     }
+}
+
+/// Whether any ancestor of `node` matches.
+fn inside<'a>(node: &'a AstNode<'a>, matches: impl Fn(&NodeValue) -> bool) -> bool {
+    node.ancestors()
+        .skip(1)
+        .any(|a| matches(&a.data.borrow().value))
 }
 
 /// The direct `Text` children — the words, as opposed to the markup.
@@ -901,9 +920,6 @@ mod tests {
             "==**b**==",
             "++**b**++",
             "> **b**",
-            // `***bi***` is an Emph wrapping a Strong: the words belong to the
-            // inner one, and the outer contributes its `*` and nothing else.
-            "***bi***",
         ] {
             let found = spans(&format!("{text}\n"));
             assert!(found.iter().any(|s| s.0 == "strong"), "{text}: {found:?}");
@@ -912,6 +928,31 @@ mod tests {
             let found = spans(&format!("{text}\n"));
             assert!(found.iter().any(|s| s.0 == "emph"), "{text}: {found:?}");
         }
+    }
+
+    #[test]
+    fn bold_inside_italic_is_both() {
+        // #830: the words of `***x***` were `strong` only, so Monaco drew them
+        // upright, and `**_x_**` came out `emph` only, not bold.
+        for text in [
+            "***x***",
+            "_**x**_",
+            "**_x_**",
+            "*a **x** b*",
+            "**a *x* b**",
+        ] {
+            let words: Vec<_> = spans(&format!("{text}\n"))
+                .into_iter()
+                .filter(|s| !s.0.ends_with(".marker"))
+                .collect();
+            let x = text.find('x').unwrap() as u32;
+            let on_x: Vec<_> = words.iter().filter(|s| s.2 <= x && x < s.2 + s.3).collect();
+            assert_eq!(on_x.len(), 1, "{text}: {words:?}");
+            assert_eq!(on_x[0].0, "strongemph", "{text}: {words:?}");
+        }
+        // The rest of an outer run keeps its own single style.
+        assert!(kinds_on("*a **x** b*\n", 0).contains(&"emph".to_string()));
+        assert!(kinds_on("**a *x* b**\n", 0).contains(&"strong".to_string()));
     }
 
     #[test]
