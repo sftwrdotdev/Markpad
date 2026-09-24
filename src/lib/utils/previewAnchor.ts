@@ -47,6 +47,7 @@ export type AnchorNode = {
 	readonly childNodes: Iterable<AnchorNode>;
 	getAttribute?(name: string): string | null;
 	readonly classList?: { contains(token: string): boolean };
+	readonly style?: { readonly display?: string };
 };
 
 type AnchorMatch = LineRange & {
@@ -134,11 +135,18 @@ const ELEMENT_NODE = 1;
  * every soft-wrapped line of prose ends in one of these, and resolving an
  * anchor to one hands the restore `offsetTop = 0, offsetHeight = 0` — which
  * scrolls the preview to the top of the document instead of to the line.
+ *
+ * An inline `display: none` subtree has no box either, and the preview holds
+ * one per open tab: every tab's `.markdown-blocks` host lives in the one
+ * article, and only the active tab's is displayed. Two tabs showing the same
+ * file carry the same source lines, so a hidden host earlier in the article
+ * would otherwise own the anchor, and its samples would break the ordering the
+ * offset mapping searches.
  */
 const BOXLESS_TAGS = new Set(['BR', 'WBR']);
 
 function isAnchorable(node: AnchorNode): boolean {
-	return !BOXLESS_TAGS.has(node.tagName ?? '');
+	return !BOXLESS_TAGS.has(node.tagName ?? '') && node.style?.display !== 'none';
 }
 
 /**
