@@ -1755,6 +1755,15 @@
 			}),
 
 			editor.addAction({
+				id: "app-home",
+				label: t('menu.home', lang),
+				keybindings: [
+					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
+				],
+				run: () => onhome?.(),
+			}),
+
+			editor.addAction({
 				id: "file-reveal",
 				label: t('menu.openLocation', lang),
 				keybindings: [

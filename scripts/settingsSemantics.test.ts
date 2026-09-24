@@ -30,7 +30,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { functionSource, readSource } from './sourceTree.js';
 
 import { DEFAULT_AUTO_SAVE, resolveAutoSave } from '../src/lib/utils/autoSaveSetting.js';
 
@@ -122,3 +122,11 @@ test('an inactive row is dimmed rather than hidden', () => {
 	assert.match(settingsComponentSource, /\.setting-item\.inactive[\s\S]{0,200}?opacity: 0\.45/);
 });
 
+
+/* ------------------------------------------------ D: last tab (#829) */
+
+test('closing the last tab leaves the window on Home when the setting is off', () => {
+	const body = functionSource(viewerSource, 'closeTabAndWindowIfLast');
+	assert.match(body, /if \(settings\.closeWindowWithLastTab\) await destroyWindowAfterTabsClosed\(\);/);
+	assert.equal(body.match(/destroyWindowAfterTabsClosed\(/g)?.length, 1, 'no ungated destroy');
+});

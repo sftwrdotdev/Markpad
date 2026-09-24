@@ -148,7 +148,9 @@ test('a non-Markdown file gets none of the Markdown actions', () => {
 });
 
 test('the home screen offers only the actions that are not about a document', () => {
+	// Home over a tab keeps its own toggle, so the tab underneath is one click back.
 	assert.deepEqual(visibleTitlebarActionIds({ ...documentContext, showHome: true }), [
+		'home',
 		'theme',
 		'settings',
 	]);

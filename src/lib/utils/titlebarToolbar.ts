@@ -23,6 +23,7 @@ type ConfiguredTitlebarToolbarIds = {
 };
 
 const TITLEBAR_TOOLBAR_ACTIONS: TitlebarToolbarAction[] = [
+	{ id: 'home', labelKey: 'menu.home', fallbackName: 'Home', sample: 'H', defaultPlacement: 'bar' },
 	{ id: 'back', labelKey: 'menu.back', fallbackName: 'Back', sample: '<', defaultPlacement: 'bar' },
 	{ id: 'forward', labelKey: 'menu.forward', fallbackName: 'Forward', sample: '>', defaultPlacement: 'bar' },
 	{ id: 'reload', labelKey: 'tooltip.reloadFromDisk', fallbackName: 'Reload from Disk', sample: 'R', defaultPlacement: 'bar' },
@@ -174,6 +175,9 @@ export type TitlebarActionContext = {
  */
 export function visibleTitlebarActionIds(context: TitlebarActionContext): string[] {
 	const list: string[] = [];
+
+	// With no tab there is nothing but Home to show, so there is nothing to toggle.
+	if (context.hasActiveTab) list.push('home');
 
 	if (context.hasActiveTab && !context.showHome) {
 		list.push('back');
