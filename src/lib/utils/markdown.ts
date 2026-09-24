@@ -394,6 +394,40 @@ function stripLeadingWhitespace(nodes: Node[]) {
 	}
 }
 
+// A tight task item keeps its text bare, so text that follows a block inside
+// it (`- [ ] a` / fenced code / `then b`) is a bare text node of the `<li>`.
+// The item is a grid, CSS can only place elements, and an anonymous grid item
+// lands in the 15px checkbox column: one letter per line (#832). Wrap every
+// such run, inline elements included, the way the first line already is.
+function wrapTextAfterTaskBlocks(li: Element) {
+	let run: Node[] = [];
+	const flush = () => {
+		if (run.some((n) => n.nodeType !== 3 || n.textContent?.trim())) {
+			const wrapper = li.ownerDocument!.createElement("span");
+			wrapper.className = "task-text";
+			li.insertBefore(wrapper, run[0]);
+			stripLeadingWhitespace(run);
+			for (const n of run) wrapper.appendChild(n);
+		}
+		run = [];
+	};
+
+	for (const n of Array.from(li.childNodes)) {
+		const el = n.nodeType === 1 ? (n as Element) : null;
+		if (
+			el &&
+			(taskTextBoundaryTags.has(el.tagName) ||
+				el.tagName === "INPUT" ||
+				el.classList.contains("task-text"))
+		) {
+			flush();
+			continue;
+		}
+		run.push(n);
+	}
+	flush();
+}
+
 function processTaskItems(root: Element) {
 	for (const input of Array.from(
 		root.querySelectorAll('li input[type="checkbox"]'),
@@ -481,6 +515,8 @@ function processTaskItems(root: Element) {
 		} else {
 			stripLeadingWhitespace(inlineNodes);
 		}
+
+		wrapTextAfterTaskBlocks(li);
 
 		if ((input as HTMLInputElement).checked) {
 			li.classList.add("task-done");

@@ -89,6 +89,7 @@ const TASK_FIXTURES = [
 	'taskContinuation',
 	'taskParenOrdered',
 	'taskStarPlus',
+	'taskTextAfterBlock',
 ] as const satisfies readonly FixtureName[];
 
 // --- protocol 1: task markers and source positions -----------------------
@@ -196,6 +197,24 @@ test('a nested task keeps its own source line and stays out of the parent label'
 	const parentLabel = parent.closest('li')?.querySelectorAll('span.task-text')[0];
 	assert.equal(parentLabel?.textContent.trim(), 'parent');
 	assert.equal(parentLabel?.querySelectorAll('input').length, 0);
+});
+
+test('text after a block inside a tight task item is task text, not a bare grid item', () => {
+	// #832: a bare text node of the grid `<li>` is placed in the 15px checkbox
+	// column, and the preview wrapped it one letter per line.
+	const li = interactiveCheckboxes(render('taskTextAfterBlock'))[0].closest('li');
+	assert.ok(li);
+
+	const bare = Array.from(li.childNodes).filter(
+		(n) => n.nodeType === 3 && n.textContent?.trim(),
+	);
+	assert.deepEqual(bare.map((n) => n.textContent), []);
+
+	const labels = li.querySelectorAll('span.task-text');
+	assert.equal(labels.length, 2);
+	assert.equal(labels[0].textContent.trim(), 'task');
+	assert.equal(labels[1].textContent, 'then check it');
+	assert.equal(labels[1].querySelectorAll('strong').length, 1);
 });
 
 test('a task inside a block quote still reports the quoted source line', () => {
