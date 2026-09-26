@@ -611,6 +611,15 @@ function processSoftLineAnchors(root: Element, doc: Document) {
 	}
 }
 
+/**
+ * Blank the way HTML means it: ASCII whitespace only. JS `\s` and `trim()` also
+ * match U+00A0, and a line holding just an NBSP is how a writer asks for an
+ * empty line that Markdown would otherwise collapse (#843).
+ */
+function isBlank(text: string | null | undefined): boolean {
+	return /^[ \t\n\f\r]*$/.test(text ?? "");
+}
+
 export function processMarkdownHtml(
 	html: string,
 	filePath: string,
@@ -694,7 +703,7 @@ export function processMarkdownHtml(
 			let prev = br.previousSibling;
 			let isLeading = true;
 			while (prev) {
-				if (prev.nodeType === 3 && prev.textContent?.replace(/\xA0|\s|&nbsp;/g, "").trim()) {
+				if (prev.nodeType === 3 && !isBlank(prev.textContent)) {
 					isLeading = false;
 					break;
 				} else if (prev.nodeType === 1) {
@@ -711,9 +720,9 @@ export function processMarkdownHtml(
 		// Also clean up leading empty text nodes and paragraphs
 		while (node.firstChild) {
 			const child = node.firstChild;
-			if (child.nodeType === 3 && child.textContent?.replace(/\xA0|\s|&nbsp;/g, "").trim() === "") {
+			if (child.nodeType === 3 && isBlank(child.textContent)) {
 				child.parentElement?.removeChild(child);
-			} else if (child.nodeType === 1 && (child as Element).tagName === "P" && (child as Element).innerHTML.replace(/\xA0|\s|&nbsp;/g, "").trim() === "") {
+			} else if (child.nodeType === 1 && (child as Element).tagName === "P" && isBlank((child as Element).innerHTML)) {
 				child.parentElement?.removeChild(child);
 			} else {
 				break;
@@ -897,7 +906,7 @@ export function processMarkdownHtml(
 
 	// Clean up empty paragraphs that might be leftovers from blank lines
 	Array.from(doc.querySelectorAll("p")).forEach((p) => {
-		if (p.innerHTML.replace(/&nbsp;|\s/g, "").trim() === "") {
+		if (isBlank(p.innerHTML)) {
 			p.remove();
 		}
 	});
