@@ -4,9 +4,9 @@ import { test } from 'vitest';
 import { processMarkdownHtml } from '../src/lib/utils/markdown.js';
 
 /**
- * A line holding only an NBSP is how a writer keeps an empty line Markdown
- * would collapse (#843). The inputs are `convert_markdown` output, captured
- * from comrak.
+ * An NBSP is typed on purpose, to keep an empty line Markdown would collapse
+ * or to indent text (#843). The inputs are `convert_markdown` output,
+ * captured from comrak.
  */
 
 function render(html: string): HTMLElement {
@@ -57,4 +57,15 @@ test('the empty paragraph the callout marker leaves is still removed', () => {
 		Array.from(body.querySelectorAll('p'), (p) => p.textContent),
 		['Body.'],
 	);
+});
+
+test('NBSP indentation at the start of a task item is kept', () => {
+	// "- [ ] \u00a0\u00a0indented\n"
+	const root = render(
+		'<ul class="contains-task-list" data-sourcepos="1:1-1:18">\n' +
+			'<li data-sourcepos="1:1-1:18"><input type="checkbox" data-task-checkbox="" ' +
+			'class="task-list-item-checkbox" disabled="" /> \u00a0\u00a0indented</li>\n</ul>\n',
+	);
+
+	assert.equal(root.querySelector('.task-text')?.textContent, '\u00a0\u00a0indented');
 });

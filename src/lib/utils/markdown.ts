@@ -379,12 +379,21 @@ const taskTextBoundaryTags = new Set([
 	"UL",
 ]);
 
+/**
+ * Blank the way HTML means it: ASCII whitespace only. JS `\s` and `trim()` also
+ * match U+00A0, which a writer types on purpose, to keep an empty line
+ * Markdown would collapse or to indent text (#843).
+ */
+function isBlank(text: string | null | undefined): boolean {
+	return /^[ \t\n\f\r]*$/.test(text ?? "");
+}
+
 function stripLeadingWhitespace(nodes: Node[]) {
 	for (let index = 0; index < nodes.length; ) {
 		const node = nodes[index];
 		if (node.nodeType !== 3) break;
 
-		const trimmed = node.textContent?.replace(/^\s+/, "") || "";
+		const trimmed = node.textContent?.replace(/^[ \t\n\f\r]+/, "") || "";
 		if (trimmed) {
 			node.textContent = trimmed;
 			break;
@@ -402,7 +411,7 @@ function stripLeadingWhitespace(nodes: Node[]) {
 function wrapTextAfterTaskBlocks(li: Element) {
 	let run: Node[] = [];
 	const flush = () => {
-		if (run.some((n) => n.nodeType !== 3 || n.textContent?.trim())) {
+		if (run.some((n) => n.nodeType !== 3 || !isBlank(n.textContent))) {
 			const wrapper = li.ownerDocument!.createElement("span");
 			wrapper.className = "task-text";
 			li.insertBefore(wrapper, run[0]);
@@ -470,14 +479,14 @@ function processTaskItems(root: Element) {
 		const inlineNodes: Node[] = [];
 		let paragraphNode: Element | null = null;
 		for (const n of afterInput) {
-			if (n.nodeType === 3 && !n.textContent?.trim()) {
+			if (n.nodeType === 3 && isBlank(n.textContent)) {
 				inlineNodes.push(n);
 				continue;
 			}
 
 			if (n.nodeType === 1 && taskTextBoundaryTags.has((n as Element).tagName)) {
 				const onlyLeadingWhitespace = inlineNodes.every(
-					(node) => node.nodeType === 3 && !node.textContent?.trim(),
+					(node) => node.nodeType === 3 && isBlank(node.textContent),
 				);
 				if ((n as Element).tagName === "P" && onlyLeadingWhitespace) {
 					paragraphNode = n as Element;
@@ -488,13 +497,13 @@ function processTaskItems(root: Element) {
 		}
 
 		const hasInlineText = inlineNodes.some(
-			(n) => n.nodeType !== 3 || n.textContent?.trim(),
+			(n) => n.nodeType !== 3 || !isBlank(n.textContent),
 		);
 		if (paragraphNode) {
 			stripLeadingWhitespace(inlineNodes);
 			const paragraphChildren = Array.from(paragraphNode.childNodes);
 			const hasParagraphText = paragraphChildren.some(
-				(n) => n.nodeType !== 3 || n.textContent?.trim(),
+				(n) => n.nodeType !== 3 || !isBlank(n.textContent),
 			);
 			if (!hasParagraphText) {
 				paragraphNode.remove();
@@ -609,15 +618,6 @@ function processSoftLineAnchors(root: Element, doc: Document) {
 			br.parentNode?.insertBefore(anchor, follows);
 		}
 	}
-}
-
-/**
- * Blank the way HTML means it: ASCII whitespace only. JS `\s` and `trim()` also
- * match U+00A0, and a line holding just an NBSP is how a writer asks for an
- * empty line that Markdown would otherwise collapse (#843).
- */
-function isBlank(text: string | null | undefined): boolean {
-	return /^[ \t\n\f\r]*$/.test(text ?? "");
 }
 
 export function processMarkdownHtml(
