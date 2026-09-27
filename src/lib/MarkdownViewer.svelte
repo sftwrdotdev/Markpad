@@ -2735,6 +2735,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
+	/**
+	 * Close the tag's files and leave an empty window on Home. The pin is saved
+	 * first, so a pinned tag keeps its files and can be reopened from Home or
+	 * the app menu. A dirty tab the user keeps open keeps the tag too.
+	 */
+	async function closeWindowTag() {
+		await savePinnedTagIfNeeded();
+		await closeTabsWithConfirmation(tabManager.tabs.map((tab) => tab.id));
+		if (tabManager.tabs.length === 0) tabManager.setWindowTag(null);
+	}
+
 	async function destroyWindowAfterTabsClosed() {
 		await savePinnedTagIfNeeded();
 		if (settings.restoreStateOnReopen) {
@@ -3876,6 +3887,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		onnewFile={handleNewFile}
 		onopenFile={selectFile}
 		onmergeAllWindows={mergeAllWindowsHere}
+		onclosetag={closeWindowTag}
 		onsaveFile={saveContent}
 		onsaveFileAs={saveContentAs}
 		onreloadFromDisk={reloadFromDisk}
@@ -3916,6 +3928,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		onnewFile={handleNewFile}
 		onopenFile={selectFile}
 		onmergeAllWindows={mergeAllWindowsHere}
+		onclosetag={closeWindowTag}
 		onsaveFile={saveContent}
 		onsaveFileAs={saveContentAs}
 		onreloadFromDisk={reloadFromDisk}

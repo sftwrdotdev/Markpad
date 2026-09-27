@@ -34,6 +34,7 @@
 		onnewFile,
 		onopenFile,
 		onmergeAllWindows,
+		onclosetag,
 		onsaveFile,
 		onsaveFileAs,
 		onreloadFromDisk,
@@ -77,6 +78,7 @@
 		onnewFile?: () => void;
 		onopenFile?: () => void;
 		onmergeAllWindows?: () => void;
+		onclosetag?: () => void;
 		onsaveFile?: () => void;
 		onsaveFileAs?: () => void;
 		onreloadFromDisk?: () => void;
@@ -696,6 +698,7 @@
 				</div>
 				<button class="tag-save-btn" onclick={applyTag}>{t('settings.save', currentLanguage)}</button>
 				{#if tabManager.windowTag}<button class="tag-action-btn" onclick={togglePinnedTag}>{t(tabManager.windowTag.pinned ? 'menu.unpinWindowTag' : 'menu.pinWindowTag', currentLanguage)}</button>{/if}
+				{#if tabManager.windowTag}<button class="tag-action-btn" onclick={() => { tagEditorOpen = false; onclosetag?.(); }}>{t('menu.closeWindowTag', currentLanguage)}</button>{/if}
 				{#if tabManager.windowTag}<button class="tag-action-btn danger" onclick={clearTag}>{t('menu.windowTagClear', currentLanguage)}</button>{/if}
 			</div>
 		{/if}
