@@ -732,19 +732,13 @@ export function processMarkdownHtml(
 
 	// parse callouts
 	for (const bq of Array.from(doc.querySelectorAll("blockquote"))) {
-		const walker = doc.createTreeWalker(bq, NodeFilter.SHOW_TEXT);
-		let textNode: Text | null = null;
-		let matchResult: RegExpMatchArray | null = null;
-		
-		let curr: Node | null;
-		while (curr = walker.nextNode()) {
-			const m = curr.nodeValue?.match(/^\s*\[!([a-zA-Z0-9_\-]+)\]([+-]?)\s*/i);
-			if (m) {
-				textNode = curr as Text;
-				matchResult = m;
-				break;
-			}
-		}
+		// Only the text the quote's first paragraph opens with is a marker, as
+		// in Obsidian and GitHub: `[!note]` in code or a nested quote is text.
+		let first = bq.firstChild;
+		while (first && first.nodeType === 3 && isBlank(first.textContent)) first = first.nextSibling;
+		const lead = first?.nodeType === 1 && (first as Element).tagName === "P" ? first.firstChild : null;
+		const matchResult = lead?.nodeType === 3 ? lead.nodeValue?.match(/^\s*\[!([a-zA-Z0-9_\-]+)\]([+-]?)\s*/i) : null;
+		const textNode = matchResult ? (lead as Text) : null;
 
 		if (textNode && matchResult) {
 			const type = matchResult[1].toLowerCase();
