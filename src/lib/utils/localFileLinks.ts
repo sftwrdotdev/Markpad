@@ -52,5 +52,18 @@ export function resolveLocalFileLinkPath(rawHref: string, currentFile: string): 
 	if (!resolved) return null;
 	if (!currentFile && !absoluteFilePathPattern.test(resolved)) return null;
 
+	// Opening a UNC path makes Windows connect to its host over SMB and offer
+	// the user's NTLM credentials, so a link to `\\host\share\x` leaks a
+	// password hash to whoever wrote the document. The backslash and
+	// percent-encoded spellings all arrive here as `//host/…`. A document that
+	// already lives on a share may still link within that host.
+	const host = uncHost(resolved);
+	if (host !== null && host !== uncHost(currentFile)) return null;
+
 	return resolved;
+}
+
+function uncHost(path: string): string | null {
+	const match = /^[\\/]{2}([^\\/]+)/.exec(path);
+	return match ? match[1].toLowerCase() : null;
 }
