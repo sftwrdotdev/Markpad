@@ -36,3 +36,17 @@ test('a fence nested in a list item or a quote counts; two backticks do not', ()
 	assert.deepEqual(inside('> ```\n> - x\n> ```\n- y'), [false, true, true, false]);
 	assert.deepEqual(inside('``\n- x'), [false, false]);
 });
+
+test('a fence opened on the list marker line counts, and so does its closing line', () => {
+	assert.deepEqual(inside('- item\n- ```js\n  code\n  ```\n- next\n  - child'), [false, false, true, true, false, false]);
+	assert.deepEqual(inside('1. ```bash\n   ls\n   ```\n2. b'), [false, true, true, false]);
+	assert.deepEqual(inside('* [ ] ```\n  x\n  ```\n+ y'), [false, true, true, false]);
+	// Containers nest: a quote holding a list, a list holding a list.
+	assert.deepEqual(inside('> - ```\n>   x\n>   ```\n- y'), [false, true, true, false]);
+	assert.deepEqual(inside('> 1. - ```\n>      x\n>      ```\n- y'), [false, true, true, false]);
+});
+
+test('a list item with inline code spans is not a fence', () => {
+	assert.deepEqual(inside('- use ```x``` here\n- y'), [false, false]);
+	assert.deepEqual(inside('- ```x```\n- y'), [false, false]);
+});
