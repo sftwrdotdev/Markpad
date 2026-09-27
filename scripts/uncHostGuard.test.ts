@@ -92,3 +92,15 @@ test('a document on a share still opens the documents beside it', () => {
 	assert.equal(markdownTarget('other.md', 'C:\\notes\\doc.md'), 'C:/notes/other.md');
 	assert.equal(markdownTarget('/notes/other.md', '/notes/doc.md'), '/notes/other.md');
 });
+
+test('a device path counts by the host it names', () => {
+	// `\\?\UNC\host\…` is a UNC path on `host`; `\\?\C:\…` is a local one. Read
+	// naively, both had the host `?`, so a document opened by a device path let
+	// every `\\?\UNC\…` path through.
+	for (const doc of ['\\\\?\\C:\\notes\\a.md', '//./C:/notes/a.md']) {
+		const [out] = mediaSrcs('<p><img src="//?/UNC/evil/s/a.png"></p>', doc);
+		assert.ok(!out, `device UNC image from ${doc} became ${out}`);
+	}
+	const [same] = mediaSrcs('<p><img src="img.png"></p>', '\\\\?\\UNC\\server\\share\\doc.md');
+	assert.ok(same, 'a document on a share opened by its device path lost its own image');
+});

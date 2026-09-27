@@ -89,6 +89,7 @@ pub async fn open_markdown_preview(
     max_bytes: usize,
 ) -> Result<(String, String, bool, bool, String), String> {
     tauri::async_runtime::spawn_blocking(move || {
+        crate::asset_protocol::trust_document_host(&path);
         let preview = build_markdown_preview(Path::new(&path), max_bytes)?;
         Ok((
             preview.html,

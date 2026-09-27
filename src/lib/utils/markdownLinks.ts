@@ -55,7 +55,13 @@ export function isOffHostUncPath(path: string, currentFile: string): boolean {
 	return host !== null && host !== uncHost(currentFile);
 }
 
+/**
+ * The host of a UNC path, or null. A device path names its host after `UNC`
+ * (`\\?\UNC\host\…`); any other device path (`\\?\C:\…`) is local.
+ */
 function uncHost(path: string): string | null {
+	const device = /^[\\/]{2}[?.][\\/]([^\\/]*)[\\/]?([^\\/]*)/.exec(path);
+	if (device) return device[1].toLowerCase() === 'unc' && device[2] ? device[2].toLowerCase() : null;
 	const match = /^[\\/]{2}([^\\/]+)/.exec(path);
 	return match ? match[1].toLowerCase() : null;
 }

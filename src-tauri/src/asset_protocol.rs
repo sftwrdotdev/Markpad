@@ -94,10 +94,19 @@ pub(crate) fn trust_document_host(document: &str) {
     }
 }
 
-/// `host` in `\\host\…`, `//host/…` or any mix of the two separators.
+/// `host` in `\\host\…`, `//host/…` or any mix of the two separators. A
+/// device path names its host after `UNC` (`\\?\UNC\host\…`); any other
+/// device path (`\\?\C:\…`) is local.
 fn unc_host(path: &str) -> Option<String> {
     let rest = path.strip_prefix(['/', '\\'])?.strip_prefix(['/', '\\'])?;
-    let host = rest.split(['/', '\\']).next()?;
+    let mut parts = rest.split(['/', '\\']);
+    let mut host = parts.next()?;
+    if host == "?" || host == "." {
+        if !parts.next()?.eq_ignore_ascii_case("unc") {
+            return None;
+        }
+        host = parts.next()?;
+    }
     (!host.is_empty()).then(|| host.to_lowercase())
 }
 
@@ -524,6 +533,11 @@ mod tests {
         assert!(!refuses_unc(r"\\SERVER\share\img\a.png", &trusted));
         assert!(!refuses_unc("//server/share/a.png", &trusted));
         assert!(!refuses_unc(r"C:\notes\a.png", &trusted));
+        // A device path names its host after `UNC`; any other one is local.
+        assert!(refuses_unc(r"\\?\UNC\evil.example\share\a.png", &trusted));
+        assert!(refuses_unc("//./UNC/evil.example/share/a.png", &trusted));
+        assert!(!refuses_unc(r"\\?\UNC\server\share\a.png", &trusted));
+        assert!(!refuses_unc(r"\\?\C:\notes\a.png", &trusted));
         assert!(!refuses_unc("/notes/a.png", &trusted));
     }
 
