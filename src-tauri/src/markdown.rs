@@ -88,6 +88,24 @@ fn escape_html_attribute(value: &str) -> String {
     escaped
 }
 
+/// `path` percent-encoded so that it names the same file after the frontend's
+/// `decodeURIComponent` (the preview's image pass and the export resolver both
+/// run one). Mirrors `NEEDS_PERCENT_ENCODING` in src/lib/utils/imageEmbed.ts,
+/// the rule for the links Markpad writes itself: `%` above all, since a raw
+/// one either makes the decode throw or decodes to a different name, plus
+/// controls, space, `()<>?#\`. Everything else, non-ASCII included, is kept.
+fn encode_embed_destination(path: &str) -> String {
+    let mut encoded = String::with_capacity(path.len());
+    for character in path.chars() {
+        if character <= ' ' || "\x7f%()<>?#\\".contains(character) {
+            encoded.push_str(&format!("%{:02X}", character as u32));
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
+}
+
 /// The comrak configuration the preview is rendered with.
 ///
 /// Extracted because a second reader of the document — `heading_anchors`, for
@@ -519,7 +537,7 @@ fn process_internal_embeds(content: &str) -> Cow<'_, str> {
         // Every interpolated value is HTML-escaped: the target comes straight
         // from the document, so a quote in it would otherwise close the
         // attribute and let the rest be read as markup.
-        let src = escape_html_attribute(&path.replace(" ", "%20"));
+        let src = escape_html_attribute(&encode_embed_destination(path));
         let alt = escape_html_attribute(path);
 
         // Wrapped in a `<span>` because a bare `<img …/>` alone on a line is a
@@ -2476,6 +2494,23 @@ pub(crate) mod tests {
         let out = process_internal_embeds("![[my photo.png]]\n");
         assert!(out.contains("src=\"my%20photo.png\""), "got: {out}");
         assert!(out.contains("alt=\"my photo.png\""), "got: {out}");
+    }
+
+    #[test]
+    fn embed_src_survives_the_frontends_decode() {
+        // The preview and the export both `decodeURIComponent` the src, so it
+        // must be percent-encoded with the rule `encodeImageDestination` in
+        // src/lib/utils/imageEmbed.ts uses: a raw `%` either throws there
+        // (`50%%20off`) or decodes to a different file (`50%20off` -> `50 off`).
+        for (embed, src) in [
+            ("![[50% off.png]]", "50%25%20off.png"),
+            ("![[50%20off.png]]", "50%2520off.png"),
+            ("![[img/a#1 (b).png]]", "img/a%231%20%28b%29.png"),
+            ("![[图片/截图.png]]", "图片/截图.png"),
+        ] {
+            let out = process_internal_embeds(embed);
+            assert!(out.contains(&format!("src=\"{src}\"")), "{embed}: {out}");
+        }
     }
 
     #[test]
