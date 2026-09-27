@@ -1463,39 +1463,31 @@ pub(crate) fn build_markdown_preview(
 /// The preprocessing the renderer runs before comrak, for a caller that reads
 /// line numbers off the parse. Every step is line-preserving, so sourcepos
 /// still addresses the caller's buffer.
-fn preprocess_for_positions(markdown: &str) -> MaskedMath {
-    let markdown = blank_front_matter(markdown);
+fn preprocess_for_positions(markdown: &str, front_matter_lines: usize) -> MaskedMath {
+    let markdown = blank_front_matter(markdown, front_matter_lines);
     let autolinks = process_parenthesized_autolinks(&markdown);
     let embeds = process_internal_embeds(&autolinks);
     let preprocessed = process_wikilinks(&embeds);
     mask_math_spans(&preprocessed)
 }
 
-/// `markdown` with its front matter lines emptied, so the parse does not read
-/// the closing `---` as a setext underline. The preview strips front matter
-/// before rendering; this keeps the lines instead, so sourcepos still counts
-/// the buffer's. comrak's `front_matter_delimiter` keeps the numbering too,
-/// but it rejects `--- ` and an indented closing fence, which the app accepts:
-/// this is `findFrontMatterRange` in frontMatter.ts.
-pub(crate) fn blank_front_matter(markdown: &str) -> Cow<'_, str> {
-    let body = markdown.strip_prefix('\u{feff}').unwrap_or(markdown);
-    let mut lines = body.split_inclusive('\n');
-    let opens = lines.next().is_some_and(|line| {
-        line.trim_end_matches(['\n', '\r'])
-            .trim_end_matches([' ', '\t'])
-            == "---"
-    });
-    if !opens {
+/// `markdown` with its first `lines` lines emptied, so the parse does not read
+/// the front matter's closing `---` as a setext underline. The preview strips
+/// front matter before rendering; this keeps each line's ending instead, so
+/// sourcepos still counts the buffer's. A BOM on the first line goes with it.
+///
+/// The caller says how many lines that is (`frontMatterFenceLines` in
+/// frontMatter.ts) rather than this finding them, because the rule is the one
+/// the preview strips by, and it needs a YAML parser: a leading `---` block is
+/// front matter only when its YAML is a mapping, empty, or malformed. Any two
+/// leading `---` lines also match a thematic break with prose under it.
+pub(crate) fn blank_front_matter(markdown: &str, lines: usize) -> Cow<'_, str> {
+    if lines == 0 {
         return Cow::Borrowed(markdown);
     }
-    let Some(close) = lines.position(|line| line.trim() == "---") else {
-        return Cow::Borrowed(markdown);
-    };
-    // The opening fence, the YAML, the closing fence: each becomes its line
-    // ending alone.
     let mut blanked = String::with_capacity(markdown.len());
-    let mut rest = body;
-    for _ in 0..close + 2 {
+    let mut rest = markdown;
+    for _ in 0..lines {
         let line_end = rest.find('\n').map_or(rest.len(), |i| i + 1);
         let line = &rest[..line_end];
         blanked.push_str(&line[line.trim_end_matches(['\n', '\r']).len()..]);
@@ -1521,8 +1513,8 @@ pub(crate) struct FoldRange {
 /// comrak ends a list item on the blank line after it, which would make every
 /// one-line item in a loose list a fold hiding that blank line, so trailing
 /// blank lines are dropped first — the same rule the heading folds use.
-pub(crate) fn block_fold_ranges(markdown: &str) -> Vec<FoldRange> {
-    let masked = preprocess_for_positions(markdown);
+pub(crate) fn block_fold_ranges(markdown: &str, front_matter_lines: usize) -> Vec<FoldRange> {
+    let masked = preprocess_for_positions(markdown, front_matter_lines);
     let lines: Vec<&str> = markdown.lines().collect();
     let arena = Arena::new();
     let root = parse_document(&arena, &masked.text, &markdown_options());
@@ -1590,8 +1582,8 @@ pub(crate) struct HeadingAnchor {
 /// `restore_math_spans` writes into an anchor — and the two agree because
 /// anchorizing is a per-character map with no collapsing, so doing it to the
 /// pieces and doing it to the whole give the same string.
-pub(crate) fn heading_anchors(markdown: &str) -> Vec<HeadingAnchor> {
-    let masked = preprocess_for_positions(markdown);
+pub(crate) fn heading_anchors(markdown: &str, front_matter_lines: usize) -> Vec<HeadingAnchor> {
+    let masked = preprocess_for_positions(markdown, front_matter_lines);
 
     let arena = Arena::new();
     let options = markdown_options();
@@ -2523,7 +2515,7 @@ pub(crate) mod tests {
             "```\n",
         );
 
-        let anchors = heading_anchors(markdown);
+        let anchors = heading_anchors(markdown, 0);
         let texts: Vec<&str> = anchors.iter().map(|a| a.text.as_str()).collect();
         assert_eq!(
             texts,
@@ -2586,7 +2578,7 @@ pub(crate) mod tests {
             "|---|---|\n",       // 15
             "| 1 | 2 |\n",       // 16
         );
-        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown)
+        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown, 0)
             .iter()
             .map(|r| (r.start, r.end))
             .collect();
@@ -2610,28 +2602,46 @@ pub(crate) mod tests {
             "> quote\n",      // 8
             "> more\n",       // 9
         );
-        let anchors: Vec<(u32, String)> = heading_anchors(markdown)
+        let anchors: Vec<(u32, String)> = heading_anchors(markdown, 4)
             .into_iter()
             .map(|a| (a.line, a.text))
             .collect();
         assert_eq!(anchors, vec![(6, "Intro".to_owned())]);
-        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown)
+        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown, 4)
             .iter()
             .map(|r| (r.start, r.end))
             .collect();
         assert_eq!(ranges, vec![(8, 9)]);
 
-        // The app's rule (`findFrontMatterRange` in frontMatter.ts): a BOM and
-        // trailing blanks on the fences are allowed, CRLF too.
+        // Told there is none, it is markdown: a document that opens with a
+        // thematic break keeps its heading, as it does in the preview.
+        let rule = "---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n";
+        let anchors: Vec<(u32, String)> = heading_anchors(rule, 0)
+            .into_iter()
+            .map(|a| (a.line, a.text))
+            .collect();
+        assert_eq!(
+            anchors,
+            vec![(3, "Title".to_owned()), (9, "Part 2".to_owned())]
+        );
+    }
+
+    /// The front matter lines empty to their line endings alone, CRLF
+    /// included, so every later line keeps its number and its bytes.
+    #[test]
+    fn blank_front_matter_empties_the_first_lines_and_keeps_their_endings() {
         let crlf = "\u{feff}--- \r\ntitle: Hello\r\n  ---\r\n# Top\r\n";
-        let lines: Vec<u32> = heading_anchors(crlf).iter().map(|a| a.line).collect();
+        assert_eq!(blank_front_matter(crlf, 3), "\r\n\r\n\r\n# Top\r\n");
+        let lines: Vec<u32> = heading_anchors(crlf, 3).iter().map(|a| a.line).collect();
         assert_eq!(lines, vec![4]);
 
-        // Only at the very start: a `---` block further down is markdown, and
-        // its setext heading is real.
-        let later = "# Top\n---\ntitle: Hello\n---\n";
-        let texts: Vec<String> = heading_anchors(later).into_iter().map(|a| a.text).collect();
-        assert_eq!(texts, vec!["Top", "title: Hello"]);
+        assert!(matches!(
+            blank_front_matter("---\na: 1\n---\n", 0),
+            Cow::Borrowed("---\na: 1\n---\n")
+        ));
+        // No newline after the closing fence, and a count past the end.
+        assert_eq!(blank_front_matter("---\na: 1\n---", 3), "\n\n");
+        assert_eq!(blank_front_matter("---\na: 1\n---\n", 9), "\n\n\n");
     }
 
     /// comrak never sees the buffer: four preprocessing steps run first, and
@@ -2675,7 +2685,7 @@ pub(crate) mod tests {
                 .and_then(|rest| rest.split('"').next())
                 .unwrap_or_default()
                 .to_owned();
-            let ours = heading_anchors(markdown)
+            let ours = heading_anchors(markdown, 0)
                 .first()
                 .map(|anchor| anchor.slug.clone())
                 .unwrap_or_default();

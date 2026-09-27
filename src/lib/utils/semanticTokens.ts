@@ -1,5 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 
+import { frontMatterFenceLines } from './frontMatter.js';
+
 /**
  * The editor's second colouring layer: what the renderer says is really there.
  *
@@ -107,7 +109,11 @@ export function createMarkdownSemanticTokensProvider(monaco: typeof import('mona
 		const version = model.getVersionId();
 		if (cache && cache.uri === uri && cache.version === version) return cache.tokens;
 
-		const spans = (await invoke('markdown_semantic_spans', { content: model.getValue() })) as SemanticSpan[];
+		const content = model.getValue();
+		const spans = (await invoke('markdown_semantic_spans', {
+			content,
+			frontMatterLines: frontMatterFenceLines(content),
+		})) as SemanticSpan[];
 		// The model can have moved on while Rust was parsing. Returning tokens
 		// for text that is no longer there would paint the wrong ranges, so the
 		// stale answer is cached against its own version and Monaco asks again.

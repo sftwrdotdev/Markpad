@@ -183,6 +183,26 @@ export function frontMatterLineOffset(content: string): number {
 	return content.slice(0, content.length - body.length).split('\n').length - 1;
 }
 
+/**
+ * How many lines the front matter spans, opening fence through closing fence,
+ * or 0 when the document has none — the lines the editor's Rust analyses
+ * (headings, folds, colours) blank before they parse the buffer, so the
+ * closing `---` does not underline the YAML into a setext heading.
+ *
+ * Rust is told rather than left to find them because this is the rule the
+ * preview strips by: a leading `---` block counts only when its YAML is a
+ * mapping (or empty, or malformed). A copy of that rule without a YAML parser
+ * blanked a thematic break and the prose under it.
+ *
+ * Not `frontMatterLineOffset`: that also counts the blank line after the
+ * closing fence, and misses the fence itself when no newline follows it.
+ * `raw` is every line between the fences, each with its line ending.
+ */
+export function frontMatterFenceLines(content: string): number {
+	const { exists, raw } = parseFrontMatter(content);
+	return exists ? raw.split('\n').length + 1 : 0;
+}
+
 export function parseFrontMatterEditableValue(field: FrontMatterField, value: string): unknown {
 	const trimmed = value.trim();
 	switch (field.kind) {

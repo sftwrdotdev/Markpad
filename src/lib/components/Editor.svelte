@@ -13,7 +13,7 @@
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
 	import { isInFencedCode } from '../utils/codeFence.js';
-	import { frontMatterLineOffset } from '../utils/frontMatter.js';
+	import { frontMatterFenceLines, frontMatterLineOffset } from '../utils/frontMatter.js';
 	import { isAltGraphChord } from '../utils/viewerKeymap.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
@@ -624,8 +624,10 @@
 		if (anchorCache?.model === model && anchorCache.version === version) return anchorCache.anchors;
 
 		try {
+			const markdown = model.getValue();
 			const anchors = (await invoke("list_heading_anchors", {
-				markdown: model.getValue(),
+				markdown,
+				frontMatterLines: frontMatterFenceLines(markdown),
 			})) as HeadingAnchor[];
 			anchorCache = { model, version, anchors };
 			return anchors;
@@ -656,11 +658,15 @@
 	// indentation folding covered: registering this turns that fallback off (#777).
 	const foldingRanges = monaco.languages.registerFoldingRangeProvider(MARKDOWN_LANGUAGE_ID, {
 		provideFoldingRanges: async (model) => {
+			const markdown = model.getValue();
 			const [anchors, blocks] = await Promise.all([
 				headingAnchors(model),
-				(invoke("list_fold_ranges", { markdown: model.getValue() }) as Promise<Monaco.languages.FoldingRange[]>).catch(
-					() => [],
-				),
+				(
+					invoke("list_fold_ranges", {
+						markdown,
+						frontMatterLines: frontMatterFenceLines(markdown),
+					}) as Promise<Monaco.languages.FoldingRange[]>
+				).catch(() => []),
 			]);
 			return [...headingFoldRanges(anchors, model.getLineCount(), (n) => model.getLineContent(n)), ...blocks];
 		},

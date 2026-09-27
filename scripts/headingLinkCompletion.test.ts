@@ -89,8 +89,8 @@ test('each context writes the text its own syntax resolves', () => {
 test('the list is read from Rust, and re-read only when the buffer changes', () => {
 	// A second anchorizer written in TypeScript would drift from comrak's
 	// without anything failing — the links would simply stop landing.
-	assert.match(editorSource, /invoke\("list_heading_anchors", \{\s*\n?\s*markdown: model\.getValue\(\),/);
-	assert.match(rustSource, /async fn list_heading_anchors\(markdown: String\)/);
+	assert.match(editorSource, /const markdown = model\.getValue\(\);\s*const anchors = \(await invoke\("list_heading_anchors", \{\s*markdown,/);
+	assert.match(rustSource, /async fn list_heading_anchors\(\s*markdown: String,/);
 	// Completion fires per keystroke while the dropdown is open; the headings
 	// cannot have moved between two keystrokes of one edit. Keyed on the model
 	// too, because version ids are counted per model and each tab has its own.

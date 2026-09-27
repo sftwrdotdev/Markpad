@@ -102,19 +102,29 @@ pub async fn open_markdown_preview(
     .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+/// `front_matter_lines` is how many leading lines are front matter, which the
+/// frontend decides (`frontMatterFenceLines`); the same for the two below.
 #[tauri::command]
-pub async fn list_heading_anchors(markdown: String) -> Result<Vec<HeadingAnchor>, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(heading_anchors(&markdown)))
+pub async fn list_heading_anchors(
+    markdown: String,
+    front_matter_lines: usize,
+) -> Result<Vec<HeadingAnchor>, String> {
+    tauri::async_runtime::spawn_blocking(move || Ok(heading_anchors(&markdown, front_matter_lines)))
         .await
         .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// Off the main thread like `markdown_semantic_spans`: Monaco asks on every edit.
 #[tauri::command]
-pub async fn list_fold_ranges(markdown: String) -> Result<Vec<FoldRange>, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(block_fold_ranges(&markdown)))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
+pub async fn list_fold_ranges(
+    markdown: String,
+    front_matter_lines: usize,
+) -> Result<Vec<FoldRange>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(block_fold_ranges(&markdown, front_matter_lines))
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// The ranges the editor should colour, from the same parse the preview uses.
@@ -125,10 +135,16 @@ pub async fn list_fold_ranges(markdown: String) -> Result<Vec<FoldRange>, String
 #[tauri::command]
 pub async fn markdown_semantic_spans(
     content: String,
+    front_matter_lines: usize,
 ) -> Result<Vec<crate::semantic::SemanticSpan>, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(crate::semantic::semantic_spans(&content)))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
+    tauri::async_runtime::spawn_blocking(move || {
+        Ok(crate::semantic::semantic_spans(
+            &content,
+            front_matter_lines,
+        ))
+    })
+    .await
+    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 #[tauri::command]

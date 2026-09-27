@@ -27,8 +27,6 @@
 //! from the first character on, and a span computed in bytes lands in the middle
 //! of a character — where Monaco silently drops it.
 
-use std::borrow::Cow;
-
 use comrak::nodes::{AstNode, ListType, NodeValue};
 
 use crate::markdown::{blank_front_matter, markdown_options};
@@ -59,7 +57,7 @@ struct ByteSpan {
 /// Non-overlapping is a requirement, not a nicety: Monaco's semantic tokens are
 /// delta-encoded from one token to the next, and two tokens covering the same
 /// character produce a negative delta that the decoder reads as a new line.
-pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
+pub fn semantic_spans(content: &str, front_matter_lines: usize) -> Vec<SemanticSpan> {
     let lines: Vec<&str> = content.split('\n').collect();
     let mut raw: Vec<(ByteSpan, &'static str)> = Vec::new();
 
@@ -67,16 +65,14 @@ pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
     // a setext heading. The parse gets it blanked instead, which empties those
     // lines and leaves the rest byte for byte, so every position below is
     // still the buffer's.
-    let parsed = blank_front_matter(content);
+    let parsed = blank_front_matter(content, front_matter_lines);
     let arena = comrak::Arena::new();
     let options = markdown_options();
     let root = comrak::parse_document(&arena, &parsed, &options);
     for node in root.descendants() {
         collect_node(node, &lines, &mut raw);
     }
-    if let Cow::Owned(blanked) = &parsed {
-        front_matter_spans(&lines, blanked, &mut raw);
-    }
+    front_matter_spans(&lines, front_matter_lines, &mut raw);
     app_syntax_spans(&lines, &mut raw);
 
     // Sort, then keep the first claim on any character. The order matters: an
@@ -114,21 +110,15 @@ pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
     spans
 }
 
-/// The lines `blank_front_matter` emptied, each whole: the block runs through
-/// the closing fence, which is the last line it changed. Being whole lines,
-/// these claim their lines before anything `app_syntax_spans` finds in the YAML.
-fn front_matter_spans(lines: &[&str], blanked: &str, out: &mut Vec<(ByteSpan, &'static str)>) {
-    let Some(close) = lines
-        .iter()
-        .zip(blanked.split('\n'))
-        .enumerate()
-        .filter(|(_, (raw, blank))| *raw != blank)
-        .map(|(line, _)| line)
-        .last()
-    else {
-        return;
-    };
-    for (line, text) in lines.iter().enumerate().take(close + 1) {
+/// The front matter lines `blank_front_matter` emptied, each whole. Being
+/// whole lines, these claim their lines before anything `app_syntax_spans`
+/// finds in the YAML.
+fn front_matter_spans(
+    lines: &[&str],
+    front_matter_lines: usize,
+    out: &mut Vec<(ByteSpan, &'static str)>,
+) {
+    for (line, text) in lines.iter().enumerate().take(front_matter_lines) {
         let end = text.trim_end_matches('\r').len();
         if end > 0 {
             out.push((
@@ -801,7 +791,12 @@ mod tests {
     use super::*;
 
     fn spans(text: &str) -> Vec<(String, u32, u32, u32)> {
-        semantic_spans(text)
+        spans_after(text, 0)
+    }
+
+    /// `spans` for a buffer whose first `front_matter_lines` are front matter.
+    fn spans_after(text: &str, front_matter_lines: usize) -> Vec<(String, u32, u32, u32)> {
+        semantic_spans(text, front_matter_lines)
             .into_iter()
             .map(|s| (s.kind.to_string(), s.line, s.start, s.len))
             .collect()
@@ -1006,7 +1001,7 @@ mod tests {
     #[test]
     fn spans_never_overlap() {
         let text = "# Head `code` **bold _mixed_**\n\n> quote with `tick`\n\n| a | b |\n|---|---|\n| 1 | 2 |\n";
-        let mut seen: Vec<(u32, u32, u32)> = semantic_spans(text)
+        let mut seen: Vec<(u32, u32, u32)> = semantic_spans(text, 0)
             .into_iter()
             .map(|s| (s.line, s.start, s.len))
             .collect();
@@ -1041,17 +1036,29 @@ mod tests {
     /// bold in the heading colour. The body after it keeps its buffer lines.
     #[test]
     fn front_matter_is_not_a_heading() {
+        let kinds = |text: &str, front_matter_lines: usize, line: u32| -> Vec<String> {
+            spans_after(text, front_matter_lines)
+                .into_iter()
+                .filter(|s| s.1 == line)
+                .map(|s| s.0)
+                .collect()
+        };
         // Math in the YAML is not typeset either: the whole line is claimed.
         let text = "---\ntitle: Hello\nprice: $5 or $6\n---\n\n# Body\n";
         for line in 0..4 {
-            assert_eq!(kinds_on(text, line), ["frontmatter"], "line {line}");
+            assert_eq!(kinds(text, 4, line), ["frontmatter"], "line {line}");
         }
-        assert_eq!(kinds_on(text, 5), ["heading.marker", "heading"]);
+        assert_eq!(kinds(text, 4, 5), ["heading.marker", "heading"]);
 
-        // The app's fences (`findFrontMatterRange`): a BOM, CRLF, an indented
-        // closing fence.
+        // A BOM, CRLF, an indented closing fence.
         let crlf = "\u{feff}---\r\ntitle: Hello\r\n  ---\r\n# Top\r\n";
-        assert_eq!(kinds_on(crlf, 1), ["frontmatter"]);
-        assert_eq!(kinds_on(crlf, 3), ["heading.marker", "heading"]);
+        assert_eq!(kinds(crlf, 3, 1), ["frontmatter"]);
+        assert_eq!(kinds(crlf, 3, 3), ["heading.marker", "heading"]);
+
+        // A thematic break then prose, which the frontend says is not front
+        // matter: its heading is a heading.
+        let rule = "---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n";
+        assert_eq!(kinds(rule, 0, 2), ["heading.marker", "heading"]);
+        assert!(spans(rule).iter().all(|s| s.0 != "frontmatter"));
     }
 }

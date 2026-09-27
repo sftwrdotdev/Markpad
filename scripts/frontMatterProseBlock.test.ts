@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { frontMatterLineOffset, getMarkdownBodyWithoutFrontMatter, parseFrontMatter } from '../src/lib/utils/frontMatter.js';
+import {
+	frontMatterFenceLines,
+	frontMatterLineOffset,
+	getMarkdownBodyWithoutFrontMatter,
+	parseFrontMatter,
+} from '../src/lib/utils/frontMatter.js';
 import { functionSource, readSource } from './sourceTree.js';
 
 // A document may open with a thematic break and then use a setext underline for
@@ -99,4 +104,33 @@ test('an unresolved alias in the block is broken front matter, not an exception'
 	assert.equal(parsed.valid, false);
 	assert.match(parsed.error ?? '', /alias/i);
 	assert.equal(parsed.body, '# Body\n');
+});
+
+// The editor's analyses (headings, folds, colours) run in Rust on the whole
+// buffer and blank the front matter lines first, so the closing `---` does not
+// underline the YAML into a heading. Rust used to find those lines itself, with
+// any two leading `---` lines, and blanked a thematic break plus the prose
+// under it that the preview renders. Now it is told, by the same rule.
+test('the editor tells Rust how many lines the front matter spans, fence to fence', () => {
+	const leadingRule = '---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n';
+	assert.equal(frontMatterFenceLines(leadingRule), 0);
+	assert.equal(frontMatterFenceLines('# Plain\n'), 0);
+	assert.equal(frontMatterFenceLines('---\ntitle: x\ntags: [a]\n---\n\n# Body\n'), 4);
+	assert.equal(frontMatterFenceLines('\uFEFF--- \r\ntitle: x\r\n  ---\r\n# Body\r\n'), 3);
+	assert.equal(frontMatterFenceLines('---\n---\n'), 2);
+	// No newline after the closing fence: it is still one of the lines.
+	assert.equal(frontMatterFenceLines('---\ntitle: x\n---'), 3);
+	// Malformed is still front matter: the preview strips it too.
+	assert.equal(frontMatterFenceLines('---\ntitle: [broken\n---\n'), 3);
+
+	const editor = readSource('src/lib/components/Editor.svelte');
+	const tokens = readSource('src/lib/utils/semanticTokens.ts');
+	for (const [source, command] of [
+		[editor, 'list_heading_anchors'],
+		[editor, 'list_fold_ranges'],
+		[tokens, 'markdown_semantic_spans'],
+	]) {
+		const call = source.slice(source.indexOf(`invoke(${source === editor ? '"' : "'"}${command}`));
+		assert.match(call.slice(0, call.indexOf('}')), /frontMatterLines: frontMatterFenceLines\(/, command);
+	}
 });
