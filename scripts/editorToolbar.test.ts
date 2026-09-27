@@ -459,6 +459,18 @@ test('reaching outside the selection never breaks a neighbouring pair', () => {
 	assert.equal(clickWith('fmt-strikethrough', '~~word~~', '~~word~~'), 'word');
 });
 
+test('bold and italic come apart inside bold italic', () => {
+	// `***` is bold's pair and italic's side by side, so each button finds its
+	// own half in the run and takes only that, instead of wrapping another pair.
+	assert.equal(clickWith('fmt-bold', 'a ***b*** c', 'b'), 'a *b* c');
+	assert.equal(clickWith('fmt-italic', 'a ***b*** c', 'b'), 'a **b** c');
+	assert.equal(clickWith('fmt-bold', '___b___', 'b'), '_b_');
+	assert.equal(clickWith('fmt-italic', '___b___', 'b'), '__b__');
+	// Three tildes are not two tools' markers, and uneven runs are not a pair.
+	assert.equal(clickWith('fmt-strikethrough', '~~~b~~~', 'b'), '~~~~~b~~~~~');
+	assert.equal(clickWith('fmt-bold', '***b**', 'b'), '*****b****');
+});
+
 /**
  * The whole gesture again, but carrying the selection forward the way the
  * editor does: the edit says what it wrote, and that is what stays selected.
