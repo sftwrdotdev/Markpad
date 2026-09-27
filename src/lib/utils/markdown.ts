@@ -1,5 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { assignFoldKey, isFolded } from "./foldState.js";
+import { isOffHostUncPath } from "./markdownLinks.js";
 import { parseSourceposLineRange } from "./previewAnchor.js";
 import { carrySourcepos } from "./richContent.js";
 
@@ -638,10 +639,17 @@ export function processMarkdownHtml(
 		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
 			try {
 				const decodedSrc = decodeURIComponent(src);
-				finalSrc = convertFileSrc(
-					resolveDocumentRelativePath(filePath, decodedSrc),
-				);
-				img.setAttribute("src", finalSrc);
+				const resolved = resolveDocumentRelativePath(filePath, decodedSrc);
+				// Rendering alone fetches this, so a UNC path on another host
+				// would leak the user's NTLM hash without a click. Left as
+				// written, `//host/x` would instead load as a web address.
+				if (isOffHostUncPath(resolved, filePath)) {
+					finalSrc = null;
+					img.removeAttribute("src");
+				} else {
+					finalSrc = convertFileSrc(resolved);
+					img.setAttribute("src", finalSrc);
+				}
 			} catch (e) {
 				console.error("Failed to decode/resolve image src:", src, e);
 			}
@@ -657,7 +665,7 @@ export function processMarkdownHtml(
 			if (isVideo || isAudio) {
 				const media = doc.createElement(isVideo ? "video" : "audio");
 				media.setAttribute("controls", "");
-				media.setAttribute("src", finalSrc || "");
+				if (finalSrc) media.setAttribute("src", finalSrc);
 				media.style.maxWidth = "100%";
 				carrySourcepos(img, media);
 

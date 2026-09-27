@@ -1,4 +1,5 @@
 import { isAssetUrl, resolveExportImagePath } from './exportHtml.js';
+import { isOffHostUncPath } from './markdownLinks.js';
 
 const absoluteFilePathPattern = /^(?:[a-zA-Z]:[\\/]|\/|\\\\)/;
 
@@ -57,13 +58,8 @@ export function resolveLocalFileLinkPath(rawHref: string, currentFile: string): 
 	// password hash to whoever wrote the document. The backslash and
 	// percent-encoded spellings all arrive here as `//host/…`. A document that
 	// already lives on a share may still link within that host.
-	const host = uncHost(resolved);
-	if (host !== null && host !== uncHost(currentFile)) return null;
+	if (isOffHostUncPath(resolved, currentFile)) return null;
 
 	return resolved;
 }
 
-function uncHost(path: string): string | null {
-	const match = /^[\\/]{2}([^\\/]+)/.exec(path);
-	return match ? match[1].toLowerCase() : null;
-}

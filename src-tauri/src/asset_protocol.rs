@@ -46,8 +46,10 @@
 //! carries what went wrong: 403 traversal or scope, 404 missing, 500 read.
 
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::sync::{LazyLock, Mutex};
 
 use http::header::{
     ACCEPT_RANGES, ACCESS_CONTROL_EXPOSE_HEADERS, CONTENT_LENGTH, CONTENT_RANGE, CONTENT_TYPE,
@@ -58,6 +60,8 @@ use http_range::HttpRange;
 use tauri::path::SafePathBuf;
 use tauri_utils::mime_type::MimeType;
 
+use crate::window_runtime::lock_recover;
+
 /// The most bytes served for one range, as upstream. A player asking for the
 /// rest of a large file gets the first megabyte of it and asks again.
 const MAX_LEN: u64 = 1000 * 1024;
@@ -67,6 +71,39 @@ const MAX_LEN: u64 = 1000 * 1024;
 const MAGIC_LEN: u64 = 8192;
 
 type Body = Cow<'static, [u8]>;
+
+/// UNC hosts the user has opened a document from this session.
+///
+/// Touching a UNC path makes Windows connect to its host over SMB and offer
+/// the user's NTLM credentials, and a document reaches this scheme without a
+/// click: raw HTML (`<img src="http://asset.localhost/%2F%2Fhost%2Fx">`) and
+/// inline CSS `url(…)` pass the sanitizer and never meet the frontend's own
+/// check (`isOffHostUncPath` in markdownLinks.ts). Refusing UNC outright would
+/// break the case this handler exists for — `![](pic.png)` in a document on a
+/// share resolves to `//host/share/pic.png` and is served from here — and a
+/// request carries no word of which document asked. So the rule is the
+/// frontend's, widened to every open document: a host is reachable once the
+/// user opened something from it.
+static DOCUMENT_UNC_HOSTS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Records the share `document` lives on, if any. Called when a document is read.
+pub(crate) fn trust_document_host(document: &str) {
+    if let Some(host) = unc_host(document) {
+        lock_recover(&DOCUMENT_UNC_HOSTS).insert(host);
+    }
+}
+
+/// `host` in `\\host\…`, `//host/…` or any mix of the two separators.
+fn unc_host(path: &str) -> Option<String> {
+    let rest = path.strip_prefix(['/', '\\'])?.strip_prefix(['/', '\\'])?;
+    let host = rest.split(['/', '\\']).next()?;
+    (!host.is_empty()).then(|| host.to_lowercase())
+}
+
+fn refuses_unc(path: &str, trusted: &HashSet<String>) -> bool {
+    unc_host(path).is_some_and(|host| !trusted.contains(&host))
+}
 
 /// Answers one `asset:` request. Blocking: the caller is expected to be on a
 /// thread that may wait on the filesystem.
@@ -119,6 +156,11 @@ fn build(
         .to_string();
 
     let mut resp = Response::builder().header("Access-Control-Allow-Origin", origin);
+
+    // Before the scope check: it canonicalizes, and that is the connection.
+    if cfg!(windows) && refuses_unc(&path, &lock_recover(&DOCUMENT_UNC_HOSTS)) {
+        return Ok(resp.status(StatusCode::FORBIDDEN).body(empty())?);
+    }
 
     if SafePathBuf::new(path.clone().into()).is_err() {
         return Ok(resp.status(StatusCode::FORBIDDEN).body(empty())?);
@@ -467,5 +509,40 @@ mod tests {
             "tauri://localhost"
         );
         std::fs::remove_file(path).ok();
+    }
+
+    #[test]
+    fn a_unc_path_is_refused_unless_a_document_came_from_its_host() {
+        let trusted = HashSet::from(["server".to_owned()]);
+        for path in [
+            r"\\evil.example\share\a.png",
+            "//evil.example/share/a.png",
+            r"/\evil.example\share\a.png",
+        ] {
+            assert!(refuses_unc(path, &trusted), "{path}");
+        }
+        assert!(!refuses_unc(r"\\SERVER\share\img\a.png", &trusted));
+        assert!(!refuses_unc("//server/share/a.png", &trusted));
+        assert!(!refuses_unc(r"C:\notes\a.png", &trusted));
+        assert!(!refuses_unc("/notes/a.png", &trusted));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_unc_path_is_refused_before_the_scope_or_the_filesystem_sees_it() {
+        // The scope check canonicalizes, which is itself the SMB connection.
+        let response = respond(
+            &request(r"\\markpad-untrusted.invalid\share\a.png"),
+            &|_| panic!("the scope was consulted"),
+        );
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        trust_document_host(r"\\markpad-trusted.invalid\share\doc.md");
+        let asked = std::cell::Cell::new(false);
+        respond(&request("//markpad-trusted.invalid/share/a.png"), &|_| {
+            asked.set(true);
+            false
+        });
+        assert!(asked.get(), "a document's own share is still served");
     }
 }

@@ -177,6 +177,7 @@ pub async fn render_markdown(content: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn read_file_content_checked(path: String) -> Result<(String, bool, String), String> {
     tauri::async_runtime::spawn_blocking(move || {
+        crate::asset_protocol::trust_document_host(&path);
         read_to_string_lossy(&path)
             .map(|decoded| (decoded.content, decoded.lossy, decoded.encoding))
             .map_err(|e| e.to_string())
