@@ -222,13 +222,8 @@ function quoteEnter(line: string, column: number): BlockEnter | null {
  *
  * WHAT THIS FUNCTION CANNOT SEE: a fence. `- item` inside a ``` block is the
  * same six characters as `- item` outside one, and the difference lives in the
- * lines above, which never reach here — nor does the caller check, so a list or
- * a quote inside a code block is continued as if it were prose. That is not new
- * with the quote branch; it is where lists have always stood. Nothing public in
- * Monaco answers "is this line code" without re-tokenizing every line above the
- * caret, which is 27 ms at 2 000 lines and 275 ms at 20 000 — a price Enter, of
- * all keys, cannot pay. Whoever fixes it has to reach Monaco's own incremental
- * tokens or this app's semantic layer first.
+ * lines above, which never reach here. The caller asks `isInFencedCode`
+ * (./codeFence.ts) first and sends a plain Enter inside one.
  */
 export function blockEnter(line: string, column: number): BlockEnter | null {
 	const item = parseListItem(line);

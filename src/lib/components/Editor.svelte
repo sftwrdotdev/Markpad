@@ -12,6 +12,7 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
+	import { isInFencedCode } from '../utils/codeFence.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
@@ -1058,23 +1059,21 @@
 	 * the primary selection would silently drop the others' work.
 	 */
 	const continueListOnEnter = () => {
-		const model = editor.getModel();
-		const selections = editor.getSelections();
 		// The key's ordinary meaning, re-sent. `type` with a newline is what the
 		// keyboard itself delivers, so auto-indent and the model's own EOL still
 		// apply — this handler is a detour, never a replacement.
 		const plainEnter = () => editor.trigger("keyboard", "type", { text: "\n" });
-		if (!model || selections?.length !== 1 || !selections[0].isEmpty()) return plainEnter();
+		const caret = soleCaret();
+		if (!caret) return plainEnter();
 
-		const selection = selections[0];
-		const line = selection.startLineNumber;
-		const next = blockEnter(model.getLineContent(line), selection.startColumn);
+		const { model, line, column } = caret;
+		const next = blockEnter(model.getLineContent(line), column);
 		if (!next) return plainEnter();
 
 		// An empty item below the margin gives up one level, as Shift+Tab would
 		// (#856); only an item with no level left ends the list.
 		if (next.kind === "clear") {
-			const level = shiftListItem(model, line, selection.startColumn, true);
+			const level = shiftListItem(model, line, column, true);
 			if (level) return applyLineEdit(level, "list-outdent");
 		}
 
@@ -1091,11 +1090,11 @@
 			return;
 		}
 
-		const column = next.text.length + 1;
+		const after = next.text.length + 1;
 		editor.executeEdits(
 			"list-continuation",
-			[{ range: selection, text: `${model.getEOL()}${next.text}` }],
-			[new monaco.Selection(line + 1, column, line + 1, column)],
+			[{ range: new monaco.Range(line, column, line, column), text: `${model.getEOL()}${next.text}` }],
+			[new monaco.Selection(line + 1, after, line + 1, after)],
 		);
 	};
 
@@ -1106,12 +1105,18 @@
 	 * meaning everywhere below: one edit at the primary selection would silently
 	 * drop what the other carets were about to do, and Monaco's own Tab already
 	 * indents every line of a multi-line selection.
+	 *
+	 * So is a caret inside a fenced code block. `1. a` or `|a|b|` there is code,
+	 * and renumbering or re-aligning it rewrites the code; Enter, Tab and the
+	 * table keys all ask here, so none of them can forget.
 	 */
 	const soleCaret = () => {
 		const model = editor.getModel();
 		const selections = editor.getSelections();
 		if (!model || selections?.length !== 1 || !selections[0].isEmpty()) return null;
-		return { model, line: selections[0].startLineNumber, column: selections[0].startColumn };
+		const line = selections[0].startLineNumber;
+		if (isInFencedCode(model, line)) return null;
+		return { model, line, column: selections[0].startColumn };
 	};
 
 	/**

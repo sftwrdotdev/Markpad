@@ -6,6 +6,7 @@ import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standalon
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 import ts from 'typescript';
 
+import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
@@ -472,6 +473,7 @@ export function runEditorHandler(
 
 	const scope: Record<string, unknown> = {
 		blockEnter,
+		isInFencedCode,
 		parseListItem,
 		shiftListItem,
 		tableStep,
@@ -479,6 +481,7 @@ export function runEditorHandler(
 		monaco: { Range: FakeRange, Selection: FakeRange },
 		editor: {
 			getModel: () => model,
+			getSelection: () => selections[0],
 			getSelections: () => selections,
 			pushUndoStop: () => {
 				recorded.undoStops += 1;
@@ -492,13 +495,13 @@ export function runEditorHandler(
 			executeEdits: (
 				_source: string,
 				edits: Array<{ range: FakeRange; text: string }>,
-				cursor: FakeRange[],
+				cursor?: FakeRange[],
 			) => {
 				for (const [index, edit] of edits.entries()) {
 					recorded.edits.push({
 						range: edit.range.numbers(),
 						text: edit.text,
-						cursor: cursor[index].numbers(),
+						cursor: cursor?.[index]?.numbers() ?? [],
 					});
 				}
 			},

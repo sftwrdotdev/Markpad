@@ -350,7 +350,7 @@ const SHIFT_TAB_HANDLER = [
 	'handleShiftTabKey',
 ];
 
-const ENTER_HANDLER = ['applyLineEdit', 'continueListOnEnter'];
+const ENTER_HANDLER = ['soleCaret', 'applyLineEdit', 'continueListOnEnter'];
 
 test('Enter on a list item inserts the line break and the next marker in one edit', () => {
 	const run = runEditorHandler(ENTER_HANDLER, { lines: ['- item'], selections: [[1, 7, 1, 7]] });
@@ -521,6 +521,38 @@ test('Shift+Tab on a list item is the list’s level, not Monaco’s outdent', (
 	const margin = runEditorHandler(SHIFT_TAB_HANDLER, { lines: ['1. a'], selections: [[1, 1, 1, 1]] });
 	assert.deepEqual(margin.triggers, []);
 	assert.deepEqual(margin.edits, []);
+});
+
+test('inside a fenced code block, Tab, Shift+Tab and Enter mean what they mean in code', () => {
+	// `1. a` and `|a|bb|` inside ``` are code someone is writing, not a list or a
+	// table; renumbering or re-aligning them rewrites the code.
+	const table = ['```', '|a|bb|', '|-|-|', '|1|2|', '```'];
+	const tab = runEditorHandler(TAB_HANDLER, { lines: table, selections: [[2, 2, 2, 2]] });
+	assert.deepEqual(tab.edits, []);
+	assert.deepEqual(tab.triggers, ['tab']);
+
+	const list = ['~~~', '1. a', '2. b', '3. c', '~~~'];
+	const nest = runEditorHandler(TAB_HANDLER, { lines: list, selections: [[3, 5, 3, 5]] });
+	assert.deepEqual(nest.edits, []);
+	assert.deepEqual(nest.triggers, ['tab']);
+	// The first item used to swallow the key: nothing to nest under.
+	const first = runEditorHandler(TAB_HANDLER, { lines: list, selections: [[2, 5, 2, 5]] });
+	assert.deepEqual(first.triggers, ['tab']);
+
+	const back = runEditorHandler(SHIFT_TAB_HANDLER, {
+		lines: ['```', '1. a', '   1. b', '```'],
+		selections: [[3, 8, 3, 8]],
+	});
+	assert.deepEqual(back.edits, []);
+	assert.deepEqual(back.triggers, ['outdent']);
+
+	const enter = runEditorHandler(ENTER_HANDLER, { lines: ['```', '- item', '```'], selections: [[2, 7, 2, 7]] });
+	assert.deepEqual(enter.edits, []);
+	assert.deepEqual(enter.triggers, ['type:"\\n"']);
+
+	// …and below the closing fence the list is a list again.
+	const after = runEditorHandler(ENTER_HANDLER, { lines: ['```', 'x', '```', '- item'], selections: [[4, 7, 4, 7]] });
+	assert.deepEqual(after.edits.map((edit) => edit.text), ['\n- ']);
 });
 
 // ------------------------------------------------------------- the when clauses
