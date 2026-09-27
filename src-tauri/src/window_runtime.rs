@@ -577,7 +577,9 @@ pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     let Some(window) = pick_delivery_window(app) else {
         return;
     };
-    if let Some(path) = startup_paths(&args, Path::new(&cwd)).into_iter().next() {
+    // One event per path, the way `RunEvent::Opened` delivers a
+    // multi-file open on macOS: the `file-path` listener takes a single path.
+    for path in startup_paths(&args, Path::new(&cwd)) {
         let _ = app.emit_to(window.label(), "file-path", path);
     }
     bring_to_front(&window);

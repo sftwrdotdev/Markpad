@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readRustBackend, readSource } from './sourceTree.js';
+import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 const runtime = readSource('src-tauri/src/window_runtime.rs');
 const tauriLib = readRustBackend();
@@ -16,4 +16,12 @@ test('macOS open-document events preserve every delivered file path', () => {
 	assert.match(runtime, /startup_files\)\s*\.drain\(\.\.\)\s*\.collect\(\)/);
 	assert.match(runtime, /for path in startup_files\.into_iter\(\)\.rev\(\)/);
 	assert.match(viewer, /for \(const path of args\) await loadMarkdown\(path\);/);
+});
+
+test('a second launch hands every argv path to the running window', () => {
+	// `markpad a.md b.md` with Markpad already running arrives here instead of
+	// at `send_markdown_path`. Taking only the first path opened a.md alone.
+	const secondInstance = sliceBetween(runtime, 'pub fn handle_single_instance', 'pub fn create_transfer_window');
+	assert.match(secondInstance, /for path in startup_paths\(/);
+	assert.doesNotMatch(secondInstance, /\.next\(\)|\.first\(\)/);
 });
