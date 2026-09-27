@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { getMarkdownLinkTarget, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 import { installShimDom, parseHtml, type ShimElement } from './renderProtocolDom.ts';
 
 /*
@@ -64,4 +65,30 @@ test('a document on a share still loads its own images', () => {
 	assert.equal(local, `asset://localhost/${encodeURIComponent('C:/notes/img/a.png')}`);
 	const [video] = mediaSrcs('<p><img src="clip.mp4"></p>', '//server/share/doc.md');
 	assert.equal(video, `asset://localhost/${encodeURIComponent('//server/share/clip.mp4')}`);
+});
+
+function markdownTarget(href: string, currentFile: string): string | null {
+	const target = getMarkdownLinkTarget(href);
+	return target && resolveMarkdownTargetPath(currentFile, target);
+}
+
+test('a markdown link to a document on another host is not opened', () => {
+	// comrak writes `\` in a destination as `%5C`, and `getMarkdownLinkTarget`
+	// decodes it, so `//host` being refused did not cover `\\host`.
+	for (const href of [
+		'%5C%5Cevil.example%5Cshare%5Cx.md',
+		'%2F%2Fevil.example%2Fshare%2Fx.md',
+		'/%5Cevil.example%5Cshare%5Cx.md',
+	]) {
+		for (const doc of ['C:\\notes\\doc.md', '/notes/doc.md', '//server/share/doc.md', '']) {
+			assert.equal(markdownTarget(href, doc), null, `${href} from ${doc}`);
+		}
+	}
+});
+
+test('a document on a share still opens the documents beside it', () => {
+	assert.equal(markdownTarget('other.md', '\\\\server\\share\\doc.md'), '//server/share/other.md');
+	assert.equal(markdownTarget('%5C%5Cserver%5Cshare%5Cx.md', '//server/share/doc.md'), '\\\\server\\share\\x.md');
+	assert.equal(markdownTarget('other.md', 'C:\\notes\\doc.md'), 'C:/notes/other.md');
+	assert.equal(markdownTarget('/notes/other.md', '/notes/doc.md'), '/notes/other.md');
 });

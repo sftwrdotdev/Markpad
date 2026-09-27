@@ -107,9 +107,13 @@ function resolveHrefRelativePath(base: string, relative: string): string {
 }
 
 export function resolveMarkdownTargetPath(currentFile: string, target: MarkdownLinkTarget): string | null {
-	if (isAbsoluteMarkdownPath(target.path)) return target.path;
-	if (!currentFile) return null;
-	return resolveHrefRelativePath(currentFile, target.path);
+	let resolved: string;
+	if (isAbsoluteMarkdownPath(target.path)) resolved = target.path;
+	else if (!currentFile) return null;
+	else resolved = resolveHrefRelativePath(currentFile, target.path);
+	// `getMarkdownLinkTarget` refuses a literal `//`, but comrak writes `\` as
+	// `%5C` and the decoded `\\host\…` reached `canonicalize_path` intact.
+	return isOffHostUncPath(resolved, currentFile) ? null : resolved;
 }
 
 export function isOpenInNewTabMarkdownTarget(href: string, currentFile: string): boolean {
