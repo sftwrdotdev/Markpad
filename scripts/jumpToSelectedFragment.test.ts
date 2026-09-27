@@ -448,7 +448,7 @@ test('one function owns what ⌘E means, and every entry point uses it', () => {
 	assert.equal(
 		viewerCommandFor(
 			{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },
-			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, isEditing: false, editorHasFocus: false },
+			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
 		),
 		'toggle-edit-view',
 	);

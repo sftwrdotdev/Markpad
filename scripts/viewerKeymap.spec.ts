@@ -30,6 +30,7 @@ const READING: KeyContext = {
 	osType: 'windows',
 	isSplit: false,
 	overlayOpen: false,
+	dialogOpen: false,
 	isEditing: false,
 	editorHasFocus: false,
 };
@@ -83,13 +84,80 @@ test('macOS leaves ⌘Q to the application menu, and the other two do not', () =
 	// by `platformOf`, which folds Linux into Windows and could not express it.
 	const modQ = chord('q', 'KeyQ', { metaKey: true });
 	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'macos' }), null);
-	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'windows' }), 'close-window');
-	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'linux' }), 'close-window');
+	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'windows' }), 'app-exit');
+	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'linux' }), 'app-exit');
 	// `osType` is `'unknown'` until the Rust command answers. Quit is not the
 	// destructive branch that has to fail closed — Ctrl+F4 is, and it does — but
 	// an unknown platform must still behave like the majority of them rather
 	// than like a fourth case nobody wrote.
-	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'unknown' }), 'close-window');
+	assert.equal(viewerCommandFor(modQ, { ...READING, osType: 'unknown' }), 'app-exit');
+});
+
+test('Ctrl+Q quits the way the menu’s Exit does, not by closing one window', () => {
+	// The menu prints Ctrl+Q beside Exit, and Exit runs `appExit`, which closes
+	// every window. The chord used to run `getCurrentWindow().close()`, so with
+	// two windows open it closed one and left the app running.
+	assert.match(viewerCommandTable()['app-exit'], /\bappExit\(\)/);
+});
+
+test('an open dialog owns the keyboard: no viewer chord reaches past it', () => {
+	// The unsaved-changes dialog only preventDefaults its own keys, so the
+	// document handler saw every chord behind it. Mod+W there asked a second
+	// question over the first, whose promise then never settled — the close
+	// walk hung and the window could no longer be closed. Ctrl+S saved twice.
+	const behind = { ...READING, overlayOpen: true, dialogOpen: true };
+	for (const stroke of [
+		chord('w', 'KeyW', { ctrlKey: true }),
+		chord('s', 'KeyS', { ctrlKey: true }),
+		chord('q', 'KeyQ', { ctrlKey: true }),
+		chord('Tab', 'Tab', { ctrlKey: true }),
+		chord('t', 'KeyT', { ctrlKey: true, shiftKey: true }),
+		chord('ArrowLeft', 'ArrowLeft', { altKey: true }),
+	]) {
+		assert.notEqual(viewerCommandFor(stroke, READING), null, `${stroke.code} is bound at all`);
+		assert.equal(viewerCommandFor(stroke, behind), null, `${stroke.code} fired behind the dialog`);
+	}
+	// Settings and Home are overlays too, but not dialogs: the keymap stays live.
+	assert.equal(viewerCommandFor(chord('w', 'KeyW', { ctrlKey: true }), { ...READING, overlayOpen: true }), 'close-file');
+});
+
+test('the Alt+arrow chords leave a text field its word jumps', () => {
+	// Option+Left/Right is word-jump in every macOS text field, and
+	// Cmd+Option+Left/Right the tab chords. Both fired from the find bar, the
+	// settings fields and the tag input, moving the tab instead of the caret.
+	//
+	// Monaco's own input is the exception, kept as it was. On macOS Monaco binds
+	// Option+Left/Right itself (cursorWordLeft / cursorWordEndRight) and stops
+	// the event, so the handler never sees it there; the two tab chords, and
+	// Alt+Left/Right on Windows and Linux, are bound by nothing in Monaco and
+	// have always reached the document from the editor. The class names are
+	// Monaco's input for both of its edit-context implementations.
+	document.body.innerHTML = `
+		<div id="preview"><p id="prose">text</p></div>
+		<input id="field" />
+		<div class="monaco-editor">
+			<textarea id="inputarea" class="inputarea" role="textbox"></textarea>
+			<div id="edit-context" class="native-edit-context" role="textbox"></div>
+		</div>
+	`;
+	const at = (id: string) => document.getElementById(id)!;
+	const mac = { ...READING, osType: 'macos' as const };
+	const cases: Array<[KeyStroke, KeyContext, ViewerCommand]> = [
+		[chord('ArrowLeft', 'ArrowLeft', { altKey: true }), READING, 'history-back'],
+		[chord('ArrowRight', 'ArrowRight', { altKey: true }), READING, 'history-forward'],
+		[chord('ArrowLeft', 'ArrowLeft', { altKey: true }), mac, 'history-back'],
+		[chord('ArrowLeft', 'ArrowLeft', { metaKey: true, altKey: true }), mac, 'previous-tab'],
+		[chord('ArrowRight', 'ArrowRight', { metaKey: true, altKey: true }), mac, 'next-tab'],
+	];
+	for (const [stroke, context, command] of cases) {
+		const name = `${context.osType} ${stroke.metaKey ? 'Meta+' : ''}Alt+${stroke.code}`;
+		assert.equal(viewerCommandFor({ ...stroke, target: at('prose') }, context), command, name);
+		assert.equal(viewerCommandFor({ ...stroke, target: null }, context), command, name);
+		assert.equal(viewerCommandFor({ ...stroke, target: at('field') }, context), null, `${name} in a field`);
+		for (const id of ['inputarea', 'edit-context']) {
+			assert.equal(viewerCommandFor({ ...stroke, target: at(id) }, context), command, `${name} in Monaco`);
+		}
+	}
 });
 
 test('the zoom-in chord answers both spellings of “Mod plus”', () => {

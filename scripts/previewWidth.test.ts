@@ -96,6 +96,7 @@ test('preview width keyboard shortcuts avoid editable controls and app modals', 
 		osType: 'windows',
 		isSplit: false,
 		overlayOpen: false,
+		dialogOpen: false,
 		isEditing: false,
 		editorHasFocus: false,
 	};

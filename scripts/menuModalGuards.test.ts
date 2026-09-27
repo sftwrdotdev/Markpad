@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import ts from 'typescript';
+
 import { functionSource, readSource, sliceBetween } from './sourceTree.js';
 
 const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
@@ -58,4 +60,31 @@ test('text fields keep the webview edit menu so paste stays reachable', () => {
 	const prevent = offsetIn(contextMenuHandler, 'e.preventDefault();', 'the native-menu suppression');
 
 	assert.ok(prevent > carveOut, 'preventDefault runs before the text-field carve-out, so paste is unreachable');
+});
+
+test('a second dialog settles the first instead of orphaning it', async () => {
+	// One `modalState`, one `resolve`. A second `askCustom` used to overwrite the
+	// first caller's resolver, so that caller awaited forever — when it was the
+	// close walk, the window could not be closed again. The component's own
+	// functions run here over a stand-in `modalState`; types erased, nothing else.
+	const lifted = ['askCustom', 'handleModalConfirm'].map((name) => functionSource(viewer, name)).join('\n');
+	const js = ts.transpileModule(
+		`const __component = () => {
+			let modalState = { show: false, resolve: null };
+			${lifted}
+			return { askCustom, handleModalConfirm };
+		};`,
+		{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+	).outputText;
+	const component = new Function(`${js}\nreturn __component();`)() as {
+		askCustom: (message: string, options: { title: string; kind: 'warning' }) => Promise<string>;
+		handleModalConfirm: () => void;
+	};
+
+	const first = component.askCustom('first', { title: 'Unsaved', kind: 'warning' });
+	const second = component.askCustom('second', { title: 'Unsaved', kind: 'warning' });
+	component.handleModalConfirm();
+
+	assert.equal(await Promise.race([first, Promise.resolve('never settled')]), 'cancel');
+	assert.equal(await second, 'discard');
 });

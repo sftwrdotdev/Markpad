@@ -599,6 +599,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	});
 
 	function askCustom(message: string, options: { title: string; kind: 'info' | 'warning' | 'error'; showSave?: boolean }): Promise<'save' | 'discard' | 'cancel'> {
+		// A second question replaces the first dialog, so the first caller is
+		// answered 'cancel' rather than left awaiting a resolver that is about to
+		// be overwritten — a close walk left that way never finished, and the
+		// window could not be closed again. An already-answered one ignores it.
+		modalState.resolve?.('cancel');
 		return new Promise((resolve) => {
 			modalState = {
 				show: true,
@@ -3290,6 +3295,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			osType: settings.osType,
 			isSplit: !!tabManager.activeTab?.isSplit,
 			overlayOpen: showSettings || modalState.show || promptModal.show || showHome,
+			dialogOpen: modalState.show || promptModal.show,
 			isEditing,
 			editorHasFocus: !!editorPaneEl && !!active && editorPaneEl.contains(active),
 		};
@@ -3315,8 +3321,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return void handleNewFile();
 			case 'open-file':
 				return void selectFile();
-			case 'close-window':
-				return void getCurrentWindow().close();
+			case 'app-exit':
+				return void appExit();
 			case 'toggle-split-view':
 				if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
 				return;

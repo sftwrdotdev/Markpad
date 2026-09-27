@@ -55,7 +55,7 @@ export type ViewerCommand =
 	| 'close-file'
 	| 'new-file'
 	| 'open-file'
-	| 'close-window'
+	| 'app-exit'
 	| 'toggle-split-view'
 	| 'toggle-edit-view'
 	| 'toggle-live-mode'
@@ -80,8 +80,8 @@ export type ViewerCommand =
  *
  * A structural subset of `KeyboardEvent` rather than the event itself, so a
  * test can hand over an object literal without a DOM. `target` is here because
- * the preview-width branch walks up from it; every other branch reads only
- * `key`, `code` and the four modifiers.
+ * the preview-width and Alt+arrow branches walk up from it; every other
+ * branch reads only `key`, `code` and the four modifiers.
  */
 export type KeyStroke = {
 	readonly key: string;
@@ -96,7 +96,7 @@ export type KeyStroke = {
 /**
  * Everything about the app a branch below is allowed to know.
  *
- * Six plain values, all of them read-only. Anything a command needs in order to
+ * Seven plain values, all of them read-only. Anything a command needs in order to
  * RUN — the active tab, the settings store, the window — is deliberately absent:
  * this decides which command, and the caller runs it.
  */
@@ -108,20 +108,30 @@ export type KeyContext = {
 	readonly isSplit: boolean;
 	/** Settings, the modal, the prompt or the home screen is in front. */
 	readonly overlayOpen: boolean;
+	/**
+	 * The modal or the prompt is up. Nothing is dispatched: a dialog owns the
+	 * keyboard, and a chord behind it could open a second dialog over the first.
+	 */
+	readonly dialogOpen: boolean;
 	readonly isEditing: boolean;
 	/** The caret is inside the Monaco pane, so Monaco's own Find should answer. */
 	readonly editorHasFocus: boolean;
 };
 
+const TEXT_FIELD = 'input, textarea, select, [contenteditable="true"], [role="textbox"]';
+
 /**
  * Whether the preview-width chords apply, given what the keystroke landed on.
  *
- * Exported because it is the one branch condition that reads the DOM, and the
- * only one a test cannot state as a boolean: `Mod+Alt+[` inside a text field is
- * the field's business.
+ * Exported because it reads the DOM, so a test cannot state it as a boolean:
+ * `Mod+Alt+[` inside a text field is the field's business.
  */
 export function canUsePreviewWidthShortcut(target: EventTarget | null | undefined, context: KeyContext): boolean {
 	if (context.overlayOpen || (context.isEditing && !context.isSplit)) return false;
+	return !closestIn(target, TEXT_FIELD);
+}
+
+function closestIn(target: EventTarget | null | undefined, selector: string): boolean {
 	// `typeof target.closest === 'function'` rather than `target instanceof
 	// Element`, which is what this said while it lived in the component. The
 	// module is imported by `node --test` files that have no DOM at all, where
@@ -129,8 +139,23 @@ export function canUsePreviewWidthShortcut(target: EventTarget | null | undefine
 	// against a DOM constructor is the wrong test anyway for a node from another
 	// realm. The method being called is the thing worth asking about.
 	const element = target as Element | null | undefined;
-	if (typeof element?.closest !== 'function') return true;
-	return !element.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]');
+	return typeof element?.closest === 'function' && element.closest(selector) !== null;
+}
+
+/**
+ * Whether the Alt+arrow chords belong to the field the keystroke landed on.
+ *
+ * Option+Left/Right is word-jump in a macOS text field, so the find bar, the
+ * settings fields and the tag input keep it. Monaco's own input does not: on
+ * macOS Monaco binds Option+Left/Right itself and stops the event before it
+ * gets here, and the rest — Cmd+Option+arrows, Alt+arrows off macOS — Monaco
+ * leaves unbound, so they have always switched tabs and history from the
+ * editor. `.inputarea` and `.native-edit-context` are its input under each of
+ * its two edit-context implementations.
+ */
+function arrowChordsBelongToField(target: EventTarget | null | undefined): boolean {
+	return closestIn(target, TEXT_FIELD)
+		&& !closestIn(target, '.inputarea, .native-edit-context');
 }
 
 /**
@@ -142,7 +167,7 @@ export function canUsePreviewWidthShortcut(target: EventTarget | null | undefine
  * returns a command, which is what the handler did branch by branch before.
  */
 export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerCommand | null {
-	if (context.mode !== 'app') return null;
+	if (context.mode !== 'app' || context.dialogOpen) return null;
 
 	const cmdOrCtrl = e.ctrlKey || e.metaKey;
 	const key = e.key.toLowerCase();
@@ -244,7 +269,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// drift again; `formatShortcutKeymap.test.ts` holds them equal.
 	if (mod && (key === 't' || key === 'n')) return 'new-file';
 	if (mod && key === 'o') return 'open-file';
-	if (mod && key === 'q') return 'close-window';
+	if (mod && key === 'q') return 'app-exit';
 	if (mod && (code === 'Backslash' || code === 'IntlBackslash')) return 'toggle-split-view';
 	if (mod && key === 'e') return 'toggle-edit-view';
 	// Mod+L had only the Monaco half (`editorAction` in shortcuts.ts), so it
@@ -271,6 +296,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	if (mod && code === 'PageDown') return 'next-tab';
 	// Alt-based chords, so they say what they need by hand: `mod` would demand
 	// Alt be up, which is the opposite of what these two bind.
+	if ((code === 'ArrowLeft' || code === 'ArrowRight') && e.altKey && arrowChordsBelongToField(e.target)) return null;
 	if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowLeft') return 'previous-tab';
 	if (e.metaKey && !e.ctrlKey && e.altKey && !e.shiftKey && code === 'ArrowRight') return 'next-tab';
 	if (e.altKey && !e.shiftKey && !cmdOrCtrl && code === 'ArrowLeft') return 'history-back';

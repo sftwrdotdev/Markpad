@@ -66,7 +66,7 @@ test('window organization exposes move, merge, and carry actions', () => {
 	assert.equal(
 		viewerCommandFor(
 			{ key: 'm', code: 'KeyM', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false },
-			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, isEditing: false, editorHasFocus: false },
+			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
 		),
 		'move-tab-to-next-window',
 	);

@@ -28,6 +28,7 @@ const READING: KeyContext = {
 	osType: 'windows',
 	isSplit: false,
 	overlayOpen: false,
+	dialogOpen: false,
 	isEditing: false,
 	editorHasFocus: false,
 };

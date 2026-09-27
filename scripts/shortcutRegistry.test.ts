@@ -558,7 +558,7 @@ test('a close chord wearing an extra modifier destroys nothing', () => {
 	// Not "these three chords do nothing" but "nothing destructive answers to a
 	// modifier it does not name": a fourth spelling nobody thought of fails here
 	// too, and so does a future destructive branch that forgets its guard.
-	const DESTRUCTIVE: ViewerCommand[] = ['close-file', 'close-window'];
+	const DESTRUCTIVE: ViewerCommand[] = ['close-file', 'app-exit'];
 	let plainClosesFound = 0;
 
 	for (const platform of PLATFORMS) {

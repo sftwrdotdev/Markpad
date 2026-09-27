@@ -226,6 +226,7 @@ function readingContext(osType: string): KeyContext {
 		osType: osType as KeyContext['osType'],
 		isSplit: false,
 		overlayOpen: false,
+		dialogOpen: false,
 		isEditing: false,
 		editorHasFocus: false,
 	};
@@ -235,7 +236,7 @@ function readingContext(osType: string): KeyContext {
  * Which command the document-level dispatcher means by each chord.
  *
  * The dispatcher is IMPORTED and called — `viewerCommandFor` is a plain
- * function of the keystroke and a six-field context, so there is nothing to
+ * function of the keystroke and a seven-field context, so there is nothing to
  * extract, transpile or stand in for. It used to be the body of
  * `handleKeyDown` inside MarkdownViewer.svelte, and getting at it meant slicing
  * the function out of the component by name, running it through

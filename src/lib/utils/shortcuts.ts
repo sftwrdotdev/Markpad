@@ -204,7 +204,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		labelKey: 'menu.exit',
 		chords: ['Mod+Q'],
 		group: 'file',
-		documentCommands: ['close-window'],
+		documentCommands: ['app-exit'],
 		// On macOS the document handler returns before this branch; the native
 		// menu's CmdOrCtrl+Q is what answers, and #281 left exactly two entries.
 		documentExempt: ['macos'],
