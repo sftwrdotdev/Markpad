@@ -127,22 +127,15 @@ test('right-click opens but never closes, and never discards a draft', () => {
 	assert.equal(bar.state().tagDraftColor, COLORS[5], 'right-click re-seeded the colour');
 });
 
-test('the popover carries Save, Pin/Unpin and Remove, and each acts on the tag', async () => {
+test('the popover carries Pin/Unpin and Remove, and each acts on the tag', async () => {
 	/*
-	 * All three commit controls in one surface, which is where #280 put them and
-	 * where they stay. Each one is run through the button's own `onclick`, so
-	 * this fails if a control is unwired as well as if it is missing.
+	 * Run through each button's own `onclick`, so this fails if a control is
+	 * unwired as well as if it is missing.
 	 */
 	const { bar, invokeCalls } = setup();
 	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
 	tabManager.addTab('/notes/a.md');
 	bar.openTagEditor();
-
-	// Save commits the draft.
-	bar.setDraft('Docs', COLORS[1]);
-	bar.saveClick({ stopPropagation: () => {} });
-	await settle();
-	assert.deepEqual(tabManager.windowTag, { name: 'Docs', color: COLORS[1], pinned: false }, 'Save stopped committing the draft');
 
 	// Pin persists the window's documents under the tag's name.
 	assert.equal(bar.pinLabel(), 'Pin Tag', 'the pin control does not offer to pin an unpinned tag');
@@ -165,6 +158,17 @@ test('the popover carries Save, Pin/Unpin and Remove, and each acts on the tag',
 	tabManager.closeAll();
 });
 
+test('Close Tag is offered only for a pinned tag, the one Home can reopen', () => {
+	// Closing an unpinned tag would lose it for good, which is Remove's job.
+	const { bar } = setup();
+	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
+	bar.openTagEditor();
+	assert.equal(!!bar.closeRendered(), false, 'an unpinned tag was offered Close');
+
+	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1], pinned: true });
+	assert.equal(!!bar.closeRendered(), true, 'a pinned tag was not offered Close');
+});
+
 test('Pin and Remove are offered only once a tag exists', () => {
 	// They act on a stored tag, and `Home > Window Tag…` opens this popover on a
 	// window that has none. Both render under `{#if tabManager.windowTag}`; this
@@ -181,55 +185,21 @@ test('Pin and Remove are offered only once a tag exists', () => {
 	assert.equal(!!bar.removeRendered(), true, 'a tagged window was not offered Remove');
 });
 
-test('clearing the name and saving still removes the tag', async () => {
-	// The other way out, and the one a user reaches for who did not notice the
-	// Remove button. It predates this change and has to keep working.
-	const { bar } = setup();
-	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
-	bar.openTagEditor();
-	bar.setDraft('   ', COLORS[1]);
+test('an emptied name keeps the tag, pinned or not, and asks the backend nothing', async () => {
+	// With commit-on-dismiss, an emptied name that removed the tag would let a
+	// stray click delete a pinned session. Remove Tag is the only way out.
+	for (const pinned of [false, true]) {
+		const { bar, invokeCalls } = setup({ tagTakenElsewhere: true });
+		tabManager.setWindowTag({ name: 'Docs', color: COLORS[1], pinned });
+		bar.openTagEditor();
+		bar.setDraft('   ', COLORS[4]);
 
-	await bar.applyTag();
+		await bar.applyTag();
 
-	assert.equal(tabManager.windowTag, null, 'an emptied name left the tag in place');
-	assert.equal(bar.state().tagEditorOpen, false, 'the popover stayed open');
-});
-
-test('clearing the name of a PINNED tag drops its saved session too', async () => {
-	/*
-	 * Two ways out of a tag, and they used to disagree. `clearTag` (Remove Tag)
-	 * unpins first; `applyTag` with an emptied name called `setWindowTag(null)`
-	 * on its own, so the entry stayed in `pinned-tags.json` and the Home screen
-	 * kept offering it as a reusable session under a name no window held. The
-	 * user could still unpin it from Home, but nothing told them they had to.
-	 */
-	const { bar, invokeCalls } = setup();
-	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1], pinned: true });
-	bar.openTagEditor();
-	bar.setDraft('   ', COLORS[1]);
-
-	await bar.applyTag();
-
-	assert.equal(tabManager.windowTag, null, 'an emptied name left the tag in place');
-	assert.deepEqual(
-		invokeCalls.filter((call) => call.cmd === 'remove_pinned_tag').map((call) => call.args),
-		[{ name: 'Docs' }],
-		'clearing the name orphaned the pinned session under a name no window holds',
-	);
-});
-
-test('clearing the name of an UNPINNED tag asks the backend for nothing', async () => {
-	// The fence: unpinning by name is not something to do speculatively, and a
-	// window that never pinned has nothing on disk to withdraw.
-	const { bar, invokeCalls } = setup();
-	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
-	bar.openTagEditor();
-	bar.setDraft('', COLORS[1]);
-
-	await bar.applyTag();
-
-	assert.equal(tabManager.windowTag, null);
-	assert.deepEqual(invokeCalls.filter((call) => call.cmd === 'remove_pinned_tag'), [], 'an unpinned tag was unpinned anyway');
+		assert.deepEqual(tabManager.windowTag, { name: 'Docs', color: COLORS[1], pinned }, 'an emptied name changed the tag');
+		assert.equal(bar.state().tagEditorOpen, false, 'the popover stayed open');
+		assert.deepEqual(invokeCalls, [], 'an emptied name went to the backend');
+	}
 });
 
 // ----------------------------------------------------------- 4. exclusivity
@@ -312,21 +282,4 @@ test('a backend that cannot answer does not block the user’s own save', async 
 	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: COLORS[2], pinned: false }, 'a failed check swallowed the save');
 	assert.equal(bar.state().tagEditorOpen, false);
 	assert.equal(bar.state().tagError, '');
-});
-
-test('removing the tag is never blocked by the check', async () => {
-	const { bar, invokeCalls } = setup({ tagTakenElsewhere: true });
-	tabManager.setWindowTag({ name: 'Research', color: COLORS[2] });
-	bar.openTagEditor();
-	bar.setDraft('', COLORS[2]);
-
-	await bar.applyTag();
-	await settle();
-
-	assert.equal(tabManager.windowTag, null, 'an empty name was treated as a duplicate');
-	assert.equal(
-		invokeCalls.filter((call) => call.cmd === 'is_window_tag_taken').length,
-		0,
-		'the empty name was sent to the check, where it can only ever match another empty name',
-	);
 });

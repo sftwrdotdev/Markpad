@@ -154,7 +154,7 @@
 	/**
 	 * Whether a *different* live window already carries this name.
 	 *
-	 * Asked here — at Save/Enter, the moment the user names the window — and
+	 * Asked here — when the popover commits, the moment the user names the window — and
 	 * nowhere else. In particular not at session restore: a snapshot written by
 	 * an older build can legitimately contain two windows under one name, and
 	 * refusing it there would clear a tag the user set, silently, at a moment
@@ -175,16 +175,21 @@
 		}
 	}
 
+	/**
+	 * Commit the draft and close. There is no Save button: Enter, a click
+	 * elsewhere and the chip all land here, so leaving the popover is what
+	 * saves it. Escape is the one exit that discards.
+	 *
+	 * An empty name keeps the stored tag. Clearing the field used to remove
+	 * the tag, which was harmless behind an explicit Save but would make a
+	 * stray click outside a way to delete a pinned session. Remove Tag is the
+	 * only exit that removes a tag.
+	 */
 	async function applyTag() {
 		const name = tagDraftName.trim();
-		if (!name) {
-			// The same exit as Remove Tag, not a second one. This branch used to
-			// call `setWindowTag(null)` on its own, which drops the tag from the
-			// window but leaves its entry in `pinned-tags.json` — so a cleared
-			// PINNED tag went on offering itself from the Home screen as a saved
-			// session under a name no window held any more. `clearTag` is the
-			// path that already unpins first.
-			clearTag();
+		const tag = tabManager.windowTag;
+		if (!name || (tag && name === tag.name && tagDraftColor === tag.color)) {
+			tagEditorOpen = false;
 			tagError = '';
 			return;
 		}
@@ -409,11 +414,7 @@
 		themeMenuOpen = false;
 		kebabMenuOpen = false;
 		homeMenuOpen = false;
-		// The tag editor is dismissed here rather than committed: `applyTag` is
-		// what writes a tag, and it is reached only from Save or Enter. The
-		// draft is not preserved, because `openTagEditor` re-seeds it from the
-		// stored tag on every open.
-		tagEditorOpen = false;
+		if (tagEditorOpen) applyTag();
 	}
 
 	$effect(() => {
@@ -667,7 +668,7 @@
 				oncontextmenu={openTagEditorFromContextMenu}
 				onclick={(event) => {
 					event.stopPropagation();
-					if (tagEditorOpen) tagEditorOpen = false;
+					if (tagEditorOpen) applyTag();
 					else openTagEditor();
 				}}>
 				{tabManager.windowTag.name}
@@ -696,10 +697,35 @@
 						<button class:selected={tagDraftColor === color} style:--tag-color={color} onclick={() => (tagDraftColor = color)} aria-label={color}></button>
 					{/each}
 				</div>
-				<button class="tag-save-btn" onclick={applyTag}>{t('settings.save', currentLanguage)}</button>
-				{#if tabManager.windowTag}<button class="tag-action-btn" onclick={togglePinnedTag}>{t(tabManager.windowTag.pinned ? 'menu.unpinWindowTag' : 'menu.pinWindowTag', currentLanguage)}</button>{/if}
-				{#if tabManager.windowTag}<button class="tag-action-btn" onclick={() => { tagEditorOpen = false; onclosetag?.(); }}>{t('menu.closeWindowTag', currentLanguage)}</button>{/if}
-				{#if tabManager.windowTag}<button class="tag-action-btn danger" onclick={clearTag}>{t('menu.windowTagClear', currentLanguage)}</button>{/if}
+				{#if tabManager.windowTag}
+					<div class="home-menu-divider"></div>
+					<button class="home-menu-item" onclick={togglePinnedTag}>
+						{#if tabManager.windowTag.pinned}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+								><path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path
+									d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" /></svg>
+						{:else}
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+								><path d="M12 17v5" /><path
+									d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></svg>
+						{/if}
+						{t(tabManager.windowTag.pinned ? 'menu.unpinWindowTag' : 'menu.pinWindowTag', currentLanguage)}
+					</button>
+					<!-- Only a pinned tag can be closed: closing saves the pin and Home reopens it. An unpinned tag would be gone for good, which is Remove Tag's job. -->
+					{#if tabManager.windowTag.pinned}
+						<button class="home-menu-item" onclick={() => { tagEditorOpen = false; onclosetag?.(); }}>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+								><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
+							{t('menu.closeWindowTag', currentLanguage)}
+						</button>
+					{/if}
+					<div class="home-menu-divider"></div>
+					<button class="home-menu-item" onclick={clearTag}>
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+							><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" /><path d="m21 3-9 9" /><path d="M15 3h6v6" /></svg>
+						{t('menu.windowTagClear', currentLanguage)}
+					</button>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -1798,7 +1824,7 @@
 
 	.window-tag-container { position: relative; display: flex; align-items: center; margin-left: 4px; }
 	.window-tag-chip { border: 0; border-radius: 10px; background: var(--tag-color); color: #fff; padding: 3px 10px; font: 600 11px var(--win-font); cursor: pointer; }
-	.tag-editor { position: absolute; top: 28px; left: 0; z-index: 20000; width: 180px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--color-canvas-default); border: 1px solid var(--color-border-default); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); font-family: var(--win-font); }
+	.tag-editor { position: absolute; top: 28px; left: 0; z-index: 20000; width: 200px; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--color-canvas-default); border: 1px solid var(--color-border-default); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .2); font-family: var(--win-font); }
 	.tag-editor input { box-sizing: border-box; width: 100%; padding: 6px 8px; color: var(--color-fg-default); background: var(--color-canvas-default); border: 1px solid var(--color-border-default); border-radius: 6px; font-family: var(--win-font); font-size: 12px; outline: none; }
 	.tag-editor input:focus { border-color: var(--color-accent-fg); }
 	.tag-error { margin: 0; color: var(--color-danger-fg); font-size: 11px; line-height: 1.4; }
@@ -1807,11 +1833,6 @@
 	.tag-colors button:hover { transform: scale(1.15); }
 	.pinned-tag-dot { width: 10px; height: 10px; margin: 0 2px; flex-shrink: 0; border-radius: 50%; background: var(--tag-color); }
 	.tag-colors button.selected { border-color: var(--color-fg-default); transform: scale(1.15); }
-	.tag-save-btn { width: 100%; padding: 6px 12px; background: var(--color-accent-emphasis); color: #ffffff; border: none; border-radius: 6px; font-family: var(--win-font); font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease; }
-	.tag-save-btn:hover { background: color-mix(in srgb, var(--color-accent-emphasis) 85%, #000); }
-	.tag-action-btn { width: 100%; padding: 5px 10px; background: transparent; color: var(--color-fg-muted); border: 1px solid var(--color-border-default); border-radius: 6px; font-family: var(--win-font); font-size: 11px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
-	.tag-action-btn:hover { background: var(--color-canvas-subtle); color: var(--color-fg-default); }
-	.tag-action-btn.danger:hover { background: color-mix(in srgb, var(--color-danger-fg) 15%, transparent); color: var(--color-danger-fg); border-color: var(--color-danger-fg); }
 
 	.home-menu-item {
 		display: flex;

@@ -17,11 +17,15 @@ import { COLORS, setup, settle, tabManager } from './windowTagEditor.js';
  * `contextmenu` and `blur` while any of them is open. The tag editor was the
  * only one missing from both.
  *
+ * The Save button has since gone, as in Chrome's tab-group editor: a click
+ * elsewhere, the chip and Enter now commit the draft, and Escape alone
+ * discards it.
+ *
  * These tests RUN the real handlers rather than looking for them; see
  * windowTagEditor.ts for how the component's own functions and markup handlers
  * are lifted into one scope over the REAL `TabManager`. Nothing below asserts
- * how any of it is spelled: rewrite the dismissal any way that still closes the
- * popover without writing a tag and these stay green.
+ * how any of it is spelled: rewrite the dismissal any way that keeps these
+ * outcomes and they stay green.
  *
  * What this does not establish: focus, CSS, or that Svelte flushes the effect
  * where `clickPath` assumes it does. It establishes what the handlers do when
@@ -43,15 +47,41 @@ test('Escape closes the tag editor on a window that has no tag yet', () => {
 	assert.equal(tabManager.windowTag, null, 'Escape wrote a tag — dismissing must not commit the draft');
 });
 
-test('a click elsewhere in the window closes the tag editor', () => {
+test('a click elsewhere in the window commits the draft and closes', async () => {
+	// There is no Save button, so leaving the popover is how a tag is saved.
 	const { bar, clickOutside } = setup();
 	bar.openTagEditor();
 	bar.setDraft('Research', COLORS[2]);
 
 	clickOutside();
+	await settle();
 
 	assert.equal(bar.state().tagEditorOpen, false, 'a click outside left the popover open');
-	assert.equal(tabManager.windowTag, null, 'a click outside wrote a tag');
+	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: COLORS[2], pinned: false }, 'a click outside dropped the draft');
+});
+
+test('a click elsewhere with a taken name keeps the popover open on the refusal', async () => {
+	const { bar, clickOutside } = setup({ tagTakenElsewhere: true });
+	bar.openTagEditor();
+	bar.setDraft('Research', COLORS[2]);
+
+	clickOutside();
+	await settle();
+
+	assert.equal(tabManager.windowTag, null, 'the duplicate name was written anyway');
+	assert.equal(bar.state().tagEditorOpen, true, 'the popover closed, so the refusal had nowhere to appear');
+	assert.notEqual(bar.state().tagError, '');
+});
+
+test('a click elsewhere on an unchanged tag asks the backend nothing', () => {
+	const { bar, clickOutside, invokeCalls } = setup();
+	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
+	bar.openTagEditor();
+
+	clickOutside();
+
+	assert.equal(bar.state().tagEditorOpen, false);
+	assert.deepEqual(invokeCalls, [], 'closing an untouched popover went to the backend');
 });
 
 test('the chip toggles the tag editor instead of only opening it', () => {
@@ -93,11 +123,10 @@ test('opening the tag editor from the Home menu survives the click that opened i
 	assert.equal(bar.state().tagEditorOpen, true, 'the menu item opened the tag editor into its own dismissal');
 });
 
-test('dismissing discards the draft: reopening shows the stored tag', () => {
-	// Discard rather than keep, matching the Escape-cancels convention of every
-	// popover editor a user meets elsewhere, and forced by the popover having an
-	// explicit Save: a control that commits on demand cannot also commit on the
-	// way out. The mechanism is `openTagEditor` re-seeding both draft fields.
+test('Escape discards the draft: reopening shows the stored tag', () => {
+	// Escape is the one exit that discards, matching the Escape-cancels
+	// convention of every popover editor. The mechanism is `openTagEditor`
+	// re-seeding both draft fields.
 	const { bar } = setup();
 	tabManager.setWindowTag({ name: 'Docs', color: COLORS[1] });
 	bar.openTagEditor();

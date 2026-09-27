@@ -325,12 +325,12 @@ export type TitleBar = {
 	applyTag: () => Promise<void>;
 	chipClick: ClickHandler;
 	chipContextMenu: (event: MouseEventStub) => void;
-	saveClick: ClickHandler;
 	pinClick: ClickHandler;
 	pinLabel: () => unknown;
 	pinRendered: () => unknown;
 	removeClick: ClickHandler;
 	removeRendered: () => unknown;
+	closeRendered: () => unknown;
 	editorClick: ClickHandler;
 	editorKeydown: (event: { key: string }) => void;
 	homeMenuTagItemClick: ClickHandler;
@@ -343,9 +343,9 @@ export type TitleBar = {
 function createTitleBar(windowStub: WindowStub, invoke: (cmd: string, args: any) => Promise<unknown>): TitleBar {
 	const tabArea = element('tab-area');
 	const editor = element('tag-editor');
-	const save = elementByHandler(editor, 'applyTag');
 	const pin = elementByHandler(editor, 'togglePinnedTag');
 	const remove = elementByHandler(editor, 'clearTag');
+	const close = elementByHandler(editor, 'onclosetag');
 	const factory = new Function(
 		'tabManager',
 		'tagColors',
@@ -380,12 +380,12 @@ function createTitleBar(windowStub: WindowStub, invoke: (cmd: string, args: any)
 			applyTag,
 			chipClick: ${handlerSource(element('window-tag-chip'), 'onclick')},
 			chipContextMenu: ${handlerSource(element('window-tag-chip'), 'oncontextmenu')},
-			saveClick: ${handlerSource(save, 'onclick')},
 			pinClick: ${handlerSource(pin, 'onclick')},
 			pinLabel: () => (${textExpression(pin)}),
 			pinRendered: () => (${enclosingIfTest(pin)}),
 			removeClick: ${handlerSource(remove, 'onclick')},
 			removeRendered: () => (${enclosingIfTest(remove)}),
+			closeRendered: () => (${enclosingIfTest(close)}),
 			editorClick: ${handlerSource(editor, 'onclick')},
 			editorKeydown: ${handlerSource(editor, 'onkeydown')},
 			homeMenuTagItemClick: ${handlerSource(elementByHandler(element('home-dropdown-menu'), 'openTagEditor()'), 'onclick')},

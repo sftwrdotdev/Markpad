@@ -404,17 +404,6 @@ test('the tag-colour names reach the UI in every language', () => {
 	}
 });
 
-test('the window-tag editor’s Save button is translated', () => {
-	// The button that shipped reading "common.save".
-	const titleBar = readSource('src/lib/components/TitleBar.svelte');
-	const match = titleBar.match(/onclick=\{applyTag\}>\{t\('([^']+)', currentLanguage\)\}/);
-	assert.ok(match, 'the tag editor still labels its confirm button through t()');
-	assert.ok(english.has(match[1]), `${match[1]} is defined in English`);
-	for (const lang of languages) {
-		assert.notEqual(t(match[1], lang), match[1], `the Save button is translated in ${lang}`);
-	}
-});
-
 // The two tests below moved here from `toolbarCustomizationWiring.test.ts`,
 // which was deleted for asserting the spelling of `Settings.svelte` rather than
 // any behaviour. These two were the exception: they import the dictionary and
