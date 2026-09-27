@@ -3154,6 +3154,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			if (localFilePath) {
 				event.preventDefault();
 				try {
+					// The OS default handler runs a program (`./setup.command`,
+					// `Calculator.app`, `x.exe`) rather than showing it, so one
+					// click on a document's link would launch it. Reveal it instead.
+					if (await invoke<boolean>('is_launchable_path', { path: localFilePath })) {
+						await invoke('open_file_folder', { path: localFilePath });
+						addToast(
+							t('toast.launchableLinkRevealed', settings.language).replace('{{target}}', localFilePath),
+							'info',
+						);
+						return;
+					}
 					await openPath(localFilePath);
 				} catch (error) {
 					console.error('Failed to open local file link', localFilePath, error);

@@ -138,6 +138,18 @@ test('a local file is handed to the OS as a path, not as a URL', () => {
 	assert.ok(local < url, 'a local file must be caught before the URL fallback');
 });
 
+test('a launchable target is revealed, not opened', () => {
+	// `openPath` hands the file to the OS default handler, and for
+	// `./setup.command`, `Calculator.app` or `x.exe` that handler runs it. The
+	// capability scope stays `**` because a link may point anywhere; this
+	// check, answered in Rust where the file's metadata is, is the guard.
+	const check = offsetOf(handler, "invoke<boolean>('is_launchable_path', { path: localFilePath })");
+	const reveal = offsetOf(handler, "invoke('open_file_folder', { path: localFilePath })");
+	const open = offsetOf(handler, 'await openPath(localFilePath)');
+	assert.ok(check < reveal && reveal < open, 'the check must decide between reveal and open');
+	assert.match(handler, /t\('toast\.launchableLinkRevealed'/);
+});
+
 test('the capability still grants the command this depends on', () => {
 	// `open_path` needs both the command grant and a path scope. Granting the
 	// command alone leaves the plugin resolving

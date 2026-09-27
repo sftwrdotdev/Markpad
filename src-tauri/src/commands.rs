@@ -361,6 +361,86 @@ pub async fn open_file_folder(path: String) -> Result<(), String> {
         .unwrap_or_else(|e| Err(e.to_string()))
 }
 
+/// Extensions whose default handler runs the file instead of showing it,
+/// including launchers and shortcuts that run or open something else.
+#[cfg(target_os = "macos")]
+const LAUNCHABLE_EXTENSIONS: &[&str] = &[
+    "app", "command", "tool", "terminal", "workflow", "action", "prefpane", "pkg", "mpkg",
+    "webloc", "inetloc", "fileloc", "jar", "sh", "bash", "zsh", "csh", "ksh", "py",
+];
+#[cfg(target_os = "windows")]
+const LAUNCHABLE_EXTENSIONS: &[&str] = &[
+    "exe",
+    "com",
+    "bat",
+    "cmd",
+    "ps1",
+    "vbs",
+    "vbe",
+    "js",
+    "jse",
+    "wsf",
+    "wsh",
+    "lnk",
+    "msi",
+    "msp",
+    "scr",
+    "hta",
+    "pif",
+    "cpl",
+    "reg",
+    "url",
+    "application",
+    "appref-ms",
+    "msc",
+    "jar",
+];
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const LAUNCHABLE_EXTENSIONS: &[&str] = &["desktop", "appimage", "run", "sh", "jar"];
+
+/// Whether opening `path` with the OS default handler would run a program.
+/// A symlink opens its target, so both names are checked.
+fn is_launchable(path: &Path) -> bool {
+    let target = fs::canonicalize(path).ok();
+    std::iter::once(path)
+        .chain(target.as_deref())
+        .any(|p| has_launchable_extension(p) || is_extensionless_executable(p))
+}
+
+fn has_launchable_extension(path: &Path) -> bool {
+    // Windows drops trailing dots and spaces from a name: `x.exe.` is `x.exe`.
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    name.trim_end_matches(['.', ' '])
+        .rsplit_once('.')
+        .is_some_and(|(_, ext)| LAUNCHABLE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+}
+
+/// The executable bit only counts without an extension: a file with one is
+/// opened by the handler for its type, and on exFAT, NTFS and SMB volumes
+/// every file reports the bit set. An extensionless executable opens in
+/// Terminal on macOS and runs from Linux file managers.
+#[cfg(unix)]
+fn is_extensionless_executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.extension().is_none()
+        && fs::metadata(path).is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+}
+
+#[cfg(not(unix))]
+fn is_extensionless_executable(_path: &Path) -> bool {
+    false
+}
+
+/// Asked before a local-file link is handed to `openPath`: a launchable
+/// target is revealed in the file manager instead of run. Async because the
+/// metadata read waits on whatever volume holds the path.
+#[tauri::command]
+pub async fn is_launchable_path(path: String) -> bool {
+    tauri::async_runtime::spawn_blocking(move || is_launchable(Path::new(&path)))
+        .await
+        .unwrap_or(true)
+}
+
 /// Async because a rename is a round trip to whatever holds the path — on a
 /// network or removable volume, seconds of blocking I/O for a metadata
 /// operation that looks instant on a local disk.
@@ -1129,6 +1209,69 @@ pub(crate) mod tests {
         };
         assert!(read(&key).is_err());
         assert_eq!(read(&image).unwrap(), "data:image/png;base64,cG5n");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_link_to_a_program_is_launchable_and_a_data_file_is_not() {
+        let root = temp_path("launchable");
+        fs::create_dir_all(root.join("folder")).unwrap();
+        for name in [
+            "data.csv",
+            "report.pdf",
+            "notes.txt",
+            "tool.jar",
+            "Setup.JAR",
+        ] {
+            fs::write(root.join(name), b"x").unwrap();
+        }
+        let launchable = |name: &str| is_launchable(&root.join(name));
+
+        assert!(!launchable("data.csv"));
+        assert!(!launchable("report.pdf"));
+        assert!(!launchable("notes.txt"));
+        assert!(!launchable("folder"));
+        assert!(launchable("tool.jar"));
+        assert!(launchable("Setup.JAR"));
+        // Windows drops trailing dots and spaces from a name, so `x.jar.`
+        // opens `x.jar`.
+        assert!(launchable("tool.jar. "));
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let program = root.join("program");
+            fs::write(&program, b"#!/bin/sh\n").unwrap();
+            fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+            assert!(launchable("program"));
+            fs::set_permissions(&program, fs::Permissions::from_mode(0o644)).unwrap();
+            assert!(!launchable("program"));
+
+            // A symlink opens its target.
+            std::os::unix::fs::symlink(root.join("tool.jar"), root.join("innocent")).unwrap();
+            assert!(launchable("innocent"));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            fs::create_dir_all(root.join("Calculator.app")).unwrap();
+            assert!(launchable("Calculator.app"));
+            assert!(launchable("setup.command"));
+            assert!(launchable("run.terminal"));
+        }
+
+        #[cfg(target_os = "windows")]
+        for name in [
+            "x.exe", "x.bat", "x.cmd", "x.ps1", "x.vbs", "x.lnk", "x.msi", "x.scr", "x.hta",
+        ] {
+            assert!(launchable(name), "{name}");
+        }
+
+        #[cfg(target_os = "linux")]
+        for name in ["x.desktop", "x.AppImage"] {
+            assert!(launchable(name), "{name}");
+        }
 
         fs::remove_dir_all(root).unwrap();
     }

@@ -238,6 +238,7 @@ pub fn run() {
             commands::print_pdf,
             commands::is_win11,
             commands::open_file_folder,
+            commands::is_launchable_path,
             commands::rename_file,
             commands::watch_file,
             window_runtime::unwatch_file,
