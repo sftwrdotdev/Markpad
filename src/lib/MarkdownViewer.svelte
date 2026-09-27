@@ -104,6 +104,7 @@ import {
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
+	import { pinnedTagFromWindowLabel, pinnedTagHolder } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
@@ -876,6 +877,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	async function openPinnedTag(tag: { name: string; color: string; files: string[] }) {
+		// Two windows sharing a tag share one pin entry, and the last to save wins.
+		const holder = await pinnedTagHolder(tag.name, appWindow.label);
+		if (holder) {
+			await invoke('focus_window', { label: holder });
+			return;
+		}
 		tabManager.setWindowTag({ ...tag, pinned: true });
 		for (const file of tag.files) await loadMarkdown(file);
 		showHome = false;
@@ -3571,7 +3578,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 			await windowSession.restore();
 			if (isDisposed) return;
-			await windowSession.claimTransferredTab();
+			const pinnedName = pinnedTagFromWindowLabel(appWindow.label);
+			if (pinnedName === null) await windowSession.claimTransferredTab();
+			else {
+				const tags = (await invoke('list_pinned_tags')) as typeof pinnedTags;
+				const tag = tags.find((pinned) => pinned.name === pinnedName);
+				if (tag) await openPinnedTag(tag);
+			}
 			if (isDisposed) return;
 
 			const urlParams = new URLSearchParams(window.location.search);

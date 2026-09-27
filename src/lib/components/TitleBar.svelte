@@ -13,6 +13,7 @@
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
 	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
+	import { openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
 	let currentLanguage = $state(settings.language);
@@ -368,6 +369,14 @@
 	let themeMenuOpen = $state(false);
 	let kebabMenuOpen = $state(false);
 	let homeMenuOpen = $state(false);
+	let pinnedTags = $state<Array<{ name: string; color: string }>>([]);
+
+	$effect(() => {
+		if (!homeMenuOpen) return;
+		invoke<Array<{ name: string; color: string }>>('list_pinned_tags')
+			.then((tags) => (pinnedTags = tags))
+			.catch(console.error);
+	});
 	let appVersion = $state('');
 	let savedVscodeThemes = $state<string[]>([]);
 	
@@ -608,6 +617,20 @@
 						}}>
 						{t('menu.mergeAllWindows', currentLanguage)}
 					</button>
+					{#if pinnedTags.length > 0}
+						<div class="home-menu-divider"></div>
+						{#each pinnedTags as tag (tag.name)}
+							<button
+								class="home-menu-item"
+								onclick={() => {
+									homeMenuOpen = false;
+									openPinnedTagWindow(tag.name).catch(console.error);
+								}}>
+								<span class="pinned-tag-dot" style:--tag-color={tag.color}></span>
+								{tag.name}
+							</button>
+						{/each}
+					{/if}
 					<div class="home-menu-divider"></div>
 					<button
 					class="home-menu-item"
@@ -1779,6 +1802,7 @@
 	.tag-colors { display: flex; justify-content: space-between; padding: 2px 0; }
 	.tag-colors button { width: 18px; height: 18px; padding: 0; border: 2px solid transparent; border-radius: 50%; background: var(--tag-color); cursor: pointer; transition: transform 0.1s ease, border-color 0.1s ease; }
 	.tag-colors button:hover { transform: scale(1.15); }
+	.pinned-tag-dot { width: 10px; height: 10px; margin: 0 2px; flex-shrink: 0; border-radius: 50%; background: var(--tag-color); }
 	.tag-colors button.selected { border-color: var(--color-fg-default); transform: scale(1.15); }
 	.tag-save-btn { width: 100%; padding: 6px 12px; background: var(--color-accent-emphasis); color: #ffffff; border: none; border-radius: 6px; font-family: var(--win-font); font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease; }
 	.tag-save-btn:hover { background: color-mix(in srgb, var(--color-accent-emphasis) 85%, #000); }
