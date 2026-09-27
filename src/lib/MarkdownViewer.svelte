@@ -1023,9 +1023,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// walk below handles them. A failed silent save is surfaced and its
 				// tab also goes to the walk. `saveContent` cancels each tab's pending
 				// timer itself, so no writer here can be raced by its own debounce.
+				// A tab whose file changed underneath is refused rather than
+				// overwritten, and the walk asks the changed-on-disk question.
 				if (settings.autoSave) {
 					for (const tab of dirtyTabs.filter((t) => t.path !== '')) {
-						const ok = await saveContent(tab.id);
+						const ok = await saveSilently(tab.id);
+						if (!ok && externalChangeConflicts[tab.id]) continue;
 						if (!ok) {
 							addToast(t('toast.autoSaveFailed', settings.language), 'error');
 							break;
@@ -2148,8 +2151,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// leaving the pane must not write either — the close dialog asks.
 		if (!settings.autoSave) return;
 
-		const success = await saveContent(tab.id);
+		const success = await saveSilently(tab.id);
 		if (!success) {
+			// Refused because the file changed underneath: the edit stays in
+			// the buffer and the conflict bar is already asking about it.
+			if (externalChangeConflicts[tab.id]) return;
 			// Reported, not obeyed. A file that cannot be written — read-only
 			// path, a buffer the lossy-decode guard refuses — used to trap the
 			// user in the editor with no way to look at their own text.
@@ -2397,9 +2403,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	async function saveContent(tabId?: string): Promise<boolean> {
 		const id = tabId ?? tabManager.activeTabId ?? '';
-		// Every route into here is an explicit decision — Cmd+S, the close
-		// dialog, a mode-toggle dialog — and the background debounce is held
-		// back entirely while a conflict is open (see the auto-save effect).
+		// Only the saves the user asked for come here — Cmd+S, the menu and
+		// title bar Save. Saves nobody asked for go through `saveSilently`.
 		// So a save that lands here IS the answer "keep my version": it both
 		// authorises the write the session would otherwise refuse, and leaves
 		// the bar with nothing to ask.
@@ -2408,8 +2413,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// changed, so the guard in `saveContent` refuses, so the bar goes back
 		// up, and Cmd+S can never get the user out of it.
 		if (externalChangeConflicts[id]) documentSession.allowOverwriteOnce(id);
+		return saveSilently(id);
+	}
+
+	/**
+	 * A save nobody asked for: the debounce, leaving an editable pane, the
+	 * exit's auto-save. It never authorises overwriting a changed file, so on
+	 * a conflicted tab the session's guard refuses it and the bar stays up.
+	 */
+	async function saveSilently(tabId: string): Promise<boolean> {
 		const saved = await documentSession.saveContent(tabId);
-		if (saved) clearExternalChangeConflict(id);
+		if (saved) clearExternalChangeConflict(tabId);
 		return saved;
 	}
 
@@ -2503,7 +2517,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * Watches every tab in the tab manager. For each tab that is dirty, has a
 	 * non-empty path (untitled files require an explicit Save dialog), and is
 	 * currently editable (edit-mode or split-mode), arms a per-tab debounce
-	 * timer that calls saveContent(tabId) when the typing pause exceeds
+	 * timer that calls saveSilently(tabId) when the typing pause exceeds
 	 * AUTO_SAVE_DEBOUNCE_MS.
 	 *
 	 * Per-tab timers (instead of a single timer keyed off the active tab) mean
@@ -2597,7 +2611,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					// `saveContent` resolves with a boolean; it does not
 					// reject on save failure, so `.catch` alone hid errors.
 					// Surface failures via toast + console.
-					saveContent(s.id).then(
+					saveSilently(s.id).then(
 						(ok) => {
 							if (!ok) {
 								console.error('Auto-save failed for tab', s.id);

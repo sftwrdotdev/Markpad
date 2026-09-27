@@ -4,7 +4,7 @@ import test from 'node:test';
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload } from '../src/lib/utils/tabTransfer.js';
-import { offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 // Every read path decodes leniently (#371): a file it cannot read opens with
 // U+FFFD substituted for the bytes it could not, instead of failing. U+FFFD is
@@ -146,11 +146,12 @@ test('the guard protects the source file only', () => {
 
 test('saveContent is the choke point auto-save and the close dialogs share', () => {
 	// Auto-save lives in MarkdownViewer.svelte's debounce effect and the close
-	// flow in canCloseTab; both call saveContent, so guarding it covers them
+	// flow in canCloseTab; both reach saveContent, so guarding it covers them
 	// without touching either.
 	assert.match(session, /const success = await saveContent\(tabId\);/);
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-	assert.match(viewer, /saveContent\(s\.id\)\.then\(/);
+	assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
+	assert.match(functionSource(viewer, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 });
 
 test('Save As to a new file stays open as the escape hatch', () => {

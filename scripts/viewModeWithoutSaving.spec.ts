@@ -126,7 +126,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 		'deps',
 		`"use strict";
 		const {
-			tabManager, settings, t, addToast, askCustom, saveContent,
+			tabManager, settings, t, addToast, askCustom, saveSilently, externalChangeConflicts,
 			cancelPendingAutoSave, renderMarkdownPreview, loadMarkdown,
 			documentSession, invoke, isEditing, liveMode, toggleLiveMode,
 			tick, renderRichContent, editorPane, markdownBody,
@@ -140,6 +140,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 		tabManager,
 		settings,
 		isEditing,
+		externalChangeConflicts: {},
 		t: (key: string) => key,
 		addToast: (message: string) => fakes.toasts.push(message),
 		askCustom: async (message: string) => {
@@ -147,7 +148,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 			return 'save' as const;
 		},
 		// Mirrors documentSession.saveContent for a tab that has a path.
-		saveContent: async (tabId: string) => {
+		saveSilently: async (tabId: string) => {
 			fakes.saveCalls.push(tabId);
 			const tab = tabManager.tabs.find((item) => item.id === tabId)!;
 			if (fakes.saveFails) return false;
