@@ -378,7 +378,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         frontMatter: {
             properties: 'Properties',
-            addTag: 'Add tag'
+            addTag: 'Add tag',
+            tagList: '{{field}} tags',
+            editTag: 'Edit {{field}} tag {{tag}}',
+            removeTag: 'Remove {{tag}} from {{field}}',
+            addTagTo: 'Add {{field}} tag'
         },
         tooltip: {
             menu: 'Menu',
@@ -763,7 +767,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         frontMatter: {
             properties: '属性',
-            addTag: '添加标签'
+            addTag: '添加标签',
+            tagList: '{{field}} 标签',
+            editTag: '编辑 {{field}} 标签 {{tag}}',
+            removeTag: '从 {{field}} 中移除 {{tag}}',
+            addTagTo: '添加 {{field}} 标签'
         },
         tooltip: {
             menu: '菜单',
@@ -1428,7 +1436,11 @@ export const translations: Record<LanguageCode, Translation> = {
         },
         frontMatter: {
             properties: '屬性',
-            addTag: '新增標籤'
+            addTag: '新增標籤',
+            tagList: '{{field}} 標籤',
+            editTag: '編輯 {{field}} 標籤 {{tag}}',
+            removeTag: '從 {{field}} 中移除 {{tag}}',
+            addTagTo: '新增 {{field}} 標籤'
         },
         tooltip: {
             menu: '選單',

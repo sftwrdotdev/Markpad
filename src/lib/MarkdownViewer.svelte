@@ -4174,7 +4174,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 																	</select>
 																{:else if field.kind === 'list'}
 																	<div class="frontmatter-tags">
-																		<div class="frontmatter-tag-list" role="list" aria-label={`${field.key} tags`}>
+																		<div class="frontmatter-tag-list" role="list" aria-label={t('frontMatter.tagList', settings.language).replace('{{field}}', field.key)}>
 																			{#each getFrontMatterListItems(field) as tag, index (`${tag}-${index}`)}
 																				<span class="frontmatter-tag" role="listitem">
 																					{#if getFrontMatterTagEditIndex(field) === index}
@@ -4182,7 +4182,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 																							class="frontmatter-tag-edit-input"
 																							type="text"
 																							value={getFrontMatterTagEditDraft(field, tag)}
-																							aria-label={`Edit ${field.key} tag ${tag}`}
+																							aria-label={t('frontMatter.editTag', settings.language).replace('{{field}}', field.key).replace('{{tag}}', tag)}
 																							use:focusAndSelect
 																							oninput={(e) => setFrontMatterTagEditDraft(field, (e.currentTarget as HTMLInputElement).value)}
 																							onkeydown={(e) => handleFrontMatterTagEditKeydown(e, field, index)}
@@ -4191,14 +4191,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 																						<button
 																							class="frontmatter-tag-text"
 																							type="button"
-																							aria-label={`Edit ${field.key} tag ${tag}`}
+																							aria-label={t('frontMatter.editTag', settings.language).replace('{{field}}', field.key).replace('{{tag}}', tag)}
 																							onclick={() => startFrontMatterTagEdit(field, index, tag)}>
 																							{tag}
 																						</button>
 																						<button
 																							class="frontmatter-tag-remove"
 																							type="button"
-																							aria-label={`Remove ${tag} from ${field.key}`}
+																							aria-label={t('frontMatter.removeTag', settings.language).replace('{{field}}', field.key).replace('{{tag}}', tag)}
 																							onclick={() => removeFrontMatterTag(field, index)}>
 																							×
 																						</button>
@@ -4219,7 +4219,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 																			<button
 																				class="frontmatter-tag-add-button"
 																				type="button"
-																				aria-label={`Add ${field.key} tag`}
+																				aria-label={t('frontMatter.addTagTo', settings.language).replace('{{field}}', field.key)}
 																				onclick={() => commitFrontMatterTagAdd(field)}>
 																				+
 																			</button>

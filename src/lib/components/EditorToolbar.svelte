@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { fly } from 'svelte/transition';
 	import { getVisibleEditorToolbarTools, type EditorToolbarTool } from '../utils/editorToolbar.js';
+	import { settings } from '../stores/settings.svelte.js';
+	import { t } from '../utils/i18n.js';
 
 	let {
 		modifier = 'Ctrl',
@@ -140,7 +142,7 @@
 		onkeydown={(e) => { if (e.key === 'Escape') tablePickerOpen = false; }}
 		onclick={(e) => e.stopPropagation()}>
 		<div class="table-grid-header">
-			<span class="table-grid-title">Insert Table</span>
+			<span class="table-grid-title">{t('menu.insertTable', settings.language)}</span>
 			<span class="table-grid-dims">
 				{hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : 'Select size'}
 			</span>
@@ -193,7 +195,7 @@
 						type="button"
 						class="toolbar-btn"
 						class:active={tablePickerOpen}
-						aria-label="Insert Table"
+						aria-label={t('menu.insertTable', settings.language)}
 						onmouseenter={(e) => handleMouseEnter(e, tool)}
 						onmouseleave={() => onhideTooltip?.()}
 						onfocus={(e) => handleMouseEnter(e as unknown as MouseEvent, tool)}
