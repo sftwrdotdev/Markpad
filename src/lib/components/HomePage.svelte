@@ -67,7 +67,7 @@
 				{#each pinnedTags as tag (tag.name)}
 					<div class="recent-card" onclick={() => onopenPinnedTag?.(tag)} onkeydown={(event) => (event.key === 'Enter' || event.key === ' ') && onopenPinnedTag?.(tag)} role="button" tabindex="0">
 						<div class="file-icon"><span class="tag-dot" style:--tag-color={tag.color}></span></div>
-						<div class="file-info"><span class="file-name">{tag.name}</span><span class="file-path">{t('home.pinnedFileCount', settings.language).replace('{{count}}', String(tag.files.length))}</span></div>
+						<div class="file-info"><span class="file-name">{tag.name}</span><span class="file-path file-count">{t('home.pinnedFileCount', settings.language).replace('{{count}}', String(tag.files.length))}</span></div>
 						<button class="clear-btn" onclick={(event) => { event.stopPropagation(); onunpinTag?.(tag.name); }}>×</button>
 					</div>
 				{/each}
@@ -289,6 +289,11 @@
 		margin-top: 2px;
 		direction: rtl;
 		text-align: left;
+	}
+
+	/* `rtl` above keeps the end of a long path visible; a count is not a path, and rtl turns "3 个文件" into "个文件 3". */
+	.file-count {
+		direction: ltr;
 	}
 
 	.clear-btn {
