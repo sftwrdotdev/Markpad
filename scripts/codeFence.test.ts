@@ -50,3 +50,14 @@ test('a list item with inline code spans is not a fence', () => {
 	assert.deepEqual(inside('- use ```x``` here\n- y'), [false, false]);
 	assert.deepEqual(inside('- ```x```\n- y'), [false, false]);
 });
+
+test('inside a fence a marker line is code, never the close', () => {
+	// A Markdown sample showing a fence on a list item, and a diff that deletes
+	// one: both lines are code, and taking them for the close inverted the rest.
+	assert.deepEqual(inside('```md\n- ```\n  x\n```\n- item\n- item2'), [false, true, true, true, false, false]);
+	assert.deepEqual(inside('```diff\n- ```\n+ ```ts\n```\n- item'), [false, true, true, true, false]);
+});
+
+test('a task box opens a fence only after a list marker', () => {
+	assert.deepEqual(inside('[x] ```\na\nb'), [false, false, false]);
+});
