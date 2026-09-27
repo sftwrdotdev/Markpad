@@ -816,7 +816,16 @@ struct MaskedSpan {
 /// and can never pair. Scanning the raw buffer the same way is what keeps the
 /// two ends agreeing, and it is also what stops a single `$$` inside a fenced
 /// block from flipping the delimiter parity of the whole document.
+///
+/// Autolinked URLs are cut out the same way. comrak links
+/// `https://x/People?$select=Name&$top=2` as it stands, and
+/// `processInlineMath` leaves an autolink's text alone; masking
+/// `$select=Name&$` here would hand the frontend math it never renders.
 fn math_scan_segments(content: &str, regions: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let mut excluded = regions.to_vec();
+    excluded.extend(autolink_ranges(content));
+    excluded.sort_unstable();
+    let regions = excluded.as_slice();
     let len = content.len();
     let mut segments = Vec::new();
     let mut line_start = 0usize;
@@ -862,6 +871,68 @@ fn math_scan_segments(content: &str, regions: &[(usize, usize)]) -> Vec<(usize, 
         line_start = newline + 1;
     }
     segments
+}
+
+/// Byte ranges comrak's `autolink` extension turns into links: `http://`,
+/// `https://` and `ftp://` URLs, and bare `www.` ones, per `url_match` and
+/// `www_match` in comrak's parser/autolink.rs.
+///
+/// ponytail: runs to the next whitespace or `<`/`>` and skips comrak's
+/// trailing-punctuation trim, which can only over-cover a `)` or `.` that
+/// ends the URL.
+fn autolink_ranges(content: &str) -> Vec<(usize, usize)> {
+    let bytes = content.as_bytes();
+    let mut ranges = Vec::new();
+    let mut index = 0;
+    while index < bytes.len() {
+        let rest = &content[index..];
+        let before = index.checked_sub(1).map(|at| bytes[at]);
+        let host = if rest.starts_with("www.") {
+            before
+                .is_none_or(|b| b.is_ascii_whitespace() || b"*_~([".contains(&b))
+                .then_some(4)
+        } else {
+            ["http://", "https://", "ftp://"]
+                .into_iter()
+                .find(|scheme| rest.starts_with(scheme))
+                .filter(|_| !before.is_some_and(|b| b.is_ascii_alphabetic()))
+                .map(str::len)
+        };
+        match host.filter(|&host| is_autolink_domain(&rest[host..])) {
+            Some(_) => {
+                let end = rest
+                    .find(|c: char| c.is_ascii_whitespace() || c == '<' || c == '>')
+                    .map_or(content.len(), |offset| index + offset);
+                ranges.push((index, end));
+                index = end;
+            }
+            None => index += rest.chars().next().map_or(1, char::len_utf8),
+        }
+    }
+    ranges
+}
+
+/// comrak's `check_domain` without `relaxed_autolinks`: at least one dot, and
+/// no `_` in the last two labels.
+fn is_autolink_domain(data: &str) -> bool {
+    let (mut dots, mut underscores_before, mut underscores) = (0, 0, 0);
+    for (at, c) in data.char_indices() {
+        match c {
+            '\\' if at + 1 < data.len() => {}
+            '_' => underscores += 1,
+            '.' => {
+                underscores_before = underscores;
+                underscores = 0;
+                dots += 1;
+            }
+            '-' => {}
+            c if c.is_whitespace() || c.is_ascii_punctuation() => {
+                return underscores_before == 0 && underscores == 0 && dots > 0;
+            }
+            _ => {}
+        }
+    }
+    dots > 0 && ((underscores_before == 0 && underscores == 0) || dots > 10)
 }
 
 fn char_before(content: &str, low: usize, at: usize) -> Option<char> {

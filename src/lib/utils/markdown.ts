@@ -86,6 +86,18 @@ function replaceWithYoutubeLink(element: Element, videoId: string, href: string)
 	element.replaceWith(link);
 }
 
+/**
+ * A link whose text is its URL: comrak's autolink, where a bare `www.` gains
+ * `http://` in the href. `$select=Name&$top=2` in such a URL is a query, not
+ * math. `autolink_ranges` in src-tauri/src/markdown.rs keeps the backend from
+ * masking it for the same reason.
+ */
+function isAutolink(link: Element): boolean {
+	const href = link.getAttribute("href");
+	const text = link.textContent;
+	return href === text || href === `http://${text}`;
+}
+
 function processInlineMath(root: Element) {
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
 		acceptNode(node) {
@@ -94,6 +106,8 @@ function processInlineMath(root: Element) {
 				if (curr.hasAttribute("data-math"))
 					return NodeFilter.FILTER_REJECT;
 				if (["CODE", "PRE", "SCRIPT", "STYLE"].includes(curr.tagName))
+					return NodeFilter.FILTER_REJECT;
+				if (curr.tagName === "A" && isAutolink(curr))
 					return NodeFilter.FILTER_REJECT;
 				curr = curr.parentElement;
 			}

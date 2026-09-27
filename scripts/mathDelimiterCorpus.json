@@ -437,6 +437,35 @@
 			"markdown": "Run `$$`\nx\n$$\n",
 			"html": "<p data-sourcepos=\"1:1-3:2\">Run <code data-sourcepos=\"1:5-1:8\">$$</code><br data-sourcepos=\"1:9-1:9\" />\nx<br data-sourcepos=\"2:2-2:2\" />\n$$</p>\n",
 			"math": []
+		},
+		{
+			"name": "dollar query parameters in a bare URL are not math",
+			"markdown": "https://api.x.com/People?$select=Name&$top=2\n",
+			"html": "<p data-sourcepos=\"1:1-1:44\"><a data-sourcepos=\"1:1-1:44\" href=\"https://api.x.com/People?$select=Name&amp;$top=2\">https://api.x.com/People?$select=Name&amp;$top=2</a></p>\n",
+			"math": []
+		},
+		{
+			"name": "dollar query parameters in a www URL are not math",
+			"markdown": "See www.x.com/People?$select=Name&$top=2 now.\n",
+			"html": "<p data-sourcepos=\"1:1-1:45\">See <a data-sourcepos=\"1:5-1:40\" href=\"http://www.x.com/People?$select=Name&amp;$top=2\">www.x.com/People?$select=Name&amp;$top=2</a> now.</p>\n",
+			"math": []
+		},
+		{
+			"name": "dollar query parameters in an angle-bracket autolink are not math",
+			"markdown": "<https://x.com/?$a$>\n",
+			"html": "<p data-sourcepos=\"1:1-1:20\"><a data-sourcepos=\"1:1-1:20\" href=\"https://x.com/?$a$\">https://x.com/?$a$</a></p>\n",
+			"math": []
+		},
+		{
+			"name": "math next to a URL is still math",
+			"markdown": "See https://x.com/?$a$ and $b_1$.\n",
+			"html": "<p data-sourcepos=\"1:1-1:40\">See <a data-sourcepos=\"1:5-1:22\" href=\"https://x.com/?$a$\">https://x.com/?$a$</a> and $b_1$.</p>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "b_1"
+				}
+			]
 		}
 	]
 }
