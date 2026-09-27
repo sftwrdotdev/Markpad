@@ -3,6 +3,8 @@
 	import { onMount } from 'svelte';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
+	import { duplicateNameSuffixes } from '../utils/duplicateTabNames.js';
+	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 
 	let { recentFiles, pinnedTags = [], onselectFile, onloadFile, onremoveRecentFile, onnewFile, onopenPinnedTag, onunpinTag } = $props<{
 		recentFiles: string[];
@@ -27,6 +29,20 @@
 
 	function getFileName(path: string) {
 		return path.split(/[/\\]/).pop() || path;
+	}
+
+	let fileMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);
+
+	function showTagFiles(event: MouseEvent, files: string[]) {
+		// The document-level handler in MarkdownViewer would open the preview menu on top.
+		event.preventDefault();
+		event.stopPropagation();
+		const suffixes = duplicateNameSuffixes(files.map((path) => ({ id: path, path })));
+		fileMenu = {
+			x: event.clientX,
+			y: event.clientY,
+			items: files.map((path) => ({ label: getFileName(path), shortcut: suffixes.get(path), onClick: () => onloadFile(path) })),
+		};
 	}
 </script>
 
@@ -65,7 +81,7 @@
 			<h3>{t('home.pinnedTags', settings.language)}</h3>
 			<div class="recent-grid">
 				{#each pinnedTags as tag (tag.name)}
-					<div class="recent-card" onclick={() => onopenPinnedTag?.(tag)} onkeydown={(event) => (event.key === 'Enter' || event.key === ' ') && onopenPinnedTag?.(tag)} role="button" tabindex="0">
+					<div class="recent-card" onclick={() => onopenPinnedTag?.(tag)} oncontextmenu={(event) => showTagFiles(event, tag.files)} onkeydown={(event) => (event.key === 'Enter' || event.key === ' ') && onopenPinnedTag?.(tag)} role="button" tabindex="0">
 						<div class="file-icon"><span class="tag-dot" style:--tag-color={tag.color}></span></div>
 						<div class="file-info"><span class="file-name">{tag.name}</span><span class="file-path">{t('home.pinnedFileCount', settings.language).replace('{{count}}', String(tag.files.length))}</span></div>
 						<button class="clear-btn" onclick={(event) => { event.stopPropagation(); onunpinTag?.(tag.name); }}>×</button>
@@ -128,6 +144,8 @@
 	</div>
 	{/if}
 </div>
+<ContextMenu show={fileMenu !== null} x={fileMenu?.x ?? 0} y={fileMenu?.y ?? 0} items={fileMenu?.items ?? []} onhide={() => (fileMenu = null)} />
+
 <div class="version-tag">v{version}</div>
 
 <style>

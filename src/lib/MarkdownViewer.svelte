@@ -887,8 +887,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		await refreshPinnedTags();
 	}
 
+	// Same condition as the template's HomePage gate: an empty window or the
+	// home tab shows Home without `showHome`, which is the cold-start case.
 	$effect(() => {
-		if (showHome) refreshPinnedTags().catch(console.error);
+		if (showHome || !tabManager.activeTab || isHomePath(tabManager.activeTab.path)) refreshPinnedTags().catch(console.error);
 	});
 
 	const documentSession = createDocumentSession({
