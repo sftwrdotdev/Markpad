@@ -141,7 +141,7 @@ test('the window closes only after every dirty tab is resolved', () => {
 test('a cancelled walk stops the handler before it persists or closes', () => {
 	const body = settle();
 	const walk = offsetOf(body, 'reviewDirtyTabs({');
-	const bail = offsetOf(body, 'if (!resolved) return false;', walk);
+	const bail = offsetOf(body, 'return false;', offsetOf(body, 'if (!resolved)', walk));
 	assert.ok(bail < offsetOf(body, 'persistWindowState()', walk), 'cancel returns before the snapshot');
 
 	const handler = closeHandler();
