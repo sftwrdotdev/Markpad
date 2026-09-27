@@ -384,6 +384,59 @@
 					"source": "x_1"
 				}
 			]
+		},
+		{
+			"name": "a display block between lines of prose",
+			"markdown": "The formula\n$$\nx^2\n$$\nis nice.\n",
+			"html": "<p data-sourcepos=\"1:1-5:8\">The formula<br data-sourcepos=\"1:12-1:12\" />\n$$<br data-sourcepos=\"2:13-2:13\" />\nx^2<br data-sourcepos=\"3:13-3:13\" />\n$$<br data-sourcepos=\"4:13-4:13\" />\nis nice.</p>\n",
+			"math": [
+				{
+					"kind": "display",
+					"source": "x^2"
+				}
+			]
+		},
+		{
+			"name": "a display block opened at the end of a list item",
+			"markdown": "- item $$\n  x\n  $$\n",
+			"html": "<ul data-sourcepos=\"1:1-3:14\">\n<li data-sourcepos=\"1:1-3:14\">item $$<br data-sourcepos=\"1:20-1:20\" />\nx<br data-sourcepos=\"2:15-2:15\" />\n$$</li>\n</ul>\n",
+			"math": [
+				{
+					"kind": "display",
+					"source": "x"
+				}
+			]
+		},
+		{
+			"name": "inline math on both sides of a display block in one paragraph",
+			"markdown": "Let $a$ be\n$$\na^2\n$$\nand $b$ too.\n",
+			"html": "<p data-sourcepos=\"1:1-5:21\">Let $a$ be<br data-sourcepos=\"1:20-1:20\" />\n$$<br data-sourcepos=\"2:13-2:13\" />\na^2<br data-sourcepos=\"3:13-3:13\" />\n$$<br data-sourcepos=\"4:13-4:13\" />\nand $b$ too.</p>\n",
+			"math": [
+				{
+					"kind": "inline",
+					"source": "a"
+				},
+				{
+					"kind": "display",
+					"source": "a^2"
+				},
+				{
+					"kind": "inline",
+					"source": "b"
+				}
+			]
+		},
+		{
+			"name": "a display closer with text after it closes nothing",
+			"markdown": "Text\n$$\nx\n$$ more\n",
+			"html": "<p data-sourcepos=\"1:1-4:7\">Text<br data-sourcepos=\"1:5-1:5\" />\n$$<br data-sourcepos=\"2:3-2:3\" />\nx<br data-sourcepos=\"3:2-3:2\" />\n$$ more</p>\n",
+			"math": []
+		},
+		{
+			"name": "a display delimiter in a code span opens nothing",
+			"markdown": "Run `$$`\nx\n$$\n",
+			"html": "<p data-sourcepos=\"1:1-3:2\">Run <code data-sourcepos=\"1:5-1:8\">$$</code><br data-sourcepos=\"1:9-1:9\" />\nx<br data-sourcepos=\"2:2-2:2\" />\n$$</p>\n",
+			"math": []
 		}
 	]
 }

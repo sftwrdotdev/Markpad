@@ -157,3 +157,11 @@ test('KaTeX is given no delimiter that Markdown itself can spell', () => {
 		}
 	}
 });
+
+test('a display block inside a paragraph leaves the prose around it as prose', () => {
+	const testCase = corpus.cases.find((one) => one.name === 'a display block between lines of prose')!;
+	const body = parseHtml(processMarkdownHtml(testCase.html, FILE_PATH, new Set())).body;
+	const paragraph = body.querySelector('p')!;
+	assert.equal(paragraph.querySelector('[data-math]')?.getAttribute('data-math-source'), 'x^2');
+	assert.match(paragraph.textContent, /^The formula\s+x\^2\s+is nice\.$/);
+});

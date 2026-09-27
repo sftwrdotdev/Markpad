@@ -106,7 +106,7 @@ function processInlineMath(root: Element) {
 	while ((node = walker.nextNode())) {
 		const text = (node as Text).nodeValue || "";
 		if (text.includes("$")) {
-			const newText = convertInlineMathDelimiters(text);
+			const newText = convertInlineMathDelimiters(text).text;
 			if (newText !== text) toReplace.push({ node: node as Text, newText });
 		}
 	}
@@ -118,11 +118,97 @@ function processInlineMath(root: Element) {
 function processDisplayMathBlocks(root: Element, doc: Document) {
 	for (const element of Array.from(root.querySelectorAll("p, li"))) {
 		const math = extractDisplayMathBlock(element);
-		if (!math) continue;
+		if (!math) {
+			processDisplayMathRuns(element, doc);
+			continue;
+		}
 
 		element.setAttribute("data-math", "display");
 		element.setAttribute("data-math-source", math);
 		element.replaceChildren(doc.createTextNode(math));
+	}
+}
+
+/** What may follow a closing `$$` in a tight list item: a block on its own line. */
+const BLOCK_AFTER_DISPLAY_CLOSER = /^(BR|UL|OL|BLOCKQUOTE|PRE|TABLE|HR|DIV)$/;
+
+function tagOf(node: Node | null): string {
+	return node?.nodeType === Node.ELEMENT_NODE ? (node as Element).tagName : "";
+}
+
+/**
+ * Renders a `$$` block that shares its paragraph with prose:
+ *
+ *     The formula
+ *     $$
+ *     x^2
+ *     $$
+ *     is nice.
+ *
+ * With no blank line around it, the block is part of the paragraph, and
+ * `render.hardbreaks` turns every line of it into a text node between two
+ * `<br>`s. `extractDisplayMathBlock` wants the whole element to be the
+ * formula and `processInlineMath` only ever sees one line, so the formula was
+ * shown as its source.
+ *
+ * The rule is the multi-line half of `find_display_close` in
+ * src-tauri/src/markdown.rs, which already hid exactly these lines from
+ * comrak: an opening `$$` with nothing after it on its line, then lines up to
+ * the first one that is `$$` alone. A code span anywhere in between ends the
+ * search, as a code region does there. Text before the opener and after the
+ * closer stays prose.
+ */
+function processDisplayMathRuns(element: Element, doc: Document) {
+	let node = element.firstChild;
+	while (node) {
+		const openerBreak = node.nextSibling;
+		const opener =
+			node.nodeType === Node.TEXT_NODE && tagOf(openerBreak) === "BR"
+				? convertInlineMathDelimiters(node.nodeValue || "").opener
+				: -1;
+		if (opener === -1) {
+			node = node.nextSibling;
+			continue;
+		}
+
+		const lines: string[] = [];
+		let closer: Node | null = null;
+		for (let line = openerBreak!.nextSibling; line?.nodeType === Node.TEXT_NODE; ) {
+			const next: Node | null = line.nextSibling;
+			const value = (line.nodeValue || "").replace(/^\n/, "");
+			if (
+				value.trim() === "$$" &&
+				(!next || BLOCK_AFTER_DISPLAY_CLOSER.test(tagOf(next)))
+			) {
+				closer = line;
+				break;
+			}
+			if (tagOf(next) !== "BR") break;
+			lines.push(value);
+			line = next!.nextSibling;
+		}
+		const math = lines.join("\n").trim();
+		if (!closer || !math) {
+			node = node.nextSibling;
+			continue;
+		}
+
+		const span = doc.createElement("span");
+		span.setAttribute("data-math", "display");
+		span.setAttribute("data-math-source", math);
+		span.appendChild(doc.createTextNode(math));
+		// The formula is a block of its own; a `<br>` straight after it would
+		// draw an empty line.
+		let after = closer.nextSibling;
+		if (tagOf(after) === "BR") after = after!.nextSibling;
+		for (let drop = openerBreak!; drop !== after; ) {
+			const next = drop.nextSibling!;
+			drop.parentNode!.removeChild(drop);
+			drop = next;
+		}
+		node.nodeValue = (node.nodeValue || "").slice(0, opener);
+		element.insertBefore(span, after);
+		node = after;
 	}
 }
 
@@ -172,9 +258,14 @@ function extractDisplayMathBlock(element: Element): string | null {
  * src-tauri/src/markdown.rs hides the escape from comrak for exactly this
  * moment.
  */
-function convertInlineMathDelimiters(text: string): string {
+function convertInlineMathDelimiters(text: string): {
+	text: string;
+	/** Where an unclosed `$$` with nothing after it starts, or -1. */
+	opener: number;
+} {
 	const parts: string[] = [];
 	let index = 0;
+	let opener = -1;
 	// Allows adjacent inline spans like `$a$$b$` without treating `$$` display
 	// delimiters as inline math openings.
 	let previousDollarAllowsInlineOpen = false;
@@ -216,6 +307,7 @@ function convertInlineMathDelimiters(text: string): string {
 				continue;
 			}
 
+			if (!text.slice(index + 2).trim()) opener = index;
 			parts.push("$$");
 			previousDollarAllowsInlineOpen = false;
 			index += 2;
@@ -247,7 +339,7 @@ function convertInlineMathDelimiters(text: string): string {
 		previousDollarAllowsInlineOpen = true;
 	}
 
-	return parts.join("");
+	return { text: parts.join(""), opener };
 }
 
 function findDisplayMathEnd(text: string, start: number): number {
