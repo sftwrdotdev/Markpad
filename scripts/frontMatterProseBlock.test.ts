@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { getMarkdownBodyWithoutFrontMatter, parseFrontMatter } from '../src/lib/utils/frontMatter.js';
+import { frontMatterLineOffset, getMarkdownBodyWithoutFrontMatter, parseFrontMatter } from '../src/lib/utils/frontMatter.js';
+import { functionSource, readSource } from './sourceTree.js';
 
 // A document may open with a thematic break and then use a setext underline for
 // its first heading. That looks exactly like a front matter block, but the text
@@ -72,4 +73,21 @@ test('a malformed mapping is still reported as broken front matter rather than b
 	assert.equal(parsed.exists, true);
 	assert.equal(parsed.valid, false);
 	assert.equal(parsed.body, '# Body\n');
+});
+
+// Split view hands scroll positions across as "inside the front matter" or
+// "this line of the body", so both panes have to agree on where the front
+// matter ends. The preview's answer is parseFrontMatter's. The editor used to
+// scan for any two `---` lines on its own, so a document opening with a
+// thematic break told the preview it was inside a front matter panel the
+// preview did not have, and the preview stayed at the top until the editor
+// scrolled past the second rule.
+test('the editor finds the end of the front matter through parseFrontMatter too', () => {
+	const leadingRule = `---\n\n${Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n')}\n\n---\n\n# Next\n`;
+	assert.equal(frontMatterLineOffset(leadingRule), 0);
+
+	const editor = readSource('src/lib/components/Editor.svelte');
+	const scrollEnd = functionSource(editor, 'getEditorFrontMatterScrollEnd');
+	assert.match(scrollEnd, /frontMatterLineOffset\(/);
+	assert.doesNotMatch(editor, /\.trim\(\) !== '---'/);
 });

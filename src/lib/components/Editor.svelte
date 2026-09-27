@@ -13,6 +13,7 @@
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
 	import { isInFencedCode } from '../utils/codeFence.js';
+	import { frontMatterLineOffset } from '../utils/frontMatter.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
@@ -1868,21 +1869,6 @@
 
 	onDestroy(disposeLocalizedActions);
 
-	function getFrontMatterBodyStartLine(content: string) {
-		const lines = content.split(/\r\n|\n|\r/);
-		if (lines.length === 0 || lines[0].replace(/^\uFEFF/, '').trim() !== '---') return 1;
-
-		for (let index = 1; index < lines.length; index += 1) {
-			if (lines[index].trim() !== '---') continue;
-
-			let bodyStartLine = index + 2;
-			if (lines[bodyStartLine - 1]?.trim() === '') bodyStartLine += 1;
-			return bodyStartLine;
-		}
-
-		return 1;
-	}
-
 	function getEditorContentScrollMax() {
 		if (!editor) return 0;
 
@@ -1896,7 +1882,10 @@
 		const model = editor.getModel();
 		if (!model) return 0;
 
-		const bodyStartLine = getFrontMatterBodyStartLine(model.getValue());
+		// The preview's rule, not a second one: a leading `---` block that is not
+		// a YAML mapping is body there, and the two panes must agree on where the
+		// front matter ends or every position above it syncs to the top.
+		const bodyStartLine = frontMatterLineOffset(model.getValue()) + 1;
 		if (bodyStartLine <= 1) return 0;
 
 		const safeBodyStartLine = Math.max(1, Math.min(model.getLineCount(), bodyStartLine));
