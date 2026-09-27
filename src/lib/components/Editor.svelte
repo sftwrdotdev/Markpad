@@ -1048,7 +1048,8 @@
 	/**
 	 * Enter on a list item writes the next item's marker; Enter on a block quote
 	 * writes the quote (#700); Enter on either with a marker and no text takes
-	 * the marker away instead, which is how the block ends. What the next line
+	 * the marker away instead, which is how the block ends — except on a nested
+	 * list item, where it takes one level away (#856). What the next line
 	 * should say is decided by `blockEnter` in utils/listEditing.ts, where it can
 	 * be tested without a browser.
 	 *
@@ -1069,6 +1070,13 @@
 		const line = selection.startLineNumber;
 		const next = blockEnter(model.getLineContent(line), selection.startColumn);
 		if (!next) return plainEnter();
+
+		// An empty item below the margin gives up one level, as Shift+Tab would
+		// (#856); only an item with no level left ends the list.
+		if (next.kind === "clear") {
+			const level = shiftListItem(model, line, selection.startColumn, true);
+			if (level) return applyLineEdit(level, "list-outdent");
+		}
 
 		// Its own undo step, so one Ctrl+Z gives back the marker this took away
 		// rather than unwinding the sentence typed before it.

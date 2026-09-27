@@ -350,7 +350,7 @@ const SHIFT_TAB_HANDLER = [
 	'handleShiftTabKey',
 ];
 
-const ENTER_HANDLER = ['continueListOnEnter'];
+const ENTER_HANDLER = ['applyLineEdit', 'continueListOnEnter'];
 
 test('Enter on a list item inserts the line break and the next marker in one edit', () => {
 	const run = runEditorHandler(ENTER_HANDLER, { lines: ['- item'], selections: [[1, 7, 1, 7]] });
@@ -384,6 +384,37 @@ test('Enter on an empty item replaces the line instead of breaking it', () => {
 		// extend it.
 		{ range: [1, 1, 1, 3], text: '', cursor: [1, 1, 1, 1] },
 	]);
+});
+
+test('Enter on an empty nested item gives up one level instead of ending the list', () => {
+	// #856: the list ends only from the margin. Below it, Enter is Shift+Tab —
+	// the same `shiftListItem` edit, renumbering included.
+	const bullet = runEditorHandler(ENTER_HANDLER, {
+		lines: ['- a', '  - b', '  - '],
+		selections: [[3, 5, 3, 5]],
+	});
+	assert.deepEqual(bullet.triggers, []);
+	assert.deepEqual(bullet.edits, [{ range: [3, 1, 3, 5], text: '- ', cursor: [3, 3, 3, 3] }]);
+	assert.equal(bullet.undoStops, 1);
+
+	const ordered = runEditorHandler(ENTER_HANDLER, {
+		lines: ['1. a', '   1. b', '   2. '],
+		selections: [[3, 7, 3, 7]],
+	});
+	assert.deepEqual(ordered.edits, [{ range: [3, 1, 3, 7], text: '2. ', cursor: [3, 4, 3, 4] }]);
+
+	const quoted = runEditorHandler(ENTER_HANDLER, {
+		lines: ['> - a', '>   - '],
+		selections: [[2, 7, 2, 7]],
+	});
+	assert.deepEqual(quoted.edits, [{ range: [2, 1, 2, 7], text: '> - ', cursor: [2, 5, 2, 5] }]);
+
+	// At the margin there is no level left, so the list ends as before.
+	const margin = runEditorHandler(ENTER_HANDLER, {
+		lines: ['- a', '- '],
+		selections: [[2, 3, 2, 3]],
+	});
+	assert.deepEqual(margin.edits, [{ range: [2, 1, 2, 3], text: '', cursor: [2, 1, 2, 1] }]);
 });
 
 test('Enter anywhere else is a plain Enter', () => {
