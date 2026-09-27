@@ -233,6 +233,41 @@ fn update_pinned_tag_at(
     Ok(found)
 }
 
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PinnedTagRename {
+    Renamed,
+    /// Another window unpinned the tag in the meantime.
+    Missing,
+    /// Another pin already holds the new name.
+    Taken,
+}
+
+/// Renames a pin in place, keeping its files and taking the new colour. The
+/// closing save finds the entry by the window's current name, so a rename the
+/// file never heard of unpinned the window at close. A name another pin holds
+/// is refused rather than merged: the two are separate groups the user made,
+/// and folding one into the other could not be undone.
+fn rename_pinned_tag_at(
+    lock: &Mutex<()>,
+    path: &Path,
+    old_name: String,
+    name: String,
+    color: String,
+) -> Result<PinnedTagRename, crate::error::Error> {
+    let mut outcome = PinnedTagRename::Missing;
+    update_pinned_tags(lock, path, |tags| {
+        if name != old_name && tags.iter().any(|tag| tag.name == name) {
+            outcome = PinnedTagRename::Taken;
+        } else if let Some(tag) = tags.iter_mut().find(|tag| tag.name == old_name) {
+            tag.name = name;
+            tag.color = color;
+            outcome = PinnedTagRename::Renamed;
+        }
+    })?;
+    Ok(outcome)
+}
+
 fn remove_pinned_tag_at(
     lock: &Mutex<()>,
     path: &Path,
@@ -270,6 +305,18 @@ pub fn update_pinned_tag(
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
     update_pinned_tag_at(&state.pinned_tags, &path, name, color, files).map_err(String::from)
+}
+
+#[tauri::command]
+pub fn rename_pinned_tag(
+    app: AppHandle,
+    old_name: String,
+    name: String,
+    color: String,
+) -> Result<PinnedTagRename, String> {
+    let path = pinned_tags_path(&app)?;
+    let state = app.state::<AppState>();
+    rename_pinned_tag_at(&state.pinned_tags, &path, old_name, name, color).map_err(String::from)
 }
 
 #[tauri::command]
@@ -1039,6 +1086,96 @@ mod tests {
         .unwrap();
         assert!(!updated, "the update reported a pin that is gone");
         assert!(read_pinned_tags_at(&path).is_empty());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Renaming a pinned tag renames its entry, so the closing save — which
+    /// finds the entry by the window's current name — still finds it.
+    #[test]
+    fn renaming_a_pin_keeps_its_files_under_the_new_name() {
+        let dir = temp_dir("pinned-tags-rename");
+        let path = dir.join("pinned-tags.json");
+        let lock = Mutex::new(());
+
+        save_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "#1a73e8".to_string(),
+            vec!["/papers/a.md".to_string()],
+        )
+        .unwrap();
+        let outcome = rename_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "Papers".to_string(),
+            "#d93025".to_string(),
+        )
+        .unwrap();
+        assert_eq!(outcome, PinnedTagRename::Renamed);
+        let tags = read_pinned_tags_at(&path);
+        assert_eq!(tags.len(), 1, "the rename left the old entry behind");
+        assert_eq!(tags[0].name, "Papers");
+        assert_eq!(tags[0].color, "#d93025");
+        assert_eq!(tags[0].files, vec!["/papers/a.md".to_string()]);
+
+        let updated = update_pinned_tag_at(
+            &lock,
+            &path,
+            "Papers".to_string(),
+            "#d93025".to_string(),
+            vec!["/papers/b.md".to_string()],
+        )
+        .unwrap();
+        assert!(updated, "the closing save did not find the renamed pin");
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A name another pin holds is refused, and a pin another window removed
+    /// is not recreated by renaming it.
+    #[test]
+    fn renaming_a_pin_refuses_a_taken_name_and_never_recreates_one() {
+        let dir = temp_dir("pinned-tags-rename-refused");
+        let path = dir.join("pinned-tags.json");
+        let lock = Mutex::new(());
+
+        for (name, file) in [("Research", "/papers/a.md"), ("Notes", "/notes/c.md")] {
+            save_pinned_tag_at(
+                &lock,
+                &path,
+                name.to_string(),
+                "#1a73e8".to_string(),
+                vec![file.to_string()],
+            )
+            .unwrap();
+        }
+        let outcome = rename_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "Notes".to_string(),
+            "#d93025".to_string(),
+        )
+        .unwrap();
+        assert_eq!(outcome, PinnedTagRename::Taken);
+        let tags = read_pinned_tags_at(&path);
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].name, "Research");
+        assert_eq!(tags[1].files, vec!["/notes/c.md".to_string()]);
+
+        let outcome = rename_pinned_tag_at(
+            &lock,
+            &path,
+            "Gone".to_string(),
+            "Back".to_string(),
+            "#d93025".to_string(),
+        )
+        .unwrap();
+        assert_eq!(outcome, PinnedTagRename::Missing);
+        assert_eq!(read_pinned_tags_at(&path).len(), 2);
 
         fs::remove_dir_all(&dir).unwrap();
     }

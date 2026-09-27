@@ -283,3 +283,65 @@ test('a backend that cannot answer does not block the user’s own save', async 
 	assert.equal(bar.state().tagEditorOpen, false);
 	assert.equal(bar.state().tagError, '');
 });
+
+// -------------------------------------------------------- 5. renaming a pin
+
+test('renaming a pinned tag renames its pin, which keeps the window pinned', async () => {
+	// The closing save refreshes the pin by the window's current name. A rename
+	// that left pinned-tags.json alone found nothing there at close, and the
+	// window silently unpinned itself while Home kept the old name.
+	const { bar, invokeCalls } = setup();
+	tabManager.setWindowTag({ name: 'Research', color: COLORS[2], pinned: true });
+	bar.openTagEditor();
+	bar.setDraft('Papers', COLORS[6]);
+
+	await bar.applyTag();
+
+	assert.deepEqual(
+		invokeCalls.filter((call) => call.cmd === 'rename_pinned_tag').map((call) => call.args),
+		[{ oldName: 'Research', name: 'Papers', color: COLORS[6] }],
+		'the pin file was not told about the rename',
+	);
+	assert.deepEqual(tabManager.windowTag, { name: 'Papers', color: COLORS[6], pinned: true });
+});
+
+test('a name another pinned tag holds is refused, in the popover', async () => {
+	const { bar } = setup({ pinRename: 'taken' });
+	tabManager.setWindowTag({ name: 'Research', color: COLORS[2], pinned: true });
+	bar.openTagEditor();
+	bar.setDraft('Notes', COLORS[2]);
+
+	await bar.applyTag();
+
+	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: COLORS[2], pinned: true }, 'the rename went through anyway');
+	assert.equal(bar.state().tagEditorOpen, true);
+	assert.match(bar.state().tagError, /pinned tag already uses this name/i);
+});
+
+test('renaming a tag another window unpinned renames the window unpinned', async () => {
+	const { bar } = setup({ pinRename: 'missing' });
+	tabManager.setWindowTag({ name: 'Research', color: COLORS[2], pinned: true });
+	bar.openTagEditor();
+	bar.setDraft('Papers', COLORS[2]);
+
+	await bar.applyTag();
+
+	assert.deepEqual(tabManager.windowTag, { name: 'Papers', color: COLORS[2], pinned: false });
+});
+
+test('an unpinned rename and a pinned colour change leave the pin file to the closing save', async () => {
+	// The closing save sends the colour with the files, so a colour change
+	// reaches the pin file without a rename.
+	const { bar, invokeCalls } = setup();
+	tabManager.setWindowTag({ name: 'Research', color: COLORS[2], pinned: true });
+	bar.openTagEditor();
+	bar.setDraft('Research', COLORS[6]);
+	await bar.applyTag();
+
+	tabManager.setWindowTag({ name: 'Docs', color: COLORS[2] });
+	bar.openTagEditor();
+	bar.setDraft('Papers', COLORS[2]);
+	await bar.applyTag();
+
+	assert.deepEqual(invokeCalls.filter((call) => call.cmd === 'rename_pinned_tag'), []);
+});

@@ -200,7 +200,22 @@
 			tagError = t('menu.windowTagTaken', currentLanguage);
 			return;
 		}
-		tabManager.setWindowTag({ name, color: tagDraftColor, pinned: tabManager.windowTag?.pinned });
+		let pinned = tag?.pinned;
+		// The closing save refreshes the pin by the window's current name, so a
+		// rename has to reach the pin file first or the window unpins at close.
+		// A colour change needs nothing here: the closing save carries it.
+		if (tag?.pinned && name !== tag.name) {
+			const renamed = await invoke('rename_pinned_tag', { oldName: tag.name, name, color: tagDraftColor }).catch((error) => {
+				console.error('Failed to rename the pinned tag', error);
+				return 'failed';
+			});
+			if (renamed === 'taken') {
+				tagError = t('menu.pinnedTagTaken', currentLanguage);
+				return;
+			}
+			pinned = renamed === 'renamed';
+		}
+		tabManager.setWindowTag({ name, color: tagDraftColor, pinned });
 		tagEditorOpen = false;
 		tagError = '';
 	}

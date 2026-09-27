@@ -268,6 +268,7 @@ pub fn run() {
             window_runtime::list_pinned_tags,
             window_runtime::save_pinned_tag,
             window_runtime::update_pinned_tag,
+            window_runtime::rename_pinned_tag,
             window_runtime::remove_pinned_tag,
             window_runtime::save_window_state,
             window_runtime::load_window_state,

@@ -407,6 +407,8 @@ type SetupOptions = {
 	tagTakenElsewhere?: boolean | (() => boolean | Promise<boolean>);
 	/** Fails every `invoke`, to drive the "backend cannot answer" path. */
 	invokeFails?: boolean;
+	/** Answers `rename_pinned_tag`. */
+	pinRename?: 'renamed' | 'missing' | 'taken';
 };
 
 export function setup(options: SetupOptions = {}) {
@@ -423,6 +425,7 @@ export function setup(options: SetupOptions = {}) {
 	const invoke = (cmd: string, args: any) => {
 		invokeCalls.push({ cmd, args });
 		if (options.invokeFails) return Promise.reject(new Error(`invoke failed: ${cmd}`));
+		if (cmd === 'rename_pinned_tag') return Promise.resolve(options.pinRename ?? 'renamed');
 		if (cmd !== 'is_window_tag_taken') return Promise.resolve(null);
 		const answer = options.tagTakenElsewhere ?? false;
 		return Promise.resolve(typeof answer === 'function' ? answer() : answer);
