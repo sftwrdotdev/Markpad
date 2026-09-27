@@ -519,7 +519,13 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// they land was typed into meanwhile — a Live Mode reload racing the
 			// keyboard. Keep the edit and raise the conflict, as for an external
 			// change to a dirty tab.
-			const reloadingCleanTab = !!tab && !tab.isDirty && isSameFilePath(tab, target);
+			//
+			// Only when the buffer already holds this file. A tab still waiting
+			// for its first read carries the path with an empty baseline, and a
+			// key typed there is not an edit of the file; it is dropped with the
+			// empty buffer. So is a key typed while a genuinely empty file
+			// reloads, which is the same state.
+			const reloadingCleanTab = !!tab && !tab.isDirty && tab.originalContent !== '' && isSameFilePath(tab, target);
 			const typedDuringLoad = () => {
 				if (!reloadingCleanTab || !tab.isDirty) return false;
 				options.onDiskChangedUnderSave(activeId);

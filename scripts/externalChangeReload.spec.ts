@@ -410,6 +410,43 @@ test('a keystroke typed while the reload is in flight is kept, and raised as a c
 	assert.deepEqual(refusedSaves, [tab.id], 'the change on disk was not raised as a conflict');
 });
 
+test('a keystroke in a tab still waiting for its first read is not kept as an edit of that file', async () => {
+	// A fresh tab already carries the path it is being opened at, so it looked
+	// like a tab reloading its own file. The empty buffer plus a key was kept
+	// under that path with the conflict bar up, and Save wrote it over the file.
+	// The keystroke is dropped, as it was before the reload recheck.
+	const session = makeSession({
+		renderMarkdown: async () => {
+			tabManager.updateTabRawContent(tabManager.activeTab!.id, 'k');
+			return '';
+		},
+	});
+	for (const openTab of [
+		() => session.loadMarkdown('/notes/new.md'),
+		async () => {
+			// A link opened in a new tab.
+			tabManager.addTab('/notes/new.md');
+			await session.loadMarkdown('/notes/new.md', { skipTabManagement: true });
+		},
+	]) {
+		reset();
+		disk.set('/notes/new.md', 'the file');
+		handleInvoke = (cmd, args) => {
+			if (cmd === 'canonicalize_path') return args.path;
+			if (cmd === 'open_markdown_preview') return ['', disk.get(args.path), true, false, 'UTF-8'];
+			if (cmd === 'read_file_content_checked') return [disk.get(args.path), false, 'UTF-8'];
+			return null;
+		};
+
+		await openTab();
+
+		const tab = tabManager.activeTab!;
+		assert.deepEqual(refusedSaves, [], 'a conflict was raised for a file the tab had never shown');
+		assert.equal(tab.rawContent, 'the file');
+		assert.equal(tab.isDirty, false);
+	}
+});
+
 test('entering split view no longer turns Live Mode off behind the user', () => {
 	// #692. Split used to kill live mode on the way in, with no comment and no
 	// way back — the setting was silently dropped and stayed dropped after
