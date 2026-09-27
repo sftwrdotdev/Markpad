@@ -78,9 +78,17 @@ test('the arriving tab is put back where its reader was, after its document land
 test('a second transfer of the same tab is refused while one is in flight', () => {
 	// The menu entry becomes clickable again long before the transfer
 	// resolves; two payloads for one tab means two windows each build it.
-	assert.match(session, /const transfersInFlight = new Set<string>\(\);/);
-	assert.match(session, /if \(transfersInFlight\.has\(tabId\)\) return false;/);
-	assert.match(session, /\} finally \{\s*\n\s*transfersInFlight\.delete\(tabId\);/);
+	assert.match(session, /if \(tabManager\.transferring\.has\(tabId\)\) return false;/);
+	assert.match(session, /\} finally \{\s*\n\s*tabManager\.transferring\.delete\(tabId\);/);
+});
+
+test('a tab in flight takes no keys and no auto-save in the window it is leaving', () => {
+	// The store refuses the writes (tabTransferFreezesSource.spec.ts); these are
+	// the two component halves no spec can mount.
+	const editor = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
+	assert.match(editor, /const readOnly = id !== null && tabManager\.transferring\.has\(id\);[^]*readOnly \}\)/);
+	assert.match(viewer, /transferring: tabManager\.transferring\.has\(tab\.id\)/);
+	assert.match(viewer, /const eligible = [^\n]*!s\.transferring/);
 });
 
 test('the broker binds every operation to the window that may perform it', () => {

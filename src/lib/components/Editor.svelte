@@ -2313,7 +2313,12 @@
 
 	$effect(() => {
 		if (editorReady && editor) {
-			editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace));
+			// A tab being moved to another window refuses edits in the store
+			// (`TabManager.transferring`), so the editor must not take keys it
+			// would then be showing and not saving.
+			const id = tabManager.activeTabId;
+			const readOnly = id !== null && tabManager.transferring.has(id);
+			editor.updateOptions({ ...editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace), readOnly });
 		}
 	});
 

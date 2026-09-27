@@ -383,17 +383,17 @@ export function createWindowSession(options: WindowSessionOptions) {
 	// before it resolves. Starting a second transfer for the same tab stages a
 	// second payload: two windows each claim one, both build the tab, and the
 	// source only removes it once -- leaving the same document open twice,
-	// each copy with its own auto-save timer.
-	const transfersInFlight = new Set<string>();
-
+	// each copy with its own auto-save timer. The set is
+	// `TabManager.transferring`, which also freezes the tab while it is in
+	// flight.
 	async function transfer(tabId: string, deliver: (token: string) => Promise<void>): Promise<boolean> {
 		if (!options.canTransfer(tabId)) return false;
-		if (transfersInFlight.has(tabId)) return false;
-		transfersInFlight.add(tabId);
+		if (tabManager.transferring.has(tabId)) return false;
+		tabManager.transferring.add(tabId);
 		try {
 			return await stageTransfer(tabId, deliver);
 		} finally {
-			transfersInFlight.delete(tabId);
+			tabManager.transferring.delete(tabId);
 		}
 	}
 

@@ -2556,6 +2556,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// clears the flag, so the tab becomes eligible again on the next
 			// pass without anything having to remember to re-arm it.
 			decodedLossily: tab.hasReplacementChars,
+			// Reactive for the same reason: a move that fails re-arms the timer.
+			transferring: tabManager.transferring.has(tab.id),
 		}));
 
 		untrack(() => {
@@ -2577,7 +2579,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// produces that explanation, so it is deliberately allowed
 				// through; re-arming after it would only reach the same refusal
 				// every 1.5s for as long as the user keeps typing.
-				const eligible = s.isDirty && s.path !== '' && s.editable && !s.hasPendingConflict
+				const eligible = s.isDirty && s.path !== '' && s.editable && !s.hasPendingConflict && !s.transferring
 					&& !(s.decodedLossily && documentSession.isLossySaveRefused(s.id));
 				const prevRef = lastContentRefByTab.get(s.id);
 				const refChanged = prevRef !== s.contentRef;

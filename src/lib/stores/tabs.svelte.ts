@@ -1,3 +1,4 @@
+import { SvelteSet } from 'svelte/reactivity';
 import { t } from '../utils/i18n.js';
 import { nextUntitledTitle } from '../utils/untitledTitle.js';
 import { settings } from './settings.svelte.js';
@@ -327,6 +328,15 @@ class TabManager {
 	tabs = $state<Tab[]>([]);
 	activeTabId = $state<string | null>(null);
 	windowTag = $state<{ name: string; color: string; pinned: boolean } | null>(null);
+
+	/**
+	 * Tabs on their way to another window, from the snapshot until the claim or
+	 * the failure. The claim closes the tab here, so whatever was written into
+	 * it in between was closed with it, and a save in between moved the
+	 * baseline the arriving copy compares the disk against. Edits and saves
+	 * are refused for these tabs instead, and the editor goes read-only.
+	 */
+	transferring = new SvelteSet<string>();
 
 	/**
 	 * The sticky "does a new split start scroll-locked" answer, stored as
@@ -801,7 +811,7 @@ class TabManager {
 
 	updateTabRawContent(id: string, raw: string) {
 		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
+		if (tab && !this.transferring.has(id)) {
 			tab.rawContent = raw;
 		}
 	}

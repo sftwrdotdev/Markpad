@@ -661,6 +661,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	async function saveContent(tabId?: string): Promise<boolean> {
 		const tab = tabId ? tabManager.tabs.find((item) => item.id === tabId) : tabManager.activeTab;
 		if (!tab) return false;
+		// The copy that left carries the baseline as it was; see
+		// `TabManager.transferring`.
+		if (tabManager.transferring.has(tab.id)) return false;
 		// Backstop, not the main defence: every path that lets the user change
 		// a large file completes its buffer first. If one is ever missed, the
 		// write must fail loudly rather than silently truncate the document.
@@ -702,6 +705,8 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		options.cancelPendingAutoSave(tab.id);
 		if (refuseIfLossilyDecoded(tab, targetPath, targetKey)) return false;
 		return writeExclusively(tab.id, async () => {
+			// A save queued before the move started must not land after it.
+			if (tabManager.transferring.has(tab.id)) return false;
 			// Snapshot taken on the far side of the wait. Anything typed while
 			// the previous write drained is part of what this save is for.
 			const snapshot = tab.rawContent;
