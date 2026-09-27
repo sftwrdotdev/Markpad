@@ -1477,7 +1477,7 @@ fn preprocess_for_positions(markdown: &str) -> MaskedMath {
 /// the buffer's. comrak's `front_matter_delimiter` keeps the numbering too,
 /// but it rejects `--- ` and an indented closing fence, which the app accepts:
 /// this is `findFrontMatterRange` in frontMatter.ts.
-fn blank_front_matter(markdown: &str) -> Cow<'_, str> {
+pub(crate) fn blank_front_matter(markdown: &str) -> Cow<'_, str> {
     let body = markdown.strip_prefix('\u{feff}').unwrap_or(markdown);
     let mut lines = body.split_inclusive('\n');
     let opens = lines.next().is_some_and(|line| {

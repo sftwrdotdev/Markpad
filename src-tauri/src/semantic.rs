@@ -27,9 +27,11 @@
 //! from the first character on, and a span computed in bytes lands in the middle
 //! of a character — where Monaco silently drops it.
 
+use std::borrow::Cow;
+
 use comrak::nodes::{AstNode, ListType, NodeValue};
 
-use crate::markdown::markdown_options;
+use crate::markdown::{blank_front_matter, markdown_options};
 
 /// One coloured range, in the coordinates Monaco's semantic tokens speak:
 /// zero-based line, zero-based UTF-16 column, length in UTF-16 code units.
@@ -61,11 +63,19 @@ pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
     let lines: Vec<&str> = content.split('\n').collect();
     let mut raw: Vec<(ByteSpan, &'static str)> = Vec::new();
 
+    // Front matter is YAML, and parsed as markdown its closing `---` makes it
+    // a setext heading. The parse gets it blanked instead, which empties those
+    // lines and leaves the rest byte for byte, so every position below is
+    // still the buffer's.
+    let parsed = blank_front_matter(content);
     let arena = comrak::Arena::new();
     let options = markdown_options();
-    let root = comrak::parse_document(&arena, content, &options);
+    let root = comrak::parse_document(&arena, &parsed, &options);
     for node in root.descendants() {
         collect_node(node, &lines, &mut raw);
+    }
+    if let Cow::Owned(blanked) = &parsed {
+        front_matter_spans(&lines, blanked, &mut raw);
     }
     app_syntax_spans(&lines, &mut raw);
 
@@ -102,6 +112,35 @@ pub fn semantic_spans(content: &str) -> Vec<SemanticSpan> {
         });
     }
     spans
+}
+
+/// The lines `blank_front_matter` emptied, each whole: the block runs through
+/// the closing fence, which is the last line it changed. Being whole lines,
+/// these claim their lines before anything `app_syntax_spans` finds in the YAML.
+fn front_matter_spans(lines: &[&str], blanked: &str, out: &mut Vec<(ByteSpan, &'static str)>) {
+    let Some(close) = lines
+        .iter()
+        .zip(blanked.split('\n'))
+        .enumerate()
+        .filter(|(_, (raw, blank))| *raw != blank)
+        .map(|(line, _)| line)
+        .last()
+    else {
+        return;
+    };
+    for (line, text) in lines.iter().enumerate().take(close + 1) {
+        let end = text.trim_end_matches('\r').len();
+        if end > 0 {
+            out.push((
+                ByteSpan {
+                    line,
+                    start: 0,
+                    end,
+                },
+                "frontmatter",
+            ));
+        }
+    }
 }
 
 /// The UTF-16 offset of a byte offset, or `None` if it is not a char boundary.
@@ -177,7 +216,6 @@ fn collect_node<'a>(
                 emit_fence_lines(node, lines, out);
             }
         }
-        NodeValue::FrontMatter(_) => emit_whole_lines(node, lines, "frontmatter", out),
         NodeValue::Table(_) => {
             // The `|---|---|` row is not a `TableRow` — it belongs to the table
             // itself — so its pipes have to be picked up here or the frame
@@ -996,5 +1034,24 @@ mod tests {
             !found.iter().any(|s| s.1 == 1),
             "the code itself keeps its own colouring: {found:?}"
         );
+    }
+
+    /// Front matter is YAML, not markdown. Parsed as the buffer, its closing
+    /// `---` underlines the YAML into a setext heading, so the keys came out
+    /// bold in the heading colour. The body after it keeps its buffer lines.
+    #[test]
+    fn front_matter_is_not_a_heading() {
+        // Math in the YAML is not typeset either: the whole line is claimed.
+        let text = "---\ntitle: Hello\nprice: $5 or $6\n---\n\n# Body\n";
+        for line in 0..4 {
+            assert_eq!(kinds_on(text, line), ["frontmatter"], "line {line}");
+        }
+        assert_eq!(kinds_on(text, 5), ["heading.marker", "heading"]);
+
+        // The app's fences (`findFrontMatterRange`): a BOM, CRLF, an indented
+        // closing fence.
+        let crlf = "\u{feff}---\r\ntitle: Hello\r\n  ---\r\n# Top\r\n";
+        assert_eq!(kinds_on(crlf, 1), ["frontmatter"]);
+        assert_eq!(kinds_on(crlf, 3), ["heading.marker", "heading"]);
     }
 }
