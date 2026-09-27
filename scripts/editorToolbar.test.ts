@@ -286,6 +286,15 @@ test('quote nests around an already quoted line instead of replacing it', () => 
 	assert.deepEqual(toggleLineMarker('fmt-quote', ['> alpha', '> beta']), ['alpha', 'beta']);
 });
 
+test('quote comes off a quote whose markers have no space after them', () => {
+	// A paragraph break inside a quote is a bare `>`, and `>text` is a quote too.
+	// Reading only `> ` as the marker judged both "not quoted" and nested them.
+	assert.deepEqual(toggleLineMarker('fmt-quote', ['> a', '>', '> b']), ['a', '', 'b']);
+	assert.deepEqual(toggleLineMarker('fmt-quote', ['>a', '>b']), ['a', 'b']);
+	// One space is the marker's; the rest belongs to the quoted text.
+	assert.deepEqual(toggleLineMarker('fmt-quote', ['>     code']), ['    code']);
+});
+
 test('a bracketed link at the head of a list item is not read as a task box', () => {
 	assert.deepEqual(toggleLineMarker('fmt-numbered-list', ['- [label](url)']), ['1. [label](url)']);
 });

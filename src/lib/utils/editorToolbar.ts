@@ -117,7 +117,11 @@ type LineMarker = {
 };
 
 const LINE_MARKERS = {
-	'fmt-quote': { prefix: INDENT, own: /^>\s+/, render: () => '> ', competing: null },
+	// The space after `>` is optional: a quote's blank line is a bare `>`, and
+	// `>text` is a quote too. Requiring it judged those lines unquoted, so a
+	// multi-paragraph quote nested instead of coming off. Only one space goes
+	// with the marker; the rest is the quoted text's own indentation.
+	'fmt-quote': { prefix: INDENT, own: /^> ?/, render: () => '> ', competing: null },
 	// The list toggles exclude a following task box from `own` so that they add
 	// their marker to a checklist item instead of un-toggling it and leaving the
 	// box behind.
