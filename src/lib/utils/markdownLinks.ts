@@ -31,6 +31,18 @@ export function decodeLinkPath(path: string): string {
 	}
 }
 
+/**
+ * The element ids a same-document `#fragment` may name, decoded first. comrak
+ * percent-encodes the href to a heading but not the heading's id, and
+ * percent-encodes a footnote's id itself (`fn-%E6%B3%A8`), so a CJK heading
+ * is found only decoded and a CJK footnote only as written. A leading `^` is
+ * a block reference and is not part of the id.
+ */
+export function anchorIdCandidates(fragment: string): string[] {
+	const ids = [decodeLinkPath(fragment), fragment].map((id) => (id.startsWith('^') ? id.substring(1) : id));
+	return [...new Set(ids)];
+}
+
 export function hasMarkdownLinkExtension(path: string): boolean {
 	return MARKDOWN_LINK_EXTENSION_PATTERN.test(path);
 }

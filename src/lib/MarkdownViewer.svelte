@@ -82,7 +82,7 @@ import {
 	type FrontMatterField,
 } from './utils/frontMatter.js';
 import {
-	decodeLinkPath,
+	anchorIdCandidates,
 	getMarkdownLinkTarget as getRelativeMarkdownTarget,
 	hasMarkdownLinkExtension,
 	normalizeComparableMarkdownPath,
@@ -1915,18 +1915,22 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		},
 	};
 
-	function scrollToAnchor(anchor: string, options: { pushHistory?: boolean } = {}) {
-		let id = decodeLinkPath(anchor);
-		if (id.startsWith('^')) {
-			id = id.substring(1);
+	// Looked up in the visible host, not the article. Heading ids are minted per
+	// document, so with a host per open tab the same `#id` exists once per tab
+	// that has that heading; the article would hand back whichever came first in
+	// the DOM, which is not the document on screen.
+	function findAnchorTarget(anchor: string): HTMLElement | null {
+		for (const id of anchorIdCandidates(anchor)) {
+			const el =
+				(previewBlocks?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null) ||
+				(previewBlocks?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
+			if (el) return el;
 		}
-		// Looked up in the visible host and scrolled on the article. Heading ids
-		// are minted per document, so with a host per open tab the same `#id`
-		// exists once per tab that has that heading; the article would hand back
-		// whichever came first in the DOM, which is not the document on screen.
-		const el =
-			(previewBlocks?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null) ||
-			(previewBlocks?.querySelector(`[name="${CSS.escape(id)}"]`) as HTMLElement | null);
+		return null;
+	}
+
+	function scrollToAnchor(anchor: string, options: { pushHistory?: boolean } = {}) {
+		const el = findAnchorTarget(anchor);
 		if (el && markdownBody) {
 			if (options.pushHistory !== false) pushScrollHistory();
 			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: jumpBehavior });
@@ -3101,9 +3105,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 			// tooltip for same-page anchor links: show text of target header
 			if (rawHref.startsWith('#')) {
-				let id = rawHref.substring(1);
-				if (id.startsWith('^')) id = id.substring(1);
-				const el = previewBlocks?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
+				const el = findAnchorTarget(rawHref.substring(1));
 				if (el) {
 					// Use data-label if it's a block anchor, otherwise use textContent
 					let text = el.getAttribute('data-label') || el.textContent || '';
