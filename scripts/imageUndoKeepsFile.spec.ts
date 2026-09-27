@@ -159,6 +159,9 @@ function createDocument(initial: string) {
 		getSelections: () => [new FakeRange(1, buffer.length + 1, 1, buffer.length + 1)],
 		setSelections: () => {},
 		getTargetAtClientPoint: () => null,
+		// Every paste and drop is its own undo step; `undoStack` below models one
+		// entry per edit already.
+		pushUndoStop: () => true,
 		executeEdits: (_source: string, edits: Edit[]) => {
 			undoStack.push(buffer);
 			for (const edit of edits) {

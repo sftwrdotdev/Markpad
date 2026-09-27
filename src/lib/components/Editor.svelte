@@ -916,6 +916,7 @@
 		const selection = editor.getSelection();
 		if (!selection) return;
 		const op = { range: selection, text: text, forceMoveMarkers: true };
+		editor.pushUndoStop();
 		editor.executeEdits("my-source", [op]);
 	};
 
@@ -958,6 +959,7 @@
 		const startColumn = selection.startColumn - reach;
 		const after = inlineWrapSelectionAfter(id, startColumn, selected, text);
 
+		editor.pushUndoStop();
 		editor.executeEdits(
 			"toggle-format",
 			[
@@ -1001,6 +1003,7 @@
 		// Nothing selected: the caret goes between the tags, as it does between
 		// the Markdown markers above (#778).
 		const caret = startTag.length + selection.startColumn;
+		editor.pushUndoStop();
 		editor.executeEdits(
 			"toggle-format",
 			[{ range: selection, text: newText }],
@@ -1030,6 +1033,7 @@
 			model.getLineMaxColumn(endLine),
 		);
 		const lines = model.getValueInRange(range).split(/\r?\n/);
+		editor.pushUndoStop();
 		editor.executeEdits(source, [
 			{
 				range,
@@ -1260,6 +1264,7 @@
 		const block = text.startsWith("```\n") && text.endsWith("\n```")
 			? text.slice(4, -4).replace(/\n$/, "")
 			: `\`\`\`\n${text}\n\`\`\``;
+		editor.pushUndoStop();
 		editor.executeEdits("fmt-code-block", [
 			{ range: selection, text: block, forceMoveMarkers: true },
 		]);
@@ -1273,6 +1278,7 @@
 		const text = model.getValueInRange(selection);
 		const label = text || "link text";
 		const link = `[${label}](url)`;
+		editor.pushUndoStop();
 		editor.executeEdits("fmt-link", [
 			{ range: selection, text: link, forceMoveMarkers: true },
 		]);
@@ -1638,6 +1644,7 @@
 					}
 					table += "\n";
 
+					editor.pushUndoStop();
 					editor.executeEdits("insert-table", [
 						{
 							range: selection,
@@ -2041,6 +2048,7 @@
 										position.column,
 									);
 
+						editor.pushUndoStop();
 						editor.executeEdits("paste-image", [
 							{
 								range,
@@ -2056,6 +2064,10 @@
 				// fall through to text paste via Rust
 				const rawText = await invoke("clipboard_read_text").catch(() => "") as string;
 				if (!rawText) return;
+				// Every edit below is a paste, and a paste is its own undo step:
+				// `executeEdits` appends to the step typing left open, so without
+				// this one Cmd+Z takes back the paste AND the words before it.
+				editor.pushUndoStop();
 				
 				const text = rawText.trim();
 				const urlRegex = /^(?:(?:https?|file|tauri):\/\/|www\.)[^\s]{2,}$/i;
@@ -2160,6 +2172,7 @@
 		const { text, range } = clipboardTextForSelection();
 		if (!text || !range || !editor) return;
 		await invoke('clipboard_write_text', { text }).catch(console.error);
+		editor.pushUndoStop();
 		editor.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
 	}
 
@@ -2366,6 +2379,7 @@
 			})) as string;
 			const embed = imageEmbed(relPath);
 
+			editor.pushUndoStop();
 			editor.executeEdits(
 				"drop-image",
 				[
@@ -2556,6 +2570,7 @@
 		}
 		table += "\n";
 
+		editor.pushUndoStop();
 		editor.executeEdits("insert-table", [
 			{
 				range: selection,
