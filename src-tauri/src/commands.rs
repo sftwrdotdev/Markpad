@@ -184,6 +184,10 @@ fn mime_type_for_export_path(path: &Path) -> Option<&'static str> {
         Some("bmp") => "image/bmp",
         Some("ico") => "image/x-icon",
         Some("avif") => "image/avif",
+        Some("tif") | Some("tiff") => "image/tiff",
+        Some("heic") => "image/heic",
+        Some("heif") => "image/heif",
+        Some("jxl") => "image/jxl",
         _ => return None,
     };
     Some(mime)
@@ -1189,6 +1193,26 @@ pub(crate) mod tests {
             Some("image/svg+xml")
         );
         assert_eq!(mime_type_for_export_path(Path::new("unknown.bin")), None);
+    }
+
+    /// Image types that inlined as octet-stream before export was limited to
+    /// the table keep inlining, now under their own type.
+    #[test]
+    fn export_data_url_knows_the_less_common_image_types() {
+        for (name, mime) in [
+            ("scan.tif", "image/tiff"),
+            ("scan.TIFF", "image/tiff"),
+            ("photo.heic", "image/heic"),
+            ("photo.heif", "image/heif"),
+            ("photo.avif", "image/avif"),
+            ("photo.jxl", "image/jxl"),
+        ] {
+            assert_eq!(
+                mime_type_for_export_path(Path::new(name)),
+                Some(mime),
+                "{name}"
+            );
+        }
     }
 
     #[test]
