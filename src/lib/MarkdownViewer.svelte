@@ -1075,6 +1075,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
+	 * The update's settle. No re-triggered close follows it: the process exits,
+	 * or the install fails and the window stays. Either way the review's list
+	 * has been saved, and kept it would outlive a failed install into the next
+	 * last-tab close, merge or Close Tag.
+	 */
+	async function settleForUpdate(): Promise<boolean> {
+		try {
+			return await settleForExit();
+		} finally {
+			pinFilesAtClose = null;
+		}
+	}
+
+	/**
 	 * Quit is the red button applied to every window. Each one runs its own
 	 * `onCloseRequested`: reviews its unsaved tabs, writes its own restore
 	 * snapshot, and closes.
@@ -4410,7 +4424,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	<!-- Before the modals: installing runs the unsaved-tab review, whose dialogs
 	     share this z-index, so they have to come later to be on top. -->
-	<UpdateDialog {settleForExit} />
+	<UpdateDialog settleForExit={settleForUpdate} />
 
 	<Modal
 		show={modalState.show}

@@ -26,6 +26,7 @@ const LIFTED = [
 	'closeTabAndWindowIfLast',
 	'destroyWindowAfterTabsClosed',
 	'settleForExit',
+	'settleForUpdate',
 	'mergeSelfInto',
 	'openPinnedTag',
 ];
@@ -134,6 +135,22 @@ test('the close review with restore off keeps the dirty tabs it closes in the pi
 	w.tabs.push({ id: 'c', path: '/notes/c.md', isDirty: false });
 	assert.equal(await w.fns.settleForExit(), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/b.md', '/notes/c.md']);
+});
+
+test('an update whose install fails leaves no stale review list behind', async () => {
+	// The update settles like a close but is not followed by one: when the
+	// install fails the window stays, and a later last-tab close saved the
+	// list the update's review started from.
+	const tabs = twoFiles();
+	tabs[0].isDirty = true;
+	const w = pinnedWindow(tabs);
+	assert.equal(await w.fns.settleForUpdate(), true);
+	assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
+
+	w.tabs.push({ id: 'c', path: '/notes/c.md', isDirty: false });
+	await w.fns.closeTabAndWindowIfLast('b');
+	await w.fns.closeTabAndWindowIfLast('c');
+	assert.deepEqual(w.saves.at(-1), ['/notes/c.md']);
 });
 
 test('merging a pinned window into another keeps its files in the pin', async () => {
