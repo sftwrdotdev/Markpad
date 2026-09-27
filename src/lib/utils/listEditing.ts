@@ -57,15 +57,23 @@ export type ListItem = {
  * A list item, anchored at both ends.
  *
  * The separator after the marker is REQUIRED (`[ \t]+`) and that is what keeps
- * `---` and `***` out: a thematic break is a bullet character followed by more
- * bullet characters, not by a space, so it never matches and Enter on it stays
- * Enter. The separator after a task box is optional, so that the `- [ ]` a user
- * has just typed — no trailing space yet — is recognised as the empty task item
- * it is rather than as a bullet whose text happens to be `[ ]`.
+ * `---` and `***` out. It does not keep out `- - -` or `* * *`, which are
+ * thematic breaks too; `THEMATIC_BREAK` below does that. The separator after a
+ * task box is optional, so that the `- [ ]` a user has just typed — no trailing
+ * space yet — is recognised as the empty task item it is rather than as a
+ * bullet whose text happens to be `[ ]`.
  */
 const LIST_ITEM = new RegExp(
 	String.raw`^(${LIST_MARKER_PREFIX})(${LIST_MARKER})([ \t]+)(?:(${TASK_BOX})([ \t]*))?(.*)$`,
 );
+
+/**
+ * Three or more of one of `-`, `*`, `_`, spaces allowed between them. CommonMark
+ * gives such a line to the thematic break even where it also reads as a list
+ * item, so `- - -` is a rule, and Enter on it stays Enter. `- -` is too short to
+ * be one and stays an item.
+ */
+const THEMATIC_BREAK = /^([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
 
 /**
  * The whitespace a marker ends with, which the caret test below does NOT count
@@ -129,7 +137,7 @@ const ORDERED_ONLY = new RegExp(String.raw`^${ORDERED_MARKER}$`);
 /** The item `line` is, or null when it is not a list item at all. */
 export function parseListItem(line: string): ListItem | null {
 	const match = LIST_ITEM.exec(line);
-	if (!match) return null;
+	if (!match || THEMATIC_BREAK.test(line.slice(match[1].length))) return null;
 
 	const [, prefix, marker, spacing, box, boxSpacing, content] = match;
 	const markerLength =

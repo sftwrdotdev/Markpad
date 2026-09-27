@@ -123,6 +123,23 @@ test('lines that are not list items are left to the ordinary Enter', () => {
 	}
 });
 
+test('a thematic break written with spaces keeps the plain Enter', () => {
+	// CommonMark: when a line can be a thematic break or a list item, the break
+	// wins. `- - -` matched the list pattern and Enter wrote a `- ` under it.
+	for (const line of ['- - -', '* * *', '-  -  -', '* * * *', '> - - -', '  - - -']) {
+		assert.equal(parseListItem(line), null, JSON.stringify(line));
+	}
+	assert.equal(enterAtEnd('- - -'), null);
+	assert.equal(enterAtEnd('* * *'), null);
+	// Inside a quote the break is still not an item, and the quote continues.
+	assert.deepEqual(enterAtEnd('> - - -'), { kind: 'continue', text: '> ' });
+	// Two dashes are not a break: `- -` is an item, and so is an item whose text
+	// is a break in another character.
+	assert.deepEqual(enterAtEnd('- -'), { kind: 'continue', text: '- ' });
+	assert.deepEqual(enterAtEnd('- * * *'), { kind: 'continue', text: '- ' });
+	assert.deepEqual(enterAtEnd('- - - text'), { kind: 'continue', text: '- ' });
+});
+
 // -------------------------------------------------------- block quotes (#700)
 
 test('a quoted line continues the quote', () => {
