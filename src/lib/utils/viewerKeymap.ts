@@ -91,7 +91,19 @@ export type KeyStroke = {
 	readonly shiftKey: boolean;
 	readonly altKey: boolean;
 	readonly target?: EventTarget | null;
+	readonly getModifierState?: (key: string) => boolean;
 };
+
+/**
+ * AltGr typing a character, not a Ctrl+Alt chord.
+ *
+ * Windows sends AltGr as Ctrl+Alt, so on a Polish layout AltGr+Z (ż) is also
+ * Ctrl+Alt+Z. The AltGraph modifier is what tells them apart. `ctrlKey` is
+ * required so this cannot touch macOS, where the chords are Cmd+Option.
+ */
+export function isAltGraphChord(e: Pick<KeyStroke, 'ctrlKey' | 'getModifierState'>): boolean {
+	return e.ctrlKey && e.getModifierState?.('AltGraph') === true;
+}
 
 /**
  * Everything about the app a branch below is allowed to know.
@@ -194,10 +206,13 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	 * Three branches are deliberately not written in these terms, each with its
 	 * reason at the branch: tab cycling (Shift picks the direction), zoom in
 	 * (`+` is the shifted `=`), and the Alt-only navigation chords.
+	 *
+	 * `modAlt` also refuses AltGr, which Windows sends as Ctrl+Alt: that key is
+	 * typing a character, and every Mod+Alt branch inherits the refusal here.
 	 */
 	const mod = cmdOrCtrl && !e.shiftKey && !e.altKey;
 	const modShift = cmdOrCtrl && e.shiftKey && !e.altKey;
-	const modAlt = cmdOrCtrl && !e.shiftKey && e.altKey;
+	const modAlt = cmdOrCtrl && !e.shiftKey && e.altKey && !isAltGraphChord(e);
 
 	// The macOS application menu owns ⌘Q. Document shortcuts remain in the
 	// in-window controls, so they continue to act on the current webview.

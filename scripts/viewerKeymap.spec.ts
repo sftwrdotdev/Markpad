@@ -259,3 +259,18 @@ test('Mod+Alt+Z reaches Zen mode from the preview', () => {
 	assert.equal(viewerCommandFor(chord('z', 'KeyZ', { ctrlKey: true, shiftKey: true }), READING), null);
 	assert.equal(viewerCommandFor(chord('z', 'KeyZ', { ctrlKey: true, altKey: true, shiftKey: true }), READING), null);
 });
+
+test('AltGr typing a character is not a Mod+Alt chord', () => {
+	// Windows sends AltGr as Ctrl+Alt, with the AltGraph modifier on. Polish
+	// types ż with AltGr+Z, which was toggling Zen mode instead.
+	const altGr = (key: string, code: string): KeyStroke => ({
+		...chord(key, code, { ctrlKey: true, altKey: true }),
+		getModifierState: (name: string) => name === 'AltGraph',
+	});
+	assert.equal(viewerCommandFor(altGr('ż', 'KeyZ'), READING), null);
+	assert.equal(viewerCommandFor(altGr('[', 'BracketLeft'), { ...READING, isSplit: true }), null);
+
+	// A real Ctrl+Alt still is.
+	const zen = { ...chord('z', 'KeyZ', { ctrlKey: true, altKey: true }), getModifierState: () => false };
+	assert.equal(viewerCommandFor(zen, READING), 'toggle-zen-mode');
+});

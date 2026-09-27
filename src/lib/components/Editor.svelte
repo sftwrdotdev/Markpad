@@ -14,6 +14,7 @@
 	} from '../utils/editorToolbar.js';
 	import { isInFencedCode } from '../utils/codeFence.js';
 	import { frontMatterLineOffset } from '../utils/frontMatter.js';
+	import { isAltGraphChord } from '../utils/viewerKeymap.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
@@ -849,6 +850,15 @@
 			EDITING_KEY_CONTEXT,
 		);
 
+		// AltGr on Windows arrives as Ctrl+Alt, and Monaco resolves a keystroke
+		// from Ctrl/Alt and the key code without looking at AltGraph, so Polish
+		// AltGr+Z matched Ctrl+Alt+Z and ż was never typed. The editor's own
+		// keydown fires before the keybinding service dispatches (see the vim
+		// note above), so this key is set in time for the Ctrl+Alt actions'
+		// `keybindingContext` to refuse it. `monacoAltGraph.spec.ts` shows both.
+		const altGraphChord = editor.createContextKey<boolean>("altGraphChord", false);
+		editor.onKeyDown((e) => altGraphChord.set(isAltGraphChord(e.browserEvent)));
+
 		editorReady = true;
 
 		// After the view-state / anchor-line restore above, deliberately: an
@@ -1445,6 +1455,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyZ,
 				],
+				keybindingContext: "!altGraphChord",
 				run: () => {
 					settings.toggleZenMode();
 				},
@@ -1631,6 +1642,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyT,
 				],
+				keybindingContext: "!altGraphChord",
 				run: () => {
 					const selection = editor.getSelection();
 					if (!selection) return;
