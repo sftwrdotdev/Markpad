@@ -522,7 +522,15 @@ fn process_internal_embeds(content: &str) -> Cow<'_, str> {
         let src = escape_html_attribute(&path.replace(" ", "%20"));
         let alt = escape_html_attribute(path);
 
-        if let Some(size_str) = size {
+        // Wrapped in a `<span>` because a bare `<img …/>` alone on a line is a
+        // complete open tag with nothing after it, which CommonMark reads as
+        // the start of an HTML block (type 7). That block runs to the next
+        // blank line and passes every line in it through as raw text, so the
+        // prose, emphasis and task checkboxes under an embed went unrendered.
+        // A line opening with `<span><img` is not that shape, and `span` is
+        // not a block tag, so the embed stays inline in a paragraph exactly
+        // like `![](a.png)` does.
+        let img = if let Some(size_str) = size {
             if size_str.contains('x') {
                 let mut dims = size_str.split('x');
                 let width = escape_html_attribute(dims.next().unwrap_or(""));
@@ -541,7 +549,8 @@ fn process_internal_embeds(content: &str) -> Cow<'_, str> {
             }
         } else {
             format!("<img src=\"{}\" alt=\"{}\" />", src, alt)
-        }
+        };
+        format!("<span>{img}</span>")
     })
 }
 
@@ -2467,6 +2476,26 @@ pub(crate) mod tests {
         let out = process_internal_embeds("![[my photo.png]]\n");
         assert!(out.contains("src=\"my%20photo.png\""), "got: {out}");
         assert!(out.contains("alt=\"my photo.png\""), "got: {out}");
+    }
+
+    #[test]
+    fn an_embed_alone_on_a_line_does_not_swallow_the_lines_below() {
+        // A bare `<img …/>` alone on a line starts an HTML block (CommonMark
+        // type 7), which runs to the next blank line and passes everything in
+        // it through unparsed: no emphasis, no checkbox, no sourcepos.
+        for embed in [
+            "![[a.png]]",
+            "![[a.png|300]]",
+            "![[a.png|300x200]]",
+            "- ![[a.png]]",
+        ] {
+            let html = convert_markdown(&format!("{embed}\nSome **bold** text\n- [ ] task\n"));
+            assert!(html.contains(">bold</strong>"), "{embed}: {html}");
+            assert!(html.contains("data-task-checkbox"), "{embed}: {html}");
+            assert!(html.contains("<img src=\"a.png\""), "{embed}: {html}");
+        }
+        let sized = convert_markdown("![[a.png|300x200]]\nnext\n");
+        assert!(sized.contains("width=\"300\" height=\"200\""), "{sized}");
     }
 
     #[test]
