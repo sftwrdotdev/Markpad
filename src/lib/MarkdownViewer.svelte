@@ -885,13 +885,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	/**
 	 * Every path that ends a window saves the pin before it closes tabs. An
 	 * empty window says nothing about the group, so it never overwrites it.
+	 * It only refreshes the entry: another window may have unpinned the tag.
 	 */
 	async function savePinnedTagIfNeeded() {
 		const tag = tabManager.windowTag;
 		if (!tag?.pinned) return;
 		const files = pinFilesAtClose ?? openFilePaths();
 		if (files.length === 0) return;
-		await invoke('save_pinned_tag', { name: tag.name, color: tag.color, files });
+		const pinned = await invoke('update_pinned_tag', { name: tag.name, color: tag.color, files });
+		if (!pinned) tabManager.setWindowTag({ ...tag, pinned: false });
 	}
 
 	async function openPinnedTag(tag: { name: string; color: string; files: string[] }) {

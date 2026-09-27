@@ -212,6 +212,27 @@ fn save_pinned_tag_at(
     })
 }
 
+/// Refreshes an existing pin and reports whether there was one. A window
+/// saves its pin as it ends, and another window may have unpinned the tag in
+/// the meantime; only the explicit pin in `save_pinned_tag_at` creates one.
+fn update_pinned_tag_at(
+    lock: &Mutex<()>,
+    path: &Path,
+    name: String,
+    color: String,
+    files: Vec<String>,
+) -> Result<bool, crate::error::Error> {
+    let mut found = false;
+    update_pinned_tags(lock, path, |tags| {
+        if let Some(tag) = tags.iter_mut().find(|tag| tag.name == name) {
+            tag.color = color;
+            tag.files = files;
+            found = true;
+        }
+    })?;
+    Ok(found)
+}
+
 fn remove_pinned_tag_at(
     lock: &Mutex<()>,
     path: &Path,
@@ -237,6 +258,18 @@ pub fn save_pinned_tag(
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
     save_pinned_tag_at(&state.pinned_tags, &path, name, color, files).map_err(String::from)
+}
+
+#[tauri::command]
+pub fn update_pinned_tag(
+    app: AppHandle,
+    name: String,
+    color: String,
+    files: Vec<String>,
+) -> Result<bool, String> {
+    let path = pinned_tags_path(&app)?;
+    let state = app.state::<AppState>();
+    update_pinned_tag_at(&state.pinned_tags, &path, name, color, files).map_err(String::from)
 }
 
 #[tauri::command]
@@ -957,6 +990,52 @@ mod tests {
         assert_eq!(tags[0].files, vec!["/tmp/b.md".to_string()]);
 
         remove_pinned_tag_at(&lock, &path, "work".to_string()).unwrap();
+        assert!(read_pinned_tags_at(&path).is_empty());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// A window's closing save only refreshes a pin that still exists. Another
+    /// window may have unpinned the tag while this one still held it, and
+    /// writing it back then would undo that unpin.
+    #[test]
+    fn updating_a_pin_never_recreates_one_that_was_removed() {
+        let dir = temp_dir("pinned-tags-update-only");
+        let path = dir.join("pinned-tags.json");
+        let lock = Mutex::new(());
+
+        save_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "#1a73e8".to_string(),
+            vec!["/papers/a.md".to_string()],
+        )
+        .unwrap();
+        let updated = update_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "#d93025".to_string(),
+            vec!["/papers/b.md".to_string()],
+        )
+        .unwrap();
+        assert!(updated);
+        let tags = read_pinned_tags_at(&path);
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].color, "#d93025");
+        assert_eq!(tags[0].files, vec!["/papers/b.md".to_string()]);
+
+        remove_pinned_tag_at(&lock, &path, "Research".to_string()).unwrap();
+        let updated = update_pinned_tag_at(
+            &lock,
+            &path,
+            "Research".to_string(),
+            "#d93025".to_string(),
+            vec!["/papers/b.md".to_string()],
+        )
+        .unwrap();
+        assert!(!updated, "the update reported a pin that is gone");
         assert!(read_pinned_tags_at(&path).is_empty());
 
         fs::remove_dir_all(&dir).unwrap();

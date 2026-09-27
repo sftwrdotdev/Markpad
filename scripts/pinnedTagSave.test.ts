@@ -17,7 +17,7 @@ import { functionSource, readSource } from './sourceTree.js';
  *
  * The window-ending functions are lifted out of MarkdownViewer.svelte and RUN
  * against a stub window; what is asserted is the last list sent to
- * `save_pinned_tag`.
+ * `update_pinned_tag`.
  */
 
 const LIFTED = [
@@ -40,6 +40,9 @@ function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean;
 	}).outputText;
 
 	const saves: string[][] = [];
+	// Whether the pin file still has this window's entry. Another window can
+	// unpin the tag from Home while this one holds it.
+	const pin = { exists: true };
 	const calls: string[] = [];
 	const loaded: string[] = [];
 	let destroyed = false;
@@ -58,8 +61,12 @@ function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean;
 		tabManager,
 		settings: { closeWindowWithLastTab: true, restoreStateOnReopen: false, autoSave: false, language: 'en', ...settings },
 		invoke: async (command: string, args?: { files?: string[]; token?: string }) => {
-			if (command === 'save_pinned_tag') saves.push([...args!.files!]);
-			else calls.push(args?.token ? `${command}:${pinnedTagFromWindowLabel(`window-${args.token}`)}` : command);
+			if (command === 'update_pinned_tag') {
+				saves.push([...args!.files!]);
+				return pin.exists;
+			}
+			if (command === 'save_pinned_tag') throw new Error('a closing window recreated its pin');
+			calls.push(args?.token ? `${command}:${pinnedTagFromWindowLabel(`window-${args.token}`)}` : command);
 		},
 		pinnedTagHolder: async () => undefined,
 		pinnedWindowToken,
@@ -87,7 +94,7 @@ function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean;
 	});
 	const build = new Function('scope', `with (scope) { ${js}\nreturn { ${LIFTED.join(', ')} }; }`);
 	const fns = build(scope) as Record<string, (...args: any[]) => Promise<unknown>>;
-	return { fns, tabs, saves, calls, loaded, tabManager, isDestroyed: () => destroyed };
+	return { fns, tabs, saves, pin, calls, loaded, tabManager, isDestroyed: () => destroyed };
 }
 
 const twoFiles = (): Tab[] => [
@@ -134,6 +141,13 @@ test('merging a pinned window into another keeps its files in the pin', async ()
 	await w.fns.mergeSelfInto('other');
 	assert.equal(w.isDestroyed(), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
+});
+
+test('a pin another window removed stays removed when this window closes', async () => {
+	const w = pinnedWindow(twoFiles());
+	w.pin.exists = false;
+	assert.equal(await w.fns.settleForExit(), true);
+	assert.deepEqual(w.tabManager.windowTag, { name: 'work', color: '#f00', pinned: false }, 'the window still claims the pin');
 });
 
 const research = { name: 'research', color: '#0a0', files: ['/papers/x.md', '/papers/y.md'] };
