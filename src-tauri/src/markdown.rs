@@ -1464,10 +1464,45 @@ pub(crate) fn build_markdown_preview(
 /// line numbers off the parse. Every step is line-preserving, so sourcepos
 /// still addresses the caller's buffer.
 fn preprocess_for_positions(markdown: &str) -> MaskedMath {
-    let autolinks = process_parenthesized_autolinks(markdown);
+    let markdown = blank_front_matter(markdown);
+    let autolinks = process_parenthesized_autolinks(&markdown);
     let embeds = process_internal_embeds(&autolinks);
     let preprocessed = process_wikilinks(&embeds);
     mask_math_spans(&preprocessed)
+}
+
+/// `markdown` with its front matter lines emptied, so the parse does not read
+/// the closing `---` as a setext underline. The preview strips front matter
+/// before rendering; this keeps the lines instead, so sourcepos still counts
+/// the buffer's. comrak's `front_matter_delimiter` keeps the numbering too,
+/// but it rejects `--- ` and an indented closing fence, which the app accepts:
+/// this is `findFrontMatterRange` in frontMatter.ts.
+fn blank_front_matter(markdown: &str) -> Cow<'_, str> {
+    let body = markdown.strip_prefix('\u{feff}').unwrap_or(markdown);
+    let mut lines = body.split_inclusive('\n');
+    let opens = lines.next().is_some_and(|line| {
+        line.trim_end_matches(['\n', '\r'])
+            .trim_end_matches([' ', '\t'])
+            == "---"
+    });
+    if !opens {
+        return Cow::Borrowed(markdown);
+    }
+    let Some(close) = lines.position(|line| line.trim() == "---") else {
+        return Cow::Borrowed(markdown);
+    };
+    // The opening fence, the YAML, the closing fence: each becomes its line
+    // ending alone.
+    let mut blanked = String::with_capacity(markdown.len());
+    let mut rest = body;
+    for _ in 0..close + 2 {
+        let line_end = rest.find('\n').map_or(rest.len(), |i| i + 1);
+        let line = &rest[..line_end];
+        blanked.push_str(&line[line.trim_end_matches(['\n', '\r']).len()..]);
+        rest = &rest[line_end..];
+    }
+    blanked.push_str(rest);
+    Cow::Owned(blanked)
 }
 
 /// Lines the editor can fold, 1-based and inclusive.
@@ -2556,6 +2591,47 @@ pub(crate) mod tests {
             .map(|r| (r.start, r.end))
             .collect();
         assert_eq!(ranges, vec![(1, 3), (6, 9), (11, 12), (14, 16)]);
+    }
+
+    /// Front matter is not content. Parsed as markdown, its closing `---`
+    /// underlines the YAML into a setext H2 spanning the block: a heading
+    /// completion, a sticky-scroll row and a fold nobody wrote. The lines
+    /// after it keep their buffer numbers.
+    #[test]
+    fn front_matter_is_not_a_heading_and_lines_stay_the_buffers() {
+        let markdown = concat!(
+            "---\n",          // 1
+            "title: Hello\n", // 2
+            "tags: [a]\n",    // 3
+            "---\n",          // 4
+            "\n",             // 5
+            "### Intro\n",    // 6
+            "\n",             // 7
+            "> quote\n",      // 8
+            "> more\n",       // 9
+        );
+        let anchors: Vec<(u32, String)> = heading_anchors(markdown)
+            .into_iter()
+            .map(|a| (a.line, a.text))
+            .collect();
+        assert_eq!(anchors, vec![(6, "Intro".to_owned())]);
+        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown)
+            .iter()
+            .map(|r| (r.start, r.end))
+            .collect();
+        assert_eq!(ranges, vec![(8, 9)]);
+
+        // The app's rule (`findFrontMatterRange` in frontMatter.ts): a BOM and
+        // trailing blanks on the fences are allowed, CRLF too.
+        let crlf = "\u{feff}--- \r\ntitle: Hello\r\n  ---\r\n# Top\r\n";
+        let lines: Vec<u32> = heading_anchors(crlf).iter().map(|a| a.line).collect();
+        assert_eq!(lines, vec![4]);
+
+        // Only at the very start: a `---` block further down is markdown, and
+        // its setext heading is real.
+        let later = "# Top\n---\ntitle: Hello\n---\n";
+        let texts: Vec<String> = heading_anchors(later).into_iter().map(|a| a.text).collect();
+        assert_eq!(texts, vec!["Top", "title: Hello"]);
     }
 
     /// comrak never sees the buffer: four preprocessing steps run first, and
