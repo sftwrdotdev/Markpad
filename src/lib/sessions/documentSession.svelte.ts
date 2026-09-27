@@ -61,7 +61,7 @@ type DocumentSessionOptions = {
 	isScrolling: () => boolean;
 	renderRichContent: () => void;
 	onError: (message: string, error: unknown) => void;
-	/** The disk moved under a save, which was refused. Raise the conflict bar. */
+	/** The disk moved under a save, which was refused, or under a reload typed into. Raise the conflict bar. */
 	onDiskChangedUnderSave: (tabId: string) => void;
 	cancelPendingAutoSave: (tabId: string) => void;
 	/**
@@ -508,6 +508,17 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			const isCurrentLoad = () => loadRevisionByTab.get(activeId) === fullLoadRevision;
 			const isMarkdown = hasMarkdownLinkExtension(filePath);
 			const tab = tabManager.tabs.find((item) => item.id === activeId);
+			// The dirty check above ran before the reads below are awaited. A tab
+			// reloading its own file that was clean then and holds an edit when
+			// they land was typed into meanwhile — a Live Mode reload racing the
+			// keyboard. Keep the edit and raise the conflict, as for an external
+			// change to a dirty tab.
+			const reloadingCleanTab = !!tab && !tab.isDirty && isSameFilePath(tab, target);
+			const typedDuringLoad = () => {
+				if (!reloadingCleanTab || !tab.isDirty) return false;
+				options.onDiskChangedUnderSave(activeId);
+				return true;
+			};
 
 			if (isMarkdown) {
 				if (tab && !loadOptions.preserveEditState && !existing) {
@@ -550,7 +561,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// Ahead of the encoding verdict, not just the buffer: a prefix's
 				// detected encoding can differ from the whole file's, and
 				// `tab.encoding` is what the save writes with.
-				if (!isCurrentLoad()) return;
+				if (!isCurrentLoad() || typedDuringLoad()) return;
 				// Decided on every load, before the buffer can reach a writer.
 				// Both branches report both, so this also CLEARS the flag on a
 				// file the user has since converted to UTF-8 — and repoints the
@@ -560,7 +571,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				lossySaveWarnedTabs.delete(activeId);
 				if (pendingNavigateTabId) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
 				const processed = await options.renderMarkdown(content, filePath, foldsForTab(activeId));
-				if (!isCurrentLoad()) return;
+				if (!isCurrentLoad() || typedDuringLoad()) return;
 				tabManager.updateTabContent(activeId, processed);
 				// `isFull === false` means this is only the leading slice of a
 				// large file. Marking the tab keeps anything downstream from
@@ -628,7 +639,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// Same race, same guard: this branch reads the whole file, so it
 				// cannot strand a slice, but a stale one still overwrites the
 				// winner's buffer and encoding and flips the tab into the editor.
-				if (!isCurrentLoad()) return;
+				if (!isCurrentLoad() || typedDuringLoad()) return;
 				tabManager.setTabDecodedLossy(activeId, lossy);
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);

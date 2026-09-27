@@ -379,6 +379,37 @@ test('reloading a clean tab does not throw the user out of the editor', async ()
 	assert.equal(tabManager.activeTab?.isDirty, false, 'the reloaded buffer is not an edit');
 });
 
+test('a keystroke typed while the reload is in flight is kept, and raised as a conflict', async () => {
+	// The dirty check runs once, before the read and the render are awaited.
+	// Typing inside that window used to be replaced by the disk version, with
+	// the tab left looking clean.
+	reset();
+	let typed = false;
+	const session = makeSession({
+		renderMarkdown: async () => {
+			tabManager.updateTabRawContent(tabManager.activeTab!.id, 'before, and my keystroke');
+			typed = true;
+			return '';
+		},
+	});
+	const tab = open('/notes/live.md', 'before');
+	tab.isEditing = true;
+	disk.set('/notes/live.md', 'after');
+	handleInvoke = (cmd, args) => {
+		if (cmd === 'canonicalize_path') return args.path;
+		if (cmd === 'read_file_content_checked') return [disk.get(args.path), false, 'UTF-8'];
+		throw new Error(`unexpected invoke: ${cmd}`);
+	};
+
+	await session.loadMarkdown('/notes/live.md');
+
+	assert.equal(typed, true);
+	assert.equal(tab.rawContent, 'before, and my keystroke', 'the keystroke was replaced by the disk version');
+	assert.equal(tab.originalContent, 'before');
+	assert.equal(tab.isDirty, true);
+	assert.deepEqual(refusedSaves, [tab.id], 'the change on disk was not raised as a conflict');
+});
+
 test('entering split view no longer turns Live Mode off behind the user', () => {
 	// #692. Split used to kill live mode on the way in, with no comment and no
 	// way back — the setting was silently dropped and stayed dropped after
