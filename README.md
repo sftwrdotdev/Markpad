@@ -30,6 +30,7 @@
 
 **Documents**
 - Tabs, multiple windows, window tags, and a session that comes back
+- A Home page with recent files, and pinned tags that reopen a saved group of files
 - Auto-reload when a file changes on disk
 - Export to HTML, print to PDF
 - Wikilinks, embeds and callouts alongside standard Markdown. See

@@ -8,7 +8,7 @@ description: "Every syntax Markpad renders, what it looks like, and what happens
 **Open this file in Markpad, and read it twice.**
 
 - In **preview**, it shows you what Markpad can do — every feature below is the real thing rather than a description of one.
-- In **the editor** (`Ctrl`/`Cmd` + `E`, or split view), the same page shows you how each one is written.
+- In **the editor** (`Ctrl`/`Cmd` + `E`, or the Preview, Split View and Editor buttons in the title bar), the same page shows you how each one is written.
 
 That is the whole design of this file: the answer to "can it do X?" and the answer to "how do I write X?" are the same paragraph, seen from two sides.
 
@@ -89,6 +89,8 @@ HTML entities work: &copy; &mdash; &hellip; &#8594; &amp;
 ## 2. Headings
 
 Every heading gets an anchor. Hover one in the preview and a link icon appears; right-click it for **Copy Reference**, which writes a link in whichever style this document already uses.
+
+A heading too long for one line wraps into two lines of about the same length, rather than leaving a word or two alone on the second.
 
 ### A third-level heading
 
@@ -265,6 +267,15 @@ An empty cell is written with two pipes — `| 1 || 3 |` — which is why the sp
 | One | Two | Three |
 |---|---|---|
 | 1 || 3 |
+
+A table wider than the text grows into the side margins instead of scrolling inside the column, and the paragraphs around it keep their width. Digits in a cell all take the same width, so a column of numbers lines up even in a font whose numerals are proportional:
+
+| Year | Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 2025 | 1,204 | 1,118 | 1,367 | 1,450 | 1,521 | 1,489 | 1,602 | 1,711 | 1,688 | 1,745 | 1,803 | 1,911 | 18,609 |
+| 2026 | 2,016 | 1,974 | 2,208 | 2,311 | 2,390 | 2,447 | 2,519 | 2,606 | 2,688 | — | — | — | 21,159 |
+
+A table inside a list, a quote or a callout stays in the column, and export and PDF keep every table at the column width.
 
 **None of that has to be typed by hand.** With the caret in a table:
 
@@ -493,6 +504,8 @@ Pandoc and CriticMarkup mark added text with `++`: this sentence has ++an insert
 日本語のテキストもここで確認できます。**太字**と`コード`。
 
 한국어 문장도 마찬가지입니다. **굵게**와 `코드`.
+
+Where Chinese or Japanese meets Latin letters or digits, the preview adds a small gap — 用Rust写的编辑器，第2版 — without a space being written into the file. Text that already has a space is not spaced twice, and code keeps its exact width: `用Rust写`.
 
 In the editor those three paragraphs are treated as prose rather than as code: `Alt`/`Option` + `←`/`→` and double-click stop at word boundaries *inside* a Chinese or Japanese clause instead of swallowing the whole sentence, and neither the fullwidth punctuation nor the ideographic space an IME produces is outlined as a suspicious character.
 
