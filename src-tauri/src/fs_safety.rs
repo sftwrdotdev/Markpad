@@ -338,7 +338,15 @@ pub(crate) fn decode_text(bytes: &[u8]) -> DecodedText {
     let mut detector = chardetng::EncodingDetector::new(chardetng::Iso2022JpDetection::Allow);
     detector.feed(bytes, true);
     let encoding = detector.guess(None, chardetng::Utf8Detection::Deny);
-    decoded(encoding, encoding.name(), bytes)
+    let text = decoded(encoding, encoding.name(), bytes);
+    // `chardetng` never answers GB18030, and the GBK decoder reads GB18030's
+    // four-byte sequences although the GBK encoder cannot write them, so such a
+    // file could not be saved unchanged. It is GB18030, and is labelled so.
+    // Only then: the encoders disagree on U+20AC, which a GBK file keeps as 0x80.
+    if encoding == encoding_rs::GBK && !text.lossy && encoding.encode(&text.content).2 {
+        return decoded(encoding_rs::GB18030, encoding_rs::GB18030.name(), bytes);
+    }
+    text
 }
 
 /// What `encode_text` refuses with when the buffer holds a character the
@@ -921,6 +929,39 @@ pub(crate) mod tests {
                 encoding.name(),
             );
         }
+    }
+
+    #[test]
+    fn a_gb18030_four_byte_sequence_survives_an_unedited_save() {
+        // `chardetng` calls this GBK, and the GBK decoder reads the four-byte
+        // U+20000 without complaint, but the GBK encoder cannot write it back:
+        // the save was refused as a character the user had typed.
+        let mut original = legacy_bytes(encoding_rs::GB18030, CHINESE_SAMPLE);
+        original.extend_from_slice(&[0x95, 0x32, 0x82, 0x36]);
+
+        let decoded = decode_text(&original);
+        assert!(!decoded.lossy);
+        assert!(decoded.content.ends_with('\u{20000}'));
+        assert_eq!(decoded.encoding, "gb18030");
+        assert_eq!(
+            encode_text(&decoded.content, &decoded.encoding).unwrap(),
+            original
+        );
+    }
+
+    #[test]
+    fn a_gbk_document_with_a_euro_sign_stays_gbk() {
+        // The two encoders disagree on U+20AC: 0x80 in GBK, A2 E3 in GB18030.
+        // Only a document GBK cannot write back may be relabelled.
+        let original = legacy_bytes(encoding_rs::GBK, &format!("{CHINESE_SAMPLE}€\n"));
+        assert!(original.contains(&0x80));
+
+        let decoded = decode_text(&original);
+        assert_eq!(decoded.encoding, "GBK");
+        assert_eq!(
+            encode_text(&decoded.content, &decoded.encoding).unwrap(),
+            original
+        );
     }
 
     /// The reported symptom, from the other side: the U+FFFD buffer the old
