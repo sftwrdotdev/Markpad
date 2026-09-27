@@ -492,16 +492,29 @@ function siblingAbove(
  * every outliner). Shift+Tab looks for the PARENT and takes its margin, which
  * lands the line on a level that exists rather than `tabSize` columns to the
  * left of one.
+ *
+ * The sibling is `siblingAbove`'s, delimiter boundary included: `1) x` under
+ * `2. b` is the first item of a new list, so Tab has nothing to nest it under.
  */
-function targetIndent(doc: ListDocument, line: number, here: Row, back: boolean): number | null {
+function targetIndent(
+	doc: ListDocument,
+	line: number,
+	here: Row,
+	delimiter: string,
+	back: boolean,
+): number | null {
+	if (!back) {
+		const lineAt = (at: number) => doc.getLineContent(at);
+		return siblingAbove(lineAt, line, here.depth, here.indent, delimiter)?.content ?? null;
+	}
+
 	for (let above = line - 1; above >= 1; above--) {
 		const row = rowOf(doc.getLineContent(above));
 		if (row.blank) continue;
 		if (row.depth !== here.depth) break;
 
 		if (row.item) {
-			if (here.indent >= row.content) return back ? row.indent : null;
-			if (!back && here.indent >= row.indent) return row.content;
+			if (here.indent >= row.content) return row.indent;
 			continue;
 		}
 
@@ -509,8 +522,8 @@ function targetIndent(doc: ListDocument, line: number, here: Row, back: boolean)
 	}
 
 	// Nothing above owns this line. Shift+Tab still has somewhere to go if the
-	// line is indented at all; Tab has nothing to nest under.
-	return back && here.indent > 0 ? 0 : null;
+	// line is indented at all.
+	return here.indent > 0 ? 0 : null;
 }
 
 /**
@@ -542,7 +555,8 @@ export function shiftListItem(
 	if (!item) return null;
 
 	const here = rowOf(source);
-	const target = targetIndent(doc, line, here, back);
+	const delimiter = item.marker.slice(-1);
+	const target = targetIndent(doc, line, here, delimiter, back);
 	if (target === null || target === here.indent) return null;
 
 	const edited = new Map<number, string>();
@@ -557,7 +571,6 @@ export function shiftListItem(
 	// a list at whatever it says. Landing without a sibling therefore writes 1 —
 	// unless the line had no sibling before the move either, in which case it was
 	// already a list's start and `5.` is a start, not a mistake.
-	const delimiter = item.marker.slice(-1);
 	const sibling = siblingAbove(lineAt, line, here.depth, target, delimiter);
 	const first = sibling?.number == null;
 	const started = first && siblingAbove(lineAt, line, here.depth, here.indent, delimiter) === null;

@@ -343,6 +343,12 @@ test('the renumbering stops at a change of delimiter or bullet', () => {
 	// A bullet between two ordered items ends the first list the same way. A
 	// bullet has no number, so this one held already and is kept held.
 	assert.deepEqual(shift(['1. a', '2. b', '* x', '1. c'], 2), ['   1. b']);
+	// Tab reads the same boundary: `1) x` opens its own list, so it has no item
+	// above to nest under, however much `2. b` looks like one.
+	assert.equal(shift(['1. a', '2. b', '1) x'], 3), null);
+	assert.equal(shift(['- a', '* b'], 2), null);
+	// Shift+Tab still finds the parent, which does not care about the delimiter.
+	assert.deepEqual(shift(['1. a', '   1. b', '   1) x'], 3, true), ['1) x']);
 });
 
 test('the caret keeps its place in the text it was in', () => {
