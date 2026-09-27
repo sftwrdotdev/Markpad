@@ -454,7 +454,7 @@
 		{/if}
 		<div class="home-menu-container" role="presentation">
 			<button
-				class="icon-home-btn {showHome || homeMenuOpen ? 'active' : ''}"
+				class="icon-home-btn {homeMenuOpen ? 'active' : ''}"
 				onclick={(e) => {
 					e.stopPropagation();
 					homeMenuOpen = !homeMenuOpen;

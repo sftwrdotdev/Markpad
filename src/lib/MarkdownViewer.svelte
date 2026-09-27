@@ -896,7 +896,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	// Same condition as the template's HomePage gate: an empty window or the
 	// home tab shows Home without `showHome`, which is the cold-start case.
+	// Reading the window tag re-runs this when the title bar pins or unpins it.
+	// The pin's IPC is sent first and sync commands run in order, so the list sees it.
 	$effect(() => {
+		void tabManager.windowTag?.pinned;
 		if (showHome || !tabManager.activeTab || isHomePath(tabManager.activeTab.path)) refreshPinnedTags().catch(console.error);
 	});
 
