@@ -414,6 +414,10 @@ const LAUNCHABLE_EXTENSIONS: &[&str] = &[
     "application",
     "appref-ms",
     "msc",
+    // hh.exe renders a compiled help file's HTML with script enabled.
+    "chm",
+    // msdt.exe runs the troubleshooter's embedded PowerShell.
+    "diagcab",
     "jar",
 ];
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -1306,6 +1310,12 @@ pub(crate) mod tests {
         for name in [
             "x.exe", "x.bat", "x.cmd", "x.ps1", "x.vbs", "x.lnk", "x.msi", "x.scr", "x.hta",
         ] {
+            assert!(launchable(name), "{name}");
+        }
+
+        // Not programs, but their handlers run script the file carries.
+        #[cfg(target_os = "windows")]
+        for name in ["x.chm", "x.diagcab"] {
             assert!(launchable(name), "{name}");
         }
 
