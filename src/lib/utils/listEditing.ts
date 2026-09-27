@@ -447,6 +447,11 @@ function withNumber(item: ListItem, number: number): string {
  * indentation, so an item's own wrapped paragraph is scanned past and the prose
  * before the list is not.
  *
+ * An item at the same level with a different `delimiter` — the last character
+ * of the marker: `.`, `)`, or the bullet itself — is not a sibling. CommonMark
+ * starts a new list there, so `1) x` after `2. b` is a list's first item, and
+ * counting it as `3)` renumbers a list the user never touched.
+ *
  * `lineAt` rather than the document, because the cascade below has already
  * rewritten some of these lines and every later scan has to see the rewrite.
  */
@@ -455,6 +460,7 @@ function siblingAbove(
 	from: number,
 	depth: number,
 	indent: number,
+	delimiter: string,
 ): Row | null {
 	for (let line = from - 1; line >= 1; line--) {
 		const row = rowOf(lineAt(line));
@@ -465,7 +471,7 @@ function siblingAbove(
 			// Reaching that item's content column means it is the PARENT, so
 			// there is no sibling above and this line is the first of its list.
 			if (indent >= row.content) return null;
-			if (indent >= row.indent) return row;
+			if (indent >= row.indent) return row.item.marker.endsWith(delimiter) ? row : null;
 			// Deeper than this line: something nested inside an earlier sibling.
 			continue;
 		}
@@ -551,9 +557,10 @@ export function shiftListItem(
 	// a list at whatever it says. Landing without a sibling therefore writes 1 —
 	// unless the line had no sibling before the move either, in which case it was
 	// already a list's start and `5.` is a start, not a mistake.
-	const sibling = siblingAbove(lineAt, line, here.depth, target);
+	const delimiter = item.marker.slice(-1);
+	const sibling = siblingAbove(lineAt, line, here.depth, target, delimiter);
 	const first = sibling?.number == null;
-	const started = first && siblingAbove(lineAt, line, here.depth, here.indent) === null;
+	const started = first && siblingAbove(lineAt, line, here.depth, here.indent, delimiter) === null;
 	const number = first ? (started ? here.number : 1) : sibling!.number! + 1;
 	const marker = here.number === null ? item.marker : `${number}${item.marker.slice(-1)}`;
 	const shifted = rebuild(item, prefix, marker);
@@ -584,7 +591,7 @@ export function shiftListItem(
 		// No sibling means this item is the first of its own list, and a first
 		// item nobody moved keeps the number it says: `5. 6. 7.` is a list that
 		// starts at five, not a list that is wrong.
-		const previous = siblingAbove(lineAt, below, row.depth, row.indent);
+		const previous = siblingAbove(lineAt, below, row.depth, row.indent, row.item!.marker.slice(-1));
 		const fixed =
 			previous?.number == null || previous.number + 1 === row.number
 				? text

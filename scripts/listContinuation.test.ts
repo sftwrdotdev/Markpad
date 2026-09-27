@@ -335,6 +335,16 @@ test('the renumbering stops where the list does', () => {
 	});
 });
 
+test('the renumbering stops at a change of delimiter or bullet', () => {
+	// CommonMark starts a new list when the delimiter changes, so `1) x` is the
+	// first item of its own list and is not counted as the next item of `1.`.
+	assert.deepEqual(shift(['1. a', '2. b', '1) x', '2) y'], 2), ['   1. b']);
+	assert.deepEqual(shift(['1. a', '   1) x', '   2) y', '2. b'], 2, true), ['1) x']);
+	// A bullet between two ordered items ends the first list the same way. A
+	// bullet has no number, so this one held already and is kept held.
+	assert.deepEqual(shift(['1. a', '2. b', '* x', '1. c'], 2), ['   1. b']);
+});
+
 test('the caret keeps its place in the text it was in', () => {
 	// Column 7 is in front of `bcd`; after a three-column indent it is column 10,
 	// still in front of `bcd`. Losing that is how a level change stops being a
