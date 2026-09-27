@@ -5,6 +5,7 @@ import ts from 'typescript';
 
 import { reviewDirtyTabs } from '../src/lib/sessions/closeReview.js';
 import { isHomePath } from '../src/lib/utils/homeTab.js';
+import { pinnedTagFromWindowLabel, pinnedWindowToken } from '../src/lib/utils/pinnedTagWindow.js';
 import { hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
 import { functionSource, readSource } from './sourceTree.js';
 
@@ -26,6 +27,7 @@ const LIFTED = [
 	'destroyWindowAfterTabsClosed',
 	'settleForExit',
 	'mergeSelfInto',
+	'openPinnedTag',
 ];
 
 type Tab = { id: string; path: string; isDirty: boolean };
@@ -38,22 +40,30 @@ function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean;
 	}).outputText;
 
 	const saves: string[][] = [];
+	const calls: string[] = [];
+	const loaded: string[] = [];
 	let destroyed = false;
 	const closeTab = (id: string) => {
 		const at = tabs.findIndex((tab) => tab.id === id);
 		if (at !== -1) tabs.splice(at, 1);
 	};
+	const tabManager = {
+		tabs,
+		windowTag: { name: 'work', color: '#f00', pinned: true } as object | null,
+		closeTab,
+		setActive: () => {},
+		setWindowTag: (tag: object | null) => void (tabManager.windowTag = tag),
+	};
 	const known: Record<string, unknown> = {
-		tabManager: {
-			tabs,
-			windowTag: { name: 'work', color: '#f00', pinned: true },
-			closeTab,
-			setActive: () => {},
-		},
+		tabManager,
 		settings: { closeWindowWithLastTab: true, restoreStateOnReopen: false, autoSave: false, language: 'en', ...settings },
-		invoke: async (command: string, args?: { files?: string[] }) => {
+		invoke: async (command: string, args?: { files?: string[]; token?: string }) => {
 			if (command === 'save_pinned_tag') saves.push([...args!.files!]);
+			else calls.push(args?.token ? `${command}:${pinnedTagFromWindowLabel(`window-${args.token}`)}` : command);
 		},
+		pinnedTagHolder: async () => undefined,
+		pinnedWindowToken,
+		loadMarkdown: async (file: string) => void loaded.push(file),
 		appWindow: { label: 'main', destroy: async () => void (destroyed = true) },
 		canCloseTab: async (id: string) => {
 			const tab = tabs.find((item) => item.id === id);
@@ -77,7 +87,7 @@ function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean;
 	});
 	const build = new Function('scope', `with (scope) { ${js}\nreturn { ${LIFTED.join(', ')} }; }`);
 	const fns = build(scope) as Record<string, (...args: any[]) => Promise<unknown>>;
-	return { fns, tabs, saves, isDestroyed: () => destroyed };
+	return { fns, tabs, saves, calls, loaded, tabManager, isDestroyed: () => destroyed };
 }
 
 const twoFiles = (): Tab[] => [
@@ -124,4 +134,24 @@ test('merging a pinned window into another keeps its files in the pin', async ()
 	await w.fns.mergeSelfInto('other');
 	assert.equal(w.isDestroyed(), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
+});
+
+const research = { name: 'research', color: '#0a0', files: ['/papers/x.md', '/papers/y.md'] };
+
+test('opening a pinned group in a window with tabs opens a new window for it', async () => {
+	const w = pinnedWindow(twoFiles());
+	await w.fns.openPinnedTag(research);
+	assert.deepEqual(w.calls, ['create_transfer_window:research'], 'the new window reads the group from its label');
+	assert.deepEqual(w.loaded, [], 'no file of the group joins this window');
+	assert.deepEqual(w.tabs.map((tab) => tab.id), ['a', 'b']);
+	assert.deepEqual(w.tabManager.windowTag, { name: 'work', color: '#f00', pinned: true });
+});
+
+test('an empty window adopts the pinned group in place', async () => {
+	const w = pinnedWindow([]);
+	w.tabManager.windowTag = null;
+	await w.fns.openPinnedTag(research);
+	assert.deepEqual(w.calls, []);
+	assert.deepEqual(w.loaded, research.files);
+	assert.deepEqual(w.tabManager.windowTag, { ...research, pinned: true });
 });

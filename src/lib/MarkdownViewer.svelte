@@ -104,7 +104,7 @@ import {
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
-	import { pinnedTagFromWindowLabel, pinnedTagHolder } from './utils/pinnedTagWindow.js';
+	import { pinnedTagFromWindowLabel, pinnedTagHolder, pinnedWindowToken } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
@@ -894,6 +894,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const holder = await pinnedTagHolder(tag.name, appWindow.label);
 		if (holder) {
 			await invoke('focus_window', { label: holder });
+			return;
+		}
+		// Tabs already here belong to this window's own group. The pinned one
+		// opens in a window of its own, which adopts it from its label.
+		if (tabManager.tabs.some((tab) => !isHomePath(tab.path))) {
+			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()) });
 			return;
 		}
 		tabManager.setWindowTag({ ...tag, pinned: true });
