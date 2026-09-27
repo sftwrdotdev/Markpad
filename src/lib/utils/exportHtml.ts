@@ -123,7 +123,7 @@ export function rewriteMarkdownHrefForExport(href: string): string {
 	return base.replace(MARKDOWN_LINK_EXTENSION_PATTERN, '.html') + suffix;
 }
 
-export function renderStaticFrontMatterPanel(frontMatter: FrontMatterParseResult): string {
+export function renderStaticFrontMatterPanel(frontMatter: FrontMatterParseResult, title = 'Properties'): string {
 	if (!frontMatter.exists) return '';
 
 	const count = frontMatter.valid ? frontMatter.fields.length : 0;
@@ -145,7 +145,7 @@ export function renderStaticFrontMatterPanel(frontMatter: FrontMatterParseResult
 	return `<details class="frontmatter-panel export-frontmatter-panel">
 <summary class="frontmatter-summary">
 <span class="frontmatter-chevron" aria-hidden="true">›</span>
-<span class="frontmatter-title">Properties</span>
+<span class="frontmatter-title">${escapeHtml(title)}</span>
 <span class="frontmatter-count">${count}</span>
 </summary>
 <div class="frontmatter-grid">${rows}</div>

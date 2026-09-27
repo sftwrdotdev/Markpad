@@ -127,3 +127,9 @@ draft: false
 	assert.doesNotMatch(html, /\sopen(?:\s|>)/);
 	assert.doesNotMatch(html, /<(?:input|button|textarea|select)\b/i);
 });
+
+test('renderStaticFrontMatterPanel titles the panel in the language it is handed', () => {
+	const parsed = parseFrontMatter('---\ntype: plan\n---\n');
+	assert.match(renderStaticFrontMatterPanel(parsed, '属性'), /<span class="frontmatter-title">属性<\/span>/);
+	assert.match(renderStaticFrontMatterPanel(parsed, '<b>'), /<span class="frontmatter-title">&lt;b&gt;<\/span>/);
+});

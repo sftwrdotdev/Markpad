@@ -123,7 +123,7 @@
 							<span class="file-name">{getFileName(file)}</span>
 							<span class="file-path" title={file}>{file}</span>
 						</div>
-						<button class="clear-btn" onclick={(e) => onremoveRecentFile(file, e as MouseEvent)} title="Remove from history">
+						<button class="clear-btn" onclick={(e) => onremoveRecentFile(file, e as MouseEvent)} title={t('home.removeFromHistory', settings.language)}>
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="14"

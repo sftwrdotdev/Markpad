@@ -221,20 +221,6 @@ const DYNAMIC_FAMILIES: Record<string, { file: string; member: RegExp; why: stri
 	},
 };
 
-// ------------------------------------------------------- known-orphan pins
-//
-// Three leaves exist in 22 locales and never existed in English. Unlike the
-// colour block they are not misfiled: nothing in the source reads them under
-// any path, so they are dead weight rather than lost translations. Deleting
-// dead keys is deliberately out of scope for the change that introduced this
-// test, so they are pinned here instead of being swept under a wildcard.
-//
-// Pinning them is safe because the two rules interlock: should anyone ever
-// point source code at one of these keys, "every referenced key exists in
-// English" fails immediately. An orphan can be tolerated OR reachable, never
-// both.
-const KNOWN_ORPHANS = new Set(['editor.status.lines', 'tooltip.zoomIn', 'tooltip.zoomOut']);
-
 // `t(action.labelKey, …)`: resolved by the `labelKey:` harvest above. Any new
 // unexplained indirection has to be added here consciously.
 //
@@ -322,30 +308,13 @@ test('no language defines a key English does not have', () => {
 		}
 	}
 
-	const unexpected = [...orphans].filter(([key]) => !KNOWN_ORPHANS.has(key));
 	assert.equal(
-		unexpected.length,
+		orphans.size,
 		0,
-		`translations that no code path can reach (present in a locale, absent in English):\n${unexpected
+		`translations that no code path can reach (present in a locale, absent in English):\n${[...orphans]
 			.map(([key, langs]) => `  ${key}  [${langs.length}] ${langs.join(', ')}`)
 			.join('\n')}`,
 	);
-
-	// The pin must not rot: a key that got cleaned up has to leave this list.
-	for (const key of KNOWN_ORPHANS) {
-		assert.ok(orphans.has(key), `${key} is no longer an orphan — drop it from KNOWN_ORPHANS`);
-	}
-});
-
-test('pinned orphans are unreachable, so pinning them hides nothing', () => {
-	for (const { key, file } of staticKeys) {
-		assert.ok(!KNOWN_ORPHANS.has(key), `${file} reads pinned orphan ${key}`);
-	}
-	for (const prefix of dynamicPrefixes.keys()) {
-		for (const key of KNOWN_ORPHANS) {
-			assert.ok(!key.startsWith(prefix), `dynamic family ${prefix}* can reach pinned orphan ${key}`);
-		}
-	}
 });
 
 test('every template-literal key family is declared and resolvable', () => {

@@ -52,6 +52,8 @@ export interface ExportContext {
 	 * finished) falls back to the shared loader.
 	 */
 	libraries: RichContentLibraries | null;
+	/** The front-matter panel's heading in the UI language (`frontMatter.properties`). */
+	frontMatterTitle?: string;
 }
 
 type ExportHtmlResult = {
@@ -365,7 +367,7 @@ async function buildExportArticle(
 	// export routes cannot disagree about what is in the file.
 	const processed = processMarkdownHtml(safeHtml, ctx.tabPath, new Set());
 	const wrapper = document.createElement('div');
-	wrapper.innerHTML = renderStaticFrontMatterPanel(parseFrontMatter(ctx.rawContent)) + processed;
+	wrapper.innerHTML = renderStaticFrontMatterPanel(parseFrontMatter(ctx.rawContent), ctx.frontMatterTitle) + processed;
 
 	// Highlight, typeset and draw before the link and image passes, so those see
 	// the markup that actually ships. The renderer works on this detached

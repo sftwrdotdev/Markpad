@@ -635,7 +635,7 @@ test('Mod+F4 closes a document on Windows, the one platform it was scoped to', (
  * Without this list the registry could quietly fall behind: someone binds a new
  * chord, the panel never mentions it, and no test notices. Each exclusion is a
  * decision with a reason, in the shape this repo already uses for
- * `KNOWN_LAYER_DIVERGENCES` and `KNOWN_ORPHANS`.
+ * `KNOWN_LAYER_DIVERGENCES`.
  */
 const NOT_ADVERTISED: Record<string, string> = {
 	'custom-copy':

@@ -362,6 +362,7 @@ export const translations: Record<LanguageCode, Translation> = {
             pinnedTags: 'Pinned Windows',
             pinnedFileCount: '{{count}} files',
             noRecentFiles: 'No recent files',
+            removeFromHistory: 'Remove from history',
             newFile: 'New File',
             openFile: 'Open File',
             dragAndDrop: 'Drag and drop files here to open'
@@ -373,6 +374,10 @@ export const translations: Record<LanguageCode, Translation> = {
                 selections: '{{count}} selections',
                 words: '{{count}} words'
             }
+        },
+        frontMatter: {
+            properties: 'Properties',
+            addTag: 'Add tag'
         },
         tooltip: {
             menu: 'Menu',
@@ -495,6 +500,7 @@ export const translations: Record<LanguageCode, Translation> = {
             language: '语言',
             highlightColor: '高亮颜色',
             imageDirectory: '图片目录',
+            imageDirectoryHint: '粘贴或拖入的图片存放的文件夹，建在文档旁边。用 ${filename} 表示文档自身的名称：${filename}.assets 会让每个文档拥有自己的文件夹，而不是共用一个 img/。',
             scaleMacOSScreenshots: '缩放macOS截图',
             reduceSizeBy50: '缩小50%',
             toolbar: '工具栏',
@@ -510,6 +516,7 @@ export const translations: Record<LanguageCode, Translation> = {
             themeDefaultDark: '默认深色',
             themeFollowSystem: '跟随系统',
             files: '文件',
+            shortcuts: '快捷键',
             fileSettings: '文件设置',
             autoSave: '自动保存编辑',
             toolbarPlacement: '工具栏位置',
@@ -588,6 +595,7 @@ export const translations: Record<LanguageCode, Translation> = {
             exit: '退出',
             zenMode: '禅模式',
             tabs: '{{action}} 标签页',
+            openTabs: '已打开的标签页',
             back: '后退',
             forward: '前进',
             openLocation: '打开位置',
@@ -680,7 +688,9 @@ export const translations: Record<LanguageCode, Translation> = {
             lossySaveBlocked: '未保存：此文件的部分内容无法用任何编码读取，打开时已变成“�”。直接保存会破坏原文件 — 请用“另存为”写入新文件',
             partialSaveBlocked: '未保存：此文件只加载了一部分，保存会将其截断 —— 请用“另存为”写一份副本',
             partialCopySaved: '副本已保存，但其中只包含已加载的那部分文档',
-            encodingUnmappable: '未保存：{{encoding}} 无法表示文档中新增的部分字符（多半是表情符号）。请用“另存为”写入一份 UTF-8 副本'
+            encodingUnmappable: '未保存：{{encoding}} 无法表示文档中新增的部分字符（多半是表情符号）。请用“另存为”写入一份 UTF-8 副本',
+            restoreInterrupted: 'Markpad 上次没有完成会话恢复',
+            restoreInterruptedDeferred: 'Markpad 上次没能打开 {path}，已将其跳过。请手动打开再试一次'
         },
         externalChange: {
             message: '此文件在你有未保存修改时被外部程序改动。',
@@ -736,6 +746,7 @@ export const translations: Record<LanguageCode, Translation> = {
             pinnedTags: '已固定窗口',
             pinnedFileCount: '{{count}} 个文件',
             noRecentFiles: '没有最近文件',
+            removeFromHistory: '从最近文件中移除',
             newFile: '新建文件',
             openFile: '打开文件',
             dragAndDrop: '拖放文件到此处打开'
@@ -747,6 +758,10 @@ export const translations: Record<LanguageCode, Translation> = {
                 selections: '{{count}} 个选择',
                 words: '{{count}} 字'
             }
+        },
+        frontMatter: {
+            properties: '属性',
+            addTag: '添加标签'
         },
         tooltip: {
             menu: '菜单',
@@ -1103,6 +1118,7 @@ export const translations: Record<LanguageCode, Translation> = {
             appearance: '外觀',
             toolbars: '工具列',
             files: '檔案',
+            shortcuts: '快速鍵',
             editorSettings: '編輯器設定',
             previewSettings: '預覽設定',
             appearanceSettings: '外觀設定',
@@ -1152,6 +1168,7 @@ export const translations: Record<LanguageCode, Translation> = {
             language: '語言',
             highlightColor: '高亮顏色',
             imageDirectory: '圖片目錄',
+            imageDirectoryHint: '貼上或拖放的圖片所存放的資料夾，建立在文件旁邊。用 ${filename} 代表文件本身的名稱：${filename}.assets 會讓每份文件各有自己的資料夾，而不是共用一個 img/。',
             scaleMacOSScreenshots: '縮放 macOS 截圖',
             reduceSizeBy50: '縮小 50%',
             toolbar: '工具列',
@@ -1335,7 +1352,9 @@ export const translations: Record<LanguageCode, Translation> = {
             lossySaveBlocked: '未儲存：此檔案的部分內容無法用任何編碼讀取，開啟時已變成「�」。直接儲存會破壞原檔案 — 請用「另存新檔」寫入新檔案',
             partialSaveBlocked: '未儲存：此檔案只讀取了一部分，儲存會將其截斷 —— 請用「另存新檔」寫一份副本',
             partialCopySaved: '副本已儲存，但其中只包含已讀取的那部分文件',
-            encodingUnmappable: '未儲存：{{encoding}} 無法表示此文件新增的部分字元（多半是表情符號）。請用「另存新檔」寫入一份 UTF-8 複本'
+            encodingUnmappable: '未儲存：{{encoding}} 無法表示此文件新增的部分字元（多半是表情符號）。請用「另存新檔」寫入一份 UTF-8 複本',
+            restoreInterrupted: 'Markpad 上次沒有完成工作階段的還原',
+            restoreInterruptedDeferred: 'Markpad 上次沒能開啟 {path}，已將其略過。請自行開啟再試一次'
         },
         externalChange: {
             message: '當您有未儲存的變更時，此檔案在磁碟上已被修改。',
@@ -1391,6 +1410,7 @@ export const translations: Record<LanguageCode, Translation> = {
             pinnedTags: '已釘選視窗',
             pinnedFileCount: '{{count}} 個檔案',
             noRecentFiles: '沒有最近的檔案',
+            removeFromHistory: '從最近的檔案中移除',
             newFile: '新增檔案',
             openFile: '開啟檔案',
             dragAndDrop: '將檔案拖放至此以開啟'
@@ -1402,6 +1422,10 @@ export const translations: Record<LanguageCode, Translation> = {
                 selections: '已選取 {{count}} 處',
                 words: '{{count}} 個字詞'
             }
+        },
+        frontMatter: {
+            properties: '屬性',
+            addTag: '新增標籤'
         },
         tooltip: {
             menu: '選單',
@@ -1743,8 +1767,7 @@ export const translations: Record<LanguageCode, Translation> = {
                 lineCol: '줄 {{line}}, 열 {{col}}',
                 selected: '{{count}}개 선택됨',
                 selections: '{{count}}개 선택 영역',
-                words: '{{count}}개 단어',
-                lines: '{{count}}개 줄'
+                words: '{{count}}개 단어'
             }
         },
         theme: {
@@ -1789,9 +1812,7 @@ export const translations: Record<LanguageCode, Translation> = {
             hideTableOfContents: '목차 숨기기',
             newTab: '새 탭',
             close: '닫기',
-            find: '찾기',
-            zoomIn: '확대',
-            zoomOut: '축소'
+            find: '찾기'
         },
         toc: {
             noHeadingsFound: '제목을 찾을 수 없습니다',
@@ -2029,8 +2050,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Стр {{line}}, Стб {{col}}',
-                words: '{{count}} слов',
-                lines: '{{count}} строк'
+                words: '{{count}} слов'
             }
         },
         theme: {
@@ -2056,9 +2076,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Полная ширина',
             autoReload: 'Автоперезагрузка',
             editFile: 'Редактировать файл',
-            changeTheme: 'Сменить тему',
-            zoomIn: 'Увеличить',
-            zoomOut: 'Уменьшить'
+            changeTheme: 'Сменить тему'
         },
         tabs: {
             untitled: 'Без названия',
@@ -2286,8 +2304,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Ln {{line}}, Col {{col}}',
-                words: '{{count}} palabras',
-                lines: '{{count}} líneas'
+                words: '{{count}} palabras'
             }
         },
         theme: {
@@ -2313,9 +2330,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Ancho completo',
             autoReload: 'Recarga automática',
             editFile: 'Editar archivo',
-            changeTheme: 'Cambiar tema',
-            zoomIn: 'Acercar',
-            zoomOut: 'Alejar'
+            changeTheme: 'Cambiar tema'
         },
         tabs: {
             untitled: 'Sin título',
@@ -2543,8 +2558,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Ln {{line}}, Col {{col}}',
-                words: '{{count}} mots',
-                lines: '{{count}} lignes'
+                words: '{{count}} mots'
             }
         },
         theme: {
@@ -2570,9 +2584,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Pleine largeur',
             autoReload: 'Rechargement automatique',
             editFile: 'Modifier le fichier',
-            changeTheme: 'Changer de thème',
-            zoomIn: 'Zoom avant',
-            zoomOut: 'Zoom arrière'
+            changeTheme: 'Changer de thème'
         },
         tabs: {
             untitled: 'Sans titre',
@@ -2800,8 +2812,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Zl {{line}}, Sp {{col}}',
-                words: '{{count}} Wörter',
-                lines: '{{count}} Zeilen'
+                words: '{{count}} Wörter'
             }
         },
         theme: {
@@ -2827,9 +2838,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Volle Breite',
             autoReload: 'Auto-Neuladen',
             editFile: 'Datei bearbeiten',
-            changeTheme: 'Thema ändern',
-            zoomIn: 'Vergrößern',
-            zoomOut: 'Verkleinern'
+            changeTheme: 'Thema ändern'
         },
         tabs: {
             untitled: 'Unbenannt',
@@ -3057,8 +3066,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Ln {{line}}, Col {{col}}',
-                words: '{{count}} palavras',
-                lines: '{{count}} linhas'
+                words: '{{count}} palavras'
             }
         },
         theme: {
@@ -3084,9 +3092,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Largura total',
             autoReload: 'Recarregamento automático',
             editFile: 'Editar arquivo',
-            changeTheme: 'Alterar tema',
-            zoomIn: 'Aumentar zoom',
-            zoomOut: 'Diminuir zoom'
+            changeTheme: 'Alterar tema'
         },
         tabs: {
             untitled: 'Sem título',
@@ -3314,8 +3320,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Riga {{line}}, Col {{col}}',
-                words: '{{count}} parole',
-                lines: '{{count}} righe'
+                words: '{{count}} parole'
             }
         },
         theme: {
@@ -3341,9 +3346,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Larghezza piena',
             autoReload: 'Ricarica automatica',
             editFile: 'Modifica file',
-            changeTheme: 'Cambia tema',
-            zoomIn: 'Zoom avanti',
-            zoomOut: 'Zoom indietro'
+            changeTheme: 'Cambia tema'
         },
         tabs: {
             untitled: 'Senza titolo',
@@ -3584,8 +3587,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Linia {{line}}, Kol {{col}}',
-                words: '{{count}} słów',
-                lines: '{{count}} linii'
+                words: '{{count}} słów'
             }
         },
         theme: {
@@ -3613,9 +3615,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Pełna szerokość',
             autoReload: 'Automatyczne przeładowanie',
             editFile: 'Edytuj plik',
-            changeTheme: 'Zmień motyw',
-            zoomIn: 'Powiększ',
-            zoomOut: 'Pomniejsz'
+            changeTheme: 'Zmień motyw'
         },
         tabs: {
             untitled: 'Bez tytułu',
@@ -3843,8 +3843,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Regel {{line}}, Kol {{col}}',
-                words: '{{count}} woorden',
-                lines: '{{count}} regels'
+                words: '{{count}} woorden'
             }
         },
         theme: {
@@ -3870,9 +3869,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Volledige breedte',
             autoReload: 'Automatisch herladen',
             editFile: 'Bewerk bestand',
-            changeTheme: 'Wijzig thema',
-            zoomIn: 'Inzoomen',
-            zoomOut: 'Uitzoomen'
+            changeTheme: 'Wijzig thema'
         },
         tabs: {
             untitled: 'Naamloos',
@@ -4100,8 +4097,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Rad {{line}}, Kol {{col}}',
-                words: '{{count}} ord',
-                lines: '{{count}} rader'
+                words: '{{count}} ord'
             }
         },
         theme: {
@@ -4127,9 +4123,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Full bredd',
             autoReload: 'Automatisk omladdning',
             editFile: 'Redigera fil',
-            changeTheme: 'Byt tema',
-            zoomIn: 'Zooma in',
-            zoomOut: 'Zooma ut'
+            changeTheme: 'Byt tema'
         },
         tabs: {
             untitled: 'Namnlös',
@@ -4357,8 +4351,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Dòng {{line}}, Cột {{col}}',
-                words: '{{count}} từ',
-                lines: '{{count}} dòng'
+                words: '{{count}} từ'
             }
         },
         theme: {
@@ -4384,9 +4377,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Toàn bộ chiều rộng',
             autoReload: 'Tự động tải lại',
             editFile: 'Chỉnh sửa tệp',
-            changeTheme: 'Thay đổi chủ đề',
-            zoomIn: 'Phóng to',
-            zoomOut: 'Thu nhỏ'
+            changeTheme: 'Thay đổi chủ đề'
         },
         tabs: {
             untitled: 'Chưa đặt tên',
@@ -4614,8 +4605,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Lin {{line}}, Col {{col}}',
-                words: '{{count}} palavras',
-                lines: '{{count}} linhas'
+                words: '{{count}} palavras'
             }
         },
         theme: {
@@ -4641,9 +4631,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Largura total',
             autoReload: 'Recarregamento automático',
             editFile: 'Editar ficheiro',
-            changeTheme: 'Alterar tema',
-            zoomIn: 'Aumentar zoom',
-            zoomOut: 'Diminuir zoom'
+            changeTheme: 'Alterar tema'
         },
         tabs: {
             untitled: 'Sem título',
@@ -4871,8 +4859,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Lin {{line}}, Col {{col}}',
-                words: '{{count}} cuvinte',
-                lines: '{{count}} linii'
+                words: '{{count}} cuvinte'
             }
         },
         theme: {
@@ -4898,9 +4885,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Lățime completă',
             autoReload: 'Reîncărcare automată',
             editFile: 'Editare fișier',
-            changeTheme: 'Schimbare temă',
-            zoomIn: 'Mărire',
-            zoomOut: 'Micșorare'
+            changeTheme: 'Schimbare temă'
         },
         tabs: {
             untitled: 'Fără titlu',
@@ -5128,8 +5113,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: '{{line}}. sor, {{col}}. oszlop',
-                words: '{{count}} szó',
-                lines: '{{count}} sor'
+                words: '{{count}} szó'
             }
         },
         theme: {
@@ -5155,9 +5139,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Teljes szélesség',
             autoReload: 'Automatikus újratöltés',
             editFile: 'Fájl szerkesztése',
-            changeTheme: 'Téma váltása',
-            zoomIn: 'Nagyítás',
-            zoomOut: 'Kicsinyítés'
+            changeTheme: 'Téma váltása'
         },
         tabs: {
             untitled: 'Névtelen',
@@ -5385,8 +5367,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Řádek {{line}}, Sloupec {{col}}',
-                words: '{{count}} slov',
-                lines: '{{count}} řádků'
+                words: '{{count}} slov'
             }
         },
         theme: {
@@ -5413,8 +5394,6 @@ export const translations: Record<LanguageCode, Translation> = {
             autoReload: 'Automatické obnovení',
             editFile: 'Upravit soubor',
             changeTheme: 'Změnit motiv',
-            zoomIn: 'Přiblížit',
-            zoomOut: 'Oddálit',
             dock: 'pevný',
             undock: 'zrušit pevné',
             switchSide: 'Switch side'
@@ -5646,8 +5625,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Riadok {{line}}, Stĺpec {{col}}',
-                words: '{{count}} slov',
-                lines: '{{count}} riadkov'
+                words: '{{count}} slov'
             }
         },
         theme: {
@@ -5673,9 +5651,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Plná šírka',
             autoReload: 'Automatické obnovenie',
             editFile: 'Upraviť súbor',
-            changeTheme: 'Zmeniť tému',
-            zoomIn: 'Priblížiť',
-            zoomOut: 'Oddialiť'
+            changeTheme: 'Zmeniť tému'
         },
         tabs: {
             untitled: 'Bez názvu',
@@ -5903,8 +5879,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Γραμμή {{line}}, Στήλη {{col}}',
-                words: '{{count}} λέξεις',
-                lines: '{{count}} γραμμές'
+                words: '{{count}} λέξεις'
             }
         },
         theme: {
@@ -5930,9 +5905,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Πλήρες πλάτος',
             autoReload: 'Αυτόματη επαναφόρτωση',
             editFile: 'Επεξεργασία αρχείου',
-            changeTheme: 'Αλλαγή θέματος',
-            zoomIn: 'Μεγέθυνση',
-            zoomOut: 'Σμίκρυνση'
+            changeTheme: 'Αλλαγή θέματος'
         },
         tabs: {
             untitled: 'Χωρίς τίτλο',
@@ -6160,8 +6133,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Rivi {{line}}, Sarake {{col}}',
-                words: '{{count}} sanaa',
-                lines: '{{count}} riviä'
+                words: '{{count}} sanaa'
             }
         },
         theme: {
@@ -6187,9 +6159,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Täysi leveys',
             autoReload: 'Automaattinen lataus',
             editFile: 'Muokkaa tiedostoa',
-            changeTheme: 'Vaihda teemaa',
-            zoomIn: 'Lähennä',
-            zoomOut: 'Loitonna'
+            changeTheme: 'Vaihda teemaa'
         },
         tabs: {
             untitled: 'Nimetön',
@@ -6417,8 +6387,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Linje {{line}}, Kolonne {{col}}',
-                words: '{{count}} ord',
-                lines: '{{count}} linjer'
+                words: '{{count}} ord'
             }
         },
         theme: {
@@ -6444,9 +6413,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Fuld bredde',
             autoReload: 'Automatisk genindlæsning',
             editFile: 'Rediger fil',
-            changeTheme: 'Skift tema',
-            zoomIn: 'Zoom ind',
-            zoomOut: 'Zoom ud'
+            changeTheme: 'Skift tema'
         },
         tabs: {
             untitled: 'Unavngivet',
@@ -6674,8 +6641,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Linje {{line}}, Kolonne {{col}}',
-                words: '{{count}} ord',
-                lines: '{{count}} linjer'
+                words: '{{count}} ord'
             }
         },
         theme: {
@@ -6701,9 +6667,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Full bredde',
             autoReload: 'Automatisk gjenlasting',
             editFile: 'Rediger fil',
-            changeTheme: 'Bytt tema',
-            zoomIn: 'Zoom inn',
-            zoomOut: 'Zoom ut'
+            changeTheme: 'Bytt tema'
         },
         tabs: {
             untitled: 'Uten tittel',
@@ -6931,8 +6895,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Baris {{line}}, Kolom {{col}}',
-                words: '{{count}} kata',
-                lines: '{{count}} baris'
+                words: '{{count}} kata'
             }
         },
         theme: {
@@ -6958,9 +6921,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Lebar Penuh',
             autoReload: 'Muat Ulang Otomatis',
             editFile: 'Edit Berkas',
-            changeTheme: 'Ubah Tema',
-            zoomIn: 'Perbesar',
-            zoomOut: 'Perkecil'
+            changeTheme: 'Ubah Tema'
         },
         tabs: {
             untitled: 'Tidak Berjudul',
@@ -7188,8 +7149,7 @@ export const translations: Record<LanguageCode, Translation> = {
         editor: {
             status: {
                 lineCol: 'Satır {{line}}, Sütun {{col}}',
-                words: '{{count}} sözcük',
-                lines: '{{count}} satır'
+                words: '{{count}} sözcük'
             }
         },
         theme: {
@@ -7215,9 +7175,7 @@ export const translations: Record<LanguageCode, Translation> = {
             fullWidth: 'Tam Genişlik',
             autoReload: 'Otomatik Yeniden Yükle',
             editFile: 'Dosyayı Düzenle',
-            changeTheme: 'Temayı Değiştir',
-            zoomIn: 'Yakınlaştır',
-            zoomOut: 'Uzaklaştır'
+            changeTheme: 'Temayı Değiştir'
         },
         tabs: {
             untitled: 'Başlıksız',
