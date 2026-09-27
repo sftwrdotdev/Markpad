@@ -91,3 +91,12 @@ test('the editor finds the end of the front matter through parseFrontMatter too'
 	assert.match(scrollEnd, /frontMatterLineOffset\(/);
 	assert.doesNotMatch(editor, /\.trim\(\) !== '---'/);
 });
+
+test('an unresolved alias in the block is broken front matter, not an exception', () => {
+	const parsed = parseFrontMatter('---\n**bold**\n---\n\n# Body\n');
+
+	assert.equal(parsed.exists, true);
+	assert.equal(parsed.valid, false);
+	assert.match(parsed.error ?? '', /alias/i);
+	assert.equal(parsed.body, '# Body\n');
+});

@@ -116,18 +116,28 @@ export function parseFrontMatter(content: string): FrontMatterParseResult {
 	};
 	if (!range) return notFrontMatter;
 
+	const malformed = (error: string): FrontMatterParseResult => ({
+		exists: true,
+		valid: false,
+		raw: range.raw,
+		body: range.body,
+		fields: [],
+		data: {},
+		error,
+		lineEnding,
+	});
 	const doc = parseDocument(range.raw, { prettyErrors: false });
-	if (doc.errors.length > 0) {
-		return {
-			exists: true,
-			valid: false,
-			raw: range.raw,
-			body: range.body,
-			fields: [],
-			data: {},
-			error: doc.errors.map((error) => error.message).join('\n'),
-			lineEnding,
-		};
+	if (doc.errors.length > 0) return malformed(doc.errors.map((error) => error.message).join('\n'));
+
+	// An alias with no anchor (`**bold**` reads as one) parses without errors
+	// and throws only here, out of the preview's render and every editor
+	// analysis that asks where the front matter ends. It is malformed front
+	// matter, not an exception.
+	let parsed: unknown;
+	try {
+		parsed = doc.toJSON();
+	} catch (error) {
+		return malformed(error instanceof Error ? error.message : String(error));
 	}
 
 	// A document whose first line is `---` but whose block is prose, not a
@@ -135,7 +145,6 @@ export function parseFrontMatter(content: string): FrontMatterParseResult {
 	// the closing one underlines a setext heading. Stripping it would delete
 	// visible text from the rendered body without showing it as metadata
 	// anywhere, so hand the whole document back as body.
-	const parsed = doc.toJSON();
 	if (!isFrontMatterMapping(parsed)) return notFrontMatter;
 
 	const data = (parsed ?? {}) as Record<string, unknown>;
