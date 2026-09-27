@@ -833,14 +833,18 @@ body {
 
 .markdown-alert-content {
 	display: grid;
-	grid-template-rows: 1fr;
+	/* `minmax(0, …)`, not a bare `fr`: WebKit (macOS, Linux) keeps the height a
+	   bare `1fr` row got at a narrower width, so a callout first laid out in the
+	   zero-width preview pane stays that tall after Ctrl+E widens it (#850). The
+	   collapsed value is spelled the same way so the two still interpolate. */
+	grid-template-rows: minmax(0, 1fr);
 	transition: grid-template-rows 0.25s ease, opacity 0.25s ease;
 	opacity: 1;
 	overflow: visible;
 }
 
 .markdown-alert-content.is-collapsed {
-	grid-template-rows: 0fr;
+	grid-template-rows: minmax(0, 0fr);
 	opacity: 0;
 	overflow: hidden; /* must hide when collapsed */
 }
@@ -1503,7 +1507,7 @@ body {
 		opacity: 1 !important;
 	}
 	.markdown-alert-content.is-collapsed {
-		grid-template-rows: 1fr !important;
+		grid-template-rows: minmax(0, 1fr) !important;
 		overflow: visible !important;
 		opacity: 1 !important;
 	}

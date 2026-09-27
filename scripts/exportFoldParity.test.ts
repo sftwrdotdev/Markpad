@@ -272,8 +272,8 @@ test('a collapsed callout is printed too', () => {
 	// Same defect, second mechanism: callouts collapse with a 0fr grid track
 	// instead of a height, so a fix aimed only at headings leaves half the
 	// document still disappearing.
-	assert.notEqual(printedValue(collapsedCallout, 'grid-template-rows'), '0fr');
-	assert.equal(printedValue(collapsedCallout, 'grid-template-rows'), '1fr');
+	assert.notEqual(printedValue(collapsedCallout, 'grid-template-rows'), 'minmax(0, 0fr)');
+	assert.equal(printedValue(collapsedCallout, 'grid-template-rows'), 'minmax(0, 1fr)');
 	assert.notEqual(printedValue(collapsedCallout, 'opacity'), '0');
 	assert.notEqual(printedValue(collapsedCalloutInner, 'overflow'), 'hidden');
 });
@@ -283,7 +283,18 @@ test('folding still works on screen', () => {
 	// element on screen has to stay collapsed.
 	assert.equal(screenValue(collapsedSection, 'height'), '0');
 	assert.equal(screenValue(collapsedSection, 'opacity'), '0');
-	assert.equal(screenValue(collapsedCallout, 'grid-template-rows'), '0fr');
+	assert.equal(screenValue(collapsedCallout, 'grid-template-rows'), 'minmax(0, 0fr)');
+});
+
+test('an open callout sizes its row with minmax, not a bare fr', () => {
+	// #850. WebKit keeps the height a bare `1fr` row was given at a narrower
+	// width: a callout laid out in the zero-width preview pane stayed ~500px tall
+	// after Ctrl+E widened the pane to 860px, where it measures 98px. Measured in
+	// a WKWebView; `minmax(0, 1fr)` re-sizes it, and Chromium is right either way.
+	// jsdom has no layout, so the value is what this can hold.
+	const openCallout: Element[] = [body, article, { tag: 'div', classes: ['markdown-alert'] }, { tag: 'div', classes: ['markdown-alert-content'] }];
+	assert.equal(screenValue(openCallout, 'grid-template-rows'), 'minmax(0, 1fr)');
+	assert.equal(printedValue(openCallout, 'grid-template-rows'), 'minmax(0, 1fr)');
 });
 
 test('an expanded section is unaffected by the reveal', () => {
@@ -315,8 +326,8 @@ test('a callout collapsed in the source is still readable in an exported file', 
 	// text ships present, clipped to nothing, and unreachable forever. Verified
 	// in Chrome against a real exported file before the fix: the collapsed
 	// callout's content box measured 0px at opacity 0.
-	assert.notEqual(exportedValue(collapsedCallout, 'grid-template-rows'), '0fr');
-	assert.equal(exportedValue(collapsedCallout, 'grid-template-rows'), '1fr');
+	assert.notEqual(exportedValue(collapsedCallout, 'grid-template-rows'), 'minmax(0, 0fr)');
+	assert.equal(exportedValue(collapsedCallout, 'grid-template-rows'), 'minmax(0, 1fr)');
 	assert.notEqual(exportedValue(collapsedCallout, 'opacity'), '0');
 	assert.notEqual(exportedValue(collapsedCalloutInner, 'overflow'), 'hidden');
 

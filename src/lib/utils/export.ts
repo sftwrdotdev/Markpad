@@ -244,7 +244,7 @@ html, body {
 	overflow: visible !important;
 }
 .markdown-alert-content.is-collapsed {
-	grid-template-rows: 1fr !important;
+	grid-template-rows: minmax(0, 1fr) !important;
 	opacity: 1 !important;
 	overflow: visible !important;
 }
