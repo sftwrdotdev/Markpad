@@ -362,10 +362,29 @@ pub async fn open_file_folder(path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        fs::rename(old_path, new_path).map_err(|e| e.to_string())
+        rename_file_blocking(Path::new(&old_path), Path::new(&new_path))
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()))
+}
+
+/// `fs::rename` replaces an existing target without asking, so a new name
+/// that is already taken is refused. The exception is a target that is the
+/// same file under another spelling — `a.md` to `A.md` on a case-insensitive
+/// volume — which `canonical_identity` recognizes.
+fn rename_file_blocking(old_path: &Path, new_path: &Path) -> Result<(), String> {
+    if fs::symlink_metadata(new_path).is_ok() && !is_same_file(old_path, new_path) {
+        let name = new_path.file_name().unwrap_or_default().to_string_lossy();
+        return Err(format!("\"{name}\" already exists"));
+    }
+    fs::rename(old_path, new_path).map_err(|e| e.to_string())
+}
+
+fn is_same_file(a: &Path, b: &Path) -> bool {
+    matches!(
+        (canonical_identity(a), canonical_identity(b)),
+        (Ok(a), Ok(b)) if a == b
+    )
 }
 
 /// Async because arming a watcher opens the watched path, and an unreachable
@@ -1009,10 +1028,19 @@ fn copy_file_to_img_blocking(
 #[tauri::command]
 pub async fn copy_file(src: String, dest: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        fs::copy(src, dest).map(|_| ()).map_err(|e| e.to_string())
+        copy_file_blocking(Path::new(&src), Path::new(&dest))
     })
     .await
     .unwrap_or_else(|e| Err(e.to_string()))
+}
+
+/// `fs::copy` truncates `dest` before reading `src`, so copying a file onto
+/// itself would empty it. That copy is a no-op, and is skipped as one.
+fn copy_file_blocking(src: &Path, dest: &Path) -> Result<(), String> {
+    if is_same_file(src, dest) {
+        return Ok(());
+    }
+    fs::copy(src, dest).map(|_| ()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1087,6 +1115,63 @@ pub(crate) mod tests {
             file_bytes_to_data_url("image/png", b"Markpad"),
             "data:image/png;base64,TWFya3BhZA==",
         );
+    }
+
+    #[test]
+    fn renaming_onto_an_existing_file_refuses_and_keeps_both() {
+        // Tab rename called `fs::rename` straight through, and rename replaces
+        // an existing target without asking: renaming a.md to b.md in a folder
+        // that already held b.md destroyed b.md.
+        let root = temp_path("rename-existing");
+        fs::create_dir_all(&root).unwrap();
+        let a = root.join("a.md");
+        let b = root.join("b.md");
+        fs::write(&a, b"a").unwrap();
+        fs::write(&b, b"b").unwrap();
+
+        assert!(rename_file_blocking(&a, &b).is_err());
+        assert_eq!(fs::read(&a).unwrap(), b"a");
+        assert_eq!(fs::read(&b).unwrap(), b"b");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_case_only_rename_still_goes_through() {
+        // On a case-insensitive volume `A.md` already "exists" — it is a.md
+        // itself — so the existing-target check must compare identity, not
+        // just ask whether the new name resolves.
+        let root = temp_path("rename-case");
+        fs::create_dir_all(&root).unwrap();
+        let lower = root.join("a.md");
+        let upper = root.join("A.md");
+        fs::write(&lower, b"a").unwrap();
+
+        rename_file_blocking(&lower, &upper).unwrap();
+        let names: Vec<_> = fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(names, ["A.md"]);
+        assert_eq!(fs::read(&upper).unwrap(), b"a");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn copying_a_file_onto_itself_leaves_it_intact() {
+        // "Save image as" onto the image's own path: `fs::copy` opens the
+        // destination with truncate before reading the source, so the file
+        // came out empty.
+        let root = temp_path("copy-self");
+        fs::create_dir_all(&root).unwrap();
+        let file = root.join("pic.png");
+        fs::write(&file, b"image bytes").unwrap();
+
+        copy_file_blocking(&file, &file).unwrap();
+        assert_eq!(fs::read(&file).unwrap(), b"image bytes");
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
