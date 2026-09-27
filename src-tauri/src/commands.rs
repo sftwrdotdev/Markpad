@@ -169,8 +169,8 @@ pub async fn read_file_content_checked(path: String) -> Result<(String, bool, St
     .unwrap_or_else(|e| Err(e.to_string()))
 }
 
-fn mime_type_for_export_path(path: &Path) -> &'static str {
-    match path
+fn mime_type_for_export_path(path: &Path) -> Option<&'static str> {
+    let mime = match path
         .extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| ext.to_ascii_lowercase())
@@ -184,8 +184,9 @@ fn mime_type_for_export_path(path: &Path) -> &'static str {
         Some("bmp") => "image/bmp",
         Some("ico") => "image/x-icon",
         Some("avif") => "image/avif",
-        _ => "application/octet-stream",
-    }
+        _ => return None,
+    };
+    Some(mime)
 }
 
 fn file_bytes_to_data_url(mime_type: &str, bytes: &[u8]) -> String {
@@ -200,8 +201,12 @@ fn file_bytes_to_data_url(mime_type: &str, bytes: &[u8]) -> String {
 #[tauri::command]
 pub async fn read_file_as_data_url(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
+        // Only image types: the HTML export is the only caller, and inlining
+        // whatever an `<img src>` names would embed `![](../../.ssh/id_rsa)`
+        // in a file meant to be shared.
+        let mime_type = mime_type_for_export_path(Path::new(&path))
+            .ok_or_else(|| format!("not an image: {path}"))?;
         let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-        let mime_type = mime_type_for_export_path(Path::new(&path));
         Ok(file_bytes_to_data_url(mime_type, &bytes))
     })
     .await
@@ -1093,20 +1098,39 @@ pub(crate) mod tests {
     fn export_data_url_uses_mime_from_extension_case_insensitively() {
         assert_eq!(
             mime_type_for_export_path(Path::new("diagram.PNG")),
-            "image/png"
+            Some("image/png")
         );
         assert_eq!(
             mime_type_for_export_path(Path::new("photo.JpEg")),
-            "image/jpeg"
+            Some("image/jpeg")
         );
         assert_eq!(
             mime_type_for_export_path(Path::new("vector.svg")),
-            "image/svg+xml"
+            Some("image/svg+xml")
         );
-        assert_eq!(
-            mime_type_for_export_path(Path::new("unknown.bin")),
-            "application/octet-stream"
-        );
+        assert_eq!(mime_type_for_export_path(Path::new("unknown.bin")), None);
+    }
+
+    #[test]
+    fn export_data_url_inlines_images_only() {
+        // `![](../../.ssh/id_rsa)` was read and base64-embedded into the
+        // exported HTML as `application/octet-stream`.
+        let root = temp_path("export-data-url");
+        fs::create_dir_all(&root).unwrap();
+        let key = root.join("id_rsa");
+        let image = root.join("pic.png");
+        fs::write(&key, b"secret").unwrap();
+        fs::write(&image, b"png").unwrap();
+
+        let read = |path: &PathBuf| {
+            tauri::async_runtime::block_on(read_file_as_data_url(
+                path.to_string_lossy().into_owned(),
+            ))
+        };
+        assert!(read(&key).is_err());
+        assert_eq!(read(&image).unwrap(), "data:image/png;base64,cG5n");
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
