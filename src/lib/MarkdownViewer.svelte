@@ -3459,19 +3459,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function navigateFileHistory(direction: 'back' | 'forward') {
 		const activeTabId = tabManager.activeTabId;
 		if (!activeTabId) return;
+		// Asked before the unsaved-changes dialog: "Don't Save" with nowhere to
+		// go would drop the edits and move nothing.
+		const path = tabManager.peekHistory(activeTabId, direction);
+		if (!path) return;
 		if (!(await canCloseTab(activeTabId))) return;
-
-		const path = direction === 'back'
-			? tabManager.goBack(activeTabId)
-			: tabManager.goForward(activeTabId);
-
-		if (path) {
-			// No `resetScrollHistory` here, and none in `openMarkdownTargetInNewTab`
-			// either: goBack/goForward repoint the tab, so `clearReadingPosition`
-			// has already dropped its in-page stacks along with the rest of the
-			// position, and a tab opened by `addTab` never had any.
-			await loadMarkdown(path, { skipTabManagement: true });
-		}
+		// No `resetScrollHistory` here, and none in `openMarkdownTargetInNewTab`
+		// either: the load repoints the tab through goBack/goForward, so
+		// `clearReadingPosition` drops its in-page stacks along with the rest of
+		// the position, and a tab opened by `addTab` never had any.
+		await loadMarkdown(path, { historyStep: direction });
 	}
 
 	// The in-page jump stacks belong to the tab the offsets were measured in —

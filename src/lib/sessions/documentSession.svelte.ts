@@ -10,6 +10,12 @@ import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 
 export type LoadMarkdownOptions = {
 	navigate?: boolean;
+	/**
+	 * Back/forward: like `navigate`, the active tab is repointed only once the
+	 * file has been read, so a file that has gone leaves the tab, and its
+	 * place in history, where they were.
+	 */
+	historyStep?: 'back' | 'forward';
 	skipTabManagement?: boolean;
 	preserveEditState?: boolean;
 	/**
@@ -445,7 +451,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			const pathKey = await canonicalizePath(filePath);
 			const target = { path: filePath, pathKey };
 
-			if (loadOptions.navigate && tabManager.activeTab) {
+			if ((loadOptions.navigate || loadOptions.historyStep) && tabManager.activeTab) {
 				pendingNavigateTabId = tabManager.activeTab.id;
 			} else if (!loadOptions.skipTabManagement) {
 				existing = tabManager.tabs.find((tab) => isSameFilePath(tab, target));
@@ -456,8 +462,8 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			}
 			const activeId = tabManager.activeTabId;
 			if (!activeId) return;
-			// Callers that manage tabs themselves — back/forward, a link opened
-			// in a new tab — put the path on the tab before getting here, so
+			// Callers that manage tabs themselves — a link opened in a new tab,
+			// the reloads — put the path on the tab before getting here, so
 			// this is where those tabs learn their identity. Cheap and idempotent
 			// for the tabs that already have it.
 			tabManager.setTabPathKey(activeId, filePath, pathKey);
@@ -519,6 +525,17 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				options.onDiskChangedUnderSave(activeId);
 				return true;
 			};
+			// False when the history moved during the read and no longer leads to
+			// the file that was read.
+			const repoint = () => {
+				if (!pendingNavigateTabId) return true;
+				const step = loadOptions.historyStep;
+				if (!step) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
+				else if (tabManager.peekHistory(pendingNavigateTabId, step) !== filePath) return false;
+				else if (step === 'back') tabManager.goBack(pendingNavigateTabId, pathKey);
+				else tabManager.goForward(pendingNavigateTabId, pathKey);
+				return true;
+			};
 
 			if (isMarkdown) {
 				if (tab && !loadOptions.preserveEditState && !existing) {
@@ -562,6 +579,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// detected encoding can differ from the whole file's, and
 				// `tab.encoding` is what the save writes with.
 				if (!isCurrentLoad() || typedDuringLoad()) return;
+				if (!repoint()) return;
 				// Decided on every load, before the buffer can reach a writer.
 				// Both branches report both, so this also CLEARS the flag on a
 				// file the user has since converted to UTF-8 — and repoints the
@@ -569,7 +587,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tabManager.setTabDecodedLossy(activeId, lossy);
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);
-				if (pendingNavigateTabId) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
 				const processed = await options.renderMarkdown(content, filePath, foldsForTab(activeId));
 				if (!isCurrentLoad() || typedDuringLoad()) return;
 				tabManager.updateTabContent(activeId, processed);
@@ -640,10 +657,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// cannot strand a slice, but a stale one still overwrites the
 				// winner's buffer and encoding and flips the tab into the editor.
 				if (!isCurrentLoad() || typedDuringLoad()) return;
+				if (!repoint()) return;
 				tabManager.setTabDecodedLossy(activeId, lossy);
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);
-				if (pendingNavigateTabId) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
 				if (tab) tab.isEditing = true;
 				tabManager.setTabRawContent(activeId, content);
 			}

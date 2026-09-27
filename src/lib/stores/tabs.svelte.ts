@@ -1258,7 +1258,20 @@ class TabManager {
 		return tab ? canGoForwardInHistory(tab) : false;
 	}
 
-	goBack(id: string): string | null {
+	/**
+	 * Where back/forward would lead, without moving. The caller reads that file
+	 * first and calls `goBack`/`goForward` only once the read has succeeded, as
+	 * `navigate` is only called after a link's target has been read: a file
+	 * that has gone since must leave the tab showing, and pointing at, the
+	 * document it still holds.
+	 */
+	peekHistory(id: string, direction: 'back' | 'forward'): string | null {
+		const tab = this.tabs.find(t => t.id === id);
+		if (!tab) return null;
+		return (direction === 'back' ? goBackInHistory(tab) : goForwardInHistory(tab)).path;
+	}
+
+	goBack(id: string, pathKey?: string): string | null {
 		const tab = this.tabs.find(t => t.id === id);
 		if (tab) {
 			const result = goBackInHistory(tab);
@@ -1266,13 +1279,12 @@ class TabManager {
 			const path = result.path;
 			// Back/forward walk this tab's own history, which can lead to a file
 			// that has since been opened in another tab. History holds the paths
-			// as they were typed, not their identities, so this claim compares
-			// literally; the caller loads the file straight afterwards and
-			// `loadMarkdown` resolves the key then.
-			this.claimPath(path, id);
+			// as they were typed, not their identities, so without the key the
+			// load has resolved this claim compares literally.
+			this.claimPath(path, id, pathKey);
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
-			tab.pathKey = undefined;
+			tab.pathKey = pathKey;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
 			this.forgetPreviousDocument(tab);
 			return path;
@@ -1280,16 +1292,16 @@ class TabManager {
 		return null;
 	}
 
-	goForward(id: string): string | null {
+	goForward(id: string, pathKey?: string): string | null {
 		const tab = this.tabs.find(t => t.id === id);
 		if (tab) {
 			const result = goForwardInHistory(tab);
 			if (!result.path) return null;
 			const path = result.path;
-			this.claimPath(path, id);
+			this.claimPath(path, id, pathKey);
 			tab.historyIndex = result.historyIndex;
 			tab.path = path;
-			tab.pathKey = undefined;
+			tab.pathKey = pathKey;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
 			this.forgetPreviousDocument(tab);
 			return path;
