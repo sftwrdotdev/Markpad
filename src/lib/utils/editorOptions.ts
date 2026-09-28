@@ -4,19 +4,35 @@ import { fontFamilyValue } from "./fontFamily.js";
 import { animatesCursor, animatesJumpScroll } from "./motion.js";
 
 /**
- * "Line Numbers: off" without giving up the gutter they sit in.
+ * The strip between the line numbers and the text, in pixels.
  *
- * Monaco reserves that gutter on `renderType !== Off`, and a render function
- * validates as `Custom` — so an empty string keeps the width and draws nothing
- * in it. `'off'` is the one value that collapses it, and the floating table of
- * contents button stands on what it collapsed (#810).
+ * Zoom is the font size here, and two things in the gutter did not agree with
+ * it. Monaco sizes the line-number column in digits, so the blank column #812
+ * kept for the floating TOC button pushed the text right by five digit widths
+ * on every zoom step, for nothing drawn. And Monaco draws the folding chevron
+ * at 140% of the font size in a strip that stays 26px wide, so past about
+ * 17px the chevron spilled onto the text.
  *
- * A module constant rather than an inline arrow because
- * `editorOptionsFromSettings` runs inside an effect: a new closure per call is
- * a new option value, and Monaco would see this option change on every
- * `updateOptions`.
+ * So "off" collapses the column with a real `'off'` and puts a fixed
+ * `TOC_BUTTON_CLEARANCE` back in this strip: the button is 28px wide at 8px
+ * from the pane, and 42px is what five digits came to at the default 14px, so
+ * the default layout is unchanged. The strip also grows with the chevron, and
+ * only with it. `styles.css` keeps the chevron at the strip's right end,
+ * against the text rather than under the button.
+ *
+ * Monaco adds 16px to this option itself while folding controls show, which
+ * is why that is taken off the chevron's width. The chevron is its
+ * `font-size: 140%` plus a 2px `margin-left`, both from Monaco's folding.css.
  */
-const BLANK_LINE_NUMBER = () => "";
+const TOC_BUTTON_CLEARANCE = 42;
+const MONACO_FOLDING_WIDTH = 16;
+const MONACO_DEFAULT_DECORATIONS_WIDTH = 10;
+
+function lineDecorationsWidth(fontSize: number, lineNumbersOff: boolean): number {
+	const chevron = Math.ceil(fontSize * 1.4) + 2;
+	const strip = Math.max(MONACO_DEFAULT_DECORATIONS_WIDTH, chevron - MONACO_FOLDING_WIDTH);
+	return lineNumbersOff ? strip + TOC_BUTTON_CLEARANCE : strip;
+}
 
 /**
  * The Monaco options derived from the settings store, in one place.
@@ -48,6 +64,7 @@ export function editorOptionsFromSettings(
 	zoomPercent: number,
 	fontIsMonospace = true,
 ): MonacoEditor.IEditorOptions {
+	const fontSize = settings.editorFontSize * (zoomPercent / 100);
 	return {
 		minimap: { enabled: settings.minimap },
 		wordWrap: settings.wordWrap as "on" | "off" | "wordWrapColumn" | "bounded",
@@ -57,10 +74,8 @@ export function editorOptionsFromSettings(
 		// of the window edge (#758). 'advanced' measures in the DOM and is slow
 		// on large files, so only a proportional font pays for it.
 		wrappingStrategy: fontIsMonospace ? "simple" : "advanced",
-		lineNumbers:
-			settings.lineNumbers === "off"
-				? BLANK_LINE_NUMBER
-				: (settings.lineNumbers as "on" | "relative" | "interval"),
+		lineNumbers: settings.lineNumbers as "on" | "off" | "relative" | "interval",
+		lineDecorationsWidth: lineDecorationsWidth(fontSize, settings.lineNumbers === "off"),
 		// A Monaco string enum, not a flag. Any non-empty string is truthy, so
 		// a ternary on it can only ever produce "line" — which defeats both the
 		// line-highlight toggle and Zen mode, whose whole effect is 'none'.
@@ -75,7 +90,7 @@ export function editorOptionsFromSettings(
 		// never exposed. Same shape as the defects #369 fixed: a setting that
 		// does not control the thing its label names.
 		selectionHighlight: settings.occurrencesHighlight,
-		fontSize: settings.editorFontSize * (zoomPercent / 100),
+		fontSize,
 		fontFamily: fontFamilyValue(settings.editorFont, "monospace"),
 		renderWhitespace: settings.showWhitespace ? "all" : "none",
 		// Monaco animates the scroll when it is sent to a position — a find

@@ -1966,3 +1966,11 @@ body {
 .context-view .monaco-hover {
 	width: max-content;
 }
+
+/* The folding chevron sits in a strip that also holds the TOC button's
+   clearance when line numbers are off (`utils/editorOptions.ts`). Monaco
+   centres the chevron in the strip, which would put it under the button;
+   the right end keeps it against the line it folds. */
+.monaco-editor .margin-view-overlays .cldr[class*="codicon-folding-"] {
+	justify-content: flex-end;
+}

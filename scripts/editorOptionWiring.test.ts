@@ -148,6 +148,7 @@ test('editor options are applied by a single updateOptions effect', () => {
 			'cursorSmoothCaretAnimation',
 			'fontFamily',
 			'fontSize',
+			'lineDecorationsWidth',
 			'lineNumbers',
 			'minimap',
 			'occurrencesHighlight',
@@ -756,24 +757,27 @@ test('space-delimited languages are left exactly as they were', () => {
 	}
 });
 
-test('turning line numbers off keeps the gutter the TOC button stands on', () => {
-	// #810: the floating table-of-contents button is positioned against the
-	// pane, and what it floats over is the line-number gutter. `'off'` is the
-	// one `lineNumbers` value that collapses that gutter, which dropped the
-	// button onto the text; a render function validates as `Custom` instead, so
-	// Monaco keeps the width and this draws nothing in it. The assertion is
-	// therefore that 'off' does NOT reach Monaco as 'off'.
-	const off = editorOptionsFromSettings({ ...SETTINGS, lineNumbers: 'off' }, 100).lineNumbers;
-	assert.equal(typeof off, 'function');
-	assert.equal((off as (lineNumber: number) => string)(7), '');
+test('the gutter left of the text grows with zoom only as far as the folding chevron needs', () => {
+	const at = (lineNumbers: string, zoom: number) =>
+		editorOptionsFromSettings({ ...SETTINGS, lineNumbers }, zoom).lineDecorationsWidth as number;
 
-	// One value, not a closure per call: `editorOptionsFromSettings` runs in an
-	// effect, and a fresh arrow would be a changed option on every
-	// `updateOptions`.
-	assert.equal(off, editorOptionsFromSettings({ ...SETTINGS, lineNumbers: 'off' }, 100).lineNumbers);
+	// #812 kept a blank line-number column for the TOC button, and Monaco
+	// sizes that column in digits, so zooming in pushed the text right for
+	// nothing drawn. "Off" is now a real 'off', and the clearance the button
+	// needs is a fixed width that zoom does not touch while the chevron fits.
+	assert.equal(editorOptionsFromSettings({ ...SETTINGS, lineNumbers: 'off' }, 100).lineNumbers, 'off');
+	assert.equal(at('off', 50), at('off', 100));
+	assert.equal(at('off', 100), at('on', 100) + 42);
 
-	// The modes that already reserved the gutter are passed through untouched.
-	for (const lineNumbers of ['on', 'relative', 'interval']) {
-		assert.equal(editorOptionsFromSettings({ ...SETTINGS, lineNumbers }, 100).lineNumbers, lineNumbers);
+	// The default is Monaco's own 10px, so nothing moves at 14px.
+	assert.equal(at('on', 100), 10);
+
+	// Monaco draws the chevron at 140% of the font size plus a 2px margin, in
+	// this strip plus the 16px it adds for folding. Before, the strip stayed
+	// 26px and a large zoom spilled the chevron onto the text.
+	for (const zoom of [100, 150, 200, 300]) {
+		const fontSize = SETTINGS.editorFontSize * (zoom / 100);
+		assert.ok(at('on', zoom) + 16 >= fontSize * 1.4 + 2, `chevron fits at ${zoom}%`);
+		assert.equal(at('off', zoom), at('on', zoom) + 42);
 	}
 });
