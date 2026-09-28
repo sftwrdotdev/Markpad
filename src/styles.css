@@ -1954,3 +1954,15 @@ body {
 .context-view {
 	z-index: 10000 !important;
 }
+
+/* The `.context-view` is absolutely positioned inside `.editor-container`, so
+   the tooltip's shrink-to-fit width stops at the editor's right edge, not the
+   window's. In split view the find widget's last buttons sit against that edge:
+   the tooltip wraps to two lines after Monaco has measured it as one and placed
+   it above the button, so the second line lands on the button and the tooltip
+   flickers as the pointer crosses it (#883). Sizing it to its text lets
+   Monaco's own window-edge shift do the placement. `.workbench-hover` keeps its
+   700px cap. */
+.context-view .monaco-hover {
+	width: max-content;
+}
