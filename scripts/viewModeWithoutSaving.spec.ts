@@ -53,8 +53,9 @@ const viewer = readSource('src/lib/MarkdownViewer.svelte');
  * meaningless in exactly the direction that hides bugs.
  */
 function pluck(name: string, required = true): string {
-	const marker = `async function ${name}(`;
-	const start = viewer.indexOf(marker);
+	const asyncStart = viewer.indexOf(`async function ${name}(`);
+	const syncStart = viewer.indexOf(`\tfunction ${name}(`);
+	const start = asyncStart !== -1 ? asyncStart : syncStart === -1 ? -1 : syncStart + 1;
 	if (start === -1) {
 		assert.ok(!required, `expected MarkdownViewer.svelte to define ${name}`);
 		return '';
@@ -466,4 +467,86 @@ test('Ctrl+E hands each pane the line the other one was showing', async () => {
 	await buildHarness(fakes, false, panes).toggleEdit();
 	assert.equal(tab.isEditing, true);
 	assert.deepEqual(synced, [fromPreview], 'the editor was not sent to the preview\'s line');
+});
+
+// Scroll sync is split view's. The tab keeps `isScrollSynced` after the split
+// closes, and out of split the other pane is still mounted at zero width, so
+// syncing through it dragged the visible pane off its line on every Ctrl+E.
+function buildSyncHarness(panes: Record<string, unknown>) {
+	const source = [
+		pluck('handleEditorScrollSync'),
+		pluck('splitScrollSyncOn', false),
+		pluck('syncEditorToPreviewScroll'),
+		pluck('restoreAfterLeavingEditor'),
+	].join('\n\n');
+	const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+	const factory = new Function(
+		'deps',
+		`"use strict";
+		const {
+			tabManager, tick, viewerPaneEl, markdownBody, editorPane, lineCoords,
+			tabAnchorForEditorTopLine, asBufferLine, scrollPreviewToSyncPosition,
+			getPreviewScrollSyncPosition, getPreviewScrollAnchor,
+		} = deps;
+		let tocActiveLine = null;
+		${js}
+		return { handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, toc: () => tocActiveLine };`,
+	);
+	return factory({
+		tabManager,
+		tick: async () => {},
+		viewerPaneEl: undefined,
+		markdownBody: {},
+		lineCoords: {},
+		tabAnchorForEditorTopLine: (_coords: unknown, line: number) => line,
+		asBufferLine: (line: number) => line,
+		getPreviewScrollSyncPosition: () => ({ section: 'body', ratio: 0.5, line: 40 }),
+		...panes,
+	});
+}
+
+test('scroll sync left on in split view stays off once the split closes', async () => {
+	tabManager.closeAll();
+	tabManager.addTab('/notes/note.md');
+	const tab = tabManager.activeTab!;
+	tabManager.setSplitEnabled(tab.id, true);
+	if (!tab.isScrollSynced) tabManager.toggleScrollSync(tab.id);
+	const toPreview: unknown[] = [];
+	const toEditor: unknown[] = [];
+	const harness = buildSyncHarness({
+		scrollPreviewToSyncPosition: (position: unknown) => toPreview.push(position),
+		editorPane: { syncScrollToPosition: (position: unknown) => toEditor.push(position) },
+	});
+	const position = { section: 'body', ratio: 0.5, line: 40 };
+
+	harness.handleEditorScrollSync(position);
+	harness.syncEditorToPreviewScroll({});
+	assert.equal(toPreview.length, 1, 'precondition: split view syncs the preview');
+	assert.equal(toEditor.length, 1, 'precondition: split view syncs the editor');
+
+	tabManager.setSplitEnabled(tab.id, false);
+	tab.isEditing = true;
+	assert.equal(tab.isScrollSynced, true, 'the tab still remembers the choice');
+
+	harness.handleEditorScrollSync(position);
+	harness.syncEditorToPreviewScroll({});
+	assert.equal(toPreview.length, 1, 'the hidden preview was scrolled from the editor');
+	assert.equal(toEditor.length, 1, 'the editor was scrolled from the hidden preview');
+	assert.equal(harness.toc(), 40, 'the outline still follows the editor');
+});
+
+test('leaving the editor moves the outline to the line the preview lands on', async () => {
+	tabManager.closeAll();
+	tabManager.addTab('/notes/note.md');
+	const tab = tabManager.activeTab!;
+	tab.isEditing = false;
+	const harness = buildSyncHarness({
+		scrollPreviewToSyncPosition: () => {},
+		getPreviewScrollAnchor: () => 57,
+	});
+
+	await harness.restoreAfterLeavingEditor(tab.id, { section: 'body', ratio: 0.5, line: 58 });
+
+	assert.equal(tab.anchorLine, 57);
+	assert.equal(harness.toc(), 57, 'the outline kept the entry from before the switch');
 });

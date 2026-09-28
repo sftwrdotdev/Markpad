@@ -119,7 +119,7 @@ test('the editor position reaches the outline whether or not scroll sync is on',
 	// on rather than the one the viewport cuts in half (#744).
 	const handler = functionSource(viewerSource, 'handleEditorScrollSync');
 	const record = handler.indexOf('tocActiveLine =');
-	const syncCheck = handler.indexOf('isScrollSynced');
+	const syncCheck = handler.indexOf('splitScrollSyncOn()');
 
 	assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
 	assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');

@@ -1806,9 +1806,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			tocActiveLine = tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line));
 		}
 
-		if (tabManager.activeTab?.isScrollSynced) {
+		if (splitScrollSyncOn()) {
 			scrollPreviewToSyncPosition(position);
 		}
+	}
+
+	/**
+	 * Scroll sync is a split-view feature, and `isScrollSynced` outlives the
+	 * split: it is the tab's remembered choice for the next one. Out of split
+	 * the other pane is still mounted at zero width, so a position mapped
+	 * through it drags the visible pane off the line Ctrl+E put it on (#799).
+	 */
+	function splitScrollSyncOn() {
+		const tab = tabManager.activeTab;
+		return !!tab?.isSplit && tab.isScrollSynced;
 	}
 
 	/**
@@ -1840,7 +1851,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function syncEditorToPreviewScroll(target: HTMLElement) {
-		if (!tabManager.activeTab?.isScrollSynced || !editorPane) return;
+		if (!splitScrollSyncOn() || !editorPane) return;
 
 		const position = getPreviewScrollSyncPosition(target);
 		editorPane.syncScrollToPosition(position);
@@ -2274,9 +2285,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const body = markdownBody;
 		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
 		scrollPreviewToSyncPosition(position);
-		// That scroll is marked programmatic, so the tab's anchor is written here.
+		// That scroll is marked programmatic, so the tab's anchor and the
+		// outline's current entry are written here.
 		const anchorLine = getPreviewScrollAnchor(body);
-		if (anchorLine !== null) tabManager.updateTabAnchorLine(tabId, anchorLine);
+		if (anchorLine !== null) {
+			tabManager.updateTabAnchorLine(tabId, anchorLine);
+			tocActiveLine = anchorLine;
+		}
 	}
 
 	/**
