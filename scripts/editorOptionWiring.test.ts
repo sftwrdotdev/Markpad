@@ -164,6 +164,26 @@ test('editor options are applied by a single updateOptions effect', () => {
 	);
 });
 
+test('the editor has its final layout before anything is placed in it', () => {
+	// #799: the view state, the anchor line and Ctrl+E's pending sync are all
+	// placed in `onMount`, before the update effect first runs. The editor was
+	// created at zoom 100 and with 'simple' wrapping, and the effect then
+	// changed the font size or the wrapping under a placed scroll offset.
+	// Monaco keeps the pixels, not the line, so every Ctrl+E landed further
+	// down (zoom below 100, or a proportional font) or further up (above 100).
+	const mount = sliceBetween(editor, 'monaco.editor.create(container', 'editorReady = true;');
+	assert.match(mount, /\.\.\.editorOptionsFromSettings\(settings, zoomLevel\)/, 'created at the real zoom');
+
+	const measured = mount.indexOf('if (!fontIsMonospace) applySettingsOptions();');
+	const restored = mount.indexOf('editor.restoreViewState(');
+	assert.ok(measured !== -1, 'the wrapping for a proportional font is applied in onMount');
+	assert.ok(measured < restored, 'and before the view state is restored');
+	assert.ok(
+		editor.indexOf('editorReady = true;') < editor.indexOf('if (pendingSync) {'),
+		'the pending sync is spent after both',
+	);
+});
+
 test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
 	// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
 	// window edge. Both values are asserted because 'advanced' everywhere would

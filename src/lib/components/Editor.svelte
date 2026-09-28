@@ -375,10 +375,11 @@
 			// switch has to be explicit or the provider above is never asked.
 			'semanticHighlighting.enabled': true,
 			// The settings-derived options, shared with the updateOptions
-			// effect below. Zoom is 100 here and not `zoomLevel`: that is
-			// what this literal has always passed, and the effect re-applies
-			// the real factor on the tick after creation.
-			...editorOptionsFromSettings(settings, 100),
+			// effect below. The real zoom, not 100: the view state, the
+			// anchor line and a pending sync are all placed before that
+			// effect runs, and a font size changed under them afterwards
+			// keeps the pixel offset, not the line (#799).
+			...editorOptionsFromSettings(settings, zoomLevel),
 			scrollBeyondLastLine: true,
 			stickyScroll: { enabled: settings.stickyScroll },
 			wordBasedSuggestions: "off",
@@ -498,6 +499,13 @@
 			},
 		});
 
+		// Feeds the wrapping strategy in `editorOptionsFromSettings`. `fontInfo`
+		// changes with the font setting and when Monaco remeasures after a font
+		// finishes loading. Read before anything is placed, for the same
+		// reason as the zoom above: a proportional font rewraps every line.
+		fontIsMonospace = editor.getOption(monaco.editor.EditorOption.fontInfo).isMonospace;
+		if (!fontIsMonospace) applySettingsOptions();
+
 		if (tabManager.activeTab?.editorViewState) {
 			editor.restoreViewState(tabManager.activeTab.editorViewState);
 		} else if (tabManager.activeTab) {
@@ -580,10 +588,6 @@
 			}
 		});
 
-		// Feeds the wrapping strategy in `editorOptionsFromSettings`. `fontInfo`
-		// changes with the font setting and when Monaco remeasures after a font
-		// finishes loading.
-		fontIsMonospace = editor.getOption(monaco.editor.EditorOption.fontInfo).isMonospace;
 		editor.onDidChangeConfiguration((e) => {
 			if (e.hasChanged(monaco.editor.EditorOption.fontInfo)) {
 				fontIsMonospace = editor.getOption(monaco.editor.EditorOption.fontInfo).isMonospace;
@@ -2311,10 +2315,13 @@
 		if (switched || currentLanguage !== languageId) syncStatusFromModel();
 	});
 
+	/** The one place the settings reach Monaco after creation: the effect below, and `onMount` once the font is measured. */
+	function applySettingsOptions() {
+		editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace));
+	}
+
 	$effect(() => {
-		if (editorReady && editor) {
-			editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace));
-		}
+		if (editorReady && editor) applySettingsOptions();
 	});
 
 
