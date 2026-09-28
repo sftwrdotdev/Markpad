@@ -5,7 +5,7 @@
     <version>$version$</version>
     <title>Markpad</title>
     <authors>alecdotdev</authors>
-    <description>The Notepad equivalent for Markdown</description>
+    <description>Light as Notepad, elegant as Markdown.</description>
     <tags>markdown viewer tauri sveltekit editor notepad text-editor</tags>
     <projectUrl>https://github.com/sftwrdotdev/markpad</projectUrl>
     <iconUrl>https://raw.githubusercontent.com/sftwrdotdev/markpad/master/src-tauri/icons/128x128.png</iconUrl>

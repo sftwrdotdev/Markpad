@@ -2,7 +2,7 @@ name: markpad
 title: Markpad
 adopt-info: markpad
 icon: src-tauri/icons/128x128.png
-summary: The Notepad equivalent for Markdown
+summary: Light as Notepad, elegant as Markdown.
 description: |
   A lightweight, minimalist Markdown viewer and text editor built for productivity across Windows, macOS, and Linux.
   Features:

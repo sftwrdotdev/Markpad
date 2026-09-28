@@ -1,7 +1,7 @@
 <div align="center">
   <img src="src-tauri/icons/128x128.png" width="128" alt="Markpad Icon" />
   <h1>Markpad</h1>
-  <p><b>The Notepad equivalent for Markdown</b></p>
+  <p><b>Light as Notepad, elegant as Markdown.</b></p>
   
   [![GitHub Release](https://img.shields.io/github/v/release/sftwrdotdev/Markpad?style=flat-square)](https://github.com/sftwrdotdev/Markpad/releases/latest)
 
