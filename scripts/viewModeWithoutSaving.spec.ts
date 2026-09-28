@@ -469,6 +469,26 @@ test('Ctrl+E hands each pane the line the other one was showing', async () => {
 	assert.deepEqual(synced, [fromPreview], 'the editor was not sent to the preview\'s line');
 });
 
+test('Ctrl+E brings the cursor on screen only when the outline follows it', async () => {
+	// An outline marking the cursor's heading while the editor shows another
+	// one reads as wrong, so with 'cursor' the handoff moves a cursor left off
+	// screen. With 'scroll' the outline never looks at the cursor, and moving
+	// it would only lose the reader's place.
+	const asked: unknown[] = [];
+	for (const follows of ['cursor', 'scroll'] as const) {
+		settings.tocFollows = follows;
+		const { tab, fakes } = dirtyTab('edit');
+		tab.isEditing = false;
+		await buildHarness(fakes, false, {
+			editorPane: { syncScrollToPosition: (_position: unknown, options: unknown) => asked.push(options) },
+			markdownBody: {},
+			getPreviewScrollSyncPosition: () => ({ section: 'body', ratio: 0.5, line: 40 }),
+		}).toggleEdit();
+	}
+	settings.tocFollows = 'scroll';
+	assert.deepEqual(asked, [{ cursorIntoView: true }, { cursorIntoView: false }]);
+});
+
 // Scroll sync is split view's. The tab keeps `isScrollSynced` after the split
 // closes, and out of split the other pane is still mounted at zero width, so
 // syncing through it dragged the visible pane off its line on every Ctrl+E.

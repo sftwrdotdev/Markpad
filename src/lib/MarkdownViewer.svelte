@@ -232,7 +232,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	};
 
 	let editorPane = $state<{ 
-		syncScrollToPosition: (position: ScrollSyncPosition) => void;
+		syncScrollToPosition: (position: ScrollSyncPosition, options?: { cursorIntoView?: boolean }) => void;
 		scrollSyncPosition: () => ScrollSyncPosition | null;
 		handleDroppedFile: (path: string, x: number, y: number) => Promise<void>;
 		updateDragCaret: (x: number, y: number) => void;
@@ -2290,7 +2290,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			}
 			if (position && tab.isEditing) {
 				await tick();
-				editorPane?.syncScrollToPosition(position);
+				editorPane?.syncScrollToPosition(position, { cursorIntoView: settings.tocFollows === 'cursor' });
 			}
 		}
 	}
