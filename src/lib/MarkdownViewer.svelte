@@ -1805,13 +1805,19 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * A preview that is not on screen never decides: in the editor alone it is
 	 * still mounted at a sliver of width, and its scroll events report lines
 	 * from that layout, which put the outline on the wrong heading after
-	 * Ctrl+E (#799).
+	 * Ctrl+E (#799). Nor does one still sliding open after Ctrl+E out of the
+	 * editor, for the same reason, until `restoreAfterLeavingEditor` has placed
+	 * it: the outline flashed the first headings for the length of the slide.
 	 */
 	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
 		const cursorLeads = settings.tocFollows === 'cursor' && hasEditorPane;
-		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || !isEditing || isSplit);
+		const previewSettled = (!isEditing || isSplit) && !previewPlacing;
+		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
 		if (accepted) tocActiveLine = line;
 	}
+
+	/** True from Ctrl+E out of the editor until the preview is placed. */
+	let previewPlacing = false;
 
 	function handleEditorCursorLine(line: BufferLine) {
 		followToc('cursor', lineCoords.toRendererLine(line));
@@ -2253,6 +2259,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// Ctrl+E lands on the line the other pane was showing, mapped the way
 			// split view maps it (#799).
 			const position = editorPane?.scrollSyncPosition() ?? null;
+			previewPlacing = position !== null;
 			tab.isEditing = false;
 			await renderPreviewLeavingEditableMode(tab);
 			if (position) void restoreAfterLeavingEditor(tab.id, position);
@@ -2304,6 +2311,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function restoreAfterLeavingEditor(tabId: string, position: ScrollSyncPosition) {
 		await tick();
 		if (viewerPaneEl) await Promise.all(viewerPaneEl.getAnimations().map((a) => a.finished.catch(() => {})));
+		previewPlacing = false;
 		const body = markdownBody;
 		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
 		scrollPreviewToSyncPosition(position);

@@ -133,6 +133,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 			tick, renderRichContent, editorPane, markdownBody,
 			getPreviewScrollSyncPosition, restoreAfterLeavingEditor,
 		} = deps;
+		let previewPlacing = false;
 		${js}
 		return { toggleEdit, toggleSplitView };`,
 	);
@@ -511,10 +512,12 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 			getPreviewScrollSyncPosition, getPreviewScrollAnchor, settings, hasEditorPane, isEditing, isSplit,
 		} = deps;
 		let tocActiveLine = null;
+		let previewPlacing = false;
 		${js}
 		return {
 			handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, handleEditorCursorLine, followToc,
 			toc: () => tocActiveLine,
+			startPlacing: () => { previewPlacing = true; },
 		};`,
 	);
 	return factory({
@@ -631,3 +634,23 @@ function describeOutlineSource(
 		}
 	});
 }
+
+test('the preview does not move the outline while it slides open after Ctrl+E', async () => {
+	// Its scroll events during the slide come from a layout still too narrow,
+	// and the outline flashed the first headings until the preview was placed.
+	tabManager.closeAll();
+	tabManager.addTab('/notes/note.md');
+	const tab = tabManager.activeTab!;
+	tab.isEditing = false;
+	const harness = buildSyncHarness({ scrollPreviewToSyncPosition: () => {}, getPreviewScrollAnchor: () => 57 });
+
+	harness.handleEditorScrollSync({ section: 'body', ratio: 0.5, line: 40 });
+	harness.startPlacing();
+	harness.followToc('preview', 2);
+	assert.equal(harness.toc(), 40, 'a sliding preview put the outline on its own line');
+
+	await harness.restoreAfterLeavingEditor(tab.id, { section: 'body', ratio: 0.5, line: 58 });
+	assert.equal(harness.toc(), 57, 'the placed preview decides');
+	harness.followToc('preview', 60);
+	assert.equal(harness.toc(), 60, 'and keeps deciding once placed');
+});
