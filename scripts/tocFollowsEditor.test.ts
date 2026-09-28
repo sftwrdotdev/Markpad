@@ -118,12 +118,12 @@ test('the editor position reaches the outline whether or not scroll sync is on',
 	// reading position takes, so the outline follows the line the reader is
 	// on rather than the one the viewport cuts in half (#744).
 	const handler = functionSource(viewerSource, 'handleEditorScrollSync');
-	const record = handler.indexOf('tocActiveLine =');
+	const record = handler.indexOf("followToc('editor'");
 	const syncCheck = handler.indexOf('splitScrollSyncOn()');
 
 	assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
 	assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');
-	assert.match(handler, /tocActiveLine = tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)/);
+	assert.match(handler, /followToc\('editor', tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)\)/);
 });
 
 test('the editor position is converted before the outline compares it', () => {
@@ -163,8 +163,8 @@ test('the preview feeds the same state, off the line it already measures', () =>
 	// it does was already happening on that event.
 	const handler = sliceBetween(viewerSource, 'function handleScroll(e: Event)', '\n\tfunction ');
 	assert.match(handler, /const anchorLine = getPreviewScrollAnchor\(target\);/);
-	assert.match(handler, /tocActiveLine = anchorLine;/);
-	// One input, from whichever pane moved last.
+	assert.match(handler, /followToc\('preview', anchorLine\);/);
+	// One input. Which pane feeds it is `followToc`'s call.
 	assert.match(viewerSource, /activeLine=\{tocActiveLine\}/);
 });
 

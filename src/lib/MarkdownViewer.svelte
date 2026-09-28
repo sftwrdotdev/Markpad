@@ -1795,6 +1795,28 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 */
 	let tocActiveLine = $state<RendererLine | null>(null);
 
+	/**
+	 * The one gate on `tocActiveLine`. With the editor on screen and
+	 * `settings.tocFollows` set to 'cursor', only the cursor moves the outline,
+	 * and scrolling either pane leaves it where it is. Otherwise the pane that
+	 * scrolled last decides. The preview on its own has no cursor, so there it
+	 * is always the scroll.
+	 *
+	 * A preview that is not on screen never decides: in the editor alone it is
+	 * still mounted at a sliver of width, and its scroll events report lines
+	 * from that layout, which put the outline on the wrong heading after
+	 * Ctrl+E (#799).
+	 */
+	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
+		const cursorLeads = settings.tocFollows === 'cursor' && hasEditorPane;
+		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || !isEditing || isSplit);
+		if (accepted) tocActiveLine = line;
+	}
+
+	function handleEditorCursorLine(line: BufferLine) {
+		followToc('cursor', lineCoords.toRendererLine(line));
+	}
+
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
 		// The line the tab would record as its reading position, not the line
 		// the viewport cuts in half: `tabAnchorForEditorTopLine` is the one
@@ -1803,7 +1825,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// down). Handing over the raw top line left the outline one entry
 		// behind whenever a heading was the first line on screen (#744).
 		if (position.line !== undefined) {
-			tocActiveLine = tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line));
+			followToc('editor', tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line)));
 		}
 
 		if (splitScrollSyncOn()) {
@@ -1895,7 +1917,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const anchorLine = getPreviewScrollAnchor(target);
 			if (anchorLine !== null) {
 				tabManager.updateTabAnchorLine(tabManager.activeTabId, anchorLine);
-				tocActiveLine = anchorLine;
+				followToc('preview', anchorLine);
 			}
 		}
 
@@ -2290,7 +2312,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const anchorLine = getPreviewScrollAnchor(body);
 		if (anchorLine !== null) {
 			tabManager.updateTabAnchorLine(tabId, anchorLine);
-			tocActiveLine = anchorLine;
+			followToc('preview', anchorLine);
 		}
 	}
 
@@ -4149,7 +4171,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								onnextTab={() => tabManager.cycleTab('next')}
 								onprevTab={() => tabManager.cycleTab('prev')}
 								onundoClose={handleUndoCloseTab}
-								onscrollsync={handleEditorScrollSync} />
+								onscrollsync={handleEditorScrollSync}
+								oncursorline={handleEditorCursorLine} />
 						{/if}
 					</div>
 

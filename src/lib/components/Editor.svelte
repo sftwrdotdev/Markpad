@@ -90,6 +90,7 @@
 		onprevTab,
 		onundoClose,
 		onscrollsync,
+		oncursorline,
 		// Read-only now: the wheel handler below changes the zoom through the
 		// settings store, which is what persists it and syncs it across windows,
 		// so there is no longer a value for the parent to bind back to.
@@ -112,6 +113,8 @@
 		onprevTab?: () => void;
 		onundoClose?: () => void;
 		onscrollsync?: (position: ScrollSyncPosition) => void;
+		/** The buffer line the cursor is on, whenever it moves and once on mount. */
+		oncursorline?: (line: BufferLine) => void;
 		zoomLevel?: number;
 		isSplit?: boolean;
 		theme?: string;
@@ -569,7 +572,11 @@
 
 		editor.onDidChangeCursorPosition((e) => {
 			cursorPosition = e.position;
+			oncursorline?.(asBufferLine(e.position.lineNumber));
 		});
+		// The view state above put the cursor back without an event, and a
+		// Ctrl+E into the editor wants the outline on it straight away.
+		oncursorline?.(asBufferLine(editor.getPosition()?.lineNumber ?? 1));
 
 		editor.onDidChangeCursorSelection((e) => {
 			const selections = editor.getSelections() || [];

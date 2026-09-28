@@ -470,6 +470,12 @@ export class SettingsStore {
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
 	/**
+	 * What the outline marks as the current heading while the editor is on
+	 * screen: the heading scrolled to, or the one the cursor is in (#799). The
+	 * preview on its own has no cursor, so it always follows the scroll.
+	 */
+	tocFollows = $state<'scroll' | 'cursor'>('scroll');
+	/**
 	 * Whether a newly split tab starts with its panes scroll-locked.
 	 *
 	 * A preference, not a tab's state: `Tab.isScrollSynced` is the per-tab
@@ -1020,6 +1026,13 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 			read: (s) => s.tocSide,
 			load: (s, raw) => {
 				if (raw === 'left' || raw === 'right') s.tocSide = raw;
+			},
+		},
+		{
+			key: 'editor.tocFollows',
+			read: (s) => s.tocFollows,
+			load: (s, raw) => {
+				if (raw === 'scroll' || raw === 'cursor') s.tocFollows = raw;
 			},
 		},
 		{

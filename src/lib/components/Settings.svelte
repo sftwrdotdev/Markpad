@@ -1052,6 +1052,17 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="editor-toc-follows">{t('settings.tocFollows', settings.language)}</label>
+							<div class="select-wrapper">
+								<select id="editor-toc-follows" bind:value={settings.tocFollows}>
+									<option value="scroll">{t('settings.tocFollowsScroll', settings.language)}</option>
+									<option value="cursor">{t('settings.tocFollowsCursor', settings.language)}</option>
+								</select>
+								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+							</div>
+						</div>
+
+						<div class="setting-item">
 							<label for="editor-line-highlight">{t('settings.lineHighlight', settings.language)}</label>
 							<label class="toggle">
 								<input id="editor-line-highlight" type="checkbox" checked={settings.renderLineHighlight === 'line'} onchange={() => settings.toggleLineHighlight()} />

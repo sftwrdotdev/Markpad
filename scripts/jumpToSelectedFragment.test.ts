@@ -396,7 +396,7 @@ test('the outline is fed body lines from both panes', () => {
 	// lines (`getPreviewScrollAnchor`); the editor's has to be converted, or the
 	// highlighted heading changes depending on which pane you scrolled.
 	const fromEditor = functionSource(viewerSource, 'handleEditorScrollSync');
-	assert.match(fromEditor, /tocActiveLine = tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)/);
+	assert.match(fromEditor, /followToc\('editor', tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)\)/);
 
 	const fromPreview = functionSource(viewerSource, 'getPreviewScrollAnchor');
 	assert.doesNotMatch(fromPreview, /toBufferLine|toRendererLine/, 'already a body line');
