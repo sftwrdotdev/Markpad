@@ -133,10 +133,6 @@ function foldRegionByKey(root: Element, key: string): FoldRegion | null {
 	return null;
 }
 
-function isFoldCollapsed(region: FoldRegion): boolean {
-	return region.content.classList.contains(COLLAPSED_CLASS);
-}
-
 /**
  * Where a fold driver acts, and where what it flips is written down.
  *
@@ -171,13 +167,13 @@ export function toggleFold(host: FoldHost, key: string): void {
 	host.setFolds(flipFold(host.folds, key));
 
 	const region = host.root ? foldRegionByKey(host.root, key) : null;
-	if (region) applyFold(region, !isFoldCollapsed(region));
+	if (region) applyFold(region, !region.content.classList.contains(COLLAPSED_CLASS));
 }
 
 /** Open this fold if it is shut — what find asks for on the way to a match. */
 export function revealFold(host: FoldHost, key: string): void {
 	const region = host.root ? foldRegionByKey(host.root, key) : null;
-	if (region && isFoldCollapsed(region)) toggleFold(host, key);
+	if (region?.content.classList.contains(COLLAPSED_CLASS)) toggleFold(host, key);
 }
 
 /**

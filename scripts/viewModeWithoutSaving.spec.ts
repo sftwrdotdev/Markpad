@@ -613,7 +613,7 @@ describeOutlineSource('scroll', true, (h) => {
 	assert.equal(h.toc(), null, 'the default ignores the cursor');
 	h.handleEditorScrollSync({ section: 'body', ratio: 0.5, line: 60 });
 	assert.equal(h.toc(), 60);
-	// The editor alone keeps the preview mounted at a sliver of width, and its
+	// The editor alone keeps the preview mounted at zero width, and its
 	// scroll events put the outline on a heading from that layout.
 	h.followToc('preview', 90);
 	assert.equal(h.toc(), 60, 'the hidden preview moved the outline');

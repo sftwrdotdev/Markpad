@@ -2346,7 +2346,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function toggleEditView() {
 		const selected = getSelectionSourceRange();
 
-		if (isEditing && !isSplit) {
+		if (!hasPreviewPane) {
 			// The editor is already the whole window: nowhere further to take
 			// the reader, so this is the toggle back out.
 			await toggleEdit();
@@ -3961,7 +3961,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
 			<div
 				class="markdown-container"
-				style="zoom: {isEditing && !isSplit ? 1 : settings.zoomLevel / 100}; --code-font: {settings.codeFont}, monospace; --code-font-size: {settings.codeFontSize}px; --highlight-color: {highlightColorMap[settings.highlightColor] || highlightColorMap.yellow};"
+				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {settings.codeFont}, monospace; --code-font-size: {settings.codeFontSize}px; --highlight-color: {highlightColorMap[settings.highlightColor] || highlightColorMap.yellow};"
 				onwheel={handleWheel}
 				role="presentation">
 				<div class="layout-container" 

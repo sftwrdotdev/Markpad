@@ -232,13 +232,9 @@
 					</p>
 					<p class="hint">{tk('downloadingHint')}</p>
 				{:else if updateStore.phase === 'error'}
-					{#if updateStore.errorIsNotConfigured}
-						<p>{tk('notConfiguredHint')}</p>
-					{:else}
-						<p>{errorBodyLead}</p>
-						{#if updateStore.errorMsg}
-							<pre class="error-detail">{updateStore.errorMsg}</pre>
-						{/if}
+					<p>{errorBodyLead}</p>
+					{#if updateStore.errorMsg}
+						<pre class="error-detail">{updateStore.errorMsg}</pre>
 					{/if}
 				{/if}
 			</div>
