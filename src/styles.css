@@ -917,6 +917,15 @@ body {
 	padding-left: 2em;
 }
 
+/* A task item is a grid, where margins do not collapse, so a nested list's
+ * margin would add 16px per level under the last sub-task (#911). */
+.markdown-body ul ul,
+.markdown-body ul ol,
+.markdown-body ol ol,
+.markdown-body ol ul {
+	margin-bottom: 0;
+}
+
 .markdown-body ol ol,
 .markdown-body ul ol {
 	list-style-type: lower-roman;
@@ -1718,20 +1727,29 @@ body {
 	transform: rotate(45deg);
 }
 
-/* strike-through completed task text */
-.markdown-body li.task-done {
+/*
+ * Strike and dim a completed task. `task-done` is the class the app sets; the
+ * `:has` selectors are the fallback for reload and initial state. Both paths
+ * must change together, or nothing a user sees changes.
+ *
+ * Every selector names the item's own children, never its descendants, and
+ * nothing goes on the `li` itself:
+ *
+ * - `:has(input:checked)` without `>` matches any ancestor of a ticked item, so
+ *   ticking a sub-task struck out every parent above it (#911).
+ * - `text-decoration` on the `li` propagates into nested lists, and no
+ *   descendant can undo it, so a ticked parent struck out its open sub-tasks.
+ * - `opacity` composites once per element that declares it. A rule matching
+ *   every descendant multiplied 0.65 down the markup, and KaTeX, twelve spans
+ *   deep, landed at 0.65^12 = 0.006 and vanished -- see the two task items in
+ *   samples/katex-stress.md.
+ */
+.markdown-body li.task-done > .task-text,
+.markdown-body li.task-done > *:not(input):not(.task-text):not(ul):not(ol),
+.markdown-body li.task-list-item:has(> input[data-task-checkbox]:checked) > .task-text,
+.markdown-body li.task-list-item:has(> input[data-task-checkbox]:checked) > *:not(input):not(.task-text):not(ul):not(ol) {
 	text-decoration: line-through;
 	text-decoration-color: var(--color-fg-muted);
-}
-
-/* The live path -- `task-done` is the class the app sets. The `:has` block
- * further down is the fallback for reload and initial state, and both carried
- * the same defect; fixing one and not the other changes nothing a user sees.
- * See the note on the `:has` rule for why opacity may not be applied per
- * descendant, and why it may not move up onto the `li` either. */
-.markdown-body li.task-done .task-text,
-.markdown-body li.task-done > *:not(input):not(.task-text):not(ul):not(ol) {
-	text-decoration: line-through;
 	opacity: 0.65;
 }
 
@@ -1741,48 +1759,6 @@ body {
 	color: inherit;
 	border-radius: 2px;
 	padding: 0 3px;
-}
-
-/* :has fallback for reload / initial state */
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) {
-	text-decoration: line-through;
-	text-decoration-color: var(--color-fg-muted);
-}
-
-/*
- * `opacity` does not inherit -- it composites, once per element that declares
- * it. The selector list here ended in `... :checked *`, every descendant, so a
- * ticked item multiplied 0.65 by itself all the way down its own markup. Plain
- * words survived that at one or two levels deep. KaTeX nests twelve spans, so a
- * formula landed at 0.65^12 = 0.006 and vanished, while the words beside it only
- * faded -- see the two task items in samples/katex-stress.md, which exist as a
- * pair for exactly this reason.
- *
- * Applied to the wrapper the content sits in, so it happens once. Not moved up
- * onto the `li`: opacity on an ancestor cannot be undone by a descendant, and
- * the rules below deliberately restore the checkbox and any nested list to full
- * opacity. `text-decoration` needs no such help -- it propagates to descendant
- * text on its own, which is why the `li` rule above already carries it.
- */
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) .task-text,
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) > *:not(input):not(.task-text):not(ul):not(ol) {
-	text-decoration: line-through;
-	opacity: 0.65;
-}
-
-/* restore opacity/decoration for certain safe elements like ul/ol/checkboxes/links */
-.markdown-body li.task-done input[data-task-checkbox],
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) input[data-task-checkbox] {
-	text-decoration: none !important;
-	opacity: 1 !important;
-}
-
-.markdown-body li.task-done ul,
-.markdown-body li.task-done ol,
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) ul,
-.markdown-body li.task-list-item:has(input[data-task-checkbox]:checked) ol {
-	text-decoration: none;
-	opacity: 1;
 }
 
 .markdown-body .footnote-backref,

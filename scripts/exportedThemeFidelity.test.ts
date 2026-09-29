@@ -139,14 +139,24 @@ test('a ticked task dims its content once, not once per nesting level', () => {
 
 	// And both paths still dim something -- deleting the rules would pass the
 	// assertion above for the wrong reason.
-	for (const marker of ['li.task-done .task-text', ':checked) .task-text']) {
+	for (const marker of ['li.task-done > .task-text', ':checked) > .task-text']) {
 		const block = sliceFrom(styles, marker);
 		assert.match(
-			block.slice(0, 300),
+			block.slice(0, 600),
 			/opacity:\s*0?\.\d+/,
 			`the rule at "${marker}" stopped dimming anything at all`,
 		);
 	}
+});
+
+test('a ticked task strikes only its own text, not its parents or sub-tasks', () => {
+	// #911. `:has(input:checked)` matched every ancestor of a ticked sub-task, and
+	// `text-decoration` on the `li` propagated into nested lists, where no
+	// descendant rule can take it back off.
+	const styles = readSource('src/styles.css');
+	assert.doesNotMatch(styles, /:has\(input\[data-task-checkbox\]:checked\)/, 'a checkbox anywhere below the item matches it');
+	assert.doesNotMatch(styles, /(task-done|:checked\))\s*\{/, 'a strike on the li reaches every nested list');
+	assert.doesNotMatch(styles, /(task-done|:checked\))\s+\.task-text/, 'a descendant .task-text reaches every nested task');
 });
 
 test('the marker rules are pseudo-elements, which is what makes them apply', () => {
