@@ -147,69 +147,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let markdownBody: HTMLElement | null = $state(null);
 	let layoutContainerEl: HTMLElement | null = $state(null);
 	/**
-	 * One element per tab holding that tab's rendered document, and the only
-	 * part of the preview Svelte does not manage.
+	 * One host per tab, holding that tab's rendered document. `blockPatch.ts`
+	 * owns their children, not Svelte: an `{@html}` here would rebuild the
+	 * article on every keystroke.
 	 *
-	 * `{@html sanitizedHtml}` used to sit here, which meant every keystroke threw
-	 * the article away and built a new one — the defect three rounds of fixes
-	 * could not reach, because a rebuilt tree is not obliged to lay out to the
-	 * same pixels. `blockPatch.ts` owns these children instead, so the ownership
-	 * has to be exclusive: Svelte's `{@html}` tracks the first and last node it
-	 * inserted and removes everything between them on the next update, which a
-	 * diff that removes either end quietly breaks. The front-matter panel stays
-	 * Svelte's, in the article, outside these elements.
+	 * One per tab so a tab switch patches nothing: the host still holds that
+	 * document, so no nodes are replaced or re-enriched.
 	 *
-	 * ## Why there is one per tab and not one for the preview
-	 *
-	 * `blockPatch.ts` exists because a rebuilt tree does not lay out to the
-	 * pixels the tree it replaced did, and its header comment says the only
-	 * stable tree is the one that is not rebuilt. That argument was applied to
-	 * the keystroke and not to the tab switch, and a single host made the switch
-	 * the worst case it has: two documents share no block keys, so the diff
-	 * replaced essentially every node, `renderRichContent` ran over the whole
-	 * document again (highlight.js and display maths are memoised;
-	 * `renderMathInElement` is not, and a Mermaid diagram has to be
-	 * re-identified), and the reading position was then restored against a
-	 * layout that was still settling. Reload, motion, and a position that moved
-	 * afterwards — one cause.
-	 *
-	 * Keeping a host per tab is what VS Code does for text editors (one widget,
-	 * `setModel` plus the saved view state — see `utils/tabModels.ts`, which
-	 * already holds that shape for the Monaco side) and what Obsidian does for
-	 * its tabs, where every leaf's container stays in the DOM and a switch is a
-	 * `display` toggle. Re-activating a tab re-runs the patch against a host
-	 * that already holds that document, every key matches, and `patch.inserted`
-	 * comes back empty: no nodes replaced, no enrichment, nothing to re-measure.
-	 *
-	 * `renderedKeys` in `blockPatch.ts` is a `WeakMap` keyed on the container,
-	 * so each host remembers what it was last given on its own, and a host that
-	 * Svelte destroys with its tab takes its entry with it. That is also why
-	 * there is no reconciliation here of the kind `retainTabModels` needs: a
-	 * keyed `{#each}` over `tabManager.tabs` creates and destroys these divs
-	 * with the tabs themselves, so the set of live hosts cannot drift from the
-	 * set of live tabs the way a hand-kept registry can.
-	 *
-	 * ## Only the active host is ever patched
-	 *
-	 * A tab's `content` can be rewritten while it is off screen — a window
-	 * restore renders every restored tab, a cross-window arrival renders itself,
-	 * the background completion of a large file lands whenever it lands, and the
-	 * first-stage read in `documentSession` resolves after three awaits that a
-	 * switch can happen inside. None of those patch anything: the effect below
-	 * reads the ACTIVE tab's host and the active tab's HTML, so a background
-	 * tab's DOM is brought up to date when it is next shown, against whatever
-	 * its `content` says by then.
-	 *
-	 * That is not only laziness. A hidden host must not be written into, because
-	 * measuring inside one is wrong in a way that is invisible until the tab is
-	 * shown again: `getBoundingClientRect().height` is 0 for everything in a
-	 * `display: none` subtree, and `foldLayout.updateFoldHeights` writes what it
-	 * measures into `--fold-content-height`, which `styles.css` resolves to the
-	 * wrapper's `height`. A single write there collapses a hidden document's
-	 * folds to nothing, and the reader sees it a frame after switching back.
-	 * Patching only the visible host, and observing only the visible host (see
-	 * the fold effect below), is what keeps the measurement and the layout it
-	 * measures in the same place.
+	 * Only the active host is patched or observed. A hidden host is
+	 * `display: none`, so everything in it measures 0, and `updateFoldHeights`
+	 * would write that into `--fold-content-height` and collapse its folds. A
+	 * background tab catches up when it is next shown.
 	 */
 	let previewHosts = $state<Record<string, HTMLElement | null>>({});
 	// Filled by `exportAsPdf` for the duration of a print and emptied again;
@@ -711,21 +659,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let identifyFlash = $state('');
 	let identifyFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
-	// v2 window-state snapshots live under their own key, and the legacy key
-	// is removed on every write: an older Markpad build restoring a v2
-	// snapshot it cannot understand ends up with undefined tab content, and
-	// its editor then attributes a stale buffer to the wrong tab — which
-	// auto-save happily writes to disk. Keeping the formats on separate keys
-	// makes old and new builds invisible to each other.
+	// Old localStorage snapshot keys. The snapshot is written through Rust now;
+	// these are read once for migration and removed after the first Rust write.
 	const WINDOW_STATE_KEY = 'savedTabsDataV2';
 	const LEGACY_STATE_KEY = 'savedTabsData';
 	const RESTORE_IN_PROGRESS_KEY = 'markpad-window-restore-in-progress';
 
-	// localStorage is origin-scoped, so every window shares the one snapshot
-	// slot. Only the main window persists and restores tabs: secondary window
-	// labels carry a per-session token, so a snapshot of theirs could never
-	// be restored under the same label again, and letting N windows write the
-	// shared key means the last window closed overwrites everyone else.
+	// Every window shares the one snapshot slot. Only the main window persists
+	// and restores tabs: secondary window labels carry a per-session token, so
+	// their snapshot could never be restored under the same label, and N
+	// writers would leave whichever window closed last.
 	const isMainWindow = appWindow.label === 'main';
 	const windowSession = createWindowSession({
 		isMainWindow,
@@ -1145,32 +1088,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
-	 * A tab switch is not a state change inside one view, and must not be drawn
-	 * as one.
-	 *
-	 * Nearly everything about the layout is a property of the TAB — `isEditing`,
-	 * `isSplit`, `splitRatio`, and `isMarkdown` off the path — so switching to a
-	 * tab in another mode changes exactly the values that toggling that mode
-	 * inside one tab changes, and the transitions written for the toggle fire
-	 * for the switch: `.layout-container` and `.editor-pane` slide their
-	 * padding, the outline wrapper slides its box-shadow and edges. Three
-	 * hundred milliseconds of the text reflowing under the reader, on a gesture
-	 * whose whole content is "show me the other document". The panes' own slide
-	 * is not a CSS transition; `paneSlider` skips a tab switch itself.
-	 *
-	 * The suppression is `foldLayout.ts`'s, for the same reason and in the same
-	 * shape: suppress, let the new values commit, restore. The class is added
-	 * through the element rather than through a `class:` directive because the
-	 * ordering is the entire mechanism — this effect runs after Svelte has
-	 * written the new geometry into the DOM and before the browser has recomputed
-	 * style, so a class that lands in a later flush would land after the
-	 * transitions had already started. Reading `offsetHeight` forces that
-	 * recompute here, while the transitions are off; removing the class then
-	 * re-arms them against values that are already current, so nothing animates.
-	 *
-	 * It is deliberately not a `$state` flag that some later effect clears. A
-	 * window with no end is one an interrupted switch leaves open, and this one
-	 * closes in the same statement that opens it.
+	 * A tab switch must not animate. Switching to a tab in another mode changes
+	 * the values a mode toggle changes, so the padding and outline transitions
+	 * would fire. Add `tab-switching` (transitions off, see styles.css), force a
+	 * style recompute, remove it: the new values commit without animating. It
+	 * must happen here, before the browser recomputes style; a `class:`
+	 * directive would land a flush too late. The pane slide skips tab switches
+	 * itself.
 	 */
 	$effect(() => {
 		const _ = tabManager.activeTabId;
@@ -1543,47 +1467,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let previewPatches = 0;
 
 	/**
-	 * The one place a rendered document becomes preview DOM.
+	 * The one place a rendered document becomes preview DOM: patch, then enrich
+	 * only what the patch inserted.
 	 *
-	 * It used to be three: `{@html sanitizedHtml}` put the markup in, this effect
-	 * enriched it — but only when `!isEditing`, so split view could not use it —
-	 * and the debounced render path called `tick().then(renderRichContent)` for
-	 * itself. The patch has to happen before the enrichment and the enrichment
-	 * has to be told what the patch changed, so the two stop being independent
-	 * effects racing on the same dependency and become one statement.
-	 *
-	 * ## The cold start, where the libraries have not arrived yet
-	 *
-	 * `loadRichContentLibraries()` is started in `onMount` and not awaited, and
-	 * it loses: `mode = 'app'` is roughly twenty-five sequentially awaited Tauri
-	 * round trips away (one per `appWindow.listen`, plus the session restore),
-	 * while the three chunks are megabytes of JavaScript to fetch and evaluate.
-	 * So the first document is normally patched in with `hljs` still null, this
-	 * effect skips the enrichment, and the reading position is then restored
-	 * against source text.
-	 *
-	 * This effect does re-run when they land — `hljs` is read here and it is a
-	 * `$derived` of `richLibraries` — but by then the diff has nothing to do and
-	 * `patch.inserted` comes back empty, which is why the roots below are the
-	 * host rather than the patch on that one pass.
-	 *
-	 * And the enrichment moves the text. Measured in Chromium (Vite, a
-	 * 1000x800 preview box, one anchor at each of the 10/25/50/75/90th
-	 * percentile of the rendered source lines) by restoring the position against
-	 * the un-enriched document and then re-measuring the anchored element after
-	 * `renderRichContent` — the cold-start sequence exactly — the anchored text
-	 * moved down by:
-	 *
-	 *     samples/katex-stress.md      0, 2.5, 367.1, 498.1, 502.0 px
-	 *     samples/markdown-syntax.md   0, 0, 96.0, 128.0, 812.3 px
-	 *     samples/stress-test.md       16.0, 714.2, 714.2, 714.2, 714.2 px
-	 *
-	 * A display formula replaces a line of source with a stack of boxes and a
-	 * Mermaid `<pre>` becomes an SVG several hundred pixels tall; every one of
-	 * those above the anchor pushes it down, and the constant 714.2px on
-	 * stress-test.md is its three diagrams, all near the top. Running the same
-	 * cascade once more after the enrichment lands brings the same anchors back
-	 * to within 0.8px — which is what `restoreAfterColdEnrichment` does.
+	 * Cold start: the rich-content libraries usually land after the first patch.
+	 * This effect then re-runs with nothing inserted, so it enriches the whole
+	 * host once and restores the reading position again, because KaTeX and
+	 * Mermaid can push the anchor down by hundreds of pixels.
 	 */
 	$effect(() => {
 		const host = previewBlocks;
@@ -1650,38 +1540,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const host = previewBlocks;
 		if (!host || (isEditing && !isSplit)) return;
 
-		// Keyed on the visible host, not on the document it is showing and not on
-		// the article that contains every tab's host.
-		//
-		// Not the document: this used to depend on `sanitizedHtml` and so tore the
-		// observation down and rebuilt it on every keystroke — and a fresh
-		// `ResizeObserver.observe` delivers an initial observation, so every fold
-		// in the document re-measured per character whether or not anything about
-		// it had changed. A keystroke still does not reach here: the host is the
-		// same element for as long as the tab is on screen, the blocks the patch
-		// left alone keep the registration they already had, and the ones it
-		// inserted are handed to `observe` by the patch effect above.
-		//
-		// Not the article, and this is the half that is new. `updateFoldHeights`
-		// walks its root, measures each wrapper's content with
-		// `getBoundingClientRect().height`, and writes that number into
-		// `--fold-content-height`, which `styles.css` resolves to the wrapper's
-		// `height`. In a `display: none` subtree every one of those rects is
-		// empty, so a walk rooted at the article would write `0px` onto every
-		// fold of every tab that is not on screen. Nothing looks wrong until the
-		// reader switches back, and then the whole document is collapsed for the
-		// frame it takes a fresh observation to correct it: `ResizeObserver`
-		// reports a target that leaves a hidden subtree, but `scheduleUpdate`
-		// defers through `requestAnimationFrame`, and that callback runs in the
-		// step AFTER the one that delivered the observation.
-		//
-		// So the observation follows the host that is displayed, and a hidden
-		// host is not observed at all. Its wrappers keep the inline heights they
-		// were last measured at, which are still right — nothing in a hidden
-		// document changes size — and re-registering on the way back in costs one
-		// batched re-measure of the one document being shown. That is a switch,
-		// not a keystroke, and it is the price of never measuring a box that is
-		// not being laid out.
+		// Keyed on the visible host only. A keystroke must not re-observe: a fresh
+		// `observe` reports at once and would re-measure every fold. The patch
+		// effect observes new blocks itself. A hidden host is not observed at all,
+		// because its boxes measure 0 (see `previewHosts`).
 		const observation = observeFoldLayout(host);
 		foldLayout = observation;
 
@@ -1836,9 +1698,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * scrolled last decides.
 	 *
 	 * A preview that is not on screen never decides: in the editor alone it is
-	 * still mounted at a sliver of width, and its scroll events report lines
-	 * from that layout, which put the outline on the wrong heading after
-	 * Ctrl+E (#799). Nor does one Ctrl+E has just brought back, until
+	 * still mounted at zero width, and its scroll events report lines from that
+	 * layout, which put the outline on the wrong heading after Ctrl+E (#799).
+	 * Nor does a preview Ctrl+E has just brought back, until
 	 * `restoreAfterLeavingEditor` has placed it: its scroll events before that
 	 * report the first headings.
 	 */
@@ -2352,23 +2214,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!tab || tab.path === undefined) return;
 
 		if (isEditing) {
-			// Switch back to view.
-			//
-			// Reading mode renders THIS TAB'S BUFFER, never the file on disk, so
-			// leaving the editor no longer depends on a save. The old code
-			// re-read `tab.path` here, which is the only reason a dirty tab had
-			// to be flushed first — silently, or through a modal — and that
-			// flush is what #168 reports as "no way to see rendered view until
-			// file is saved". Rendering the buffer is also what every editor the
-			// user is likely to have open does: VS Code's Markdown preview
-			// follows the in-memory document (it works on an untitled buffer and
-			// updates as you type), Typora's rendered view IS the buffer, and
-			// Obsidian switches to Reading view with no save step.
-			//
-			// Nothing is at risk. The buffer stays in memory, the tab keeps its
-			// dirty dot, and the two places where the buffer really is about to
-			// disappear — closing the tab (`canCloseTab`) and closing the window
-			// (`appExit`) — still ask. A view toggle is not one of them.
+			// Back to reading. The preview renders the buffer, not the file, so no
+			// save is needed (#168). The tab stays dirty, and closing it or the
+			// window (`settleForExit`) still asks.
 			await flushBeforeLeavingEditableMode(tab);
 			// Ctrl+E lands on the line the other pane was showing, mapped the way
 			// split view maps it (#799).
@@ -2382,10 +2230,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const position = markdownBody ? getPreviewScrollSyncPosition(markdownBody) : null;
 			if (tab.path !== '') {
 				if (tab.isDirty) {
-					// Already have unsaved in-memory edits (e.g. from an
-					// earlier session restored from localStorage, or from
-					// post-save TOCTOU). Reading from disk would clobber
-					// them, so just flip into edit mode without a reload.
+					// Unsaved edits are already in memory (made in reading
+					// mode, or kept when leaving the editor with auto-save
+					// off). Reading from disk would overwrite them, so only
+					// switch.
 					tab.isEditing = true;
 				} else {
 					try {
@@ -2491,15 +2339,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
-	 * The preview's "Edit": open the editor on what the reader pointed at.
-	 *
-	 * With a range in hand this stops being a toggle. In split view the editor
-	 * is already on screen and the old behaviour — leave edit mode — is the one
-	 * thing "edit this fragment" cannot mean, so the toggle is skipped and only
-	 * the jump happens. With no range (right-click outside the document) the
-	 * entry is untouched.
-	 */
-	/**
 	 * What ⌘E means, from every entry point that offers it — the hotkey, the
 	 * toolbar, the title bar, and Monaco's own command.
 	 *
@@ -2531,13 +2370,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			return;
 		}
 
-		// Reading, or split with something selected — identical to the context
-		// menu's "Edit". In split view the editor is already on screen, so
-		// `editSourceRange` skips the toggle and only jumps, which is what
-		// gives the highlight there too.
+		// Reading, or split with a selection: same as the context menu's "Edit".
 		await editSourceRange(selected);
 	}
 
+	/**
+	 * Open the editor on `range`. Toggles into edit mode when `isEditing` is
+	 * false, including split view entered from reading mode.
+	 */
 	async function editSourceRange(range: LineRange | null) {
 		if (!isEditing) await toggleEdit();
 		// `toggleEdit` swallows a failed read and stays in reading mode. Arming
@@ -2691,8 +2531,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * cancelled and a manual Cmd+S becomes the only path again.
 	 */
 	$effect(() => {
-		// With auto-save off, saves happen only via Cmd+S or via the
-		// close/toggle modals, so every armed timer is dropped.
+		// With auto-save off, only Cmd+S and the close dialog save, so drop
+		// every armed timer.
 		if (!settings.autoSave) {
 			untrack(() => {
 				for (const t of autoSaveTimers.values()) clearTimeout(t);
@@ -2730,11 +2570,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				// asking "reload or keep mine", write the buffer, and destroy
 				// the disk version the question was about — leaving the user to
 				// answer a question whose "reload" branch no longer exists.
-				// Only the silent background timer is held back. Every explicit
-				// save (Cmd+S, the close and mode-toggle dialogs) still goes
-				// through: pressing Save IS the answer "keep mine", and the
-				// `saveContent` wrapper clears the conflict so the bar comes
-				// down instead of re-asking.
+				// Only this background timer is held back. Cmd+S and the close
+				// dialog's Save still write, because that answer means "keep
+				// mine".
 				// A tab whose buffer was decoded lossily is dropped once the
 				// guard has refused it and said why. The first attempt is what
 				// produces that explanation, so it is deliberately allowed
@@ -2771,9 +2609,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				lastContentRefByTab.set(s.id, s.contentRef);
 				const timer = setTimeout(() => {
 					autoSaveTimers.delete(s.id);
-					// `saveContent` resolves with a boolean; it does not
-					// reject on save failure, so `.catch` alone hid errors.
-					// Surface failures via toast + console.
+					// `saveSilently` resolves false on failure instead of
+					// rejecting, so failures are surfaced here.
 					saveSilently(s.id).then(
 						(ok) => {
 							if (!ok) {
