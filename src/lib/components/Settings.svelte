@@ -1245,6 +1245,14 @@
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
+
+							<div class="setting-item">
+								<label for="preview-annotations">{t('settings.previewAnnotations', settings.language)}</label>
+								<label class="toggle">
+									<input id="preview-annotations" type="checkbox" checked={settings.previewAnnotations} onchange={() => settings.togglePreviewAnnotations()} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
 						</div>
 					{:else if activeCategory === 'appearance'}
 						<div class="settings-group">

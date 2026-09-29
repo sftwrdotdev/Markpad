@@ -563,6 +563,7 @@ test('the settings panes were actually read', () => {
 	assert.deepEqual(preview.sort(), [
 		'code-font',
 		'code-font-size',
+		'preview-annotations',
 		'preview-cursor',
 		'preview-font',
 		'preview-font-size',

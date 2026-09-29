@@ -463,6 +463,8 @@ export class SettingsStore {
 	occurrencesHighlight = $state(false);
 	/** The preview's own Highlight Occurrences: copies of the selected text are marked. */
 	previewOccurrences = $state(false);
+	/** Temporary Highlight in the preview's right-click menu; off, the items and the highlights are hidden. */
+	previewAnnotations = $state(false);
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
 	/**
@@ -748,6 +750,10 @@ export class SettingsStore {
 		this.previewOccurrences = !this.previewOccurrences;
 	}
 
+	togglePreviewAnnotations() {
+		this.previewAnnotations = !this.previewAnnotations;
+	}
+
 	toggleShowWhitespace() {
 		this.showWhitespace = !this.showWhitespace;
 	}
@@ -985,6 +991,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.zenMode', (s) => s.zenMode, (s, v) => { s.zenMode = v; }),
 		booleanSetting('editor.occurrencesHighlight', (s) => s.occurrencesHighlight, (s, v) => { s.occurrencesHighlight = v; }),
 		booleanSetting('preview.occurrencesHighlight', (s) => s.previewOccurrences, (s, v) => { s.previewOccurrences = v; }),
+		booleanSetting('preview.annotations', (s) => s.previewAnnotations, (s, v) => { s.previewAnnotations = v; }),
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),
 		booleanSetting('editor.stickyScroll', (s) => s.stickyScroll, (s, v) => { s.stickyScroll = v; }),
 		booleanSetting('editor.splitScrollSync', (s) => s.splitScrollSync, (s, v) => { s.splitScrollSync = v; }),

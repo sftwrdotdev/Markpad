@@ -1803,7 +1803,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let annotationsByTab = $state.raw<Record<string, { source: string; marks: Annotation[] }>>({});
 	let activeAnnotations = $derived.by(() => {
 		const entry = tabManager.activeTabId ? annotationsByTab[tabManager.activeTabId] : undefined;
-		return entry && entry.source === rawContent ? entry.marks : [];
+		return settings.previewAnnotations && entry && entry.source === rawContent ? entry.marks : [];
 	});
 	const canAnnotate = typeof CSS !== 'undefined' && 'highlights' in CSS;
 
@@ -3095,9 +3095,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const editSourceTarget = getContextMenuSourceRange(e);
 
 		// Read now for the same reason: the click on the item clears the selection.
-		const selected = canAnnotate ? selectionAnnotation() : null;
+		const selected = canAnnotate && settings.previewAnnotations ? selectionAnnotation() : null;
 		const selectedText = selected ? occurrenceText() : null;
-		const hit = !canAnnotate ? [] : selected ? overlapping(activeAnnotations, selected) : (() => {
+		const hit = !canAnnotate || !settings.previewAnnotations ? [] : selected ? overlapping(activeAnnotations, selected) : (() => {
 			const at = annotationPointAt(e);
 			return at ? hitAt(activeAnnotations, at) : [];
 		})();
