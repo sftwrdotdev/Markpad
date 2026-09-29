@@ -223,7 +223,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	function triggerFindAction() {
 		const active = document.activeElement as Node | null;
 		const editorHasFocus = !!editorPaneEl && !!active && editorPaneEl.contains(active);
-		const previewVisible = !isEditing || !!tabManager.activeTab?.isSplit;
+		const previewVisible = hasPreviewPane;
 		if (editorHasFocus || !previewVisible) {
 			editorPane?.triggerFind?.();
 		} else if (markdownBody) {
@@ -328,6 +328,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * preview but not the editor beside it (#744).
 	 */
 	let hasEditorPane = $derived(isEditing || isSplit);
+	let hasPreviewPane = $derived(!isEditing || isSplit);
 	let frontMatterInfo = $derived(parseFrontMatter(rawContent));
 
 	// derived from tab manager
@@ -923,10 +924,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		onPartialCopySaved: () => addToast(t('toast.partialCopySaved', settings.language), 'info'),
 	});
 
-	async function discardPersistedWindowState() {
-		await windowSession.discardPersistedState();
-	}
-
 	// Persisted through Rust, not localStorage: setItem is an async message
 	// to the WebKit storage process that dies in transit when the last
 	// window's close ends the process (reproduced in QA as "close secondary
@@ -1118,7 +1115,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let panesShown: { tabId: string | null; shown: PanesShown } | null = null;
 
 	$effect.pre(() => {
-		const now = { tabId: tabManager.activeTabId, shown: { editor: isEditing || isSplit, viewer: !isEditing || isSplit } };
+		const now = { tabId: tabManager.activeTabId, shown: { editor: hasEditorPane, viewer: hasPreviewPane } };
 		untrack(() => {
 			const last = panesShown;
 			panesShown = now;
@@ -1538,7 +1535,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	$effect(() => {
 		const host = previewBlocks;
-		if (!host || (isEditing && !isSplit)) return;
+		if (!host || !hasPreviewPane) return;
 
 		// Keyed on the visible host only. A keystroke must not re-observe: a fresh
 		// `observe` reports at once and would re-measure every fold. The patch
@@ -1603,7 +1600,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function getPreviewFrontMatterScrollEnd(target: HTMLElement) {
-		const panel = target.querySelector<HTMLElement>('.frontmatter' + '-panel');
+		const panel = target.querySelector<HTMLElement>('.frontmatter-panel');
 		if (!panel) return 0;
 
 		// In the same space as `target.scrollTop`, which is what it is compared
@@ -1706,7 +1703,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 */
 	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
 		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || activeCursor !== null);
-		const previewSettled = (!isEditing || isSplit) && !previewPlacing;
+		const previewSettled = hasPreviewPane && !previewPlacing;
 		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
 		if (accepted) tocActiveLine = line;
 	}
@@ -2211,7 +2208,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 */
 	async function toggleEdit() {
 		const tab = tabManager.activeTab;
-		if (!tab || tab.path === undefined) return;
+		if (!tab) return;
 
 		if (isEditing) {
 			// Back to reading. The preview renders the buffer, not the file, so no

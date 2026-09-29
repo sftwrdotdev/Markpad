@@ -509,7 +509,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		const {
 			tabManager, tick, viewerPaneEl, markdownBody, editorPane, lineCoords,
 			tabAnchorForEditorTopLine, asBufferLine, scrollPreviewToSyncPosition,
-			getPreviewScrollSyncPosition, getPreviewScrollAnchor, settings, hasEditorPane, isEditing, isSplit,
+			getPreviewScrollSyncPosition, getPreviewScrollAnchor, settings, hasEditorPane, hasPreviewPane, isEditing, isSplit,
 		} = deps;
 		let tocActiveLine = null;
 		let previewPlacing = false;
@@ -530,6 +530,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		lineCoords: { toRendererLine: (line: number) => line - 3 },
 		settings,
 		hasEditorPane: false,
+		hasPreviewPane: true,
 		isEditing: false,
 		isSplit: false,
 		tabAnchorForEditorTopLine: (_coords: unknown, line: number) => line,
@@ -627,6 +628,7 @@ function describeOutlineSource(
 		try {
 			await run(buildSyncHarness({
 				hasEditorPane: editorOnScreen,
+				hasPreviewPane: !editorOnScreen,
 				isEditing: editorOnScreen,
 				scrollPreviewToSyncPosition: () => {},
 				getPreviewScrollAnchor: () => 57,

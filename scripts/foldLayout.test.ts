@@ -80,7 +80,8 @@ test('fold measurement is rooted at the visible host, never at the article holdi
 test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	assert.match(viewer, /if \(!host \|\| \(isEditing && !isSplit\)\) return;/);
+	assert.match(viewer, /if \(!host \|\| !hasPreviewPane\) return;/);
+	assert.match(viewer, /let hasPreviewPane = \$derived\(!isEditing \|\| isSplit\);/);
 });
 
 // The observation used to be torn down and rebuilt on every render, which is
