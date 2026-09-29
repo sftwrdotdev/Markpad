@@ -4991,9 +4991,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
-		transition:
-			flex 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-			transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+		/* Opacity, not flex: animating the width re-wraps every line of the
+		   document on every frame. The width lands in one frame and the pane
+		   that appears fades in over text that has already stopped moving. */
+		transition: opacity 0.15s ease;
 		min-width: 0;
 	}
 
@@ -5187,7 +5188,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	.editor-pane {
-		transition: padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+		/* Restates `.pane`'s opacity: this rule replaces its whole list. */
+		transition:
+			padding 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+			opacity 0.15s ease;
 	}
 
 	.toc-overlay-wrapper.on-right {
