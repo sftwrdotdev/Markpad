@@ -9,6 +9,9 @@ type TitlebarToolbarAction = {
 	sample: string;
 	defaultPlacement: TitlebarToolbarPlacement;
 	required?: boolean;
+	// Second line in Settings: when the button shows (see
+	// visibleTitlebarActionIds), or for viewMode, the modes it switches between.
+	hintKey?: string;
 };
 
 type TitlebarToolbarMove = {
@@ -26,20 +29,20 @@ const TITLEBAR_TOOLBAR_ACTIONS: TitlebarToolbarAction[] = [
 	{ id: 'home', labelKey: 'menu.home', fallbackName: 'Home', sample: 'H', defaultPlacement: 'bar' },
 	{ id: 'back', labelKey: 'menu.back', fallbackName: 'Back', sample: '<', defaultPlacement: 'bar' },
 	{ id: 'forward', labelKey: 'menu.forward', fallbackName: 'Forward', sample: '>', defaultPlacement: 'bar' },
-	{ id: 'reload', labelKey: 'tooltip.reloadFromDisk', fallbackName: 'Reload from Disk', sample: 'R', defaultPlacement: 'bar' },
-	{ id: 'toc', labelKey: 'tooltip.showTableOfContents', fallbackName: 'Table of Contents', sample: 'T', defaultPlacement: 'menu' },
+	{ id: 'reload', labelKey: 'tooltip.reloadFromDisk', fallbackName: 'Reload from Disk', sample: 'R', defaultPlacement: 'bar', hintKey: 'settings.toolbarDiskFileOnly' },
+	{ id: 'toc', labelKey: 'settings.toolbarToc', fallbackName: 'Show/Hide Table of Contents', sample: 'T', defaultPlacement: 'menu' },
 	{ id: 'fullWidth', labelKey: 'menu.fullWidth', fallbackName: 'Full Width', sample: 'W', defaultPlacement: 'bar' },
-	{ id: 'live', labelKey: 'menu.autoReload', fallbackName: 'Auto-Reload', sample: 'L', defaultPlacement: 'bar' },
-	{ id: 'sync', labelKey: 'menu.syncScroll', fallbackName: 'Sync Scroll', sample: 'S', defaultPlacement: 'bar' },
-	{ id: 'swap', labelKey: 'menu.swapPanes', fallbackName: 'Swap Panes', sample: '<>', defaultPlacement: 'bar' },
-	{ id: 'editorToolbar', labelKey: 'tooltip.editorToolbar', fallbackName: 'Editor Toolbar', sample: 'TB', defaultPlacement: 'bar' },
+	{ id: 'live', labelKey: 'menu.autoReload', fallbackName: 'Auto-Reload', sample: 'L', defaultPlacement: 'bar', hintKey: 'settings.toolbarDiskFileOnly' },
+	{ id: 'sync', labelKey: 'menu.syncScroll', fallbackName: 'Sync Scroll', sample: 'S', defaultPlacement: 'bar', hintKey: 'settings.toolbarSplitOnly' },
+	{ id: 'swap', labelKey: 'tooltip.swapPanes', fallbackName: 'Swap editor and preview', sample: '<>', defaultPlacement: 'bar', hintKey: 'settings.toolbarSplitOnly' },
+	{ id: 'editorToolbar', labelKey: 'tooltip.editorToolbar', fallbackName: 'Editor Toolbar', sample: 'TB', defaultPlacement: 'bar', hintKey: 'settings.toolbarEditOrSplit' },
 	// Last on the bar: the bar is right-aligned, so only buttons to the right of
 	// the group can move it, and none come and go with the mode (#806).
-	{ id: 'viewMode', labelKey: 'menu.view', fallbackName: 'View', sample: 'P|S|E', defaultPlacement: 'bar' },
+	{ id: 'viewMode', labelKey: 'settings.toolbarViewSwitcher', fallbackName: 'View Switcher', sample: 'P|S|E', defaultPlacement: 'bar', hintKey: 'settings.toolbarViewModes' },
 	{ id: 'find', labelKey: 'menu.find', fallbackName: 'Find', sample: 'F', defaultPlacement: 'menu' },
 	{ id: 'zen', labelKey: 'menu.zenMode', fallbackName: 'Zen Mode', sample: 'Z', defaultPlacement: 'menu' },
-	{ id: 'tabs', labelKey: 'menu.openTabs', fallbackName: 'Open Tabs', sample: 'Tab', defaultPlacement: 'menu' },
-	{ id: 'zoom', labelKey: 'tooltip.resetZoom', fallbackName: 'Reset Zoom', sample: '%', defaultPlacement: 'menu' },
+	{ id: 'tabs', labelKey: 'settings.toolbarTabs', fallbackName: 'Show/Hide Tabs', sample: 'Tab', defaultPlacement: 'menu' },
+	{ id: 'zoom', labelKey: 'tooltip.resetZoom', fallbackName: 'Reset Zoom', sample: '%', defaultPlacement: 'menu', hintKey: 'settings.toolbarZoomedOnly' },
 	{ id: 'theme', labelKey: 'menu.changeTheme', fallbackName: 'Change Theme', sample: 'A', defaultPlacement: 'menu' },
 	{ id: 'settings', labelKey: 'tooltip.settings', fallbackName: 'Settings', sample: '...', defaultPlacement: 'menu', required: true },
 ];

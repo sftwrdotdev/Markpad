@@ -179,8 +179,9 @@ for (const file of walkSourceFiles(SOURCE_ROOT)) {
 	}
 
 	// Toolbar/menu descriptors carry their key as data and are handed to `t()`
-	// through `t(action.labelKey)`. Same exposure, different spelling.
-	for (const match of src.matchAll(/\blabelKey: '([^']+)'/g)) {
+	// through `t(action.labelKey)` or `t(action.hintKey)`. Same exposure,
+	// different spelling.
+	for (const match of src.matchAll(/\b(?:labelKey|hintKey): '([^']+)'/g)) {
 		staticKeys.push({ key: match[1], file });
 	}
 
@@ -221,8 +222,8 @@ const DYNAMIC_FAMILIES: Record<string, { file: string; member: RegExp; why: stri
 	},
 };
 
-// `t(action.labelKey, …)`: resolved by the `labelKey:` harvest above. Any new
-// unexplained indirection has to be added here consciously.
+// `t(action.labelKey, …)` and `t(action.hintKey, …)`: resolved by the harvest
+// above. Any new unexplained indirection has to be added here consciously.
 //
 // The two shortcut-panel entries are the same shape: the panel renders
 // `t(section.labelKey)` and `t(entry.labelKey)` over `src/lib/utils/shortcuts.ts`,
@@ -245,6 +246,7 @@ const UNTRANSLATED_TOASTS = new Map<string, string>([
 ]);
 
 const KNOWN_INDIRECT_CALLS = new Set([
+	'src/lib/components/Settings.svelte: t(action.hintKey)',
 	'src/lib/components/Settings.svelte: t(action.labelKey)',
 	'src/lib/components/Settings.svelte: t(entry.labelKey)',
 	'src/lib/components/Settings.svelte: t(section.labelKey)',

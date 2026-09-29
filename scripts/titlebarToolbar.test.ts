@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
 	DEFAULT_TITLEBAR_TOOLBAR_ORDER,
 	getConfiguredTitlebarToolbarIds,
+	getTitlebarToolbarActions,
 	getTitlebarToolbarAdjacentMove,
 	getTitlebarToolbarReorderMove,
 	normalizeTitlebarToolbarHidden,
@@ -209,4 +210,21 @@ test('the mode is read off the two tab flags, split first', () => {
 	assert.equal(viewModeOf({ isEditing: true, isSplit: false }), 'edit');
 	assert.equal(viewModeOf({ isEditing: true, isSplit: true }), 'split');
 	assert.equal(viewModeOf({ isEditing: false, isSplit: true }), 'split');
+});
+
+test('Settings gives a condition to exactly the buttons that can go missing in a Markdown document', () => {
+	const contexts = [
+		{ isEditing: false, isSplit: false },
+		{ isEditing: true, isSplit: false },
+		{ isEditing: true, isSplit: true },
+		{ currentFile: '' },
+		{ zoomLevel: 150 },
+	].map((context) => visibleTitlebarActionIds({ ...documentContext, zoomLevel: 100, ...context }));
+
+	for (const action of getTitlebarToolbarActions(null)) {
+		// Its note lists the three modes rather than a condition.
+		if (action.id === 'viewMode') continue;
+		const alwaysThere = contexts.every((ids) => ids.includes(action.id));
+		assert.equal(!action.hintKey, alwaysThere, action.id);
+	}
 });

@@ -1508,17 +1508,15 @@
 												<circle cx="15" cy="19" r="1" fill="currentColor"/>
 											</svg>
 										</button>
-										<label class="toggle">
-											<input
-												id={`titlebar-toolbar-action-${action.id}`}
-												type="checkbox"
-												checked={isTitlebarToolbarActionVisible(action.id)}
-												disabled={action.required}
-												onchange={(e) => settings.setTitlebarToolbarActionVisible(action.id, e.currentTarget.checked)}
-											/>
-											<span class="toggle-slider"></span>
-										</label>
-										<span class="toolbar-tool-name">{actionName}</span>
+										<input
+											class="toolbar-tool-check"
+											id={`titlebar-toolbar-action-${action.id}`}
+											type="checkbox"
+											checked={isTitlebarToolbarActionVisible(action.id)}
+											disabled={action.required}
+											onchange={(e) => settings.setTitlebarToolbarActionVisible(action.id, e.currentTarget.checked)}
+										/>
+										<label class="toolbar-tool-name" for={`titlebar-toolbar-action-${action.id}`}>{actionName}{#if action.hintKey}<span class="toolbar-tool-hint">{t(action.hintKey, settings.language)}</span>{/if}</label>
 										<div class="toolbar-placement-controls" role="group" aria-label={`${t('settings.toolbarPlacement', settings.language)}: ${actionName}`}>
 											<button
 												type="button"
@@ -1591,16 +1589,14 @@
 												<circle cx="15" cy="19" r="1" fill="currentColor"/>
 											</svg>
 										</button>
-										<label class="toggle">
-											<input
-												id={`editor-toolbar-tool-${tool.id}`}
-												type="checkbox"
-												checked={isEditorToolbarToolVisible(tool.id)}
-												onchange={(e) => settings.setEditorToolbarToolVisible(tool.id, e.currentTarget.checked)}
-											/>
-											<span class="toggle-slider"></span>
-										</label>
-										<span class="toolbar-tool-name">{tool.name}</span>
+										<input
+											class="toolbar-tool-check"
+											id={`editor-toolbar-tool-${tool.id}`}
+											type="checkbox"
+											checked={isEditorToolbarToolVisible(tool.id)}
+											onchange={(e) => settings.setEditorToolbarToolVisible(tool.id, e.currentTarget.checked)}
+										/>
+										<label class="toolbar-tool-name" for={`editor-toolbar-tool-${tool.id}`}>{tool.name}</label>
 										<div class="toolbar-order-controls">
 											<button
 												type="button"
@@ -2248,7 +2244,7 @@
 
 	.toolbar-tool-row {
 		display: grid;
-		grid-template-columns: 20px 40px minmax(0, 1fr) auto;
+		grid-template-columns: 20px 15px minmax(0, 1fr) auto;
 		align-items: center;
 		gap: 10px;
 		min-height: 38px;
@@ -2264,7 +2260,7 @@
 	}
 
 	.titlebar-toolbar-row {
-		grid-template-columns: 20px 40px minmax(0, 1fr) auto auto;
+		grid-template-columns: 20px 15px minmax(0, 1fr) auto auto;
 	}
 
 	.toolbar-tool-row.drag-source {
@@ -2309,6 +2305,58 @@
 		font-size: 13px;
 		font-weight: 500;
 		color: var(--color-fg-default);
+	}
+
+	/* Drawn like the preview's task checkbox (styles.css), so it looks the same
+	 * in WebKit, WebView2 and WebKitGTK. */
+	.toolbar-tool-check {
+		-webkit-appearance: none;
+		appearance: none;
+		position: relative;
+		width: 15px;
+		height: 15px;
+		margin: 0;
+		border: 1.5px solid var(--color-border-default);
+		border-radius: 3px;
+		background: transparent;
+		cursor: pointer;
+		transition: background-color 0.1s ease, border-color 0.1s ease;
+	}
+
+	.toolbar-tool-check:hover:not(:disabled) {
+		border-color: var(--color-accent-fg);
+	}
+
+	.toolbar-tool-check:checked {
+		background-color: var(--color-accent-fg);
+		border-color: var(--color-accent-fg);
+	}
+
+	.toolbar-tool-check:checked::after {
+		content: '';
+		position: absolute;
+		top: 0.5px;
+		left: 3px;
+		width: 4px;
+		height: 7px;
+		border: 2px solid white;
+		border-top: none;
+		border-left: none;
+		transform: rotate(45deg);
+	}
+
+	.toolbar-tool-check:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+
+	.toolbar-tool-hint {
+		display: block;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--color-fg-muted);
 	}
 
 	.toolbar-order-controls {
