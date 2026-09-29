@@ -1509,7 +1509,7 @@
 					</div>
 
 					<div class="setting-item">
-						<label for="appearance-zen-mode">{t('settings.zenMode', settings.language)}</label>
+						<label for="appearance-zen-mode" class="has-hint">{t('settings.zenMode', settings.language)}<span class="setting-hint">{t('settings.zenModeHint', settings.language)}</span></label>
 						<label class="toggle">
 							<input id="appearance-zen-mode" type="checkbox" checked={settings.zenMode} onchange={() => settings.toggleZenMode()} />
 							<span class="toggle-slider"></span>
@@ -1517,7 +1517,7 @@
 					</div>
 
 					<div class="setting-item">
-						<label for="appearance-focus-mode">{t('settings.focusMode', settings.language)}</label>
+						<label for="appearance-focus-mode" class="has-hint">{t('settings.focusMode', settings.language)}<span class="setting-hint">{t('settings.focusModeHint', settings.language)}</span></label>
 						<label class="toggle">
 							<input id="appearance-focus-mode" type="checkbox" checked={settings.focusMode} onchange={() => settings.toggleFocusMode()} />
 							<span class="toggle-slider"></span>
@@ -1525,7 +1525,7 @@
 					</div>
 
 					<div class="setting-item">
-						<label for="appearance-typewriter-mode">{t('settings.typewriterMode', settings.language)}</label>
+						<label for="appearance-typewriter-mode" class="has-hint">{t('settings.typewriterMode', settings.language)}<span class="setting-hint">{t('settings.typewriterModeHint', settings.language)}</span></label>
 						<label class="toggle">
 							<input id="appearance-typewriter-mode" type="checkbox" checked={settings.typewriterMode} onchange={() => settings.toggleTypewriterMode()} />
 							<span class="toggle-slider"></span>
@@ -2409,6 +2409,19 @@
 	.toolbar-tool-check:disabled {
 		opacity: 0.5;
 		cursor: default;
+	}
+
+	/* A one-line explanation under a label whose name alone does not say what it does. */
+	.setting-item label.has-hint {
+		flex-direction: column;
+		align-items: flex-start;
+		justify-content: center;
+		gap: 2px;
+	}
+
+	.setting-hint {
+		font-size: 11px;
+		color: var(--color-fg-muted);
 	}
 
 	.toolbar-tool-hint {
