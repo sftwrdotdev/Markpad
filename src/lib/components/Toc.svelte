@@ -6,6 +6,7 @@
 	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
 	import { foldKeyOf } from '../utils/foldState.js';
 	import { anchorScrollTop } from '../utils/previewAnchor.js';
+	import { jumpScrollBehavior } from '../utils/motion.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
 	let { markdownBody, contentRoot, previewRevision, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
@@ -388,7 +389,10 @@
 			el.classList.add('toc-target-active');
 			activeTargetEl = el;
 
-			markdownBody.scrollTo({ top: anchorScrollTop(markdownBody, el), behavior: 'smooth' });
+			markdownBody.scrollTo({
+				top: anchorScrollTop(markdownBody, el),
+				behavior: jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
+			});
 
 			// release lock after scroll settles
 			if (clickLockTimer) clearTimeout(clickLockTimer);
