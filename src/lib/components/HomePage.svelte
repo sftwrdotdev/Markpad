@@ -207,7 +207,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		animation: slideUp 0.6s var(--animation);
+		animation: slideUp 0.2s ease-out;
 		box-sizing: border-box;
 		overflow-x: hidden;
 	}
@@ -217,7 +217,7 @@
 	@keyframes slideUp {
 		from {
 			opacity: 0;
-			transform: translateY(20px);
+			transform: translateY(8px);
 		}
 		to {
 			opacity: 1;

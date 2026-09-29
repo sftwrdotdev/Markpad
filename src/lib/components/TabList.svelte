@@ -4,6 +4,7 @@
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
+	import { allowsMotion } from '../utils/motion.js';
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
@@ -146,29 +147,28 @@
 		window.removeEventListener('mouseup', handleWindowMouseUp);
 	}
 
+	/*
+	 * Reveal the active tab only when it is out of view. Centring it on every
+	 * switch scrolled the strip back while the tabs were still sliding into a
+	 * closed tab's gap. `offsetLeft` ignores that slide's transform.
+	 */
 	$effect(() => {
-		const activeId = tabManager.activeTabId;
-		if (activeId && scrollContainer && !draggingId) {
-			const index = tabManager.tabs.findIndex((t) => t.id === activeId);
-			if (index !== -1) {
-				tick().then(() => {
-					setTimeout(() => {
-						if (!scrollContainer) return;
-
-						if (index === tabManager.tabs.length - 1) {
-							scrollContainer.scrollTo({ left: 99999, behavior: 'smooth' });
-							return;
-						}
-
-						const tabElements = scrollContainer.children;
-						if (tabElements[index]) {
-							const el = tabElements[index] as HTMLElement;
-							el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-						}
-					}, 150);
-				});
-			}
-		}
+		const index = tabManager.tabs.findIndex((t) => t.id === tabManager.activeTabId);
+		const strip = scrollContainer;
+		if (index === -1 || !strip || draggingId) return;
+		tick().then(() => {
+			const el = strip.children[index] as HTMLElement | undefined;
+			if (!el) return;
+			// Each side's own padding: counting padding the strip lacks scrolled it mid-flip.
+			const pad = getComputedStyle(strip);
+			const left = el.offsetLeft - strip.offsetLeft - parseFloat(pad.paddingLeft);
+			const right = el.offsetLeft - strip.offsetLeft + el.offsetWidth + parseFloat(pad.paddingRight);
+			const target = left < strip.scrollLeft ? left : right > strip.scrollLeft + strip.clientWidth ? right - strip.clientWidth : null;
+			if (target === null) return;
+			// 'instant', not 'auto': the strip's CSS `scroll-behavior: smooth` animates 'auto'.
+			const animate = allowsMotion(settings.animateJumpScroll, settings.systemReducedMotion);
+			strip.scrollTo({ left: target, behavior: animate ? 'smooth' : 'instant' });
+		});
 	});
 
 	function handleContainerContextMenu(e: MouseEvent) {

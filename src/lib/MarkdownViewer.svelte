@@ -1086,12 +1086,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	/**
 	 * A tab switch must not animate. Switching to a tab in another mode changes
-	 * the values a mode toggle changes, so the padding and outline transitions
-	 * would fire. Add `tab-switching` (transitions off, see styles.css), force a
-	 * style recompute, remove it: the new values commit without animating. It
-	 * must happen here, before the browser recomputes style; a `class:`
-	 * directive would land a flush too late. The pane slide skips tab switches
-	 * itself.
+	 * the values a mode toggle changes, so the outline's shadow and the toggle
+	 * button's position would transition. Add `tab-switching` (transitions off,
+	 * see styles.css), force a style recompute, remove it: the new values commit
+	 * without animating. It must happen here, before the browser recomputes
+	 * style; a `class:` directive would land a flush too late. The pane slide
+	 * skips tab switches itself.
 	 */
 	$effect(() => {
 		const _ = tabManager.activeTabId;
@@ -4409,7 +4409,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 <style>
 	:root {
-		--animation: cubic-bezier(0.05, 0.95, 0.05, 0.95);
 		scroll-behavior: smooth !important;
 		background-color: var(--color-canvas-default);
 	}
@@ -4829,7 +4828,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		padding-top: 36px;
 		box-sizing: border-box;
 		overflow: hidden;
-		transition: padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	/**
@@ -5005,7 +5003,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		border-right: 1px solid transparent;
 		border-left: 1px solid transparent;
 		box-shadow: 10px 0 30px rgba(0, 0, 0, 0);
-		transition: box-shadow 0.3s ease, border-color 0.3s ease, left 0.3s ease, right 0.3s ease, width 0.2s ease;
+		transition: box-shadow 0.3s ease, border-color 0.3s ease;
 	}
 
 	.layout-container.editing.has-pinned-toc.toc-on-left .editor-pane {
@@ -5014,10 +5012,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	
 	.layout-container.editing.has-pinned-toc.toc-on-right .editor-pane {
 		padding-right: 40px;
-	}
-
-	.editor-pane {
-		transition: padding 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
 
 	.toc-overlay-wrapper.on-right {

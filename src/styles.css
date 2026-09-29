@@ -1350,16 +1350,14 @@ body {
  * A tab switch draws the new tab's layout without animating it.
  * `MarkdownViewer.svelte` adds `tab-switching` to `.layout-container`, forces a
  * style recalculation and removes the class, all before the first paint. The
- * selectors are the elements whose transitions follow per-tab state: padding
- * from a pinned outline, and the outline wrapper and toggle position.
+ * selectors are the elements whose transitions follow per-tab state: the
+ * outline wrapper's shadow and the toggle button's position.
  *
  * Keep this in styles.css. The class is added through `classList`, so Svelte
  * would prune these selectors from the component's scoped `<style>` and every
  * transition would come back silently. `scripts/tabSwitchIsNotARender.test.ts`
  * guards that. `!important` beats the scoped declarations.
  */
-.layout-container.tab-switching,
-.layout-container.tab-switching .editor-pane,
 .layout-container.tab-switching .toc-overlay-wrapper,
 .layout-container.tab-switching .toc-toggle-floating {
 	transition: none !important;
