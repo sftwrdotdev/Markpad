@@ -97,7 +97,7 @@ const warnings: string[] = [];
 const errors: string[] = [];
 /** What the session asked the UI to tell the user, before any wording. */
 const notices: Array<{ deferredPath: string | null }> = [];
-/** The "Restore State on Reopen" setting, as the session sees it. */
+/** The "Reopen Previous Tabs" setting, as the session sees it. */
 let restoreEnabled = true;
 
 function makeSession() {

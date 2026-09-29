@@ -534,7 +534,7 @@ Some of what Markpad adds is not a spelling to learn but behaviour you get for f
 - **Fold a heading** with the chevron beside it, and everything under it collapses. The folds are remembered per document. The editor folds the same headings from its own gutter, alongside the list folding it already had.
 - **Scroll either pane of the split view** and the other follows by source line rather than by ratio, so the two stay together even this far down the document. The two panes can trade sides, in Settings.
 - **Copy from the preview** and the formatting comes with it: headings, emphasis, lists, tables and links arrive as themselves in Word, Mail or Docs, and as the Markdown behind them anywhere that takes plain text.
-- **Sticky scroll** keeps the heading you are currently inside pinned to the top of the editor. Toggle it in Settings.
+- **Sticky headings** keep the heading you are currently inside pinned to the top of the editor. Toggle them in Settings.
 - **Open the table of contents** and it follows wherever you scroll, in the preview or in the editor, keeping the current heading centred. Unpinned, it gets out of the way rather than sitting on the text: it collapses when you pick an entry, and when you reach past it to touch what it was covering.
 - **Type `](#` or `[[#`** in the editor and every heading in the document is offered as a completion.
 - **The front matter** at the top of this file — the `title` and `description` between `---` lines — is shown as a panel rather than as text, and is editable there.

@@ -299,7 +299,7 @@ test('custom copy keeps Monaco\'s whole-line copy on an empty selection', () => 
 
 test('Show Whitespace renders every whitespace run, not just trailing', () => {
 	// The setting is labelled without qualification ("Show Whitespace" /
-	// "显示空白"), so "trailing" left interior spaces unmarked.
+	// "显示空白字符"), so "trailing" left interior spaces unmarked.
 	assert.doesNotMatch(editor, /renderWhitespace: settings\.showWhitespace \? "trailing"/);
 	assert.doesNotMatch(editor, /"trailing"/, 'no trailing-only whitespace rendering remains');
 	assert.equal(editorOptionsFromSettings({ ...SETTINGS, showWhitespace: true }, 100).renderWhitespace, 'all');

@@ -17,7 +17,7 @@
  *   * "Word Count" — rendered inside the status bar. With the status bar off,
  *     turning it on shows nothing at all.
  *
- * A fourth — that "Restore State on Reopen" also decides whether resolved tabs
+ * A fourth — that "Reopen Previous Tabs" also decides whether resolved tabs
  * stay open when a window closes — was left alone. Saying so needs a real
  * tooltip, and a `title` attribute is not one: it only changes the cursor and
  * waits a second before a browser chrome bubble the app does not control.

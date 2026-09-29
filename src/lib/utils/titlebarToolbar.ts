@@ -41,7 +41,7 @@ const TITLEBAR_TOOLBAR_ACTIONS: TitlebarToolbarAction[] = [
 	{ id: 'viewMode', labelKey: 'settings.toolbarViewSwitcher', fallbackName: 'View Switcher', sample: 'P|S|E', defaultPlacement: 'bar', hintKey: 'settings.toolbarViewModes' },
 	{ id: 'find', labelKey: 'menu.find', fallbackName: 'Find', sample: 'F', defaultPlacement: 'menu' },
 	{ id: 'zen', labelKey: 'menu.zenMode', fallbackName: 'Zen Mode', sample: 'Z', defaultPlacement: 'menu' },
-	{ id: 'tabs', labelKey: 'settings.toolbarTabs', fallbackName: 'Show/Hide Tabs', sample: 'Tab', defaultPlacement: 'menu' },
+	{ id: 'tabs', labelKey: 'settings.toolbarTabs', fallbackName: 'Show/Hide Tab Bar', sample: 'Tab', defaultPlacement: 'menu' },
 	{ id: 'zoom', labelKey: 'tooltip.resetZoom', fallbackName: 'Reset Zoom', sample: '%', defaultPlacement: 'menu', hintKey: 'settings.toolbarZoomedOnly' },
 	{ id: 'theme', labelKey: 'menu.changeTheme', fallbackName: 'Change Theme', sample: 'A', defaultPlacement: 'menu' },
 	{ id: 'settings', labelKey: 'tooltip.settings', fallbackName: 'Settings', sample: '...', defaultPlacement: 'menu', required: true },
