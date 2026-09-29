@@ -1751,6 +1751,11 @@ body {
 	padding: 0 3px;
 }
 
+/* The reader's session-only highlights, drawn without touching the DOM. */
+::highlight(markpad-annotation) {
+	background-color: var(--highlight-color, rgba(255, 208, 0, 0.4));
+}
+
 .markdown-body .footnote-backref,
 .markdown-body a[href^="#fnref-"],
 .markdown-body a[data-footnote-backref] {

@@ -63,6 +63,7 @@ import {
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import { pointAtSource, sourceAtPoint, type SourceLineReader } from './utils/previewCursor.js';
+import { annotationOf, hitAt, overlapping, rangeOf, type Annotation } from './utils/previewAnnotations.js';
 import {
 	asBufferLine,
 	asRendererLine,
@@ -1793,6 +1794,48 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		};
 	}
 
+	/**
+	 * The reader's highlights, per tab, for this session only. Each list is
+	 * tied to the source it was made on: once the text changes its points no
+	 * longer name the same words, so the list is dropped rather than drawn on
+	 * the wrong ones.
+	 */
+	let annotationsByTab = $state.raw<Record<string, { source: string; marks: Annotation[] }>>({});
+	let activeAnnotations = $derived.by(() => {
+		const entry = tabManager.activeTabId ? annotationsByTab[tabManager.activeTabId] : undefined;
+		return entry && entry.source === rawContent ? entry.marks : [];
+	});
+	const canAnnotate = typeof CSS !== 'undefined' && 'highlights' in CSS;
+
+	function setAnnotations(marks: Annotation[]) {
+		const tabId = tabManager.activeTabId;
+		if (tabId) annotationsByTab = { ...annotationsByTab, [tabId]: { source: rawContent, marks } };
+	}
+
+	/** The preview selection as source points, or null when it is empty or outside the document. */
+	function selectionAnnotation(): Annotation | null {
+		const selection = window.getSelection();
+		if (!previewBlocks || !selection || selection.isCollapsed || !selection.rangeCount) return null;
+		const range = selection.getRangeAt(0);
+		return previewBlocks.contains(range.commonAncestorContainer) ? annotationOf(previewBlocks, range, readRendererLine) : null;
+	}
+
+	function annotationPointAt(e: MouseEvent) {
+		const caret = previewBlocks && document.caretRangeFromPoint(e.clientX, e.clientY);
+		return caret ? sourceAtPoint(previewBlocks!, { node: caret.startContainer, offset: caret.startOffset }, readRendererLine) : null;
+	}
+
+	$effect(() => {
+		if (!canAnnotate) return;
+		const marks = activeAnnotations;
+		const host = previewBlocks;
+		void sanitizedHtml;
+		tick().then(() => {
+			const ranges = host ? marks.map((mark) => rangeOf(host, mark, readRendererLine)).filter((range) => range !== null) : [];
+			CSS.highlights.set('markpad-annotation', new Highlight(...ranges));
+		});
+	});
+
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
 		// The line the tab would record as its reading position, not the line
 		// the viewport cuts in half: `tabAnchorForEditorTopLine` is the one
@@ -2998,6 +3041,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// selection goes away.
 		const editSourceTarget = getContextMenuSourceRange(e);
 
+		// Read now for the same reason: the click on the item clears the selection.
+		const selected = canAnnotate ? selectionAnnotation() : null;
+		const hit = !canAnnotate ? [] : selected ? overlapping(activeAnnotations, selected) : (() => {
+			const at = annotationPointAt(e);
+			return at ? hitAt(activeAnnotations, at) : [];
+		})();
+		const annotationItems: ContextMenuItem[] = hit.length
+			? [{ label: t('menu.removeHighlight', settings.language), onClick: () => setAnnotations(activeAnnotations.filter((mark) => !hit.includes(mark))) }]
+			: selected
+				? [{ label: t('menu.highlight', settings.language), onClick: () => {
+					setAnnotations([...activeAnnotations, selected]);
+					window.getSelection()?.removeAllRanges();
+				} }]
+				: [];
+
 		const mermaidDiag = (e.target as HTMLElement).closest('.mermaid-diagram');
 		if (mermaidDiag) {
 			mediaItems = [
@@ -3018,6 +3076,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					const selection = window.getSelection()?.toString();
 					if (selection) invoke('clipboard_write_text', { text: selection });
 				} }] : []),
+				...annotationItems,
 				{ label: t('menu.selectAll', settings.language), onClick: () => {
 					// The document on screen. Selecting the article would select
 					// every open tab's text, including the hosts that are hidden.
