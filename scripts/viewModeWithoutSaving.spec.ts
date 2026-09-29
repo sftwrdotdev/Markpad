@@ -682,10 +682,10 @@ test('reading with a cursor placed, the outline stays on it while the preview sc
 	}
 });
 
-test('a click in the preview places the cursor whatever the outline follows', () => {
+test('a click in the preview places the cursor only with its setting on, whatever the outline follows', () => {
 	// #799: the shared cursor is an editing aid in its own right, so Ctrl+E
-	// lands on the clicked character in either mode. Only which line the
-	// outline marks depends on the setting.
+	// lands on the clicked character in either outline mode. The drawn caret
+	// is visual noise to some readers, so the whole aid is off by default.
 	const root = document.createElement('div');
 	root.innerHTML = '<p data-sourcepos="2:1-2:11">hello world</p>';
 	const text = root.querySelector('p')!.firstChild!;
@@ -698,21 +698,32 @@ test('a click in the preview places the cursor whatever the outline follows', ()
 	tabManager.addTab('/notes/note.md');
 	const tab = tabManager.activeTab!;
 	tab.isEditing = false;
+	const click = () => {
+		const harness = buildSyncHarness({
+			previewBlocks: root,
+			sourceAtPoint,
+			readRendererLine: (line: number) => (line === 2 ? 'hello world' : ''),
+			activeCursor: { line: 5, column: 7 },
+		});
+		harness.placePreviewCursor({ detail: 1, clientX: 0, clientY: 0 } as MouseEvent);
+		return harness;
+	};
 	try {
+		settings.tocFollows = 'cursor';
+		const off = click();
+		assert.deepEqual(off.cursors(), {}, 'off by default: the click leaves the cursor alone');
+		assert.equal(off.toc(), null);
+
+		settings.previewCursor = true;
 		for (const follows of ['scroll', 'cursor'] as const) {
 			settings.tocFollows = follows;
-			const harness = buildSyncHarness({
-				previewBlocks: root,
-				sourceAtPoint,
-				readRendererLine: (line: number) => (line === 2 ? 'hello world' : ''),
-				activeCursor: { line: 5, column: 7 },
-			});
-			harness.placePreviewCursor({ detail: 1, clientX: 0, clientY: 0 } as MouseEvent);
+			const harness = click();
 			assert.deepEqual(harness.cursors()[tab.id], { line: 5, column: 7 }, `${follows}: the click placed the cursor on the "w"`);
 			assert.equal(harness.toc(), follows === 'cursor' ? 2 : null, `${follows}: the outline`);
 		}
 	} finally {
 		settings.tocFollows = 'scroll';
+		settings.previewCursor = false;
 		delete (document as any).caretRangeFromPoint;
 	}
 });

@@ -1229,6 +1229,14 @@
 									<span class="unit-label">px</span>
 								</div>
 							</div>
+
+							<div class="setting-item">
+								<label for="preview-cursor">{t('settings.previewCursor', settings.language)}</label>
+								<label class="toggle">
+									<input id="preview-cursor" type="checkbox" checked={settings.previewCursor} onchange={() => settings.togglePreviewCursor()} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
 						</div>
 					{:else if activeCategory === 'appearance'}
 						<div class="settings-group">

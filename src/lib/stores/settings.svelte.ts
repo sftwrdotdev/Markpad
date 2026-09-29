@@ -469,6 +469,8 @@ export class SettingsStore {
 	 * preview on its own has no cursor, so it always follows the scroll.
 	 */
 	tocFollows = $state<'scroll' | 'cursor'>('scroll');
+	/** Whether a click in the preview places the tab's cursor, drawn there (#799). */
+	previewCursor = $state(false);
 	/**
 	 * Whether a newly split tab starts with its panes scroll-locked.
 	 *
@@ -684,6 +686,10 @@ export class SettingsStore {
 
 	toggleAnimateJumpScroll() {
 		this.animateJumpScroll = !this.animateJumpScroll;
+	}
+
+	togglePreviewCursor() {
+		this.previewCursor = !this.previewCursor;
 	}
 
 	toggleAnimateCursor() {
@@ -992,6 +998,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.showFolderForDuplicateNames', (s) => s.showFolderForDuplicateNames, (s, v) => { s.showFolderForDuplicateNames = v; }),
 		booleanSetting('motion.animateJumpScroll', (s) => s.animateJumpScroll, (s, v) => { s.animateJumpScroll = v; }),
 		booleanSetting('motion.animateCursor', (s) => s.animateCursor, (s, v) => { s.animateCursor = v; }),
+		booleanSetting('preview.cursor', (s) => s.previewCursor, (s, v) => { s.previewCursor = v; }),
 		booleanSetting('links.openInNewTab', (s) => s.linksOpenInNewTab, (s, v) => { s.linksOpenInNewTab = v; }),
 		numberSetting('editor.maxWidth', EDITOR_MAX_WIDTH_RANGE, (s) => s.editorMaxWidth, (s, v) => { s.editorMaxWidth = v; }),
 		{
