@@ -177,7 +177,7 @@ jobs:
             echo '> **macOS folder access**: macOS asks for folder access once more after this update. From now on the grant carries across updates.'
             echo
             echo 'The two Windows files differ only in that one installs and one does not.'
-            echo 'Package managers: `choco install markpad-app` (Windows), `sudo snap install markpad` (Linux).'
+            echo 'Package managers: `choco install markpad-app` (Windows), `brew install --cask markpad` (macOS), `sudo snap install markpad` (Linux).'
             echo
             echo '## What Markpad renders'
             echo

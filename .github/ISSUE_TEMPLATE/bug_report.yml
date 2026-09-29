@@ -28,6 +28,7 @@ body:
         - "Windows — portable (Markpad_….exe)"
         - "Windows — Chocolatey"
         - "macOS — .dmg"
+        - "macOS — Homebrew"
         - "Linux — AppImage"
         - "Linux — .deb"
         - "Linux — .rpm"
