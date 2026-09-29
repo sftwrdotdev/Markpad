@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { annotationOf, hitAt, overlapping, rangeOf, type Annotation } from '../src/lib/utils/previewAnnotations.js';
+import { annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf, type Annotation } from '../src/lib/utils/previewAnnotations.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 
 // A reader's session-only highlight: the selection goes to source points,
@@ -58,4 +58,12 @@ test('overlap is half-open, and a point hits the mark around it', () => {
 	assert.deepEqual(hitAt(marks, at(1, 3)), [marks[0]]);
 	assert.deepEqual(hitAt(marks, at(1, 8)), [], 'the end is outside');
 	assert.deepEqual(hitAt(marks, at(2, 1)), []);
+});
+
+test('occurrences are the exact copies of the selected text, up to the limit', () => {
+	const root = document.createElement('div');
+	root.innerHTML = '<p>cat, Cat, cat</p><p>concatenate <strong>cat</strong></p>';
+	const found = occurrenceRanges(root, 'cat', 100);
+	assert.deepEqual(found.map((range) => range.toString()), ['cat', 'cat', 'cat', 'cat'], 'case-sensitive, inside words too');
+	assert.equal(occurrenceRanges(root, 'cat', 2).length, 2);
 });

@@ -1237,6 +1237,14 @@
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
+
+							<div class="setting-item">
+								<label for="preview-occurrences">{t('settings.occurrencesHighlight', settings.language)}</label>
+								<label class="toggle">
+									<input id="preview-occurrences" type="checkbox" checked={settings.previewOccurrences} onchange={() => settings.togglePreviewOccurrences()} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
 						</div>
 					{:else if activeCategory === 'appearance'}
 						<div class="settings-group">

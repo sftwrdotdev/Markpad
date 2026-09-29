@@ -43,3 +43,25 @@ export function rangeOf(root: Element, mark: Annotation, readLine: SourceLineRea
 	range.setEnd(end.node, end.offset);
 	return range.collapsed ? null : range;
 }
+
+/**
+ * Every copy of `needle` in the preview's text, up to `limit`, for the preview's
+ * Highlight Occurrences. Case-sensitive, and no overlaps.
+ */
+export function occurrenceRanges(root: Element, needle: string, limit: number): Range[] {
+	// ponytail: matches within one text node, so a copy split by markup (half of
+	// it bold) is missed; join the block's text first if readers ask for it.
+	const walker = root.ownerDocument.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */, {
+		acceptNode: (node) => (node.parentElement?.closest('.katex') ? 2 /* FILTER_REJECT */ : 1 /* FILTER_ACCEPT */),
+	});
+	const ranges: Range[] = [];
+	for (let node = walker.nextNode() as Text | null; node && ranges.length < limit; node = walker.nextNode() as Text | null) {
+		for (let at = node.data.indexOf(needle); at !== -1 && ranges.length < limit; at = node.data.indexOf(needle, at + needle.length)) {
+			const range = root.ownerDocument.createRange();
+			range.setStart(node, at);
+			range.setEnd(node, at + needle.length);
+			ranges.push(range);
+		}
+	}
+	return ranges;
+}

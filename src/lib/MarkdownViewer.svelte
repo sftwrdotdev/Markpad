@@ -63,7 +63,7 @@ import {
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import { pointAtSource, sourceAtPoint, type SourceLineReader } from './utils/previewCursor.js';
-import { annotationOf, hitAt, overlapping, rangeOf, type Annotation } from './utils/previewAnnotations.js';
+import { annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf, type Annotation } from './utils/previewAnnotations.js';
 import {
 	asBufferLine,
 	asRendererLine,
@@ -1825,15 +1825,51 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		return caret ? sourceAtPoint(previewBlocks!, { node: caret.startContainer, offset: caret.startOffset }, readRendererLine) : null;
 	}
 
+	/**
+	 * One Highlight per kind, kept and refilled. WebKit repaints when a
+	 * Highlight's ranges change, but not when the registry entry is swapped
+	 * for a new one: a removed highlight stayed on screen until the next click.
+	 */
+	const annotationHighlight = canAnnotate ? new Highlight() : null;
+	const occurrenceHighlight = canAnnotate ? new Highlight() : null;
+	if (annotationHighlight && occurrenceHighlight) {
+		CSS.highlights.set('markpad-annotation', annotationHighlight);
+		CSS.highlights.set('markpad-occurrence', occurrenceHighlight);
+	}
+
+	function refill(highlight: Highlight, ranges: Range[]) {
+		highlight.clear();
+		for (const range of ranges) highlight.add(range);
+	}
+
 	$effect(() => {
-		if (!canAnnotate) return;
+		if (!annotationHighlight) return;
 		const marks = activeAnnotations;
 		const host = previewBlocks;
 		void sanitizedHtml;
 		tick().then(() => {
-			const ranges = host ? marks.map((mark) => rangeOf(host, mark, readRendererLine)).filter((range) => range !== null) : [];
-			CSS.highlights.set('markpad-annotation', new Highlight(...ranges));
+			refill(annotationHighlight, host ? marks.map((mark) => rangeOf(host, mark, readRendererLine)).filter((range) => range !== null) : []);
 		});
+	});
+
+	/** Longer selections are passages, not words to look for. */
+	const OCCURRENCE_MAX_LENGTH = 100;
+	const OCCURRENCE_LIMIT = 1000;
+
+	$effect(() => {
+		if (!occurrenceHighlight || !settings.previewOccurrences) return;
+		const update = () => {
+			const selection = window.getSelection();
+			const text = selection && !selection.isCollapsed && selection.rangeCount ? selection.toString() : '';
+			const inPreview = !!previewBlocks && !!text && previewBlocks.contains(selection!.getRangeAt(0).commonAncestorContainer);
+			const wanted = inPreview && text.trim() !== '' && !text.includes('\n') && text.length <= OCCURRENCE_MAX_LENGTH;
+			refill(occurrenceHighlight, wanted ? occurrenceRanges(previewBlocks!, text, OCCURRENCE_LIMIT) : []);
+		};
+		document.addEventListener('selectionchange', update);
+		return () => {
+			document.removeEventListener('selectionchange', update);
+			occurrenceHighlight.clear();
+		};
 	});
 
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
@@ -3048,9 +3084,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			return at ? hitAt(activeAnnotations, at) : [];
 		})();
 		const annotationItems: ContextMenuItem[] = hit.length
-			? [{ label: t('menu.removeHighlight', settings.language), onClick: () => setAnnotations(activeAnnotations.filter((mark) => !hit.includes(mark))) }]
+			? [{ label: t('menu.removeTemporaryHighlight', settings.language), onClick: () => {
+				setAnnotations(activeAnnotations.filter((mark) => !hit.includes(mark)));
+				window.getSelection()?.removeAllRanges();
+			} }]
 			: selected
-				? [{ label: t('menu.highlight', settings.language), onClick: () => {
+				? [{ label: t('menu.temporaryHighlight', settings.language), onClick: () => {
 					setAnnotations([...activeAnnotations, selected]);
 					window.getSelection()?.removeAllRanges();
 				} }]

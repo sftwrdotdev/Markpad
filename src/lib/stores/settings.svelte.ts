@@ -461,6 +461,8 @@ export class SettingsStore {
 	showToc = $state(false);
 	preZenState = $state<PreZenState | null>(null);
 	occurrencesHighlight = $state(false);
+	/** The preview's own Highlight Occurrences: copies of the selected text are marked. */
+	previewOccurrences = $state(false);
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
 	/**
@@ -742,6 +744,10 @@ export class SettingsStore {
 		this.occurrencesHighlight = !this.occurrencesHighlight;
 	}
 
+	togglePreviewOccurrences() {
+		this.previewOccurrences = !this.previewOccurrences;
+	}
+
 	toggleShowWhitespace() {
 		this.showWhitespace = !this.showWhitespace;
 	}
@@ -978,6 +984,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.closeWindowWithLastTab', (s) => s.closeWindowWithLastTab, (s, v) => { s.closeWindowWithLastTab = v; }),
 		booleanSetting('editor.zenMode', (s) => s.zenMode, (s, v) => { s.zenMode = v; }),
 		booleanSetting('editor.occurrencesHighlight', (s) => s.occurrencesHighlight, (s, v) => { s.occurrencesHighlight = v; }),
+		booleanSetting('preview.occurrencesHighlight', (s) => s.previewOccurrences, (s, v) => { s.previewOccurrences = v; }),
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),
 		booleanSetting('editor.stickyScroll', (s) => s.stickyScroll, (s, v) => { s.stickyScroll = v; }),
 		booleanSetting('editor.splitScrollSync', (s) => s.splitScrollSync, (s, v) => { s.splitScrollSync = v; }),

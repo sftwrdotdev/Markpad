@@ -567,6 +567,7 @@ test('the settings panes were actually read', () => {
 		'preview-font',
 		'preview-font-size',
 		'preview-max-width',
+		'preview-occurrences',
 	]);
 });
 
