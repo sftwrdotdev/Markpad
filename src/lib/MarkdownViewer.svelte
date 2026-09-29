@@ -1764,7 +1764,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	$effect(() => {
 		const cursor = activeCursor;
-		const shown = settings.tocFollows === 'cursor' && cursor !== null && (!isEditing || isSplit);
+		const shown = settings.tocFollows === 'cursor' && cursor !== null && hasPreviewPane;
 		void sanitizedHtml;
 		void previewLayoutVersion;
 		if (!shown) {
