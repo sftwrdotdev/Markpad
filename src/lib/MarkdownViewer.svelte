@@ -1856,14 +1856,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	const OCCURRENCE_MAX_LENGTH = 100;
 	const OCCURRENCE_LIMIT = 1000;
 
+	/** The preview selection's text when it is one to look for copies of, else null. */
+	function occurrenceText(): string | null {
+		const selection = window.getSelection();
+		if (!previewBlocks || !selection || selection.isCollapsed || !selection.rangeCount) return null;
+		if (!previewBlocks.contains(selection.getRangeAt(0).commonAncestorContainer)) return null;
+		const text = selection.toString();
+		return text.trim() !== '' && !text.includes('\n') && text.length <= OCCURRENCE_MAX_LENGTH ? text : null;
+	}
+
+	/** Every copy of `text` not already highlighted, as annotations. */
+	function occurrenceAnnotations(text: string): Annotation[] {
+		if (!previewBlocks) return [];
+		const found: Annotation[] = [];
+		for (const range of occurrenceRanges(previewBlocks, text, OCCURRENCE_LIMIT)) {
+			const mark = annotationOf(previewBlocks, range, readRendererLine);
+			if (mark && !overlapping([...activeAnnotations, ...found], mark).length) found.push(mark);
+		}
+		return found;
+	}
+
 	$effect(() => {
 		if (!occurrenceHighlight || !settings.previewOccurrences) return;
 		const update = () => {
-			const selection = window.getSelection();
-			const text = selection && !selection.isCollapsed && selection.rangeCount ? selection.toString() : '';
-			const inPreview = !!previewBlocks && !!text && previewBlocks.contains(selection!.getRangeAt(0).commonAncestorContainer);
-			const wanted = inPreview && text.trim() !== '' && !text.includes('\n') && text.length <= OCCURRENCE_MAX_LENGTH;
-			refill(occurrenceHighlight, wanted ? occurrenceRanges(previewBlocks!, text, OCCURRENCE_LIMIT) : []);
+			const text = occurrenceText();
+			refill(occurrenceHighlight, text ? occurrenceRanges(previewBlocks!, text, OCCURRENCE_LIMIT) : []);
 		};
 		document.addEventListener('selectionchange', update);
 		return () => {
@@ -3079,6 +3096,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 		// Read now for the same reason: the click on the item clears the selection.
 		const selected = canAnnotate ? selectionAnnotation() : null;
+		const selectedText = selected ? occurrenceText() : null;
 		const hit = !canAnnotate ? [] : selected ? overlapping(activeAnnotations, selected) : (() => {
 			const at = annotationPointAt(e);
 			return at ? hitAt(activeAnnotations, at) : [];
@@ -3092,7 +3110,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				? [{ label: t('menu.temporaryHighlight', settings.language), onClick: () => {
 					setAnnotations([...activeAnnotations, selected]);
 					window.getSelection()?.removeAllRanges();
-				} }]
+				} }, ...(selectedText ? [{ label: t('menu.temporaryHighlightAll', settings.language), onClick: () => {
+					setAnnotations([...activeAnnotations, ...occurrenceAnnotations(selectedText)]);
+					window.getSelection()?.removeAllRanges();
+				} }] : [])]
 				: [];
 
 		const mermaidDiag = (e.target as HTMLElement).closest('.mermaid-diagram');
