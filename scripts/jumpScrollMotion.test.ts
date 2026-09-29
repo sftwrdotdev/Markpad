@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { animatesJumpScroll, jumpScrollBehavior } from '../src/lib/utils/motion.js';
+import { allowsMotion, jumpScrollBehavior } from '../src/lib/utils/motion.js';
 
 /*
  * Issue #199: a long jump — a heading from the table of contents, the next find
@@ -15,16 +15,16 @@ import { animatesJumpScroll, jumpScrollBehavior } from '../src/lib/utils/motion.
  */
 
 test('the preference turns the animation off', () => {
-	assert.equal(animatesJumpScroll(true, false), true);
-	assert.equal(animatesJumpScroll(false, false), false);
+	assert.equal(allowsMotion(true, false), true);
+	assert.equal(allowsMotion(false, false), false);
 });
 
 test('the system asking for less motion is enough on its own', () => {
 	// Not folded into the setting's default, which would be a copy going stale
 	// the moment the OS preference changed. Either voice is enough — the way
 	// `@media (prefers-reduced-motion: reduce)` is defined.
-	assert.equal(animatesJumpScroll(true, true), false);
-	assert.equal(animatesJumpScroll(false, true), false);
+	assert.equal(allowsMotion(true, true), false);
+	assert.equal(allowsMotion(false, true), false);
 });
 
 test('the scroll behaviour follows the same answer', () => {

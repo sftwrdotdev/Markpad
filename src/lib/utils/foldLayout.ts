@@ -158,7 +158,6 @@ export function observeFoldLayout(root: HTMLElement): FoldLayoutObservation {
 
 	observe(root);
 	window.addEventListener('resize', scheduleUpdate);
-	scheduleUpdate();
 
 	return {
 		observe,

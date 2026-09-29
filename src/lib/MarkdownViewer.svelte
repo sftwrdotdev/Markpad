@@ -28,7 +28,8 @@
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { processMarkdownHtml } from './utils/markdown';
-import { MARKDOWN_LINK_EXTENSIONS, sanitizeMarkdownHtml } from './utils/sanitize.js';
+import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
+import { sanitizeMarkdownHtml } from './utils/sanitize.js';
 import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';

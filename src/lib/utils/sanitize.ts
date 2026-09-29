@@ -13,11 +13,7 @@ import { MARKDOWN_LINK_EXTENSIONS } from './markdownLinks.js';
 
 // The extension set `hasMarkdownLinkExtension` accepts, spliced into a URI
 // pattern rather than called as a predicate — DOMPurify takes a regexp, not a
-// function. Re-exported because MarkdownViewer.svelte reads the same list for
-// the Open dialog's file filter and imports it from the sanitizer; the list
-// itself is defined once, in ./markdownLinks.ts.
-export { MARKDOWN_LINK_EXTENSIONS };
-
+// function.
 const markdownLinkExtensionPattern = MARKDOWN_LINK_EXTENSIONS
 	.map((ext) => ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
 	.join('|');

@@ -1,7 +1,7 @@
 import type { editor as MonacoEditor } from "monaco-editor";
 
 import { fontFamilyValue } from "./fontFamily.js";
-import { animatesCursor, animatesJumpScroll } from "./motion.js";
+import { allowsMotion } from "./motion.js";
 
 /**
  * The strip between the line numbers and the text, in pixels.
@@ -102,16 +102,13 @@ export function editorOptionsFromSettings(
 		// bare `true`: an option that a setting can now change has to be in the
 		// set `updateOptions` re-applies, or the toggle would take effect only
 		// on a new editor.
-		smoothScrolling: animatesJumpScroll(settings.animateJumpScroll, settings.systemReducedMotion),
+		smoothScrolling: allowsMotion(settings.animateJumpScroll, settings.systemReducedMotion),
 		// The caret's glide between positions. Here rather than in the creation
 		// literal, where it was a hard-coded `'on'` (#710), for the same reason
 		// `smoothScrolling` moved: an option a setting can change has to be in
 		// the set `updateOptions` re-applies, or the toggle would take effect
 		// only on the next editor.
-		cursorSmoothCaretAnimation: animatesCursor(
-			settings.animateCursor,
-			settings.systemReducedMotion,
-		)
+		cursorSmoothCaretAnimation: allowsMotion(settings.animateCursor, settings.systemReducedMotion)
 			? "on"
 			: "off",
 	};

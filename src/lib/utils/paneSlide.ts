@@ -19,11 +19,11 @@
  *   Otherwise it slides out and uncovers the pane that widened.
  */
 
-export type PaneSide = 'editor' | 'viewer';
+type PaneSide = 'editor' | 'viewer';
 export type PanesShown = { editor: boolean; viewer: boolean };
-export type PaneSlidePlan = { entering: PaneSide | null; leaving: PaneSide | null };
+type PaneSlidePlan = { entering: PaneSide | null; leaving: PaneSide | null };
 
-export const PANE_SLIDE: KeyframeAnimationOptions = { duration: 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' };
+const PANE_SLIDE: KeyframeAnimationOptions = { duration: 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' };
 
 /** Which pane comes and which goes; null when the same panes stay on screen. */
 export function planPaneSlide(last: PanesShown, now: PanesShown): PaneSlidePlan | null {

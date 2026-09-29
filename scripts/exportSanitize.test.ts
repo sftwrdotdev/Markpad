@@ -1,12 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-	ALLOWED_MARKDOWN_URI_REGEXP,
-	MARKDOWN_LINK_EXTENSIONS,
-	MARKDOWN_SANITIZE_CONFIG,
-} from '../src/lib/utils/sanitize.js';
-import { hasMarkdownLinkExtension } from '../src/lib/utils/markdownLinks.js';
+import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
+import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { readSource } from './sourceTree.js';
 
 const exportSource = readSource('src/lib/utils/export.ts');

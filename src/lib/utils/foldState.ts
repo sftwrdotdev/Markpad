@@ -36,7 +36,7 @@
  */
 
 /** Where `assignFoldKey` leaves its answer for every later reader. */
-export const FOLD_KEY_ATTR = 'data-fold-key';
+const FOLD_KEY_ATTR = 'data-fold-key';
 
 const HEADING_HEAD_CLASS = 'foldable-header';
 const HEADING_CONTENT_CLASS = 'foldable-content-wrapper';
@@ -51,7 +51,7 @@ const COLLAPSED_CLASS = 'is-collapsed';
  * needs it in both places, and keeping them in one object is what stops a
  * caller from setting one and forgetting the other.
  */
-export interface FoldRegion {
+interface FoldRegion {
 	key: string;
 	head: Element;
 	content: Element;
@@ -113,7 +113,7 @@ export function isFolded(
  * `$derived`, and Svelte cannot see an `add` or a `delete` on a Set it is
  * already holding — see `Tab.foldOverrides`.
  */
-export function flipFold(overrides: ReadonlySet<string>, key: string): Set<string> {
+function flipFold(overrides: ReadonlySet<string>, key: string): Set<string> {
 	const next = new Set(overrides);
 	if (!next.delete(key)) next.add(key);
 	return next;
@@ -149,14 +149,14 @@ export function foldRegionAt(control: Element): FoldRegion | null {
  * is arbitrary user text, and building a selector out of it means escaping it
  * correctly for the exact question `getAttribute` answers directly.
  */
-export function foldRegionByKey(root: Element, key: string): FoldRegion | null {
+function foldRegionByKey(root: Element, key: string): FoldRegion | null {
 	for (const head of Array.from(root.querySelectorAll(`[${FOLD_KEY_ATTR}]`))) {
 		if (foldKeyOf(head) === key) return regionOfHead(head);
 	}
 	return null;
 }
 
-export function isFoldCollapsed(region: FoldRegion): boolean {
+function isFoldCollapsed(region: FoldRegion): boolean {
 	return region.content.classList.contains(COLLAPSED_CLASS);
 }
 
@@ -231,7 +231,7 @@ export function toggleFoldFromClick(host: FoldHost, target: Element): boolean {
 }
 
 /** Put a fold's two elements in the given state. The stored deviation is the caller's. */
-export function applyFold(region: FoldRegion, collapsed: boolean): void {
+function applyFold(region: FoldRegion, collapsed: boolean): void {
 	region.head.classList.toggle(COLLAPSED_CLASS, collapsed);
 	region.content.classList.toggle(COLLAPSED_CLASS, collapsed);
 }
