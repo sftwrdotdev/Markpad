@@ -3101,11 +3101,18 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const at = annotationPointAt(e);
 			return at ? hitAt(activeAnnotations, at) : [];
 		})();
+		// The highlights reading the same as the one clicked, when there is more than it.
+		const textOf = (mark: Annotation) => (previewBlocks && rangeOf(previewBlocks, mark, readRendererLine)?.toString()) ?? null;
+		const hitText = hit.length === 1 ? textOf(hit[0]) : null;
+		const sameText = hitText ? activeAnnotations.filter((mark) => textOf(mark) === hitText) : [];
 		const annotationItems: ContextMenuItem[] = hit.length
 			? [{ label: t('menu.removeTemporaryHighlight', settings.language), onClick: () => {
 				setAnnotations(activeAnnotations.filter((mark) => !hit.includes(mark)));
 				window.getSelection()?.removeAllRanges();
-			} }]
+			} }, ...(sameText.length > 1 ? [{ label: t('menu.removeTemporaryHighlightAll', settings.language), onClick: () => {
+				setAnnotations(activeAnnotations.filter((mark) => !sameText.includes(mark)));
+				window.getSelection()?.removeAllRanges();
+			} }] : [])]
 			: selected
 				? [{ label: t('menu.temporaryHighlight', settings.language), onClick: () => {
 					setAnnotations([...activeAnnotations, selected]);
