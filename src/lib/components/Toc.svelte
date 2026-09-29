@@ -370,7 +370,7 @@
 
 			markdownBody.scrollTo({
 				top: anchorScrollTop(markdownBody, el),
-				behavior: jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
+				behavior: jumpScrollBehavior(settings.animateJumpScroll),
 			});
 
 			// release lock after scroll settles

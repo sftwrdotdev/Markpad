@@ -124,7 +124,7 @@ import {
 import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
-import { jumpScrollBehavior, watchReducedMotion } from './utils/motion.js';
+import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
@@ -206,9 +206,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	// One decision, asked by the four jumps below and handed to `FindBar` and
 	// `Editor` for theirs. See `utils/motion.ts`.
-	const jumpBehavior = $derived(
-		jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
-	);
+	const jumpBehavior = $derived(jumpScrollBehavior(settings.animateJumpScroll));
 
 	let findOpen = $state(false);
 	let findBar = $state<{
@@ -437,12 +435,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	});
 
 	import { parseAndApplyVscodeTheme, clearVscodeTheme } from './utils/theme';
-
-	// The OS preference is live: someone turning "reduce motion" on mid-session
-	// gets the effect without restarting, and turning it off hands the app's own
-	// setting back. `$effect` rather than `onMount` so the teardown is the same
-	// statement as the subscription.
-	$effect(() => watchReducedMotion((reduced) => { settings.systemReducedMotion = reduced; }));
 
 	onMount(() => {
 		// Clear the forced background color from app.html

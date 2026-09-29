@@ -9,9 +9,7 @@
 
 	// Stepping between matches is a jump, so it answers the same preference the
 	// table of contents and back/forward do.
-	const jumpBehavior = $derived(
-		jumpScrollBehavior(settings.animateJumpScroll, settings.systemReducedMotion),
-	);
+	const jumpBehavior = $derived(jumpScrollBehavior(settings.animateJumpScroll));
 
 	let {
 		open = $bindable(false),

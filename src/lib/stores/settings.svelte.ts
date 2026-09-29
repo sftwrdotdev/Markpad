@@ -506,8 +506,9 @@ export class SettingsStore {
 	 *
 	 * It covers a jump in either pane — a heading from the table of contents, a
 	 * find match, back and forward — because they are one decision the user
-	 * makes once, not a preview one and an editor one. `utils/motion.ts` holds
-	 * that decision; the seven places that used to spell it themselves ask it.
+	 * makes once, not a preview one and an editor one. Every jump reads this
+	 * setting and nothing else; the system's reduce-motion preference is not
+	 * consulted (see `utils/motion.ts`).
 	 */
 	animateJumpScroll = $state(true);
 	/*
@@ -521,12 +522,6 @@ export class SettingsStore {
 	 * finds it smeary still has no reason to lose the animated jump.
 	 */
 	animateCursor = $state(true);
-	/**
-	 * The system's own request for less motion. Not persisted and not a default
-	 * for `animateJumpScroll` — it is the OS answering, live, and a stored copy
-	 * would be wrong the moment the user changed it.
-	 */
-	systemReducedMotion = $state(false);
 	/*
 	 * Off, so a click on a relative link keeps navigating this tab.
 	 *

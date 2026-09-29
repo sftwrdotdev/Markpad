@@ -4,7 +4,6 @@
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
-	import { allowsMotion } from '../utils/motion.js';
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
@@ -166,8 +165,7 @@
 			const target = left < strip.scrollLeft ? left : right > strip.scrollLeft + strip.clientWidth ? right - strip.clientWidth : null;
 			if (target === null) return;
 			// 'instant', not 'auto': the strip's CSS `scroll-behavior: smooth` animates 'auto'.
-			const animate = allowsMotion(settings.animateJumpScroll, settings.systemReducedMotion);
-			strip.scrollTo({ left: target, behavior: animate ? 'smooth' : 'instant' });
+			strip.scrollTo({ left: target, behavior: settings.animateJumpScroll ? 'smooth' : 'instant' });
 		});
 	});
 

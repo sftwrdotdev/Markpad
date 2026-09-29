@@ -1,36 +1,19 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { allowsMotion, jumpScrollBehavior } from '../src/lib/utils/motion.js';
+import { jumpScrollBehavior } from '../src/lib/utils/motion.js';
 
 /*
  * Issue #199: a long jump — a heading from the table of contents, the next find
  * match — animates its scroll, and on a dark theme that reads as a flash of
  * content. The reporter switched to a light theme to work around it.
- *
- * The decision is one predicate because it was seven literals: four
- * `behavior: 'smooth'` in `MarkdownViewer`, two in `FindBar`, and Monaco's
- * `smoothScrolling` in the editor options. A preference that reached six of
- * them and missed the seventh is the failure this repo keeps meeting.
  */
 
-test('the preference turns the animation off', () => {
-	assert.equal(allowsMotion(true, false), true);
-	assert.equal(allowsMotion(false, false), false);
-});
-
-test('the system asking for less motion is enough on its own', () => {
-	// Not folded into the setting's default, which would be a copy going stale
-	// the moment the OS preference changed. Either voice is enough — the way
-	// `@media (prefers-reduced-motion: reduce)` is defined.
-	assert.equal(allowsMotion(true, true), false);
-	assert.equal(allowsMotion(false, true), false);
-});
-
-test('the scroll behaviour follows the same answer', () => {
-	// One decision reaching `scrollTo`, `scrollIntoView` and Monaco's boolean,
-	// rather than each call site spelling the ternary.
-	assert.equal(jumpScrollBehavior(true, false), 'smooth');
-	assert.equal(jumpScrollBehavior(false, false), 'auto');
-	assert.equal(jumpScrollBehavior(true, true), 'auto');
+test('the setting alone decides whether a jump animates', () => {
+	// No second argument for the system's reduce-motion preference: Markpad runs
+	// on three systems that do not all have one, and a switch the user can see
+	// must not be overruled by one they cannot.
+	assert.equal(jumpScrollBehavior.length, 1);
+	assert.equal(jumpScrollBehavior(true), 'smooth');
+	assert.equal(jumpScrollBehavior(false), 'auto');
 });

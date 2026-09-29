@@ -1,7 +1,6 @@
 import type { editor as MonacoEditor } from "monaco-editor";
 
 import { fontFamilyValue } from "./fontFamily.js";
-import { allowsMotion } from "./motion.js";
 
 /**
  * The strip between the line numbers and the text, in pixels.
@@ -90,12 +89,10 @@ export function editorOptionsFromSettings(
 		// Monaco animates the scroll when it is sent to a position — a find
 		// match, a go-to-line, the scroll sync. That is the same jump the
 		// preview animates, so it answers the same preference rather than a
-		// second one of its own; `utils/motion.ts` is where the two meet.
-		smoothScrolling: allowsMotion(settings.animateJumpScroll, settings.systemReducedMotion),
+		// second one of its own.
+		smoothScrolling: settings.animateJumpScroll,
 		// The caret's glide between positions.
-		cursorSmoothCaretAnimation: allowsMotion(settings.animateCursor, settings.systemReducedMotion)
-			? "on"
-			: "off",
+		cursorSmoothCaretAnimation: settings.animateCursor ? "on" : "off",
 		// Typewriter Mode: Monaco keeps this many lines around a revealed cursor,
 		// capped at half the viewport, so a number past any screen centres the
 		// cursor line. 'all' applies it to clicks too, not only to keyboard moves.
@@ -116,7 +113,6 @@ export type EditorOptionSettings = {
 	editorFont: string;
 	animateJumpScroll: boolean;
 	animateCursor: boolean;
-	systemReducedMotion: boolean;
 	showWhitespace: boolean;
 	typewriterMode: boolean;
 };

@@ -42,7 +42,6 @@ const SETTINGS = {
 	showWhitespace: false,
 	animateJumpScroll: true,
 	animateCursor: true,
-	systemReducedMotion: false,
 	typewriterMode: false,
 };
 
@@ -54,14 +53,6 @@ test('the caret glide is a setting and not a hard-coded on', () => {
 	assert.equal(editorOptionsFromSettings(SETTINGS, 100).cursorSmoothCaretAnimation, 'on');
 	assert.equal(
 		editorOptionsFromSettings({ ...SETTINGS, animateCursor: false }, 100)
-			.cursorSmoothCaretAnimation,
-		'off',
-	);
-
-	// The system's request for less motion is enough on its own, the same way
-	// it is for the jump-scroll preference beside it.
-	assert.equal(
-		editorOptionsFromSettings({ ...SETTINGS, systemReducedMotion: true }, 100)
 			.cursorSmoothCaretAnimation,
 		'off',
 	);
@@ -83,13 +74,6 @@ test('the editor animates a jump on the same preference the preview does', () =>
 	assert.equal(editorOptionsFromSettings(SETTINGS, 100).smoothScrolling, true);
 	assert.equal(
 		editorOptionsFromSettings({ ...SETTINGS, animateJumpScroll: false }, 100).smoothScrolling,
-		false,
-	);
-
-	// And the system's request for less motion is enough on its own — the app's
-	// own setting does not have to be off as well.
-	assert.equal(
-		editorOptionsFromSettings({ ...SETTINGS, systemReducedMotion: true }, 100).smoothScrolling,
 		false,
 	);
 });
