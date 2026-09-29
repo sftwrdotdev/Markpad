@@ -1,7 +1,5 @@
 //! The Tauri application itself: the builder chain, the macOS menu, and the
 //! command registry.
-//!
-//! Split out of `lib.rs`; the code is unchanged.
 
 use crate::window_runtime::{AppState, WatcherState};
 use crate::{asset_protocol, commands, tab_transfer, window_runtime};

@@ -86,8 +86,8 @@ pub struct TabTransferBroker {
 }
 
 /// Label of the window that a token authorises. `create_transfer_window`
-/// in lib.rs builds the destination window with exactly this label, so a
-/// webview cannot forge it: labels are assigned by the backend.
+/// in `window_runtime` builds the destination window with exactly this
+/// label, so a webview cannot forge it: labels are assigned by the backend.
 fn destination_label(token: &str) -> String {
     format!("window-{token}")
 }
@@ -404,8 +404,8 @@ mod tests {
         assert_ne!(first, second);
     }
 
-    // P1-B-4: the old `t{counter}` scheme let any webview walk t1..t16 and
-    // read another window's document.
+    // The old `t{counter}` scheme let any webview walk t1..t16 and read
+    // another window's document.
     #[test]
     fn tokens_are_not_enumerable() {
         let broker = TabTransferBroker::new();
@@ -462,8 +462,8 @@ mod tests {
         );
     }
 
-    // P1-B-3: claiming marks the entry so the source's 15s timeout stops
-    // racing a slow but healthy destination.
+    // Claiming marks the entry so the source's 15s timeout stops racing a
+    // slow but healthy destination.
     #[test]
     fn claim_marks_the_entry_and_repeated_claims_keep_the_first_stamp() {
         let broker = TabTransferBroker::new();
@@ -564,8 +564,8 @@ mod tests {
         assert_eq!(broker.cancel_from_destination("nope"), missing);
     }
 
-    // P1-B-2: completing a transfer whose entry is gone must be reported,
-    // not silently swallowed, so the destination can roll its tab back.
+    // Completing a transfer whose entry is gone must be reported, not
+    // silently swallowed, so the destination can roll its tab back.
     #[test]
     fn completing_twice_finds_nothing_the_second_time() {
         let broker = TabTransferBroker::new();

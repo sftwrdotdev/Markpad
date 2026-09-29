@@ -1,7 +1,5 @@
 //! Every `#[tauri::command]` the frontend can `invoke`, plus the blocking
 //! helpers they run on the pool.
-//!
-//! Split out of `lib.rs`; the code and its tests are unchanged.
 
 use crate::fs_safety::{
     atomic_write, canonical_identity, encode_text, ensure_path_within_root, read_to_string_lossy,
@@ -161,20 +159,8 @@ pub async fn render_markdown(content: String) -> Result<String, String> {
 /// first auto-save does not write U+FFFD over a file that could not be read,
 /// and `encoding` so it does not write UTF-8 over one that could.
 ///
-/// This is now the only read-to-string command. Its sibling
-/// `read_file_content` returned the text and dropped the verdict; it survived
-/// #379 for callers that re-read a file whose tab was already flagged, then
-/// lost its last call site and stayed registered — a command whose defining
-/// property is that it hides the flag, one `invoke` away from any new caller.
-/// Deleting it makes "which command should this use" a question with one
-/// answer rather than a convention.
-///
-/// Deliberately async, like every other file-touching command here. A
-/// synchronous `#[tauri::command]` runs on the main thread, so a read from a
-/// slow volume (SMB, iCloud, a failing USB stick) freezes the whole
-/// application — every window, its menus and its scrolling — until the I/O
-/// returns. `spawn_blocking` moves the wait onto the blocking pool, which is
-/// what `tauri::async_runtime` provides it for.
+/// Async so a read from a slow volume (SMB, iCloud) waits on the blocking
+/// pool, not on the main thread that every window shares.
 #[tauri::command]
 pub async fn read_file_content_checked(path: String) -> Result<(String, bool, String), String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1032,18 +1018,9 @@ const MAX_IMG_NAME_ATTEMPTS: u32 = 100;
 
 /// Builds the `attempt`-th conflict name, e.g. `photo_1.png`, `photo_2.png`.
 ///
-/// Every mainstream implementation resolves a name conflict with an
-/// incrementing counter — Chrome/Firefox downloads (`photo (1).png`), Windows
-/// Explorer (`photo (2).png`), macOS Finder (`photo 2.png`) — and none uses a
-/// timestamp. They disagree only on the decoration, so this picks the one that
-/// survives the destination: the name is about to be pasted into a Markdown
-/// link, where parentheses are metacharacters and spaces need escaping, while
-/// `_` needs neither. It is also the separator this function already used.
-///
-/// An empty extension gets no separator: `Path::extension()` is `None` for a
-/// dotfile such as `.png`, and appending the dot unconditionally produced
-/// `photo_1.` — a name Windows silently creates *without* the trailing dot,
-/// leaving the link written into the document pointing at nothing.
+/// `_` because the name goes into a Markdown link, where `()` and spaces need
+/// escaping. No dot when `ext` is empty (a dotfile such as `.png`): Windows
+/// drops a trailing dot, and the link would point at nothing.
 fn img_conflict_name(stem: &str, ext: &str, attempt: u32) -> String {
     if ext.is_empty() {
         format!("{stem}_{attempt}")
@@ -1073,21 +1050,10 @@ fn copy_file_to_img_blocking(
 
     let mut source = fs::File::open(src).map_err(|e| e.to_string())?;
 
-    // The destination name is claimed with `create_new`, which is a single
-    // atomic syscall (`O_EXCL` / `CREATE_NEW`): whoever creates the file wins
-    // and everyone else gets `AlreadyExists` and moves to the next name. The
-    // previous code tested `exists()` and then copied, so two drops that
-    // computed the same name — trivially, since the name carried a
-    // second-resolution timestamp that was never re-checked — both saw the
-    // name as free and the second overwrote an image the document already
-    // linked to.
-    //
-    // Residual races: `O_EXCL` is not reliable on old NFSv2 mounts, and
-    // nothing stops an outside process from deleting our file after we create
-    // it. Neither is a same-app data-loss path, which is what this guards.
-    // Streaming into the handle we just created, rather than `fs::copy`, also
-    // means the copy no longer inherits the source's permission bits — a
-    // read-only original used to produce a read-only file in `img/`.
+    // `create_new` claims the name atomically (`O_EXCL` / `CREATE_NEW`), so
+    // two concurrent drops cannot overwrite each other's image. Streaming into
+    // our own handle, rather than `fs::copy`, keeps a read-only source's mode
+    // bits off the copy.
     let mut dest_name = file_name.to_string();
     let mut attempt: u32 = 0;
     loop {

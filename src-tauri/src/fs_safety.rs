@@ -1,7 +1,5 @@
 //! Filesystem safety: durable writes, file identity, text decoding, and the
 //! path checks every command that touches the disk goes through.
-//!
-//! Split out of `lib.rs`; the code and its tests are unchanged.
 
 use std::fs;
 use std::io::Write;
@@ -773,8 +771,9 @@ pub(crate) mod tests {
         // reading (macOS ticks coarser than a nanosecond), and the collision
         // took down *both* writers: the loser of `create_new` got EEXIST, and
         // its cleanup deleted the winner's temp file, so the winner's rename
-        // failed with ENOENT. Concurrent writers are ordinary here — every
-        // `save_file`, theme write and window-state flush shares this path.
+        // failed with ENOENT. Concurrent writers are ordinary here: every
+        // `save_file_content`, theme write and window-state flush shares
+        // this path.
         let dir = temp_path("atomic-concurrent");
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("contended.json");

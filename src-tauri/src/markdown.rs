@@ -1,8 +1,6 @@
 //! Markdown rendering: the comrak configuration, the preprocessing steps that
 //! run before it, the math masking that hides TeX from CommonMark, and the
 //! heading anchors the editor completes from.
-//!
-//! Split out of `lib.rs`; the code and its tests are unchanged.
 
 use crate::fs_safety::{decode_text, read_to_string_lossy, utf8_truncation_boundary};
 use comrak::nodes::NodeValue;
