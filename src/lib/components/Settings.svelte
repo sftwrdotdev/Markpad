@@ -1523,6 +1523,14 @@
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
+
+					<div class="setting-item">
+						<label for="appearance-typewriter-mode">{t('settings.typewriterMode', settings.language)}</label>
+						<label class="toggle">
+							<input id="appearance-typewriter-mode" type="checkbox" checked={settings.typewriterMode} onchange={() => settings.toggleTypewriterMode()} />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
 					</div>
 					{:else if activeCategory === 'toolbars'}
 					<div class="settings-group">

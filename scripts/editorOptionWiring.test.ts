@@ -43,6 +43,7 @@ const SETTINGS = {
 	animateJumpScroll: true,
 	animateCursor: true,
 	systemReducedMotion: false,
+	typewriterMode: false,
 };
 
 test('the caret glide is a setting and not a hard-coded on', () => {
@@ -146,6 +147,8 @@ test('editor options are applied by a single updateOptions effect', () => {
 		Object.keys(applied).sort(),
 		[
 			'cursorSmoothCaretAnimation',
+			'cursorSurroundingLines',
+			'cursorSurroundingLinesStyle',
 			'fontFamily',
 			'fontSize',
 			'lineDecorationsWidth',
@@ -806,4 +809,13 @@ test('the gutter left of the text grows with zoom only as far as the folding che
 		assert.ok(at('on', zoom) + 16 >= fontSize * 1.4 + 2, `chevron fits at ${zoom}%`);
 		assert.equal(at('off', zoom), at('on', zoom) + 42);
 	}
+});
+
+test('Typewriter Mode keeps the cursor line centred, for clicks too', () => {
+	const off = editorOptionsFromSettings(SETTINGS, 100);
+	assert.equal(off.cursorSurroundingLines, 0);
+	assert.equal(off.cursorSurroundingLinesStyle, 'default');
+	const on = editorOptionsFromSettings({ ...SETTINGS, typewriterMode: true }, 100);
+	assert.ok(on.cursorSurroundingLines! > 1000, 'more lines than any screen, which Monaco caps at half the viewport');
+	assert.equal(on.cursorSurroundingLinesStyle, 'all');
 });

@@ -458,6 +458,8 @@ export class SettingsStore {
 	restoreStateOnReopen = $state(true);
 	closeWindowWithLastTab = $state(true);
 	zenMode = $state(false);
+	/** Keeps the editor's cursor line in the middle of the pane. */
+	typewriterMode = $state(false);
 	/** Dims the editor outside the paragraph the cursor is in (#819). Independent of zen mode. */
 	focusMode = $state(false);
 	showToc = $state(false);
@@ -704,6 +706,10 @@ export class SettingsStore {
 
 	toggleLinksOpenInNewTab() {
 		this.linksOpenInNewTab = !this.linksOpenInNewTab;
+	}
+
+	toggleTypewriterMode() {
+		this.typewriterMode = !this.typewriterMode;
 	}
 
 	toggleFocusMode() {
@@ -995,6 +1001,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.restoreStateOnReopen', (s) => s.restoreStateOnReopen, (s, v) => { s.restoreStateOnReopen = v; }),
 		booleanSetting('editor.closeWindowWithLastTab', (s) => s.closeWindowWithLastTab, (s, v) => { s.closeWindowWithLastTab = v; }),
 		booleanSetting('editor.zenMode', (s) => s.zenMode, (s, v) => { s.zenMode = v; }),
+		booleanSetting('editor.typewriterMode', (s) => s.typewriterMode, (s, v) => { s.typewriterMode = v; }),
 		booleanSetting('editor.focusMode', (s) => s.focusMode, (s, v) => { s.focusMode = v; }),
 		booleanSetting('editor.occurrencesHighlight', (s) => s.occurrencesHighlight, (s, v) => { s.occurrencesHighlight = v; }),
 		booleanSetting('preview.occurrencesHighlight', (s) => s.previewOccurrences, (s, v) => { s.previewOccurrences = v; }),

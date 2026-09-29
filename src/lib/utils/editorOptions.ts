@@ -27,6 +27,7 @@ import { allowsMotion } from "./motion.js";
 const TOC_BUTTON_CLEARANCE = 42;
 const MONACO_FOLDING_WIDTH = 16;
 const MONACO_DEFAULT_DECORATIONS_WIDTH = 10;
+const TYPEWRITER_SURROUNDING_LINES = 10_000;
 
 function lineDecorationsWidth(fontSize: number, lineNumbersOff: boolean): number {
 	const chevron = Math.ceil(fontSize * 1.4) + 2;
@@ -95,6 +96,11 @@ export function editorOptionsFromSettings(
 		cursorSmoothCaretAnimation: allowsMotion(settings.animateCursor, settings.systemReducedMotion)
 			? "on"
 			: "off",
+		// Typewriter Mode: Monaco keeps this many lines around a revealed cursor,
+		// capped at half the viewport, so a number past any screen centres the
+		// cursor line. 'all' applies it to clicks too, not only to keyboard moves.
+		cursorSurroundingLines: settings.typewriterMode ? TYPEWRITER_SURROUNDING_LINES : 0,
+		cursorSurroundingLinesStyle: settings.typewriterMode ? "all" : "default",
 	};
 }
 
@@ -112,4 +118,5 @@ export type EditorOptionSettings = {
 	animateCursor: boolean;
 	systemReducedMotion: boolean;
 	showWhitespace: boolean;
+	typewriterMode: boolean;
 };
