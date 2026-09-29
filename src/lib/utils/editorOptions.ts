@@ -37,22 +37,15 @@ function lineDecorationsWidth(fontSize: number, lineNumbersOff: boolean): number
 /**
  * The Monaco options derived from the settings store, in one place.
  *
- * These ten were written twice: once in the `monaco.editor.create()` literal
- * and once in the `updateOptions` effect that re-applies them when a setting
- * changes. Both copies had to agree, and nothing made them — the divergence
- * that actually happened was `fontSize`, carrying the zoom factor in one copy
- * and not the other. `editorOptionWiring.test.ts` had an assertion whose whole
- * job was to count one expression and require the count to be 2, which is what
- * policing a duplicate looks like when the duplicate is not removable.
+ * Used by both `monaco.editor.create()` and the `updateOptions` effect, so the
+ * two cannot disagree.
  *
  * The rest of the creation literal stays where it is: those options are set
  * once and never re-applied, so they are not duplicated and moving them here
  * would only put distance between an option and the paragraph explaining it.
  *
- * `cursorSmoothCaretAnimation` is the one that arrived from the other
- * direction: it was in the creation literal and nowhere else, which was
- * correct while it was a hard-coded `'on'` and wrong the moment #710 gave it a
- * setting. Being here is what makes the toggle apply to the open editor.
+ * An option a setting can change must be here, or `updateOptions` never
+ * re-applies it and the toggle reaches only the next editor.
  *
  * `zoomPercent` is a parameter rather than another settings field because the
  * two call sites genuinely pass different things — see the note at the
@@ -97,17 +90,8 @@ export function editorOptionsFromSettings(
 		// match, a go-to-line, the scroll sync. That is the same jump the
 		// preview animates, so it answers the same preference rather than a
 		// second one of its own; `utils/motion.ts` is where the two meet.
-		//
-		// Here rather than in the creation literal, where it used to sit as a
-		// bare `true`: an option that a setting can now change has to be in the
-		// set `updateOptions` re-applies, or the toggle would take effect only
-		// on a new editor.
 		smoothScrolling: allowsMotion(settings.animateJumpScroll, settings.systemReducedMotion),
-		// The caret's glide between positions. Here rather than in the creation
-		// literal, where it was a hard-coded `'on'` (#710), for the same reason
-		// `smoothScrolling` moved: an option a setting can change has to be in
-		// the set `updateOptions` re-applies, or the toggle would take effect
-		// only on the next editor.
+		// The caret's glide between positions.
 		cursorSmoothCaretAnimation: allowsMotion(settings.animateCursor, settings.systemReducedMotion)
 			? "on"
 			: "off",

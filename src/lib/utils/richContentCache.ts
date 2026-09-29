@@ -2,16 +2,11 @@
  * A memo for the two halves of `renderRichContent` that are pure functions of
  * their input: a KaTeX formula and a highlighted code block.
  *
- * Why this exists is the same reason `diagramCache.ts` exists, and the numbers
- * are the ones the debounce could not hide. The preview re-renders the whole
- * article on every keystroke — in split mode, and in edit mode with the TOC
- * open — and `{@html sanitizedHtml}` puts every formula and every code block
- * back as source, so both libraries ran over the whole document again for one
- * typed character. Measured in Chromium on `samples/katex-stress.md` (21
- * display formulas, 31 inline), one pass through `renderRichContent` was
- * 32–45ms, of which the `[data-math]` loop alone was ~20ms. `diagramCache.ts`
- * had already taken Mermaid out of that figure; it does nothing for a document
- * whose maths is the expensive part.
+ * Same reason as `diagramCache.ts`: the same formula or code block is rendered
+ * again whenever its block is re-inserted or the whole article is rendered.
+ * Measured in Chromium on `samples/katex-stress.md` (21 display formulas, 31
+ * inline), a whole-article `renderRichContent` was 32–45ms, of which the
+ * `[data-math]` loop alone was ~20ms.
  *
  * ## Why this is the easy version of `diagramCache.ts`
  *

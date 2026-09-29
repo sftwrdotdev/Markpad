@@ -1,10 +1,5 @@
 import { writeStoredSetting } from '../stores/settings.svelte.js';
 
-// Module-private on purpose. Both used to be exported, and the only importer
-// was recentFilesMultiWindow.test.ts, which compared each one with itself —
-// so renaming the key or changing the cap could not fail anything. The test
-// writes both values out now; an export that exists to be asserted against
-// itself is not a contract with anyone.
 const RECENT_FILES_KEY = 'recent-files';
 const RECENT_FILES_LIMIT = 9;
 /**

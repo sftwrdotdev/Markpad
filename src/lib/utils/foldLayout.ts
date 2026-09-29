@@ -43,43 +43,14 @@ function updateFoldHeights(root: HTMLElement) {
 	// reflow, and the remaining reads hit that same clean layout. No paint
 	// happens mid-task, so the cleared state is never visible.
 	//
-	// The measurement is the *layout* height, not `scrollHeight`. They are not
-	// the same number for maths. KaTeX stacks a display formula with negative
-	// margins and vertical-align, so its glyphs reach past the box that lays
-	// them out: `scrollHeight` reports the scrollable extent it needs, which is
-	// several pixels taller than the height `auto` resolves to. Writing that
-	// number back made the wrapper taller than the content it wraps.
+	// Measure the layout height, not `scrollHeight`: KaTeX glyphs overhang
+	// their box, so `scrollHeight` is up to ~7px taller and the wrapper would
+	// grow past its content (see the fold-height rule in
+	// singleImplementationConvention.test.ts). Nothing is clipped by the smaller
+	// number: expanded wrappers are `overflow: visible`.
 	//
-	// That is a visible defect, not a rounding artefact, and it fired on every
-	// keystroke: `{@html}` rebuilds the wrapper with no inline property, so it
-	// paints at `auto`, and the next frame writes the larger number and pushes
-	// everything below it down. Measured against `katex-stress.md`'s own
-	// formulas, at devicePixelRatio 2:
-	//
-	//     prose (control)               51.188 auto → 51  scrollHeight  -0.188px
-	//     `\mathrm`/`\mathit` row       25.227 auto → 25                -0.227px
-	//     grown delimiters              46.461 auto → 52                +5.539px
-	//     nested \frac + \sqrt + x^y^z  74.867 auto → 82                +7.133px
-	//
-	// which is exactly the shape of the report: the prose and short-formula
-	// sections sat still and the one with stacked fractions moved. Reading
-	// `getBoundingClientRect().height` instead takes every row to +0.000px,
-	// and keeps the sub-pixel precision `scrollHeight` rounds away.
-	//
-	// Nothing is clipped by the smaller number: both the wrapper and
-	// `.content-inner` are `overflow: visible` while expanded, and a collapsed
-	// wrapper takes `height: 0` from the more specific rule either way.
-	//
-	// And a rect is reported in viewport pixels, which have the preview's CSS
-	// `zoom` folded in, while `height` is resolved in the wrapper's own pixels,
-	// which get that same zoom applied again. Publishing a rect unconverted
-	// therefore made every expanded wrapper exactly `zoom` times too short: at
-	// 90% each section overflowed its box by a tenth and lightly overlapped the
-	// next, at 70% by a third and the document collapsed into itself (#807).
-	// `scrollHeight` never showed this — it counts in the element's own pixels —
-	// so the switch above brought it in. Dividing by the accumulated factor puts
-	// the measurement back in the pixels the style property is read in. The
-	// factor is one read of the same clean layout, so it costs no extra reflow.
+	// Divide by the preview's CSS `zoom`: a rect is in viewport pixels, and
+	// `height` has the zoom applied again (#807).
 	const zoom = previewZoomFactor(root);
 	const heights = pending.map(({ content }) => content.getBoundingClientRect().height / zoom);
 

@@ -1,38 +1,15 @@
 /**
- * Who owns a fold.
+ * Fold state for headings and callouts.
  *
- * A fold is one thing with three drivers: the chevron in the preview, the
- * outline's fold button, and find opening whatever is hiding a match. Each of
- * them used to reach the state by a different route, and the routes disagreed.
+ * `assignFoldKey` names each fold once, while the markup is built, and writes
+ * the name to `data-fold-key`. Every later reader asks the element
+ * (`foldKeyOf`) instead of recomputing it.
  *
- * - The heading chevron wrote the tab's fold set; the callout title wrote
- *   `classList.toggle('is-collapsed')` and nothing else, so a folded callout
- *   sprang open again on the next render — which is every keystroke in split
- *   view. Two affordances that look identical, one of them amnesiac.
- * - Find had no way to say "open this", so it built a `MouseEvent` and fired
- *   it at the chevron, hoping the viewer's delegated click handler would pick
- *   it up. Three modules coupled through a class name and a synthetic event.
- * - The key that identifies a fold was spelled out three times — in the
- *   renderer, in the preview's click handler and in the outline — and the
- *   outline's spelling did not match the other two for a heading whose text
- *   carries a block id.
- *
- * So the key is computed exactly once, by `assignFoldKey`, while the markup is
- * being built, and written into that markup as `data-fold-key`. Every later
- * reader asks the element (`foldKeyOf`) instead of recomputing, which is why
- * there is no second algorithm left to drift. Everything else here is about
- * getting from something the user pointed at — a chevron, a key from the
- * outline, a search hit buried in a collapsed section — to the pair of
- * elements that wear `is-collapsed`.
- *
- * What the tab stores is deliberately NOT "the folds that are closed": it is
- * the folds whose state differs from the one the document asks for. Headings
- * always start open, so for them the two readings are the same set — which is
- * why the stored field survived this change unaltered in meaning for every
- * heading. Callouts do not: `> [!note]-` starts closed. Storing "closed" would
- * make a callout the reader OPENED indistinguishable from one they never
- * touched, and the next render would shut it again — the callout defect above,
- * with the sign flipped. Storing the deviation costs one `!==` and answers both.
+ * The tab stores the folds whose state DIFFERS from what the source asks for,
+ * not the folds that are closed. Headings always start open, so for them the
+ * two are the same. A `> [!note]-` callout starts closed: storing "closed"
+ * could not tell a callout the reader opened from one never touched, and the
+ * next render would shut it again.
  */
 
 /** Where `assignFoldKey` leaves its answer for every later reader. */
@@ -182,12 +159,9 @@ export interface FoldHost {
  * preview's own control (`toggleFoldFromClick`), the outline's fold button, and
  * find opening what hides a match (`revealFold`).
  *
- * Both halves happen here, and that is the point. The stored deviation is what
- * the NEXT render reads; the two class writes are what the current DOM shows. A
- * driver that did only the second — which is what the callout title used to do —
- * folds something that springs open again on the next keystroke, and there is
- * nothing on screen to say why. One function is what stops a fourth driver from
- * getting it half right.
+ * Writes the stored deviation (what the next render reads) and the classes
+ * (what the current DOM shows) together. Doing only the classes folds
+ * something that springs open again on the next render.
  *
  * The state is flipped even when the fold is not in the DOM (the preview is
  * hidden in editor-only mode, and the outline is still there to click), so the
