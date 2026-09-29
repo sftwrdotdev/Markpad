@@ -15,6 +15,7 @@
 	import { isInFencedCode } from '../utils/codeFence.js';
 	import { frontMatterFenceLines, frontMatterLineOffset } from '../utils/frontMatter.js';
 	import { isAltGraphChord } from '../utils/viewerKeymap.js';
+	import { platformOf } from '../utils/platform.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
@@ -123,7 +124,6 @@
 		 */
 		sharedCursor?: { line: number; column: number } | null;
 		zoomLevel?: number;
-		isSplit?: boolean;
 		theme?: string;
 	}>();
 
@@ -168,32 +168,10 @@
 	let fontIsMonospace = $state(true);
 	let localizedActions: Monaco.IDisposable[] = [];
 
-	// `settings.osType` is resolved asynchronously from the Rust side, so it can
-	// still be 'unknown' while the editor registers its keybindings. Fall back to
-	// the synchronous browser hint in that window.
-	//
-	// The fallback reads a deprecated API on purpose, and the deprecation is
-	// precisely what makes it reliable here: we are asking "is this macOS?", not
-	// "which architecture is this?". `navigator.platform` still reports
-	// "MacIntel" on Apple silicon — measured on an M5 (arm64), where the user
-	// agent likewise still claims "Intel Mac OS X 10_15_7". Both values are
-	// frozen deliberately by WebKit and Chromium: years of sites compare
-	// `navigator.platform === 'MacIntel'` exactly, so changing it during the 2020
-	// ARM transition would have made every Mac look like an unknown platform
-	// overnight, and the capped Catalina version exists to limit fingerprinting.
-	// So the string lies about the CPU while staying permanently correct about
-	// the vendor — the only axis this function queries. The fallback therefore
-	// cannot reach a different macOS verdict than `settings.osType` does, and the
-	// keybindings never need re-registering once `osType` resolves.
-	//
-	// `navigator.userAgentData` is not used instead: only its coarse `platform`
-	// field is synchronous, and architecture and platform version sit behind the
-	// asynchronous high-entropy request. Waiting on that would reintroduce the
-	// very delay `settings.osType` already has, which defeats the point of
-	// having a synchronous fallback at all.
+	// Synchronous, so the keybindings can be registered once at mount; see
+	// `platformOf` for why its fallback cannot disagree with `settings.osType`.
 	function isMacPlatform(): boolean {
-		if (settings.osType !== 'unknown') return settings.osType === 'macos';
-		return /^(Mac|iPhone|iPad|iPod)/i.test(navigator.platform || '');
+		return platformOf(settings.osType) === 'macos';
 	}
 
 	/**
@@ -2565,11 +2543,6 @@
 		editor?.trigger("keyboard", "undo", null);
 	}
 
-	export const redo = () => {
-		editor?.focus();
-		editor?.trigger("keyboard", "redo", null);
-	}
-
 	export const triggerFind = () => {
 		if (!editor) return;
 		editor.focus();
@@ -2618,11 +2591,6 @@
 		}
 		editor.getAction(actionId)?.run();
 	}
-
-	export const getValue = () => editor?.getValue() || "";
-	export const setValue = (val: string) => editor?.setValue(val);
-	export const focus = () => editor?.focus();
-	export const restoreViewState = (state: any) => editor?.restoreViewState(state);
 
 	/**
 	 * Bring `tabId`'s recorded reading position up to date with what the editor

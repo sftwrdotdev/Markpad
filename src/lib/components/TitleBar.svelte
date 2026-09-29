@@ -2,8 +2,7 @@
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { invoke } from '@tauri-apps/api/core';
 	import { openUrl } from '@tauri-apps/plugin-opener';
-	import { fly, slide } from 'svelte/transition';
-	import { flip } from 'svelte/animate';
+	import { fly } from 'svelte/transition';
 	import iconUrl from '../../assets/icon.png';
 	import TabList from './TabList.svelte';
 	import { tabManager } from '../stores/tabs.svelte.js';
@@ -16,11 +15,7 @@
 	import { openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
-	let currentLanguage = $state(settings.language);
-
-	$effect(() => {
-		currentLanguage = settings.language;
-	});
+	let currentLanguage = $derived(settings.language);
 
 	let {
 		isFocused,
@@ -30,7 +25,6 @@
 
 		windowTitle,
 		showHome,
-		onselectFile,
 		onnewFile,
 		onopenFile,
 		onmergeAllWindows,
@@ -53,7 +47,6 @@
 		onsetViewMode,
 		onswapPanes,
 		isEditing,
-		ondetach,
 		ontabclick,
 		zoomLevel,
 		onresetZoom,
@@ -74,7 +67,6 @@
 
 		windowTitle: string;
 		showHome: boolean;
-		onselectFile?: () => void;
 		onnewFile?: () => void;
 		onopenFile?: () => void;
 		onmergeAllWindows?: () => void;
@@ -97,7 +89,6 @@
 		onsetViewMode: (mode: ViewMode) => void;
 		onswapPanes?: () => void;
 		isEditing: boolean;
-		ondetach: (tabId: string) => void;
 		ontabclick?: () => void;
 		zoomLevel?: number;
 		onresetZoom?: () => void;
@@ -119,8 +110,6 @@
 	let innerWidth = $state(1000);
 	let isCollapsed = $derived(innerWidth <= 450 || settings.zenMode);
 
-	const DEBUG_MACOS = false;
-
 	// The platform comes from `settings.osType` — the Rust `get_os_type` answer
 	// the rest of the app already reads — rather than from this component's own
 	// user-agent sniff for "Macintosh", which was a second source that could
@@ -132,9 +121,9 @@
 	// `osType` can change once after mount (unknown → resolved). At plain consts
 	// the title bar would keep whatever the fallback said and never correct
 	// itself on a machine where the two do differ.
-	let platform = $derived(DEBUG_MACOS ? 'macos' : platformOf(settings.osType));
+	let platform = $derived(platformOf(settings.osType));
 	let isMac = $derived(platform === 'macos');
-	let useNativeMacChrome = $derived(isMac && !DEBUG_MACOS);
+	let useNativeMacChrome = $derived(isMac);
 	let modifier = $derived(modifierFor(platform));
 
 	let isWin11 = $state(false);
@@ -747,7 +736,7 @@
 
 	{#if tabManager.tabs.length > 0 && settings.showTabs}
 		<div class="tab-area" class:tagged={tabManager.windowTag !== null} style:--tag-color={tabManager.windowTag?.color}>
-			<TabList onnewTab={() => tabManager.addNewTab()} {ondetach} {showHome} {ontabclick} {oncloseTab} />
+			<TabList onnewTab={() => tabManager.addNewTab()} {showHome} {ontabclick} {oncloseTab} />
 		</div>
 	{:else}
 		<div class="window-title-container" data-tauri-drag-region>
@@ -1401,11 +1390,6 @@
 		display: none;
 	}
 
-	.actions-wrapper {
-		display: flex;
-		gap: 4px;
-	}
-
 	.title-action-btn {
 		width: 28px;
 		height: 28px;
@@ -1608,28 +1592,6 @@
 
 	.close-btn:hover {
 		background: #e81123 !important;
-	}
-
-	.zoom-indicator {
-		background: var(--color-canvas-subtle);
-		color: var(--color-fg-muted);
-		border: 1px solid var(--color-border-default);
-		border-radius: 4px;
-		padding: 2px 8px;
-		font-size: 11px;
-		cursor: pointer;
-		margin-right: 8px;
-		display: flex;
-		align-items: center;
-		height: 24px;
-		align-self: center;
-		transition: all 0.1s;
-	}
-
-	.zoom-indicator:hover {
-		background: var(--color-btn-hover-bg);
-		color: var(--color-fg-default);
-		border-color: var(--color-border-muted);
 	}
 
 

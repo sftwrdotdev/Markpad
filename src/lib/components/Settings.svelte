@@ -406,16 +406,8 @@
 
 	function getCurrentSettingsModalFrame(): ConcreteSettingsModalFrame | null {
 		if (!settingsModal) return null;
-		const rect = settingsModal.getBoundingClientRect();
-		const limits = getSettingsModalLimits();
-		const width = clampNumber(rect.width, limits.minWidth, limits.maxWidth);
-		const height = clampNumber(rect.height, limits.minHeight, limits.maxHeight);
-		return {
-			width,
-			height,
-			left: clampNumber(rect.left, 0, Math.max(0, limits.viewportWidth - width)),
-			top: clampNumber(rect.top, 0, Math.max(0, limits.viewportHeight - height)),
-		};
+		const { width, height, left, top } = settingsModal.getBoundingClientRect();
+		return clampSettingsModalFrame({ width, height, left, top });
 	}
 
 	function clampSettingsModalFrame(frame: ConcreteSettingsModalFrame): ConcreteSettingsModalFrame {

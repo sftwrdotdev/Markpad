@@ -251,14 +251,8 @@ const RULES: Rule[] = [
 		// second source would reach for either. `navigator.language` (settings
 		// store) and `navigator.clipboard` (Editor.svelte) are deliberately not
 		// matched: neither is a platform test.
-		//
-		// Editor.svelte is allowed because editorOptionWiring.test.ts pins its
-		// `isMacPlatform()` helper by name, in that file, as the thing that picks
-		// the Monaco tab-cycle modifier — so the copy cannot move without that
-		// test moving with it. It is the same three lines platform.ts now holds
-		// and should be folded into it; the entry goes away when it is.
 		marker: /navigator\.(?:userAgent|platform)\b/g,
-		allowed: ['src/lib/utils/platform.ts', 'src/lib/components/Editor.svelte'],
+		allowed: ['src/lib/utils/platform.ts'],
 	},
 	{
 		name: 'the Cmd-or-Ctrl decision has one implementation',

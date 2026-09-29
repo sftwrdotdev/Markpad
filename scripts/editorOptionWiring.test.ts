@@ -240,18 +240,12 @@ test('tab cycling avoids Cmd+Tab, which macOS never delivers to the app', () => 
 });
 
 test('platform detection reads settings.osType and never writes it', () => {
-	// The `navigator.platform` fallback is deprecated but load-bearing, and it is
-	// asserted here so nobody "modernises" it away. The value is frozen at
-	// "MacIntel" on every Mac, arm64 included (verified on an Apple M5), so it is
-	// wrong about the CPU and permanently right about the vendor — which is the
-	// only thing asked of it. That is why the helper may stay synchronous and why
-	// the keybindings are registered once, at mount, rather than re-registered
-	// when settings.osType resolves. Full argument: the comment on
-	// isMacPlatform() in Editor.svelte.
+	// `platformOf` is the app's one platform answer, including the synchronous
+	// `navigator.platform` fallback that lets the keybindings register once, at
+	// mount (platformSource.spec.ts tests the fallback).
 	const helper = sliceBetween(editor, 'function isMacPlatform', '\n\t}');
-	assert.match(helper, /settings\.osType !== 'unknown'/, 'prefers the resolved Tauri os type');
-	assert.match(helper, /settings\.osType === 'macos'/);
-	assert.match(helper, /navigator\.platform/, 'falls back while osType is still resolving');
+	assert.match(helper, /platformOf\(settings\.osType\) === 'macos'/, 'asks platformOf, not a copy of it');
+	assert.doesNotMatch(editor, /navigator\.platform/, 'no second platform check in Editor.svelte');
 
 	assert.doesNotMatch(editor, /settings\.osType\s*=[^=]/, 'Editor.svelte must not write to the settings store');
 });
