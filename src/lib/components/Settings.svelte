@@ -1515,6 +1515,14 @@
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
+
+					<div class="setting-item">
+						<label for="appearance-focus-mode">{t('settings.focusMode', settings.language)}</label>
+						<label class="toggle">
+							<input id="appearance-focus-mode" type="checkbox" checked={settings.focusMode} onchange={() => settings.toggleFocusMode()} />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
 					</div>
 					{:else if activeCategory === 'toolbars'}
 					<div class="settings-group">

@@ -20,6 +20,7 @@
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
 	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
 	import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../utils/editorTheme.js';
+	import { paragraphAround } from '../utils/focusParagraph.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
@@ -2320,6 +2321,29 @@
 		if (editorReady && editor) applySettingsOptions();
 	});
 
+	// Focus Mode (#819): the paragraph the cursor is in keeps full strength and
+	// the rest of the document dims.
+	let focusDecorations: Monaco.editor.IEditorDecorationsCollection | null = null;
+
+	$effect(() => {
+		if (!editorReady || !editor) return;
+		void value;
+		const line = cursorPosition?.lineNumber ?? 1;
+		const model = editor.getModel();
+		focusDecorations ??= editor.createDecorationsCollection();
+		if (!settings.focusMode || !model) {
+			focusDecorations.clear();
+			return;
+		}
+		const count = model.getLineCount();
+		const { start, end } = paragraphAround((n) => model.getLineContent(n), count, Math.min(line, count));
+		const dim = (from: number, to: number) => ({
+			range: new monaco.Range(from, 1, to, model.getLineMaxColumn(to)),
+			options: { inlineClassName: 'focus-mode-dim' },
+		});
+		focusDecorations.set([...(start > 1 ? [dim(1, start - 1)] : []), ...(end < count ? [dim(end + 1, count)] : [])]);
+	});
+
 
 	// The only place a theme CHANGE reaches Monaco. `setTheme` is global to the
 	// page rather than per-editor, so a second effect writing it from anywhere
@@ -2677,6 +2701,10 @@
 {/if}
 
 <style>
+	:global(.focus-mode-dim) {
+		opacity: 0.35;
+	}
+
 	.editor-outer {
 		position: relative;
 		flex: 1;
