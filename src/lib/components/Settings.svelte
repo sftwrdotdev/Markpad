@@ -2,9 +2,13 @@
 	import { invoke } from '@tauri-apps/api/core';
 	import { getVersion } from '@tauri-apps/api/app';
 	import { openUrl } from '@tauri-apps/plugin-opener';
+	import { open, save } from '@tauri-apps/plugin-dialog';
 	import {
 		settings,
 		clampToRange,
+		applySettings,
+		exportSettings,
+		parseSettingsFile,
 		isWithinRange,
 		parseStoredNumber,
 		resolveTheme,
@@ -675,6 +679,37 @@
 			alert(`Failed to import theme: ${e}`);
 		} finally {
 			importingTheme = false;
+		}
+	}
+
+	async function exportSettingsFile() {
+		try {
+			const path = await save({ defaultPath: 'markpad-settings.json', filters: [{ name: 'JSON', extensions: ['json'] }] });
+			if (!path) return;
+			const names = await invoke<string[]>('get_saved_vscode_themes');
+			const themes: Record<string, string> = {};
+			for (const name of names) themes[name] = await invoke<string>('read_vscode_theme', { name });
+			await invoke('save_file_content', { path, content: exportSettings(settings, themes), encoding: 'UTF-8' });
+		} catch (e) {
+			console.error('Failed to export settings:', e);
+			alert(`${t('settings.exportSettingsFailed', settings.language)}\n${e}`);
+		}
+	}
+
+	async function importSettingsFile() {
+		try {
+			const path = await open({ multiple: false, directory: false, filters: [{ name: 'JSON', extensions: ['json'] }] });
+			if (typeof path !== 'string') return;
+			const [content] = await invoke<[string, boolean, string]>('read_file_content_checked', { path });
+			const file = parseSettingsFile(content);
+			for (const [name, json] of Object.entries(file.themes)) {
+				await invoke('install_vscode_theme', { name, json });
+			}
+			await loadVscodeThemes();
+			applySettings(settings, file.settings);
+		} catch (e) {
+			console.error('Failed to import settings:', e);
+			alert(`${t('settings.importSettingsFailed', settings.language)}\n${e}`);
 		}
 	}
 
@@ -1648,6 +1683,14 @@
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
+
+						<div class="setting-item">
+							<label for="settings-file-import">{t('settings.settingsFile', settings.language)}</label>
+							<div class="settings-file-actions">
+								<button id="settings-file-import" class="import-btn" onclick={importSettingsFile}>{t('settings.importSettings', settings.language)}</button>
+								<button class="import-btn" onclick={exportSettingsFile}>{t('settings.exportSettings', settings.language)}</button>
+							</div>
+						</div>
 					</div>
 					{:else if activeCategory === 'shortcuts'}
 					<!--
@@ -2588,6 +2631,11 @@
 
 	.import-btn:hover:not(:disabled) {
 		background: var(--color-border-default);
+	}
+
+	.settings-file-actions {
+		display: flex;
+		gap: 8px;
 	}
 
 	.import-btn:disabled {

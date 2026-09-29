@@ -679,6 +679,27 @@ pub fn read_vscode_theme(app: AppHandle, name: String) -> Result<String, String>
     fs::read_to_string(theme_file_path).map_err(|e| e.to_string())
 }
 
+/// Installs a theme carried in a settings file (#134), so importing settings
+/// on another machine does not mean finding the theme on vscodethemes.com again.
+/// The file may come from anyone: the name is one path component and the JSON
+/// is held to the same size limit as a downloaded theme.
+#[tauri::command]
+pub fn install_vscode_theme(app: AppHandle, name: String, json: String) -> Result<(), String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    write_vscode_theme(&config_dir.join("themes"), &name, &json)
+}
+
+fn write_vscode_theme(themes_dir: &Path, name: &str, json: &str) -> Result<(), String> {
+    let name = safe_path_component(name, "theme name")?;
+    if json.len() as u64 > MAX_THEME_JSON_BYTES {
+        return Err("Theme exceeds the allowed size".to_string());
+    }
+    serde_json::from_str::<serde_json::Value>(json).map_err(|e| e.to_string())?;
+    fs::create_dir_all(themes_dir).map_err(|e| e.to_string())?;
+    atomic_write(&themes_dir.join(format!("{}.json", name)), json.as_bytes())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn delete_vscode_theme(app: AppHandle, name: String) -> Result<(), String> {
     let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
@@ -1133,6 +1154,21 @@ pub(crate) mod tests {
     use super::*;
     use crate::fs_safety::tests::temp_path;
     use std::path::PathBuf;
+
+    #[test]
+    fn an_imported_theme_is_written_only_when_its_name_and_json_are_safe() {
+        let themes = temp_path("install-theme").join("themes");
+        write_vscode_theme(&themes, "ayu-dark", r#"{"type":"dark"}"#).unwrap();
+        assert_eq!(
+            fs::read_to_string(themes.join("ayu-dark.json")).unwrap(),
+            r#"{"type":"dark"}"#
+        );
+
+        assert!(write_vscode_theme(&themes, "../escape", "{}").is_err());
+        assert!(write_vscode_theme(&themes, "broken", "not json").is_err());
+        assert!(!themes.join("broken.json").exists());
+        let _ = fs::remove_dir_all(themes.parent().unwrap());
+    }
 
     #[test]
     fn zip_entry_reads_stop_at_the_limit_even_when_the_header_understates_size() {

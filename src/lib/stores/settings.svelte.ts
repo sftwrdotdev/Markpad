@@ -1138,4 +1138,91 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 	];
 }
 
+/** Marks a file as Markpad settings; its value is the format version. */
+const SETTINGS_FILE_MARKER = 'markpadSettings';
+
+// A family the user never picked is the exporting OS's default, which the
+// importing machine may not have. Leaving it out keeps the importer's own.
+const FONT_DEFAULT_FIELDS: Record<string, keyof DefaultFonts> = {
+	'editor.font': 'editorFont',
+	'preview.font': 'previewFont',
+	'preview.codeFont': 'codeFont',
+};
+
+/** A parsed settings file: localStorage values by key, and theme JSON by name. */
+export interface SettingsFile {
+	settings: Record<string, unknown>;
+	themes: Record<string, string>;
+}
+
+/**
+ * Serializes every persisted setting to a settings file (#134), keyed by its
+ * localStorage key. A stored value that is itself JSON (booleans, numbers,
+ * lists) is written as that JSON so the file can be edited by hand; the
+ * `stringify` check keeps the round trip exact.
+ *
+ * `themes` are the installed VS Code themes, carried whole because Markpad
+ * keeps no link back to where one was downloaded from.
+ */
+export function exportSettings(store: SettingsStore, themes: Record<string, string> = {}): string {
+	const values: Record<string, unknown> = {};
+	for (const entry of createSettingsPersistence()) {
+		const raw = entry.read(store);
+		if (raw === null) continue;
+		const fontField = FONT_DEFAULT_FIELDS[entry.key];
+		if (fontField && raw === DEFAULT_FONTS[store.osType][fontField]) continue;
+		let value: unknown = raw;
+		try {
+			const parsed: unknown = JSON.parse(raw);
+			if (typeof parsed !== 'string' && JSON.stringify(parsed) === raw) value = parsed;
+		} catch {
+			// Not JSON: an ordinary string setting.
+		}
+		values[entry.key] = value;
+	}
+	return JSON.stringify({ [SETTINGS_FILE_MARKER]: 1, settings: values, themes }, null, '\t') + '\n';
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Throws when `text` is not a settings file. Theme entries that are not strings are dropped. */
+export function parseSettingsFile(text: string): SettingsFile {
+	let parsed: unknown = null;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		// Reported below with every other non-settings file.
+	}
+	if (!isRecord(parsed) || typeof parsed[SETTINGS_FILE_MARKER] !== 'number' || !isRecord(parsed.settings)) {
+		throw new Error('Not a Markpad settings file');
+	}
+	const themes: Record<string, string> = {};
+	if (isRecord(parsed.themes)) {
+		for (const [name, json] of Object.entries(parsed.themes)) {
+			if (typeof json === 'string') themes[name] = json;
+		}
+	}
+	return { settings: parsed.settings, themes };
+}
+
+/**
+ * Applies a settings file's values onto `store`. Keys the file does not name
+ * keep their current value, and unknown keys are ignored. Each value goes
+ * through the same `load` that reads localStorage, so a hand-edited or foreign
+ * value is validated exactly like a corrupt stored one. The write effects then
+ * persist it and sync the other windows.
+ *
+ * Install the file's themes first: a `vscode:` theme that is not on disk yet
+ * falls back to `system` the moment it is applied.
+ */
+export function applySettings(store: SettingsStore, values: Record<string, unknown>): void {
+	for (const entry of createSettingsPersistence()) {
+		if (!Object.prototype.hasOwnProperty.call(values, entry.key)) continue;
+		const value = values[entry.key];
+		entry.load(store, typeof value === 'string' ? value : JSON.stringify(value));
+	}
+}
+
 export const settings = new SettingsStore();

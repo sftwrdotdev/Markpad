@@ -247,6 +247,7 @@ pub fn run() {
             commands::fetch_vscode_theme,
             commands::get_saved_vscode_themes,
             commands::read_vscode_theme,
+            commands::install_vscode_theme,
             commands::delete_vscode_theme,
             commands::save_image,
             commands::copy_file_to_img,
