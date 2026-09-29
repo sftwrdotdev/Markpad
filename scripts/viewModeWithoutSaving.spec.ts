@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { test } from 'vitest';
 
 import { offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { sourceAtPoint } from '../src/lib/utils/previewCursor.js';
 import ts from 'typescript';
 
 // Issue #168, second report by @dayeggpi: "allow user to switch to rendered
@@ -501,6 +502,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		pluck('restoreAfterLeavingEditor'),
 		pluck('followToc'),
 		pluck('handleEditorCursor'),
+		pluck('placePreviewCursor'),
 	].join('\n\n');
 	const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 	const factory = new Function(
@@ -510,6 +512,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 			tabManager, tick, viewerPaneEl, markdownBody, editorPane, lineCoords,
 			tabAnchorForEditorTopLine, asBufferLine, scrollPreviewToSyncPosition,
 			getPreviewScrollSyncPosition, getPreviewScrollAnchor, settings, hasEditorPane, hasPreviewPane, isEditing, isSplit,
+			previewBlocks, sourceAtPoint, readRendererLine,
 		} = deps;
 		let tocActiveLine = null;
 		let previewPlacing = false;
@@ -517,8 +520,9 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		const activeCursor = deps.activeCursor ?? null;
 		${js}
 		return {
-			handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, handleEditorCursor, followToc,
+			handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, handleEditorCursor, followToc, placePreviewCursor,
 			toc: () => tocActiveLine,
+			cursors: () => cursorByTab,
 			startPlacing: () => { previewPlacing = true; },
 		};`,
 	);
@@ -527,7 +531,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		tick: async () => {},
 		viewerPaneEl: undefined,
 		markdownBody: {},
-		lineCoords: { toRendererLine: (line: number) => line - 3 },
+		lineCoords: { toRendererLine: (line: number) => line - 3, toBufferLine: (line: number) => line + 3 },
 		settings,
 		hasEditorPane: false,
 		hasPreviewPane: true,
@@ -675,5 +679,40 @@ test('reading with a cursor placed, the outline stays on it while the preview sc
 		assert.equal(without.toc(), 90, 'with no cursor yet, the outline follows the scroll');
 	} finally {
 		settings.tocFollows = 'scroll';
+	}
+});
+
+test('a click in the preview places the cursor whatever the outline follows', () => {
+	// #799: the shared cursor is an editing aid in its own right, so Ctrl+E
+	// lands on the clicked character in either mode. Only which line the
+	// outline marks depends on the setting.
+	const root = document.createElement('div');
+	root.innerHTML = '<p data-sourcepos="2:1-2:11">hello world</p>';
+	const text = root.querySelector('p')!.firstChild!;
+	(document as any).caretRangeFromPoint = () => {
+		const range = document.createRange();
+		range.setStart(text, 6);
+		return range;
+	};
+	tabManager.closeAll();
+	tabManager.addTab('/notes/note.md');
+	const tab = tabManager.activeTab!;
+	tab.isEditing = false;
+	try {
+		for (const follows of ['scroll', 'cursor'] as const) {
+			settings.tocFollows = follows;
+			const harness = buildSyncHarness({
+				previewBlocks: root,
+				sourceAtPoint,
+				readRendererLine: (line: number) => (line === 2 ? 'hello world' : ''),
+				activeCursor: { line: 5, column: 7 },
+			});
+			harness.placePreviewCursor({ detail: 1, clientX: 0, clientY: 0 } as MouseEvent);
+			assert.deepEqual(harness.cursors()[tab.id], { line: 5, column: 7 }, `${follows}: the click placed the cursor on the "w"`);
+			assert.equal(harness.toc(), follows === 'cursor' ? 2 : null, `${follows}: the outline`);
+		}
+	} finally {
+		settings.tocFollows = 'scroll';
+		delete (document as any).caretRangeFromPoint;
 	}
 });

@@ -1713,10 +1713,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	/**
 	 * Each tab's cursor, shared by its two panes (#799): the editor's while it
-	 * is on screen, and a click in the preview moves it too. With the outline
-	 * following the cursor, the preview draws it and the outline stays on it in
-	 * reading mode as well. A tab only read so far has none, and its outline
-	 * follows the scroll until the first click.
+	 * is on screen, and a click in the preview moves it too. The preview draws
+	 * it, and Ctrl+E puts the editor's cursor on it. A tab only read so far has
+	 * none.
 	 */
 	let cursorByTab = $state<Record<string, { line: BufferLine; column: number }>>({});
 	let activeCursor = $derived((tabManager.activeTabId && cursorByTab[tabManager.activeTabId]) || null);
@@ -1731,7 +1730,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function placePreviewCursor(e: MouseEvent) {
 		const tabId = tabManager.activeTabId;
-		if (!tabId || !previewBlocks || settings.tocFollows !== 'cursor' || e.detail !== 1) return;
+		if (!tabId || !previewBlocks || e.detail !== 1) return;
 		if (!window.getSelection()?.isCollapsed) return;
 
 		const caret = document.caretRangeFromPoint(e.clientX, e.clientY);
@@ -1764,7 +1763,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	$effect(() => {
 		const cursor = activeCursor;
-		const shown = settings.tocFollows === 'cursor' && cursor !== null && hasPreviewPane;
+		const shown = cursor !== null && hasPreviewPane;
 		void sanitizedHtml;
 		void previewLayoutVersion;
 		if (!shown) {
@@ -4023,7 +4022,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								onundoClose={handleUndoCloseTab}
 								onscrollsync={handleEditorScrollSync}
 								oncursor={handleEditorCursor}
-								sharedCursor={settings.tocFollows === 'cursor' ? activeCursor : null} />
+								sharedCursor={activeCursor} />
 						{/if}
 					</div>
 
