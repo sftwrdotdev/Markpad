@@ -803,14 +803,16 @@ body {
 	position: relative;
 	overflow: visible !important;
 }
-.markdown-body .foldable-header:hover .header-fold-icon,
-.markdown-body .is-collapsed .header-fold-icon {
+.markdown-body .foldable-header:hover > .header-fold-icon,
+.markdown-body .foldable-header.is-collapsed > .header-fold-icon {
 	opacity: 0.5; /* show on hover or when collapsed */
 }
 .markdown-body .header-fold-icon:hover {
 	opacity: 1 !important;
 }
-.markdown-body .is-collapsed .header-fold-icon {
+/* `>` throughout: a heading's content wrapper holds the headings below it, so
+ * a descendant selector turned every nested chevron as the section folded. */
+.markdown-body .foldable-header.is-collapsed > .header-fold-icon {
 	transform: rotate(-90deg);
 }
 .foldable-content-wrapper {
@@ -847,7 +849,7 @@ body {
 	min-height: 0;
 	overflow: visible; /* show carets in the gutter when expanded */
 }
-.is-collapsed .content-inner {
+.is-collapsed > .content-inner {
 	overflow: hidden;
 }
 
@@ -859,7 +861,7 @@ body {
 	margin-left: auto;
 	flex-shrink: 0;
 }
-.callout-foldable.is-collapsed .callout-fold-icon {
+.callout-foldable.is-collapsed > .markdown-alert-title > .callout-fold-icon {
 	transform: rotate(-90deg);
 }
 
@@ -1149,15 +1151,6 @@ body {
 	padding-bottom: 8px !important;
 }
 
-.markdown-body details.markdown-alert summary.markdown-alert-title {
-	list-style: none;
-	cursor: pointer;
-}
-
-.markdown-body details.markdown-alert summary.markdown-alert-title::-webkit-details-marker {
-	display: none;
-}
-
 .markdown-body .markdown-alert-title svg:not(.callout-fold-icon) {
 	margin-right: 0.5rem;
 	display: inline-block;
@@ -1169,10 +1162,6 @@ body {
 	margin-left: auto;
 	transition: transform 0.2s ease;
 	opacity: 0.5;
-}
-
-.markdown-body details.markdown-alert[open] .callout-fold-icon {
-	transform: rotate(90deg);
 }
 
 .markdown-body .callout-title-inner {
@@ -1499,8 +1488,7 @@ body {
 	.markdown-body .katex-display {
 		break-inside: avoid;
 	}
-	.markdown-body .markdown-alert,
-	.markdown-body details.markdown-alert {
+	.markdown-body .markdown-alert {
 		page-break-inside: avoid !important;
 		break-inside: avoid !important;
 		box-decoration-break: clone !important;
@@ -1658,8 +1646,10 @@ body {
 	opacity: 1;
 }
 
-.markdown-body ul.contains-task-list,
-.markdown-body ul li.task-list-item {
+/* On the item, not the list: comrak marks the whole `<ul>` once any item is a
+ * task, and `list-style` inherits, so a plain item beside a task lost its
+ * bullet. */
+.markdown-body li.task-list-item {
 	list-style: none;
 }
 

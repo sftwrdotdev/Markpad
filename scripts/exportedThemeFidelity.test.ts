@@ -159,6 +159,17 @@ test('a ticked task strikes only its own text, not its parents or sub-tasks', ()
 	assert.doesNotMatch(styles, /(task-done|:checked\))\s+\.task-text/, 'a descendant .task-text reaches every nested task');
 });
 
+test('a plain item in a list that also holds tasks keeps its bullet', () => {
+	// comrak puts `contains-task-list` on the whole `<ul>` once any item is a
+	// task, and `list-style` inherits, so a rule on the list stripped the bullet
+	// from plain items beside a task.
+	const selectors = readSource('src/styles.css')
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.split('{')
+		.map((chunk) => chunk.split('}').pop()!);
+	assert.deepEqual(selectors.filter((s) => s.includes('contains-task-list')), []);
+});
+
 test('the marker rules are pseudo-elements, which is what makes them apply', () => {
 	// `summary:marker` sat in the stylesheet as a single colon. `:marker` is not
 	// a pseudo-class, so the rule matched nothing and the disclosure triangle was

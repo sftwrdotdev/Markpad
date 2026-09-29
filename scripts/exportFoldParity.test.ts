@@ -311,6 +311,29 @@ test('the fold controls do not print as misleading decoration', () => {
 	assert.equal(printedValue(chevron, 'display'), 'none');
 });
 
+test('folding a section turns its own chevron, not the ones nested inside it', () => {
+	// A heading's content wrapper holds the headings below it, and a callout's
+	// content can hold another callout. `.is-collapsed .header-fold-icon` matched
+	// every one of those, so they turned while the section animated shut.
+	const collapsedHeading = [body, article, { tag: 'h2', classes: ['foldable-header', 'is-collapsed'] }, { tag: 'span', classes: ['header-fold-icon'] }];
+	assert.equal(screenValue(collapsedHeading, 'transform'), 'rotate(-90deg)');
+	const nestedHeading = [...collapsedSectionInner, { tag: 'h3', classes: ['foldable-header'] }, { tag: 'span', classes: ['header-fold-icon'] }];
+	assert.equal(screenValue(nestedHeading, 'transform'), undefined);
+	assert.equal(screenValue(nestedHeading, 'opacity'), '0');
+
+	const foldedCallout = [body, article, { tag: 'div', classes: ['markdown-alert', 'callout-foldable', 'is-collapsed'] }];
+	const chevron = [{ tag: 'p', classes: ['markdown-alert-title', 'callout-toggle'] }, { tag: 'svg', classes: ['callout-fold-icon'] }];
+	assert.equal(screenValue([...foldedCallout, ...chevron], 'transform'), 'rotate(-90deg)');
+	const nestedCallout = [
+		...foldedCallout,
+		{ tag: 'div', classes: ['markdown-alert-content', 'is-collapsed'] },
+		{ tag: 'div', classes: ['content-inner'] },
+		{ tag: 'div', classes: ['markdown-alert', 'callout-foldable'] },
+		...chevron,
+	];
+	assert.equal(screenValue(nestedCallout, 'transform'), undefined);
+});
+
 test('the HTML export renders every heading fold open', () => {
 	// The HTML route never sees the live DOM, it re-renders from source, and
 	// the Set it passes is the fold state that render is given. An empty one is
