@@ -159,10 +159,6 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 
 > This release activates in-app auto-updates. **Install it manually one last time** — future releases will update Markpad on their own.
 
-## First Developer ID macOS release
-
-The Developer ID certificate is a new signing identity, so macOS treats the first release signed with it as a different app. Its users grant folder access once more, and from then on the grant survives updates. `build.yml` adds a one-time note to the release body for this. Remove it after that release.
-
 ## Coverage notes
 
 - **macOS** uses one universal binary (`darwin-aarch64` + `darwin-x86_64` share the same `.app.tar.gz` and signature).
