@@ -46,7 +46,7 @@ export function rangeOf(root: Element, mark: Annotation, readLine: SourceLineRea
 
 /**
  * Every copy of `needle` in the preview's text, up to `limit`, for the preview's
- * Highlight Occurrences. Case-sensitive, and no overlaps.
+ * Highlight Matches of Selection. Case-sensitive, and no overlaps.
  */
 export function occurrenceRanges(root: Element, needle: string, limit: number): Range[] {
 	// ponytail: matches within one text node, so a copy split by markup (half of

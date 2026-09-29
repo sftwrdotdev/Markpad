@@ -1756,7 +1756,7 @@ body {
 	background-color: var(--highlight-color, rgba(255, 208, 0, 0.4));
 }
 
-/* Preview Highlight Occurrences: fainter than a highlight, so the two read apart. */
+/* Highlight Matches of Selection: fainter than a highlight, so the two read apart. */
 ::highlight(markpad-occurrence) {
 	background-color: color-mix(in srgb, var(--color-accent-fg) 20%, transparent);
 }
