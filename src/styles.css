@@ -1347,30 +1347,16 @@ body {
 }
 
 /*
- * A tab switch is not a state change inside one view, and must not be drawn as
- * one. `MarkdownViewer.svelte` adds this class to `.layout-container`, forces a
- * style recalculation so the new geometry commits with the transitions off, and
- * removes it again — all in one statement, before the browser has painted once.
- * See the effect that does it for why the ordering is the whole mechanism.
+ * A tab switch draws the new tab's layout without animating it.
+ * `MarkdownViewer.svelte` adds `tab-switching` to `.layout-container`, forces a
+ * style recalculation and removes the class, all before the first paint. The
+ * selectors are the elements whose transitions follow per-tab state: padding
+ * from a pinned outline, and the outline wrapper and toggle position.
  *
- * The list is every element whose transition is driven by a value belonging to
- * the TAB rather than to something the user just did: `.layout-container` and
- * `.editor-pane` (padding, from `has-pinned-toc`, gated on `isMarkdown`), and
- * the outline wrapper (edges and shadow, from `is-overhanging`, computed from
- * `isEditing` and `isSplit`). Each of those animations is worth keeping for the
- * gesture it was written for: toggling edit mode inside a tab should slide,
- * arriving at a tab that was already in edit mode should not, because nothing
- * moved — the reader asked to see another document, not to watch this one
- * change shape.
- *
- * HERE AND NOT IN THE COMPONENT'S `<style>`, and this is not a matter of taste.
- * Svelte prunes scoped selectors it cannot see applied in the markup, and this
- * class is added through `classList` precisely because a `class:` directive
- * would land in a later flush than the geometry it has to precede. Written
- * there, these four rules are deleted at compile time and every transition
- * comes back with nothing failing — which is what
- * `scripts/tabSwitchIsNotARender.test.ts` is for. `!important` beats the scoped
- * declarations regardless of the extra class Svelte adds to their specificity.
+ * Keep this in styles.css. The class is added through `classList`, so Svelte
+ * would prune these selectors from the component's scoped `<style>` and every
+ * transition would come back silently. `scripts/tabSwitchIsNotARender.test.ts`
+ * guards that. `!important` beats the scoped declarations.
  */
 .layout-container.tab-switching,
 .layout-container.tab-switching .editor-pane,
@@ -1855,9 +1841,8 @@ body {
  * So drop both clips while the widget is visible. Nothing else escapes: Monaco
  * clips its own content — and the find widget itself, which lives in
  * `.overlayWidgets` — inside `.overflow-guard`, leaving `.context-view` as the
- * only child that can paint outside. `:has(.find-widget.visible)` still scopes
- * it to when the widget is up, so the pane's flex/opacity transitions keep the
- * clip they were written against.
+ * only child that can paint outside. `:has(.find-widget.visible)` limits this
+ * to while the widget is open.
  *
  * `overflow: clip` with an `overflow-clip-margin` would bound the escape more
  * tightly, but WebKit ships `clip` without the margin property, so it would

@@ -15,23 +15,11 @@ export type CloseReview = {
 };
 
 /**
- * Walk the dirty tabs one at a time, resolving each through the dialog the
- * reader already knows (issue #189 — this replaced one aggregate "you have N
- * unsaved files" modal).
+ * Resolve dirty tabs one at a time with the per-tab save dialog (#189).
+ * Returns false if the reader cancels, leaving the window open.
  *
- * Returns false if the reader cancelled, which stops the walk and keeps the
- * window open with the tabs that are left.
- *
- * `nextDirtyTab` is re-consulted every round rather than iterated over a list
- * captured up front. A save can leave a tab dirty again, and tabs can be opened
- * or closed while a dialog is up; a stale list would either skip a tab holding
- * unsaved work or try to close one that is already gone.
- *
- * Extracted from `MarkdownViewer.svelte` so this can be run rather than
- * described. What it replaced was `assert.match(handler, /if \(!\(await
- * canCloseTab\(dirty\.id\)\)\) return;/)` — an assertion that the source
- * contains a `return`, which is as close to "cancelling stops the walk" as
- * matching text gets.
+ * `nextDirtyTab` is asked every round: a save can leave a tab dirty again,
+ * and tabs can open or close while a dialog is up.
  */
 export async function reviewDirtyTabs(review: CloseReview): Promise<boolean> {
 	while (true) {

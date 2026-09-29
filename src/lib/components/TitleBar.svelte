@@ -1268,8 +1268,8 @@
 	 * with `background-color`, so nothing else in the strip is using this
 	 * channel and the two readings do not compete.
 	 *
-	 * Above `.scroll-shadow` (20) and `.new-tab-btn` (21) in TabList, which
-	 * would otherwise cover the ends of the line.
+	 * Above `.new-tab-btn` (21) in TabList, which would otherwise cover the
+	 * end of the line.
 	 */
 	.tab-area.tagged::after {
 		content: '';

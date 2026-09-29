@@ -42,10 +42,9 @@ class UpdateStore {
 	total = $state(0);
 	errorMsg = $state('');
 	errorSource = $state<ErrorSource>('check');
-	// Set when the underlying updater error indicates the plugin has no
-	// endpoint / pubkey configured (i.e. PR-1 ships before signing infra).
-	// The dialog renders a localised hint instead of the raw plugin message
-	// when this is true.
+	// True when the updater error means no endpoint or pubkey is configured
+	// (a build without the updater config). The dialog then shows a localised
+	// hint instead of the raw message.
 	errorIsNotConfigured = $state(false);
 	notes = $state('');
 	/** Windows open beside this one when an install was last asked for (#767). */
