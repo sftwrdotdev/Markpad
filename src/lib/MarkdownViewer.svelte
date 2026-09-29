@@ -3204,12 +3204,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		};
 	}
 
+	// HTML links only: an SVG `<a>` (inside a diagram) is not handled.
+	function linkAt(target: EventTarget | null): HTMLAnchorElement | null {
+		const link = target instanceof Element ? target.closest('a') : null;
+		return link instanceof HTMLAnchorElement ? link : null;
+	}
+
 	function handleMouseOver(event: MouseEvent) {
 		if (mode !== 'app') return;
-		let target = event.target as HTMLElement;
-		while (target && target.tagName !== 'A' && target !== document.body) target = target.parentElement as HTMLElement;
-		if (target?.tagName === 'A') {
-			const anchor = target as HTMLAnchorElement;
+		const anchor = linkAt(event.target);
+		if (anchor) {
 			const rawHref = anchor.getAttribute('href') || '';
 
 			// tooltip for same-page anchor links: show text of target header
@@ -3257,17 +3261,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function handleMouseOut(event: MouseEvent) {
-		let target = event.target as HTMLElement;
-		while (target && target.tagName !== 'A' && target !== document.body) target = target.parentElement as HTMLElement;
-		if (target?.tagName === 'A') tooltip.show = false;
+		if (linkAt(event.target)) tooltip.show = false;
 	}
 
 	async function handleDocumentClick(event: MouseEvent) {
 		if (mode !== 'app') return;
-		let target = event.target as HTMLElement;
-		while (target && target.tagName !== 'A' && target !== document.body) target = target.parentElement as HTMLElement;
-		if (target?.tagName === 'A') {
-			const anchor = target as HTMLAnchorElement;
+		const anchor = linkAt(event.target);
+		if (anchor) {
 			const rawHref = anchor.getAttribute('href');
 			if (!rawHref) return;
 
@@ -4146,7 +4146,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					class:toc-resizing={isTocResizing}
 					style="--toc-width: {settings.tocWidth}px; --pane-top-chrome: {paneTopChrome}px;">
 					<!-- Editor Pane -->
-					<div bind:this={editorPaneEl} class="pane editor-pane" class:active={hasEditorPane} style="flex: {isSplit ? tabManager.activeTab.splitRatio : isEditing ? 1 : 0}">
+					<div bind:this={editorPaneEl} class="pane editor-pane" style:flex={isSplit ? tabManager.activeTab.splitRatio : null}>
 						{#if hasEditorPane}
 							{#if settings.showEditorToolbar}
 								<div bind:clientHeight={editorToolbarHeight} transition:slide={{ duration: 150 }}>
@@ -4209,8 +4209,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						bind:this={viewerPaneEl} 
 						bind:clientWidth={viewerWidth}
 						class="pane viewer-pane" 
-						class:active={!isEditing || isSplit} 
-						style="flex: {isSplit ? 1 - tabManager.activeTab.splitRatio : (!isEditing) ? 1 : 0}">
+						style:flex={isSplit ? 1 - tabManager.activeTab.splitRatio : null}>
 
 						<FindBar
 							bind:this={findBar}
@@ -4223,7 +4222,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								<article
 									bind:this={markdownBody}
 									contenteditable="false"
-									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''} {settings.showToc ? 'toc-active' : ''}"
+									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''}"
 									class:toc-in-gutter={settings.showToc && !settings.pinnedToc && !isOverhanging}
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
@@ -4732,17 +4731,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 
 
-	@keyframes slideIn {
-		from {
-			opacity: 0;
-			transform: translateY(12px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
 	:global(.youtube-link) {
 		display: block;
 		max-width: 100%;
@@ -4954,17 +4942,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		opacity: 1;
 	}
 
-	@keyframes fadeIn {
-		from {
-			opacity: 0;
-			transform: scale(0.98);
-		}
-		to {
-			opacity: 1;
-			transform: scale(1);
-		}
-	}
-
 	.loading-screen {
 		position: fixed;
 		top: 36px;
@@ -5022,6 +4999,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		padding-top: 36px;
 		box-sizing: border-box;
 		overflow: hidden;
+		transition: padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
 
 	/**
@@ -5042,13 +5020,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		flex-direction: column;
 		overflow: hidden;
 		min-width: 0;
-	}
-
-	.pane.editor-pane {
-		background: var(--color-canvas-default);
-	}
-
-	.pane.viewer-pane {
+		height: 100%;
+		position: relative;
 		background: var(--color-canvas-default);
 	}
 
@@ -5082,11 +5055,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		width: 0 !important;
 		flex: 0 !important;
 		opacity: 0;
-	}
-
-	.pane {
-		height: 100%;
-		position: relative;
 	}
 
 	.split-bar {
@@ -5208,19 +5176,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		border-left: 1px solid transparent;
 		box-shadow: 10px 0 30px rgba(0, 0, 0, 0);
 		transition: box-shadow 0.3s ease, border-color 0.3s ease, left 0.3s ease, right 0.3s ease, width 0.2s ease;
-		order: -1;
 	}
 
-	.toc-overlay-wrapper.is-pinned {
-		position: relative;
-		top: 0 !important;
-		height: 100%;
-		z-index: 10;
-		background-color: transparent;
-		backdrop-filter: none;
-		-webkit-backdrop-filter: none;
-		box-shadow: none !important;
-	}
 	.layout-container.editing.has-pinned-toc.toc-on-left .editor-pane {
 		padding-left: 40px;
 	}
@@ -5236,15 +5193,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	.toc-overlay-wrapper.on-right {
 		left: auto;
 		right: 0;
-		order: 2;
-	}
-
-	.toc-overlay-wrapper.is-pinned.on-right {
-		border-left-color: var(--color-border-default);
-	}
-	
-	.toc-overlay-wrapper.is-pinned:not(.on-right) {
-		border-right-color: var(--color-border-default);
 	}
 
 	.toc-overlay-wrapper.is-overhanging:not(.is-pinned) {
@@ -5352,10 +5300,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		transform: rotate(0deg);
 	}
 
-	.layout-container {
-		transition: padding 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-	}
-
 	.layout-container.toc-resizing,
 	.layout-container.toc-resizing .toc-overlay-wrapper,
 	.layout-container.toc-resizing .toc-toggle-floating {
@@ -5372,17 +5316,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	.toc-overlay-wrapper.is-pinned {
-		position: absolute; /* Keep it absolute but it will stay in the padded area */
-		top: 36px !important;
-		left: 0;
-		height: calc(100% - 36px);
-		background-color: var(--color-canvas-default);
+		z-index: 10;
+		box-shadow: none !important;
 		border-right: 1px solid var(--color-border-default);
 	}
 
 	.toc-overlay-wrapper.is-pinned.on-right {
-		left: auto;
-		right: 0;
 		border-right: none;
 		border-left: 1px solid var(--color-border-default);
 	}
