@@ -126,9 +126,8 @@ test('the rest of the toolbar still answers to the mode it is in', () => {
 	const edit = visibleTitlebarActionIds({ ...documentContext, isEditing: true });
 	const split = visibleTitlebarActionIds({ ...documentContext, isSplit: true });
 
-	// Find: Monaco owns Ctrl+F in pure edit mode, so the preview's Find hides
-	// there and comes back in split, where a preview is on screen again.
-	assert.deepEqual([view, edit, split].map((ids) => ids.includes('find')), [true, false, true]);
+	// Find stays in every mode: in pure edit it opens Monaco's find, as Mod+F does.
+	assert.deepEqual([view, edit, split].map((ids) => ids.includes('find')), [true, true, true]);
 	// The formatting toolbar is the mirror image: only where a pane can write.
 	assert.deepEqual([view, edit, split].map((ids) => ids.includes('editorToolbar')), [false, true, true]);
 	// Sync Scroll and Swap Panes both need two panes. The mode buttons stay in

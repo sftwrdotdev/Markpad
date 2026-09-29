@@ -240,12 +240,9 @@ export function visibleTitlebarActionIds(context: TitlebarActionContext): string
 			}
 			list.push('viewMode');
 		}
-		// Find in preview: only meaningful when a preview is actually
-		// visible (view mode or split). In pure edit mode Monaco's own
-		// Ctrl+F handles search, so we hide the entry there.
-		if (isMarkdown && (!context.isEditing || context.isSplit)) {
-			list.push('find');
-		}
+		// Every mode: the button routes like Mod+F, to Monaco's find when no
+		// preview is on screen.
+		if (isMarkdown) list.push('find');
 		if (context.isEditing || context.isSplit) {
 			list.push('editorToolbar');
 		}
