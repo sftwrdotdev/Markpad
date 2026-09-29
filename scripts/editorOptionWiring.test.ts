@@ -184,6 +184,18 @@ test('the editor has its final layout before anything is placed in it', () => {
 	);
 });
 
+test('the editor mounts on the cursor the preview placed', () => {
+	// #799: a click in the preview moves the tab's shared cursor, and opening
+	// split view or Ctrl+E mounts the editor with its own saved view state.
+	// The shared cursor goes down over it before the editor reports where it
+	// is, or the report would carry the stale position back to the preview.
+	const mount = sliceBetween(editor, 'monaco.editor.create(container', 'editorReady = true;');
+	const placed = mount.indexOf('if (sharedCursor) editor.setPosition(');
+	assert.ok(placed !== -1, 'the shared cursor is put down on mount');
+	assert.ok(placed > mount.indexOf('editor.restoreViewState('), 'after the view state is restored');
+	assert.ok(placed < mount.indexOf('oncursor?.(asBufferLine(mounted'), 'and before the editor reports its cursor');
+});
+
 test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
 	// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
 	// window edge. Both values are asserted because 'advanced' everywhere would

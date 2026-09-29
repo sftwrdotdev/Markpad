@@ -500,7 +500,7 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		pluck('syncEditorToPreviewScroll'),
 		pluck('restoreAfterLeavingEditor'),
 		pluck('followToc'),
-		pluck('handleEditorCursorLine'),
+		pluck('handleEditorCursor'),
 	].join('\n\n');
 	const js = ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
 	const factory = new Function(
@@ -513,9 +513,11 @@ function buildSyncHarness(panes: Record<string, unknown>) {
 		} = deps;
 		let tocActiveLine = null;
 		let previewPlacing = false;
+		const cursorByTab = {};
+		const activeCursor = deps.activeCursor ?? null;
 		${js}
 		return {
-			handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, handleEditorCursorLine, followToc,
+			handleEditorScrollSync, syncEditorToPreviewScroll, restoreAfterLeavingEditor, handleEditorCursor, followToc,
 			toc: () => tocActiveLine,
 			startPlacing: () => { previewPlacing = true; },
 		};`,
@@ -586,23 +588,23 @@ test('leaving the editor moves the outline to the line the preview lands on', as
 // #799: "the table of contents should follow the cursor". An editor setting,
 // because only the editor has one: the preview alone always follows the scroll.
 describeOutlineSource('cursor', true, (h) => {
-	h.handleEditorCursorLine(20);
+	h.handleEditorCursor(20, 1);
 	assert.equal(h.toc(), 17, 'the cursor line, in the outline\'s numbering');
 	h.handleEditorScrollSync({ section: 'body', ratio: 0.5, line: 60 });
 	assert.equal(h.toc(), 17, 'scrolling the editor left it on the cursor');
-	h.handleEditorCursorLine(30);
+	h.handleEditorCursor(30, 1);
 	assert.equal(h.toc(), 27);
 });
 
 describeOutlineSource('cursor', false, async (h) => {
-	h.handleEditorCursorLine(20);
+	h.handleEditorCursor(20, 1);
 	assert.equal(h.toc(), null, 'no editor on screen, so no cursor to follow');
 	await h.restoreAfterLeavingEditor(tabManager.activeTab!.id, { section: 'body', ratio: 0.5, line: 58 });
 	assert.equal(h.toc(), 57, 'the preview alone follows its scroll');
 });
 
 describeOutlineSource('scroll', true, (h) => {
-	h.handleEditorCursorLine(20);
+	h.handleEditorCursor(20, 1);
 	assert.equal(h.toc(), null, 'the default ignores the cursor');
 	h.handleEditorScrollSync({ section: 'body', ratio: 0.5, line: 60 });
 	assert.equal(h.toc(), 60);
@@ -653,4 +655,23 @@ test('the preview does not move the outline after Ctrl+E until it is placed', as
 	assert.equal(harness.toc(), 57, 'the placed preview decides');
 	harness.followToc('preview', 60);
 	assert.equal(harness.toc(), 60, 'and keeps deciding once placed');
+});
+
+test('reading with a cursor placed, the outline stays on it while the preview scrolls', () => {
+	tabManager.closeAll();
+	tabManager.addTab('/notes/note.md');
+	tabManager.activeTab!.isEditing = false;
+	settings.tocFollows = 'cursor';
+	try {
+		const withCursor = buildSyncHarness({ activeCursor: { line: 20, column: 3 }, hasEditorPane: false });
+		withCursor.followToc('cursor', 17);
+		withCursor.followToc('preview', 90);
+		assert.equal(withCursor.toc(), 17, 'the preview scroll moved the outline off the cursor');
+
+		const without = buildSyncHarness({ hasEditorPane: false });
+		without.followToc('preview', 90);
+		assert.equal(without.toc(), 90, 'with no cursor yet, the outline follows the scroll');
+	} finally {
+		settings.tocFollows = 'scroll';
+	}
 });

@@ -61,6 +61,7 @@ import {
 	type LineRange,
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
+import { pointAtSource, sourceAtPoint, type SourceLineReader } from './utils/previewCursor.js';
 import {
 	asBufferLine,
 	asRendererLine,
@@ -234,6 +235,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	let editorPane = $state<{ 
 		syncScrollToPosition: (position: ScrollSyncPosition, options?: { cursorIntoView?: boolean }) => void;
+		setCursor: (line: number, column: number) => void;
 		scrollSyncPosition: () => ScrollSyncPosition | null;
 		handleDroppedFile: (path: string, x: number, y: number) => Promise<void>;
 		updateDragCaret: (x: number, y: number) => void;
@@ -1827,11 +1829,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let tocActiveLine = $state<RendererLine | null>(null);
 
 	/**
-	 * The one gate on `tocActiveLine`. With the editor on screen and
-	 * `settings.tocFollows` set to 'cursor', only the cursor moves the outline,
-	 * and scrolling either pane leaves it where it is. Otherwise the pane that
-	 * scrolled last decides. The preview on its own has no cursor, so there it
-	 * is always the scroll.
+	 * The one gate on `tocActiveLine`. With `settings.tocFollows` set to
+	 * 'cursor' and a cursor to follow (the editor is on screen, or the reader
+	 * has clicked in the preview), only the cursor moves the outline, and
+	 * scrolling either pane leaves it where it is. Otherwise the pane that
+	 * scrolled last decides.
 	 *
 	 * A preview that is not on screen never decides: in the editor alone it is
 	 * still mounted at a sliver of width, and its scroll events report lines
@@ -1841,7 +1843,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * report the first headings.
 	 */
 	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
-		const cursorLeads = settings.tocFollows === 'cursor' && hasEditorPane;
+		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || activeCursor !== null);
 		const previewSettled = (!isEditing || isSplit) && !previewPlacing;
 		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
 		if (accepted) tocActiveLine = line;
@@ -1850,8 +1852,87 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	/** True from Ctrl+E out of the editor until the preview is placed. */
 	let previewPlacing = false;
 
-	function handleEditorCursorLine(line: BufferLine) {
+	/**
+	 * Each tab's cursor, shared by its two panes (#799): the editor's while it
+	 * is on screen, and a click in the preview moves it too. With the outline
+	 * following the cursor, the preview draws it and the outline stays on it in
+	 * reading mode as well. A tab only read so far has none, and its outline
+	 * follows the scroll until the first click.
+	 */
+	let cursorByTab = $state<Record<string, { line: BufferLine; column: number }>>({});
+	let activeCursor = $derived((tabManager.activeTabId && cursorByTab[tabManager.activeTabId]) || null);
+
+	function handleEditorCursor(line: BufferLine, column: number) {
+		if (tabManager.activeTabId) cursorByTab[tabManager.activeTabId] = { line, column };
 		followToc('cursor', lineCoords.toRendererLine(line));
+	}
+
+	let bufferLines = $derived(rawContent.split('\n'));
+	const readRendererLine: SourceLineReader = (line) => bufferLines[lineCoords.toBufferLine(asRendererLine(line)) - 1];
+
+	function placePreviewCursor(e: MouseEvent) {
+		const tabId = tabManager.activeTabId;
+		if (!tabId || !previewBlocks || settings.tocFollows !== 'cursor' || e.detail !== 1) return;
+		if (!window.getSelection()?.isCollapsed) return;
+
+		const caret = document.caretRangeFromPoint(e.clientX, e.clientY);
+		const point = caret && sourceAtPoint(previewBlocks, { node: caret.startContainer, offset: caret.startOffset }, readRendererLine);
+		if (!point) return;
+
+		const line = lineCoords.toBufferLine(point.line);
+		cursorByTab[tabId] = { line, column: point.column };
+		followToc('cursor', point.line);
+		if (isSplit) editorPane?.setCursor(line, point.column);
+	}
+
+	/** The drawn cursor, in the article's scroll content; null while it isn't shown. */
+	let previewCursorBox = $state<{ top: number; left: number; height: number } | null>(null);
+
+	/**
+	 * Bumped whenever the document on screen changes size: a rewrap when split
+	 * view narrows the pane, a fold, an image arriving. The drawn cursor is
+	 * measured in that layout, so it has to be measured again.
+	 */
+	let previewLayoutVersion = $state(0);
+
+	$effect(() => {
+		const host = previewBlocks;
+		if (!host) return;
+		const observer = new ResizeObserver(() => previewLayoutVersion++);
+		observer.observe(host);
+		return () => observer.disconnect();
+	});
+
+	$effect(() => {
+		const cursor = activeCursor;
+		const shown = settings.tocFollows === 'cursor' && cursor !== null && (!isEditing || isSplit);
+		void sanitizedHtml;
+		void previewLayoutVersion;
+		if (!shown) {
+			previewCursorBox = null;
+			return;
+		}
+		tick().then(() => {
+			previewCursorBox = measurePreviewCursor(cursor);
+		});
+	});
+
+	function measurePreviewCursor(cursor: { line: BufferLine; column: number }) {
+		if (!previewBlocks || !markdownBody) return null;
+		const at = pointAtSource(previewBlocks, { line: lineCoords.toRendererLine(cursor.line), column: cursor.column }, readRendererLine);
+		if (!at) return null;
+
+		const range = document.createRange();
+		range.setStart(at.node, at.offset);
+		const rect = range.getClientRects()[0] ?? (at.node instanceof Element ? at.node : at.node.parentElement)?.getBoundingClientRect();
+		if (!rect || rect.height === 0) return null;
+
+		const body = markdownBody.getBoundingClientRect();
+		return {
+			top: rect.top - body.top + markdownBody.scrollTop,
+			left: rect.left - body.left + markdownBody.scrollLeft,
+			height: rect.height,
+		};
 	}
 
 	function handleEditorScrollSync(position: ScrollSyncPosition) {
@@ -2134,6 +2215,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
                 return;
             }
         }
+
+		placePreviewCursor(e);
     }
 
 	async function handleTaskCheckboxChange(event: Event) {
@@ -4211,7 +4294,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								onprevTab={() => tabManager.cycleTab('prev')}
 								onundoClose={handleUndoCloseTab}
 								onscrollsync={handleEditorScrollSync}
-								oncursorline={handleEditorCursorLine} />
+								oncursor={handleEditorCursor}
+								sharedCursor={settings.tocFollows === 'cursor' ? activeCursor : null} />
 						{/if}
 					</div>
 
@@ -4372,6 +4456,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 											style:display={tab.id === tabManager.activeTabId ? null : 'none'}
 											bind:this={previewHosts[tab.id]}></div>
 									{/each}
+									{#if previewCursorBox}
+										<div class="preview-cursor" aria-hidden="true" style:top="{previewCursorBox.top}px" style:height="{previewCursorBox.height}px">
+											{#if settings.renderLineHighlight === 'line'}
+												<div class="preview-cursor-line"></div>
+											{/if}
+											<div class="preview-cursor-caret" style:left="{previewCursorBox.left}px"></div>
+										</div>
+									{/if}
 								</article>
 								{#if tabManager.activeTabId && loadingTabs.includes(tabManager.activeTabId) && isAtBottom}
 								<div class="loading-chip" transition:fly={{ y: 20, duration: 300, easing: cubicOut }}>
@@ -4705,6 +4797,39 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 */
 	.markdown-container :global(.markdown-body :is(h1, h2, h3, h4, h5, h6) code) {
 		font-size: 0.85em !important;
+	}
+
+	/*
+	 * The shared cursor in the preview (#799), drawn like the editor's: a caret
+	 * and a faint current-line band. It does not blink, which is what says the
+	 * preview is not the place to type.
+	 */
+	.preview-cursor {
+		position: absolute;
+		left: 0;
+		right: 0;
+		pointer-events: none;
+	}
+
+	.preview-cursor-line {
+		position: absolute;
+		inset: 0;
+		background: color-mix(in srgb, var(--color-fg-default) 7%, transparent);
+	}
+
+	.preview-cursor-caret {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		margin-left: -1px;
+		background: var(--color-accent-fg);
+	}
+
+	@media print {
+		.preview-cursor {
+			display: none;
+		}
 	}
 
 	.markdown-body.full-width {

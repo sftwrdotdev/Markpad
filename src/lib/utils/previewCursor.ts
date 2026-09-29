@@ -125,7 +125,7 @@ function readBlock(el: Element, readLine: SourceLineReader): Block | null {
 }
 
 /** comrak reports columns as 1-based UTF-8 byte offsets; this is the UTF-16 index they point at. */
-export function indexOfByteColumn(text: string, column: number): number {
+function indexOfByteColumn(text: string, column: number): number {
 	let bytes = 0;
 	let index = 0;
 	while (index < text.length && bytes < column - 1) {

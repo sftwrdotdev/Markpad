@@ -90,7 +90,8 @@
 		onprevTab,
 		onundoClose,
 		onscrollsync,
-		oncursorline,
+		oncursor,
+		sharedCursor = null,
 		// Read-only now: the wheel handler below changes the zoom through the
 		// settings store, which is what persists it and syncs it across windows,
 		// so there is no longer a value for the parent to bind back to.
@@ -113,8 +114,14 @@
 		onprevTab?: () => void;
 		onundoClose?: () => void;
 		onscrollsync?: (position: ScrollSyncPosition) => void;
-		/** The buffer line the cursor is on, whenever it moves and once on mount. */
-		oncursorline?: (line: BufferLine) => void;
+		/** Where the cursor is, whenever it moves and once on mount. `column` is Monaco's, 1-based. */
+		oncursor?: (line: BufferLine, column: number) => void;
+		/**
+		 * Where the other pane left the tab's cursor (#799), put down on mount
+		 * over the view state's. Opening split view and Ctrl+E both mount the
+		 * editor, so a click in the preview reaches it either way.
+		 */
+		sharedCursor?: { line: number; column: number } | null;
 		zoomLevel?: number;
 		isSplit?: boolean;
 		theme?: string;
@@ -572,11 +579,13 @@
 
 		editor.onDidChangeCursorPosition((e) => {
 			cursorPosition = e.position;
-			oncursorline?.(asBufferLine(e.position.lineNumber));
+			oncursor?.(asBufferLine(e.position.lineNumber), e.position.column);
 		});
 		// The view state above put the cursor back without an event, and a
 		// Ctrl+E into the editor wants the outline on it straight away.
-		oncursorline?.(asBufferLine(editor.getPosition()?.lineNumber ?? 1));
+		if (sharedCursor) editor.setPosition({ lineNumber: sharedCursor.line, column: sharedCursor.column });
+		const mounted = editor.getPosition();
+		oncursor?.(asBufferLine(mounted?.lineNumber ?? 1), mounted?.column ?? 1);
 
 		editor.onDidChangeCursorSelection((e) => {
 			const selections = editor.getSelections() || [];
@@ -2242,6 +2251,15 @@
 		}
 
 		if (cursorIntoView) moveCursorOnScreen();
+	}
+
+	/**
+	 * A click in the split view's preview (#799). The position only: revealing
+	 * it would scroll the editor, and with sync on that scrolls the preview out
+	 * from under the click.
+	 */
+	export function setCursor(line: number, column: number) {
+		if (editorReady && editor) editor.setPosition({ lineNumber: line, column });
 	}
 
 	function moveCursorOnScreen() {

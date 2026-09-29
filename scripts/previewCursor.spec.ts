@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { pointAtSource, sourceAtPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
+import { pointAtSource, sourceAtPoint, type DomPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 
 // #799's shared cursor: a click in the preview lands on a source character,
@@ -67,8 +67,8 @@ test('every rendered character goes to the source and back to itself', () => {
 	for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
 		for (let offset = 0; offset < node.data.length; offset++) {
 			if (/\s/.test(node.data[offset]) || !node.parentElement?.closest('[data-sourcepos]')) continue;
-			const source = sourceAtPoint(root, { node, offset }, readLine)!;
-			const back = pointAtSource(root, source, readLine)!;
+			const source: SourcePoint = sourceAtPoint(root, { node, offset }, readLine)!;
+			const back: DomPoint = pointAtSource(root, source, readLine)!;
 			assert.equal(back.node, node, `"${node.data[offset]}" came back in another node`);
 			assert.equal(back.offset, offset, `"${node.data[offset]}" came back at another offset`);
 			checked++;
