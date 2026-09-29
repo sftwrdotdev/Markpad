@@ -28,10 +28,9 @@ pub fn run() {
         .manage(AppState::new())
         .manage(WatcherState::new())
         .manage(tab_transfer::TabTransferBroker::new())
-        // Replaces Tauri's own `asset:` handler, which reads the file on the
-        // thread the webview calls it on — see `asset_protocol` for why that
-        // freezes every window on an unreachable path. Registering the scheme
-        // here is what suppresses the built-in one.
+        // Replaces Tauri's own `asset:` handler so UNC hosts go through
+        // `asset_protocol`'s trust rule. Registering the scheme here is what
+        // suppresses the built-in one.
         .register_asynchronous_uri_scheme_protocol("asset", |ctx, request, responder| {
             let scope = ctx.app_handle().asset_protocol_scope();
             tauri::async_runtime::spawn_blocking(move || {

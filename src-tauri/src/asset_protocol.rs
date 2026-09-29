@@ -1,5 +1,5 @@
-//! Serves the `asset:` protocol without blocking the thread the webview calls
-//! us on.
+//! Serves the `asset:` protocol, refusing UNC hosts the user has not opened
+//! a document from (see `DOCUMENT_UNC_HOSTS`).
 //!
 //! Tauri ships its own `asset:` handler and installs it only when the app has
 //! not registered one (`tauri/src/manager/webview.rs`, guarded on
@@ -8,17 +8,10 @@
 //! the sanitizer's scheme allowlist and the export rewriter all keep working
 //! against the same scheme name.
 //!
-//! The reason to replace it is that the built-in one does its file I/O inline.
-//! wry invokes a protocol handler on the thread it records as `main_thread_id`
-//! and hands it a responder precisely so the answer can come later from
-//! somewhere else; tauri's asset handler ignores that and reads the file
-//! before returning. A path that is slow — a share that is down, `\\wsl$\…`
-//! with the distro stopped — then costs the share timeout with every window
-//! frozen, and it needs no user action: one `![](pic.png)` in a document on
-//! that share is enough. Upstream has this open as tauri-apps/tauri#7434
-//! (2023-07-17); on the pinned 2.10.2 the block is spelled `safe_block_on`,
-//! and on `dev` that call is gone but the read is still inline, so the freeze
-//! survived the rewrite.
+//! The handler first existed because the built-in one read the file on the
+//! event loop thread, so a slow share froze every window. Tauri 2.12 fixed
+//! that (tauri-apps/tauri#16050), and the UNC rule is now what the built-in
+//! handler cannot give us. The caller still runs this off the webview thread.
 //!
 //! The body below is a port of that handler (`tauri/src/protocol/asset.rs`,
 //! MIT/Apache-2.0, Tauri Programme within The Commons Conservancy), kept close
@@ -27,20 +20,11 @@
 //! `<video>`/`<audio>` pointing at this same scheme, and dropping 206 would
 //! stop those from seeking.
 //!
-//! Three deliberate differences from upstream:
-//!
-//! - The multipart closing delimiter ends in `--`, as RFC 2046 requires.
-//!   Upstream writes the opening separator again, so its multi-range responses
-//!   are unterminated.
-//! - A multipart answer carries one `Content-Type`. `Builder::header` appends
-//!   rather than replaces, so upstream — which sets the file's type before it
-//!   knows the request is multi-range — emits two, with the wrong one first.
-//!   Both of these were found by the multipart test below.
-//! - `Access-Control-Allow-Origin` echoes the request's `Origin` when it has
-//!   one instead of a value computed at webview creation, which is not
-//!   reachable from here. Only our own webview can issue requests on this
-//!   scheme, so there is no third-party origin to echo; the fallback covers
-//!   subresource loads, which send no `Origin` at all.
+//! The other difference from upstream: `Access-Control-Allow-Origin` echoes
+//! the request's `Origin` when it has one instead of a value computed at
+//! webview creation, which is not reachable from here. Only our own webview
+//! can issue requests on this scheme, so there is no third-party origin to
+//! echo; the fallback covers subresource loads, which send no `Origin` at all.
 //!
 //! Nothing here logs. The app has no logging dependency, and the status code
 //! carries what went wrong: 403 traversal or scope, 404 missing, 500 read.
@@ -481,7 +465,7 @@ mod tests {
         let body = String::from_utf8_lossy(response.body()).to_string();
         assert!(body.contains("bytes 0-9/256"));
         assert!(body.contains("bytes 20-29/256"));
-        // RFC 2046's closing delimiter, which upstream omits
+        // RFC 2046's closing delimiter
         assert!(
             body.ends_with(&format!("\r\n--{boundary}--\r\n")),
             "multipart body must end with the closing delimiter"

@@ -58,8 +58,8 @@ encoding_rs = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
-webview2-com = "0.38.2"
-windows = "0.61.3"
+webview2-com = "0.39.1"
+windows = "0.62.2"
 
 [profile.release]
 panic = "abort" # Strip expensive panic clean-up logic

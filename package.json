@@ -25,7 +25,7 @@
 		"@tauri-apps/plugin-opener": "^2",
 		"@tauri-apps/plugin-process": "^2.3.1",
 		"@tauri-apps/plugin-updater": "^2.10.1",
-		"dompurify": "3.4.13",
+		"dompurify": "3.4.16",
 		"highlight.js": "^11.11.2",
 		"highlightjs-svelte": "^1.0.6",
 		"katex": "^0.18.4",
@@ -50,6 +50,6 @@
 	},
 	"overrides": {
 		"cookie": "0.7.2",
-		"dompurify": "3.4.13"
+		"dompurify": "3.4.16"
 	}
 }
