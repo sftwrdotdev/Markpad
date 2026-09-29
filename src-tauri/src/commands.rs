@@ -61,23 +61,6 @@ fn validate_vsix_archive_limits<R: std::io::Read + std::io::Seek>(
     Ok(())
 }
 
-/// Creates the destination window for a tab transfer. The window's label
-/// embeds the transfer token ("window-<token>"), so the new frontend can
-/// derive which pending transfer to claim from its own label — no URL
-/// query involved (the asset protocol 404s on "index.html?x=y" paths).
-/// Deliberately async. `WebviewWindowBuilder::build()` deadlocks on Windows
-/// when it runs inside a synchronous command: WebView2 needs the main thread
-/// to pump messages while the webview is created, but a sync command IS the
-/// main thread, blocked waiting for build() to return. The whole app then
-/// freezes — no new window, no menus, an unresponsive close button
-/// (tauri-apps/tauri#12521). An async command runs off the event loop, and
-/// Tauri dispatches the actual window creation to the main thread itself, so
-/// macOS's main-thread requirement is still satisfied.
-#[tauri::command]
-pub async fn create_transfer_window(app: AppHandle, token: String) -> Result<(), String> {
-    window_runtime::create_transfer_window(app, token)
-}
-
 /// Returns `(html, content, is_full, lossy, encoding)`. See `DecodedText`: the
 /// frontend refuses to write a `lossy` buffer back over its file, and saves a
 /// faithful one as the `encoding` it came in.

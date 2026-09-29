@@ -15,12 +15,6 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-impl From<&str> for Error {
-    fn from(s: &str) -> Self {
-        Error(s.to_string())
-    }
-}
-
 impl From<String> for Error {
     fn from(s: String) -> Self {
         Error(s)
@@ -35,12 +29,6 @@ impl From<std::io::Error> for Error {
 
 impl From<serde_json::Error> for Error {
     fn from(e: serde_json::Error) -> Self {
-        Error(e.to_string())
-    }
-}
-
-impl From<notify::Error> for Error {
-    fn from(e: notify::Error) -> Self {
         Error(e.to_string())
     }
 }

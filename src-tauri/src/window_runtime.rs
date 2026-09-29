@@ -86,10 +86,22 @@ pub struct PinnedTag {
     pub files: Vec<String>,
 }
 
-fn pinned_tags_path(app: &AppHandle) -> Result<std::path::PathBuf, crate::error::Error> {
+/// `name` in the app config dir, which is created if missing.
+fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, crate::error::Error> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir)?;
-    Ok(dir.join("pinned-tags.json"))
+    Ok(dir.join(name))
+}
+
+fn remove_if_exists(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn pinned_tags_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
+    config_file(app, "pinned-tags.json")
 }
 
 /// Reads the pin list, treating an unreadable or unparseable file as empty.
@@ -290,7 +302,7 @@ pub fn set_window_meta(
     tab_count: usize,
 ) {
     let label = window.label().to_string();
-    if label != "main" && !label.starts_with("window-") {
+    if !is_viewer_label(&label) {
         return;
     }
     let mut registry = lock_recover(&state.window_registry);
@@ -419,10 +431,8 @@ pub async fn show_window(window: tauri::Window) {
     let _ = window.set_focus();
 }
 
-fn window_state_path(app: &AppHandle) -> Result<std::path::PathBuf, crate::error::Error> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join("window-state-v2.json"))
+fn window_state_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
+    config_file(app, "window-state-v2.json")
 }
 
 /// Persists the session snapshot atomically.
@@ -446,17 +456,11 @@ pub fn load_window_state(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
-    let path = window_state_path(&app)?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    remove_if_exists(&window_state_path(&app)?)
 }
 
-fn restore_progress_path(app: &AppHandle) -> Result<std::path::PathBuf, crate::error::Error> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join("restore-progress-v1.json"))
+fn restore_progress_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
+    config_file(app, "restore-progress-v1.json")
 }
 
 /// Publishes the restore breadcrumb by rename, but without `atomic_write`'s
@@ -515,11 +519,12 @@ pub fn load_restore_progress(app: AppHandle) -> Option<String> {
 
 #[tauri::command]
 pub fn clear_restore_progress(app: AppHandle) -> Result<(), String> {
-    let path = restore_progress_path(&app)?;
-    if path.exists() {
-        fs::remove_file(path).map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    remove_if_exists(&restore_progress_path(&app)?)
+}
+
+/// A document window: the main one or a detached-tab one.
+fn is_viewer_label(label: &str) -> bool {
+    label == "main" || label.starts_with("window-")
 }
 
 pub fn bring_to_front(window: &tauri::WebviewWindow) {
@@ -532,7 +537,7 @@ pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     let viewers: Vec<tauri::WebviewWindow> = app
         .webview_windows()
         .into_iter()
-        .filter(|(label, _)| label == "main" || label.starts_with("window-"))
+        .filter(|(label, _)| is_viewer_label(label))
         .map(|(_, window)| window)
         .collect();
 
@@ -619,8 +624,14 @@ pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
     bring_to_front(&window);
 }
 
-pub fn create_transfer_window(app: AppHandle, token: String) -> Result<(), String> {
-    let label = format!("window-{token}");
+/// Creates the destination window for a tab transfer. Its label carries the
+/// token, so the new frontend knows which transfer to claim.
+///
+/// Async on purpose: a sync command runs on the main thread, and WebView2
+/// deadlocks building a window there (tauri-apps/tauri#12521).
+#[tauri::command]
+pub async fn create_transfer_window(app: AppHandle, token: String) -> Result<(), String> {
+    let label = crate::tab_transfer::destination_label(&token);
     #[allow(unused_mut)]
     let mut builder =
         tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
@@ -760,7 +771,7 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     match event {
         tauri::WindowEvent::Focused(true) => {
             let label = window.label();
-            if label == "main" || label.starts_with("window-") {
+            if is_viewer_label(label) {
                 let state = window.state::<AppState>();
                 *lock_recover(&state.last_focused_viewer) = Some(label.to_string());
             }

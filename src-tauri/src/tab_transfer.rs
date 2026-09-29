@@ -85,10 +85,9 @@ pub struct TabTransferBroker {
     counter: AtomicU64,
 }
 
-/// Label of the window that a token authorises. `create_transfer_window`
-/// in `window_runtime` builds the destination window with exactly this
-/// label, so a webview cannot forge it: labels are assigned by the backend.
-fn destination_label(token: &str) -> String {
+/// Label of the window a token authorises. Only the backend assigns labels,
+/// so a webview cannot forge it.
+pub(crate) fn destination_label(token: &str) -> String {
     format!("window-{token}")
 }
 
