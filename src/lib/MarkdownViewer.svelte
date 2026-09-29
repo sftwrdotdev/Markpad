@@ -1805,9 +1805,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * A preview that is not on screen never decides: in the editor alone it is
 	 * still mounted at a sliver of width, and its scroll events report lines
 	 * from that layout, which put the outline on the wrong heading after
-	 * Ctrl+E (#799). Nor does one still sliding open after Ctrl+E out of the
-	 * editor, for the same reason, until `restoreAfterLeavingEditor` has placed
-	 * it: the outline flashed the first headings for the length of the slide.
+	 * Ctrl+E (#799). Nor does one Ctrl+E has just brought back, until
+	 * `restoreAfterLeavingEditor` has placed it: its scroll events before that
+	 * report the first headings.
 	 */
 	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
 		const cursorLeads = settings.tocFollows === 'cursor' && hasEditorPane;
@@ -2305,12 +2305,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	/**
 	 * The preview half of #799. The restore effect cannot do it: the article
 	 * stays mounted at zero width in edit mode, so nothing it depends on changes
-	 * with the mode, and the pane slides open over 0.3s, so the line has to be
-	 * placed once it has its real width.
+	 * with the mode. The pane takes its real width in the same frame (it fades
+	 * in, it does not slide), so the line is placed right after the render,
+	 * before the old position is ever painted.
 	 */
 	async function restoreAfterLeavingEditor(tabId: string, position: ScrollSyncPosition) {
 		await tick();
-		if (viewerPaneEl) await Promise.all(viewerPaneEl.getAnimations().map((a) => a.finished.catch(() => {})));
 		previewPlacing = false;
 		const body = markdownBody;
 		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
