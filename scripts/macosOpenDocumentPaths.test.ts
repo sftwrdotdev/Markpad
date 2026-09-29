@@ -21,7 +21,7 @@ test('macOS open-document events preserve every delivered file path', () => {
 test('a second launch hands every argv path to the running window', () => {
 	// `markpad a.md b.md` with Markpad already running arrives here instead of
 	// at `send_markdown_path`. Taking only the first path opened a.md alone.
-	const secondInstance = sliceBetween(runtime, 'pub fn handle_single_instance', 'pub fn create_transfer_window');
+	const secondInstance = sliceBetween(runtime, 'pub fn handle_single_instance', 'fn create_transfer_window');
 	assert.match(secondInstance, /for path in startup_paths\(/);
 	assert.doesNotMatch(secondInstance, /\.next\(\)|\.first\(\)/);
 });
