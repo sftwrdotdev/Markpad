@@ -131,7 +131,7 @@ test('a new empty document keeps its own preference', () => {
 test('the setting is one control, defaulting to preview', () => {
 	assert.match(settingsSource, /openFileMode = \$state<OpenFileMode>\(DEFAULT_OPEN_FILE_MODE\)/);
 	assert.equal(DEFAULT_OPEN_FILE_MODE, 'preview');
-	assert.match(settingsComponentSource, /<select id="appearance-open-file-mode" bind:value=\{settings\.openFileMode\}>/);
+	assert.match(settingsComponentSource, /<select id="files-open-file-mode" bind:value=\{settings\.openFileMode\}>/);
 	for (const value of ['preview', 'editor', 'split']) {
 		assert.match(settingsComponentSource, new RegExp(`<option value="${value}">`));
 	}

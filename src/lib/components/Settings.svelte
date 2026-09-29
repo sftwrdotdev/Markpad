@@ -1046,14 +1046,6 @@
 								</label>
 							</div>
 
-							<div class="setting-item">
-								<label for="editor-show-toolbar">{t('settings.showEditorToolbar', settings.language)}</label>
-								<label class="toggle">
-									<input id="editor-show-toolbar" type="checkbox" checked={settings.showEditorToolbar} onchange={() => settings.toggleEditorToolbar()} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
-
 							<div class="setting-item" class:inactive={!settings.statusBar}>
 								<label for="editor-word-count">{t('settings.wordCount', settings.language)}</label>
 								<label class="toggle">
@@ -1079,47 +1071,12 @@
 						</div>
 
 						<div class="setting-item">
-							<label for="editor-toc-follows">{t('settings.tocFollows', settings.language)}</label>
-							<div class="select-wrapper">
-								<select id="editor-toc-follows" bind:value={settings.tocFollows}>
-									<option value="scroll">{t('settings.tocFollowsScroll', settings.language)}</option>
-									<option value="cursor">{t('settings.tocFollowsCursor', settings.language)}</option>
-								</select>
-								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-							</div>
-						</div>
-
-						<div class="setting-item">
 							<label for="editor-line-highlight">{t('settings.lineHighlight', settings.language)}</label>
 							<label class="toggle">
 								<input id="editor-line-highlight" type="checkbox" checked={settings.renderLineHighlight === 'line'} onchange={() => settings.toggleLineHighlight()} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
-
-						<div class="setting-item">
-							<label for="image-directory">{t('settings.imageDirectory', settings.language)}</label>
-							<input
-								type="text"
-								id="image-directory"
-								class="text-input"
-								style="width: 120px;"
-								bind:value={settings.imageDirectory}
-								placeholder="img"
-								title={t('settings.imageDirectoryHint', settings.language)}
-							/>
-						</div>
-
-						{#if settings.osType === 'macos'}
-							<div class="setting-item">
-								<label for="macos-image-scaling">{t('settings.scaleMacOSScreenshots', settings.language)}</label>
-								<label class="toggle">
-									<input id="macos-image-scaling" type="checkbox" checked={settings.macosImageScaling} onchange={() => settings.toggleMacosImageScaling()} />
-									<span class="toggle-slider"></span>
-								</label>
-								<span class="slider-value">{t('settings.reduceSizeBy50', settings.language)}</span>
-							</div>
-						{/if}
 					</div>
 					{:else if activeCategory === 'preview'}
 						<div class="settings-group">
@@ -1394,52 +1351,22 @@
 							</div>
 
 							<div class="setting-item">
-								<label for="appearance-restore-state">{t('settings.restoreStateOnReopen', settings.language)}</label>
-								<label class="toggle">
-									<input id="appearance-restore-state" type="checkbox" checked={settings.restoreStateOnReopen} onchange={() => settings.toggleRestoreStateOnReopen()} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
-
-							<div class="setting-item">
-								<label for="appearance-close-window-last-tab">{t('settings.closeWindowWithLastTab', settings.language)}</label>
-								<label class="toggle">
-									<input id="appearance-close-window-last-tab" type="checkbox" checked={settings.closeWindowWithLastTab} onchange={() => settings.toggleCloseWindowWithLastTab()} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
-
-							<div class="setting-item">
-								<label for="appearance-open-file-mode">{t('settings.openFileMode', settings.language)}</label>
-								<div class="select-wrapper">
-									<select id="appearance-open-file-mode" bind:value={settings.openFileMode}>
-										<option value="preview">{t('settings.preview', settings.language)}</option>
-										<option value="editor">{t('settings.editor', settings.language)}</option>
-										<option value="split">{t('menu.splitView', settings.language)}</option>
-									</select>
-									<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-								</div>
-							</div>
-							<div class="setting-item">
-								<label for="appearance-new-file-mode">{t('settings.newFileDefaultMode', settings.language)}</label>
-								<label class="toggle">
-									<input id="appearance-new-file-mode" type="checkbox" checked={settings.newFileDefaultMode} onchange={() => settings.toggleNewFileDefaultMode()} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
-							<div class="setting-item">
-								<label for="appearance-recent-files">{t('settings.showRecentFiles', settings.language)}</label>
-								<label class="toggle">
-									<input id="appearance-recent-files" type="checkbox" checked={settings.showRecentFiles} onchange={() => settings.toggleShowRecentFiles()} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
-							<div class="setting-item">
 							<label for="appearance-toc">{t('settings.showTableOfContents', settings.language)}</label>
 							<label class="toggle">
 								<input id="appearance-toc" type="checkbox" checked={settings.showToc} onchange={() => settings.toggleToc()} />
 								<span class="toggle-slider"></span>
 							</label>
+						</div>
+
+						<div class="setting-item">
+							<label for="appearance-toc-follows">{t('settings.tocFollows', settings.language)}</label>
+							<div class="select-wrapper">
+								<select id="appearance-toc-follows" bind:value={settings.tocFollows}>
+									<option value="scroll">{t('settings.tocFollowsScroll', settings.language)}</option>
+									<option value="cursor">{t('settings.tocFollowsCursor', settings.language)}</option>
+								</select>
+								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+							</div>
 						</div>
 
 						<div class="setting-item">
@@ -1454,14 +1381,6 @@
 							<label for="appearance-animate-cursor">{t('settings.animateCursor', settings.language)}</label>
 							<label class="toggle">
 								<input id="appearance-animate-cursor" type="checkbox" checked={settings.animateCursor} onchange={() => settings.toggleAnimateCursor()} />
-								<span class="toggle-slider"></span>
-							</label>
-						</div>
-
-						<div class="setting-item">
-							<label for="appearance-links-new-tab">{t('settings.linksOpenInNewTab', settings.language)}</label>
-							<label class="toggle">
-								<input id="appearance-links-new-tab" type="checkbox" checked={settings.linksOpenInNewTab} onchange={() => settings.toggleLinksOpenInNewTab()} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1624,6 +1543,10 @@
 							<summary class="toolbar-settings-summary">
 								<span class="toolbar-settings-chevron" aria-hidden="true"></span>
 								<span>{t('settings.editorToolbar', settings.language)}</span>
+								<label class="toggle toolbar-summary-toggle">
+									<input id="editor-show-toolbar" type="checkbox" aria-label={t('settings.showEditorToolbar', settings.language)} checked={settings.showEditorToolbar} onchange={() => settings.toggleEditorToolbar()} />
+									<span class="toggle-slider"></span>
+								</label>
 							</summary>
 							<div class="toolbar-settings-body">
 								<div class="toolbar-section-header">
@@ -1693,9 +1616,85 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="files-open-file-mode">{t('settings.openFileMode', settings.language)}</label>
+							<div class="select-wrapper">
+								<select id="files-open-file-mode" bind:value={settings.openFileMode}>
+									<option value="preview">{t('settings.preview', settings.language)}</option>
+									<option value="editor">{t('settings.editor', settings.language)}</option>
+									<option value="split">{t('menu.splitView', settings.language)}</option>
+								</select>
+								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+							</div>
+						</div>
+
+						<div class="setting-item">
+							<label for="files-new-file-mode">{t('settings.newFileDefaultMode', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-new-file-mode" type="checkbox" checked={settings.newFileDefaultMode} onchange={() => settings.toggleNewFileDefaultMode()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
+							<label for="files-links-new-tab">{t('settings.linksOpenInNewTab', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-links-new-tab" type="checkbox" checked={settings.linksOpenInNewTab} onchange={() => settings.toggleLinksOpenInNewTab()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
+							<label for="files-recent-files">{t('settings.showRecentFiles', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-recent-files" type="checkbox" checked={settings.showRecentFiles} onchange={() => settings.toggleShowRecentFiles()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
 							<label for="files-auto-save">{t('settings.autoSave', settings.language)}</label>
 							<label class="toggle">
 								<input id="files-auto-save" type="checkbox" checked={settings.autoSave} onchange={() => settings.toggleAutoSave()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
+							<label for="image-directory">{t('settings.imageDirectory', settings.language)}</label>
+							<input
+								type="text"
+								id="image-directory"
+								class="text-input"
+								style="width: 120px;"
+								bind:value={settings.imageDirectory}
+								placeholder="img"
+								title={t('settings.imageDirectoryHint', settings.language)}
+							/>
+						</div>
+
+						{#if settings.osType === 'macos'}
+							<div class="setting-item">
+								<label for="macos-image-scaling">{t('settings.scaleMacOSScreenshots', settings.language)}</label>
+								<label class="toggle">
+									<input id="macos-image-scaling" type="checkbox" checked={settings.macosImageScaling} onchange={() => settings.toggleMacosImageScaling()} />
+									<span class="toggle-slider"></span>
+								</label>
+								<span class="slider-value">{t('settings.reduceSizeBy50', settings.language)}</span>
+							</div>
+						{/if}
+
+						<div class="setting-item">
+							<label for="files-restore-state">{t('settings.restoreStateOnReopen', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-restore-state" type="checkbox" checked={settings.restoreStateOnReopen} onchange={() => settings.toggleRestoreStateOnReopen()} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
+							<label for="files-close-window-last-tab">{t('settings.closeWindowWithLastTab', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-close-window-last-tab" type="checkbox" checked={settings.closeWindowWithLastTab} onchange={() => settings.toggleCloseWindowWithLastTab()} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -2267,6 +2266,10 @@
 		font-weight: 600;
 		cursor: pointer;
 		user-select: none;
+	}
+
+	.toolbar-summary-toggle {
+		margin-left: auto;
 	}
 
 	.toolbar-settings-summary::-webkit-details-marker {
