@@ -34,8 +34,6 @@
 	);
 
 	let scrollContainer = $state<HTMLElement | null>(null);
-	let showLeftArrow = $state(false);
-	let showRightArrow = $state(false);
 
 	// Drag state
 	let draggingId = $state<string | null>(null);
@@ -195,8 +193,6 @@
 
 <div class="tab-list-wrapper">
 	<div class="scroll-viewport">
-		<div class="scroll-shadow left" class:visible={showLeftArrow}></div>
-
 		<div
 			bind:this={scrollContainer}
 			class="tab-list-container"
@@ -210,7 +206,7 @@
 					e.currentTarget.scrollLeft += e.deltaY;
 				}
 			}}>
-			{#each tabManager.tabs as tab, i (tab.id)}
+			{#each tabManager.tabs as tab (tab.id)}
 				<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 				<!-- svelte-ignore a11y_click_events_have_key_events -->
 				<div
@@ -228,7 +224,6 @@
 						{tab}
 						folderSuffix={folderSuffixes.get(tab.id)}
 						isActive={!showHome && tabManager.activeTabId === tab.id}
-						isLast={i === tabManager.tabs.length - 1}
 						onclick={() => selectTab(tab)}
 						onclose={() => oncloseTab?.(tab.id)} />
 				</div>
@@ -240,8 +235,6 @@
 				<Tab tab={dragState.tab} folderSuffix={folderSuffixes.get(dragState.tab.id)} isActive={!showHome && tabManager.activeTabId === dragState.tab.id} onclick={() => {}} onclose={() => {}} />
 			</div>
 		{/if}
-
-		<div class="scroll-shadow right" class:visible={showRightArrow}></div>
 	</div>
 
 	<button class="new-tab-btn" onclick={onnewTab} onmousedown={(e) => e.preventDefault()} title={`${t('tooltip.newTab', settings.language)} (${shortcutLabel('file-new', modifierFor(settings.osType))})`}>
@@ -270,31 +263,6 @@
 		overflow: hidden;
 		min-width: 0;
 		max-width: 100%;
-	}
-
-	.scroll-shadow {
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		width: 40px;
-		z-index: 20;
-		pointer-events: none;
-		opacity: 0;
-		transition: opacity 0.2s ease;
-	}
-
-	.scroll-shadow.visible {
-		opacity: 1;
-	}
-
-	.scroll-shadow.left {
-		left: 0;
-		background: linear-gradient(to right, var(--color-canvas-default), transparent);
-	}
-
-	.scroll-shadow.right {
-		right: 0;
-		background: linear-gradient(to left, var(--color-canvas-default), transparent);
 	}
 
 	.tab-list-container {

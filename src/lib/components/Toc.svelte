@@ -209,20 +209,9 @@
 				if (hideUntilLevel === 99) result.push(item);
 				continue;
 			}
-			if (item.level <= hideUntilLevel) {
-				hideUntilLevel = 99;
-				result.push(item);
-				if (foldOverrides?.has(item.foldKey)) {
-					hideUntilLevel = item.level;
-				}
-			} else {
-				if (hideUntilLevel === 99) {
-					result.push(item);
-					if (foldOverrides?.has(item.foldKey)) {
-						hideUntilLevel = item.level;
-					}
-				}
-			}
+			if (item.level > hideUntilLevel) continue;
+			result.push(item);
+			hideUntilLevel = foldOverrides?.has(item.foldKey) ? item.level : 99;
 		}
 		return result;
 	});

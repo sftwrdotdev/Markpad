@@ -20,13 +20,6 @@
 	let innerWidth = $state(1000);
 	let innerHeight = $state(1000);
 
-	$effect(() => {
-		if (show) {
-			innerWidth = window.innerWidth;
-			innerHeight = window.innerHeight;
-		}
-	});
-
 	/**
 	 * Escape closes the menu, and it listens on the window rather than on the
 	 * menu itself.

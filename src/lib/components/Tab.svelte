@@ -11,7 +11,7 @@
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { windowDisplay, type ViewerWindowEntry } from '../utils/viewerWindows.js';
 
-	let { tab, folderSuffix, isActive, isLast, onclick, onclose } = $props<{
+	let { tab, folderSuffix, isActive, onclick, onclose } = $props<{
 		tab: Tab;
 		/**
 		 * The containing folder, when another tab in this window holds a
@@ -21,7 +21,6 @@
 		 */
 		folderSuffix?: string;
 		isActive: boolean;
-		isLast?: boolean;
 		onclick: () => void;
 		onclose: (e: MouseEvent) => void;
 	}>();
@@ -112,14 +111,14 @@
 			x: e.clientX,
 			y: e.clientY,
 			items: [
-				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
-				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
+				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-new') },
+				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-undo') },
 				{
 					label: t('menu.rename', currentLang),
 					// Rename renames the file on disk; untitled and home tabs have
 					// no file, and the handler previously no-oped silently.
 					disabled: !hasRealFilePath(tab.path),
-					onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-rename', tab.id),
+					onClick: () => emitTo(selfLabel, 'menu-tab-rename', tab.id),
 				},
 				{ separator: true },
 				...fileActionItems,
@@ -129,13 +128,13 @@
 					// Moving the only tab would just churn windows, and the home
 					// tab is recreatable anywhere; both stay in place.
 					disabled: isHomePath(tab.path) || tabManager.tabs.length < 2,
-					onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-detach', tab.id),
+					onClick: () => emitTo(selfLabel, 'menu-tab-detach', tab.id),
 				},
 				...moveToWindowItems,
 				{ separator: true },
-				{ label: t('menu.closeFile', currentLang), shortcut: shortcutLabel('file-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close', tab.id) },
-				{ label: t('menu.closeOtherTabs', currentLang), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close-others', tab.id) },
-				{ label: t('menu.closeTabsToRight', currentLang), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-close-right', tab.id) },
+				{ label: t('menu.closeFile', currentLang), shortcut: shortcutLabel('file-close', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-close', tab.id) },
+				{ label: t('menu.closeOtherTabs', currentLang), onClick: () => emitTo(selfLabel, 'menu-tab-close-others', tab.id) },
+				{ label: t('menu.closeTabsToRight', currentLang), onClick: () => emitTo(selfLabel, 'menu-tab-close-right', tab.id) },
 			],
 		};
 	}
@@ -163,7 +162,6 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="tab {isActive ? 'active' : ''}"
-	class:last={isLast}
 	role="group"
 	title={tabTooltip(tab)}
 	oncontextmenu={handleContextMenu}
@@ -218,11 +216,6 @@
 			background-color 0.25s cubic-bezier(0.05, 0.95, 0.05, 0.95),
 			color 0.25s cubic-bezier(0.05, 0.95, 0.05, 0.95);
 	}
-
-	.tab.last {
-		border-right: none;
-	}
-
 
 	.tab:hover {
 		background-color: var(--color-neutral-muted);

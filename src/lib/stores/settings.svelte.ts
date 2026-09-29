@@ -533,7 +533,7 @@ export class SettingsStore {
 	 * take away deliberately rather than as the side effect of a new setting.
 	 */
 	linksOpenInNewTab = $state(false);
-	editorMaxWidth = $state(80);
+	editorMaxWidth = $state(EDITOR_MAX_WIDTH_RANGE.default);
 	previewMaxWidth = $state(DEFAULT_PREVIEW_MAX_WIDTH);
 	// Preview ignores previewMaxWidth and fills the pane.
 	previewFullWidth = $state(false);
@@ -554,7 +554,7 @@ export class SettingsStore {
 	 * answering it again every time one is opened.
 	 */
 	splitEditorSide = $state<'left' | 'right'>('left');
-	tocWidth = $state(240);
+	tocWidth = $state(TOC_WIDTH_RANGE.default);
 	osType = $state<OSType>('unknown');
 	imageDirectory = $state('img');
 	macosImageScaling = $state(true);
@@ -567,11 +567,11 @@ export class SettingsStore {
 	titlebarToolbarPlacement = $state<Record<string, TitlebarToolbarPlacement>>({ ...DEFAULT_TITLEBAR_TOOLBAR_PLACEMENT });
 
 	editorFont = $state('Consolas');
-	editorFontSize = $state(14);
+	editorFontSize = $state(EDITOR_FONT_SIZE_RANGE.default);
 	previewFont = $state('Segoe UI');
-	previewFontSize = $state(16);
+	previewFontSize = $state(PREVIEW_FONT_SIZE_RANGE.default);
 	codeFont = $state('Consolas');
-	codeFontSize = $state(14);
+	codeFontSize = $state(CODE_FONT_SIZE_RANGE.default);
 
 	// File-save behavior: on, edits are persisted without Cmd+S; off, they are
 	// kept until saved and closing asks. One switch, because that is the number
