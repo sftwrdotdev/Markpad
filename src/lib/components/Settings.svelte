@@ -2417,11 +2417,18 @@
 		align-items: flex-start;
 		justify-content: center;
 		gap: 2px;
+		/* The label takes the row, so these toggles line up at its right end. */
+		flex: 1 1 auto;
+		min-width: 0;
 	}
 
 	.setting-hint {
 		font-size: 11px;
 		color: var(--color-fg-muted);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
 	}
 
 	.toolbar-tool-hint {
