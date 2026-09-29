@@ -472,9 +472,10 @@ export class SettingsStore {
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
 	/**
-	 * What the outline marks as the current heading while the editor is on
-	 * screen: the heading scrolled to, or the one the cursor is in (#799). The
-	 * preview on its own has no cursor, so it always follows the scroll.
+	 * What the outline marks as the current heading: the heading scrolled to,
+	 * or the one the tab's cursor is in (#799). The cursor is followed only
+	 * where the reader can see it: in the editor, or drawn in the preview with
+	 * `previewCursor` on. Otherwise the outline follows the scroll.
 	 */
 	tocFollows = $state<'scroll' | 'cursor'>('scroll');
 	/** Whether a click in the preview places the tab's cursor, drawn there (#799). */

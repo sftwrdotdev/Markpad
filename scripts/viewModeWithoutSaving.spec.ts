@@ -663,22 +663,32 @@ test('the preview does not move the outline after Ctrl+E until it is placed', as
 	assert.equal(harness.toc(), 60, 'and keeps deciding once placed');
 });
 
-test('reading with a cursor placed, the outline stays on it while the preview scrolls', () => {
+test('reading with a cursor placed, the outline stays on it only while the preview draws it', () => {
 	tabManager.closeAll();
 	tabManager.addTab('/notes/note.md');
 	tabManager.activeTab!.isEditing = false;
 	settings.tocFollows = 'cursor';
 	try {
-		const withCursor = buildSyncHarness({ activeCursor: { line: 20, column: 3 }, hasEditorPane: false });
-		withCursor.followToc('cursor', 17);
-		withCursor.followToc('preview', 90);
-		assert.equal(withCursor.toc(), 17, 'the preview scroll moved the outline off the cursor');
+		settings.previewCursor = true;
+		const drawn = buildSyncHarness({ activeCursor: { line: 20, column: 3 }, hasEditorPane: false });
+		drawn.followToc('cursor', 17);
+		drawn.followToc('preview', 90);
+		assert.equal(drawn.toc(), 17, 'the preview scroll moved the outline off the drawn cursor');
+
+		// Off, the editor's last cursor is still there for Ctrl+E, but the
+		// preview shows nothing, so an outline pinned to it would look stuck.
+		settings.previewCursor = false;
+		const hidden = buildSyncHarness({ activeCursor: { line: 20, column: 3 }, hasEditorPane: false });
+		hidden.followToc('cursor', 17);
+		hidden.followToc('preview', 90);
+		assert.equal(hidden.toc(), 90, 'the outline stayed on a cursor the preview does not show');
 
 		const without = buildSyncHarness({ hasEditorPane: false });
 		without.followToc('preview', 90);
 		assert.equal(without.toc(), 90, 'with no cursor yet, the outline follows the scroll');
 	} finally {
 		settings.tocFollows = 'scroll';
+		settings.previewCursor = false;
 	}
 });
 

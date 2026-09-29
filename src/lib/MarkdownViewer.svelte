@@ -1690,10 +1690,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	/**
 	 * The one gate on `tocActiveLine`. With `settings.tocFollows` set to
-	 * 'cursor' and a cursor to follow (the editor is on screen, or the reader
-	 * has clicked in the preview), only the cursor moves the outline, and
-	 * scrolling either pane leaves it where it is. Otherwise the pane that
-	 * scrolled last decides.
+	 * 'cursor' and a cursor the reader can see (the editor is on screen, or
+	 * `settings.previewCursor` draws one the reader placed in the preview), only
+	 * the cursor moves the outline, and scrolling either pane leaves it where it
+	 * is. Otherwise the pane that scrolled last decides. In the preview alone
+	 * with `previewCursor` off, the editor's last cursor is kept for Ctrl+E but
+	 * not followed: nothing on screen would say why the outline stopped.
 	 *
 	 * A preview that is not on screen never decides: in the editor alone it is
 	 * still mounted at zero width, and its scroll events report lines from that
@@ -1703,7 +1705,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * report the first headings.
 	 */
 	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
-		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || activeCursor !== null);
+		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || (settings.previewCursor && activeCursor !== null));
 		const previewSettled = hasPreviewPane && !previewPlacing;
 		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
 		if (accepted) tocActiveLine = line;
