@@ -261,7 +261,7 @@ test('each zoom chord reaches its own zoom operation, not just the zoom code', (
 	// because the arithmetic lived in the handler. It lives in the store now, so
 	// the two halves of the claim are checked where each one is: that zoomIn
 	// really raises the level and resetZoom really returns to ZOOM_LEVEL_RANGE's
-	// default is asserted against the real store in settingsPersistence.test.ts,
+	// default is asserted against the real store in settingsPersistence.spec.ts,
 	// and what is left here — which chord asks for which — is the half only the
 	// keymap can answer.
 	const expected: Array<[string, ViewerCommand]> = [

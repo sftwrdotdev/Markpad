@@ -143,19 +143,8 @@
 	let currentLanguage = $state("markdown");
 	let lineEnding = $state<"LF" | "CRLF">("LF");
 	/**
-	 * The encoding the document was decoded from, and the one a save writes it
-	 * back as (#372).
-	 *
-	 * Derived from the tab rather than synced from the model like `lineEnding`
-	 * is: a line ending is a property of the Monaco buffer, an encoding is a
-	 * property of the file that buffer came from. The store already holds it,
-	 * so a copy kept in sync here could only go stale.
-	 *
-	 * This slot used to be the literal string `UTF-8`, which was true of every
-	 * file Markpad could open. Detection made it a lie for exactly the
-	 * documents the indicator matters most for — a GBK file now opens, reads
-	 * correctly and saves back as GBK, and the status bar was still claiming
-	 * UTF-8.
+	 * The file's encoding, which a save writes back (#372). Read from the tab,
+	 * not the Monaco model: it belongs to the file, not the buffer.
 	 */
 	let encoding = $derived(tabManager.activeTab?.encoding ?? 'UTF-8');
 	let currentTabId = tabManager.activeTabId;
@@ -1511,10 +1500,8 @@
 			editor.addAction({
 				id: "fmt-strikethrough",
 				label: t('menu.strikethrough', lang),
-				// GitHub's chord for this button, and free here: the Ctrl/Cmd+Shift
-				// row is otherwise B, E, F, M, R, S, T and Z. Chosen against the whole
-				// keymap for the reasons the block below sets out, and checked by the
-				// same test.
+				// GitHub's chord. monacoChordOwnership.spec.ts checks Monaco binds
+				// nothing on it.
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyX,
 				],
@@ -1694,22 +1681,9 @@
 				},
 			}),
 
-			// The rest of the table verbs. They are actions rather than bare
-			// commands because a user has to be able to FIND them — in the command
-			// palette, in the shortcuts panel — which a nameless `addCommand`
-			// cannot be.
-			//
-			// WHAT DECIDES WHICH ONE GETS A KEY is how hard the edit is by hand,
-			// not whether it is destructive. Insert Row is on `Mod+Enter` already
-			// (inside a table, "insert the line below" IS "insert the row below")
-			// and on Tab at the last cell, so it needs nothing here. Delete Row is
-			// the one verb left with no chord at all: putting the caret on the line
-			// and deleting it is the whole operation, so a chord would buy nothing.
-			// The two column verbs both have chords BECAUSE the manual route is
-			// editing the pipes on every row of the table without slipping —
-			// which for delete is not a fallback anyone would actually take.
-			// The reasoning is set out once, in TABLE_VERBS_WITHOUT_A_CHORD in
-			// shortcutRegistry.test.ts, and the per-verb notes are at each binding.
+			// The rest of the table verbs. Actions rather than bare commands, so the
+			// command palette and the shortcuts panel can list them. Which verbs get
+			// a chord: TABLE_VERBS_WITHOUT_A_CHORD in shortcutRegistry.test.ts.
 			editor.addAction({
 				id: "table-insert-row",
 				label: t('menu.insertTableRow', lang),
@@ -1751,25 +1725,8 @@
 			editor.addAction({
 				id: "table-delete-column",
 				label: t('menu.deleteTableColumn', lang),
-				// WHY THIS VERB GETS A KEY WHEN DELETE ROW DOES NOT: there is no way
-				// to do it by hand. Deleting a row is selecting a line and pressing
-				// delete; deleting a column means editing the pipes on every row of
-				// the table without slipping once. A shortcut for the first buys
-				// nothing over what the keyboard already does. For the second it is
-				// the only practical route.
-				//
-				// WHY BACKSPACE AND NOT A LETTER: Ctrl/Cmd+Shift+D is free, but D is
-				// the physical neighbour of the C above — one slip turns "insert a
-				// column" into "delete a column", which is precisely the shape of the
-				// complaint that started this rework (`Mod+K Shift+R` sat one slip
-				// from Monaco's delete-line). A destructive verb does not go next to
-				// its constructive counterpart. Backspace is across the keyboard and
-				// already means "remove", so there is no mnemonic to learn.
-				//
-				// Monaco binds nothing on Ctrl/Cmd+Shift+Backspace on any platform.
-				// Its nearest neighbour is Cmd+Backspace (`deleteAllLeft`) one
-				// modifier away, which is an ordinary undoable edit rather than a
-				// structural one.
+				// Backspace, not D: D sits next to Insert Column's C, and one slip
+				// would delete a column. Monaco binds nothing on this chord.
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.Backspace,
 				],
@@ -2513,19 +2470,16 @@
 	}
 
 	/**
-	 * A jump asked for before the editor existed. `monaco-editor` is imported
-	 * dynamically, so `bind:this` on this component resolves — and the preview
-	 * can call in — several frames before `editor` does; without somewhere to
-	 * put it, a jump issued in the same turn as the switch into edit mode is
-	 * simply dropped. `onMount` spends it once the editor is up.
-	 */
-	/**
 	 * Where a revealed range lands in the viewport. The outline asks for `top`:
 	 * the preview answers the same click by putting the heading just under its
 	 * top edge, and with scroll sync off the two panes then show the same
 	 * place. The context menu's Edit keeps `center`, the reading it had.
 	 */
 	type RevealPlacement = 'center' | 'top';
+	/**
+	 * A reveal asked for before Monaco loaded. The preview can call in several
+	 * frames before `editor` exists; `createEditor` spends it once it does.
+	 */
 	let pendingReveal: { startLine: number; endLine: number; placement: RevealPlacement } | null = null;
 
 	/**
@@ -2750,11 +2704,6 @@
 		     "LF" and "CRLF" are acronyms, and the `crlf` key they replace held
 		     the same ASCII in all five locales that bothered to define it. -->
 		<div class="status-item">{lineEnding}</div>
-		<!-- Still hardcoded, and still the only thing here that is: the document's
-		     real encoding is detected in `fix/non-utf8-documents` (#372), which
-		     puts it on `Tab.encoding`. Wire this to that field when it lands —
-		     duplicating the detection to make the label true sooner would leave
-		     two answers to one question. -->
 		<div class="status-item">{encoding}</div>
 	</div>
 {/if}

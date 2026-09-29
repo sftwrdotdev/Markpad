@@ -59,7 +59,7 @@ test('settings load, persist, and reset the preview width through one normalizer
 	// key (so that a change in one window stops rewriting every other key from a
 	// stale snapshot). The preview width still round-trips under the same key and
 	// through the same normalizer; only the plumbing that reads and writes it is
-	// now shared. See scripts/settingsPersistence.test.ts.
+	// now shared. See scripts/settingsPersistence.spec.ts.
 	assert.match(settingsSource, /key: 'preview\.maxWidth'/);
 	assert.match(settingsSource, /read: \(s\) => String\(s\.previewMaxWidth\)/);
 	assert.match(settingsSource, /normalizePreviewMaxWidth\(savedPreviewMaxWidth\)/);
@@ -145,7 +145,7 @@ test('preview full-width state migrates from the legacy localStorage key', () =>
 	// It is a persisted setting like every other one now, which is what gets it
 	// cross-window sync — the viewer used to read and write `preview.fullWidth`
 	// with bare localStorage calls and no `storage` listener, so a second window
-	// only noticed after a restart. See scripts/settingsPersistence.test.ts.
+	// only noticed after a restart. See scripts/settingsPersistence.spec.ts.
 	assert.match(settingsSource, /key: 'preview\.fullWidth'/);
 	assert.match(settingsSource, /read: \(s\) => String\(s\.previewFullWidth\)/);
 	assert.match(settingsSource, /getStoredPreviewFullWidth\(raw, readStoredKey\(LEGACY_PREVIEW_FULL_WIDTH_KEY\)\)/);
