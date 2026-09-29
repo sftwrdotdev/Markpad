@@ -635,9 +635,9 @@ function describeOutlineSource(
 	});
 }
 
-test('the preview does not move the outline while it slides open after Ctrl+E', async () => {
-	// Its scroll events during the slide come from a layout still too narrow,
-	// and the outline flashed the first headings until the preview was placed.
+test('the preview does not move the outline after Ctrl+E until it is placed', async () => {
+	// Its scroll events before that report the old position, and the outline
+	// flashed the first headings until the preview was placed.
 	tabManager.closeAll();
 	tabManager.addTab('/notes/note.md');
 	const tab = tabManager.activeTab!;
@@ -647,7 +647,7 @@ test('the preview does not move the outline while it slides open after Ctrl+E', 
 	harness.handleEditorScrollSync({ section: 'body', ratio: 0.5, line: 40 });
 	harness.startPlacing();
 	harness.followToc('preview', 2);
-	assert.equal(harness.toc(), 40, 'a sliding preview put the outline on its own line');
+	assert.equal(harness.toc(), 40, 'an unplaced preview put the outline on its own line');
 
 	await harness.restoreAfterLeavingEditor(tab.id, { section: 'body', ratio: 0.5, line: 58 });
 	assert.equal(harness.toc(), 57, 'the placed preview decides');

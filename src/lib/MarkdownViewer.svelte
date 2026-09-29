@@ -1150,17 +1150,17 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * `isSplit`, `splitRatio`, and `isMarkdown` off the path — so switching to a
 	 * tab in another mode changes exactly the values that toggling that mode
 	 * inside one tab changes, and the transitions written for the toggle fire
-	 * for the switch: `.pane` slides its `flex` over 0.3s, `.layout-container`
-	 * and `.editor-pane` slide their padding, the outline wrapper slides its
-	 * box-shadow and edges. Three hundred milliseconds of the text reflowing
-	 * under the reader, on a gesture whose whole content is "show me the other
-	 * document".
+	 * for the switch: `.layout-container` and `.editor-pane` slide their
+	 * padding, the outline wrapper slides its box-shadow and edges. Three
+	 * hundred milliseconds of the text reflowing under the reader, on a gesture
+	 * whose whole content is "show me the other document". The panes' own slide
+	 * is not a CSS transition; `paneSlider` skips a tab switch itself.
 	 *
 	 * The suppression is `foldLayout.ts`'s, for the same reason and in the same
 	 * shape: suppress, let the new values commit, restore. The class is added
 	 * through the element rather than through a `class:` directive because the
 	 * ordering is the entire mechanism — this effect runs after Svelte has
-	 * written the new `flex` into the DOM and before the browser has recomputed
+	 * written the new geometry into the DOM and before the browser has recomputed
 	 * style, so a class that lands in a later flush would land after the
 	 * transitions had already started. Reading `offsetHeight` forces that
 	 * recompute here, while the transitions are off; removing the class then
@@ -5064,10 +5064,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		flex: 0 !important;
 		opacity: 0;
 	}
-
-	/* Split Mode Transition Logic */
-	/* Editor slides in from left */
-	/* Viewer slides right */
 
 	.pane {
 		height: 100%;

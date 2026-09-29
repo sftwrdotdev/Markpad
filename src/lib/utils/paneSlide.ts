@@ -124,9 +124,9 @@ export function createPaneSlider() {
 			const pane = entering === 'editor' ? editor : viewer;
 			const distance = outwardSign(entering, editorOnRight) * pane.getBoundingClientRect().width;
 			const bar = leaving ? null : splitter(container);
-			for (const [el, z] of [[pane, '6'], [bar, '7']] as const) {
+			for (const el of [pane, bar]) {
 				if (!el) continue;
-				el.style.zIndex = z;
+				el.style.zIndex = '6';
 				raised.push(el);
 				slide(el, distance, 0);
 			}
@@ -142,8 +142,11 @@ export function createPaneSlider() {
 				el = viewer;
 			}
 			if (p.barCopy) container.appendChild(p.barCopy);
-			const distance = entering ? 0 : outwardSign(leaving, editorOnRight) * (el?.getBoundingClientRect().width ?? 0);
-			for (const moving of [el, p.barCopy]) if (moving) slide(moving, 0, distance);
+			// Under a pane sliding in, it stays put until that slide ends.
+			if (!entering) {
+				const distance = outwardSign(leaving, editorOnRight) * (el?.getBoundingClientRect().width ?? 0);
+				for (const moving of [el, p.barCopy]) if (moving) slide(moving, 0, distance);
+			}
 		}
 
 		const cleanup = () => {

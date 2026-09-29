@@ -35,11 +35,11 @@ test('a tab switch commits the new pane geometry with transitions off', () => {
 		'the viewer must add the class, force a style recalculation, and remove it in one statement',
 	);
 
-	// The stylesheet's half, and that it reaches the pane — the element whose
-	// 0.3s flex slide is the motion being suppressed.
+	// The stylesheet's half, and that it reaches the editor pane, whose padding
+	// slide follows the tab's outline state.
 	const rule = styles.match(/([^}]*\.layout-container\.tab-switching[^{]*)\{([^}]*)\}/);
 	assert.ok(rule, 'styles.css must carry a .tab-switching rule');
-	assert.match(rule[1], /\.layout-container\.tab-switching \.pane\b/, 'and it must reach .pane');
+	assert.match(rule[1], /\.layout-container\.tab-switching \.editor-pane\b/, 'and it must reach .editor-pane');
 	assert.match(rule[2], /transition:\s*none\s*!important/, 'and it must switch transitions off');
 
 	// And that it did not migrate into the component, where Svelte would prune
