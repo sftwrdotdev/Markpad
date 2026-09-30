@@ -24,6 +24,32 @@ import {
 import { MERMAID_PRINT_THEME } from './mermaidPrint.js';
 import { normalizePreviewMaxWidth } from './previewWidth.js';
 
+/**
+ * The Preview settings the live preview wears as inline styles: the font on
+ * its article, the rest as variables on `.markdown-container`. Both exports
+ * ship the article's children into an element outside that container, so
+ * anything not named here stops at the screen (#932). Families are finished
+ * `font-family` values; sizes are pixels.
+ */
+export interface ExportAppearance {
+	fontFamily: string;
+	fontSize: number;
+	codeFontFamily: string;
+	codeFontSize: number;
+	highlightColor: string;
+}
+
+/** `appearance` as the declarations the exported article carries. */
+function appearanceDeclarations(appearance: ExportAppearance): [string, string][] {
+	return [
+		['font-family', appearance.fontFamily],
+		['font-size', `${appearance.fontSize}px`],
+		['--code-font', appearance.codeFontFamily],
+		['--code-font-size', `${appearance.codeFontSize}px`],
+		['--highlight-color', appearance.highlightColor],
+	];
+}
+
 export interface ExportContext {
 	rawContent: string;
 	tabTitle: string;
@@ -36,13 +62,7 @@ export interface ExportContext {
 	 * `exportContentMaxWidth`.
 	 */
 	contentWidth: number | null;
-	/**
-	 * The `font-family` value and the pixel size the live preview's article
-	 * wears inline. Both exports ship the article's children, not the article,
-	 * so without these the Preview font stops at the screen (#932).
-	 */
-	fontFamily: string;
-	fontSize: number;
+	appearance: ExportAppearance;
 	/**
 	 * Mermaid's theme name for the appearance this export is being made in.
 	 * Unlike the PDF route — paper is always white, so that one forces a light
@@ -145,9 +165,7 @@ export interface ExportDocumentInput {
 	articleHtml: string;
 	/** See `ExportContext.contentWidth` and `exportContentMaxWidth`. */
 	contentWidth: number | null;
-	/** See `ExportContext.fontFamily`. */
-	fontFamily: string;
-	fontSize: number;
+	appearance: ExportAppearance;
 }
 
 /**
@@ -186,9 +204,12 @@ export function exportContentMaxWidth(contentWidth: number | null): string {
  * image embedding) so the shape of the artefact can be asserted directly.
  */
 export function buildExportDocument(input: ExportDocumentInput): string {
-	// A family name is free text, and `</style>` inside it would end the block
-	// it is written into. The CSS escape names the same family.
-	const fontFamily = input.fontFamily.replace(/</g, '\\3c ');
+	// Named, not embedded: a reader without a family gets its fallback. A
+	// family name is free text, and `</style>` inside it would end the block it
+	// is written into, so `<` goes in as the CSS escape for the same character.
+	const appearance = appearanceDeclarations(input.appearance)
+		.map(([property, value]) => `\t${property}: ${value.replace(/</g, '\\3c ')};`)
+		.join('\n');
 	return `<!DOCTYPE html>
 <html lang="en"${exportThemeAttribute(input.theme)}>
 <head>
@@ -209,8 +230,7 @@ html, body {
 .markdown-body {
 	padding: 40px !important;
 	max-width: ${exportContentMaxWidth(input.contentWidth)};
-	font-family: ${fontFamily};
-	font-size: ${input.fontSize}px;
+${appearance}
 	margin: 0 auto;
 	height: auto !important;
 	overflow: visible !important;
@@ -480,8 +500,7 @@ export async function exportAsHtml(ctx: ExportContext): Promise<ExportHtmlResult
 		styles,
 		articleHtml: article.root.innerHTML,
 		contentWidth: ctx.contentWidth,
-		fontFamily: ctx.fontFamily,
-		fontSize: ctx.fontSize,
+		appearance: ctx.appearance,
 	});
 
 	try {
@@ -538,8 +557,9 @@ export async function exportAsPdf(ctx: PdfExportContext) {
 	);
 	ctx.printRoot.replaceChildren(...Array.from(article.root.childNodes));
 	ctx.printRoot.style.setProperty('--preview-max-width', exportContentMaxWidth(ctx.contentWidth));
-	ctx.printRoot.style.fontFamily = ctx.fontFamily;
-	ctx.printRoot.style.fontSize = `${ctx.fontSize}px`;
+	for (const [property, value] of appearanceDeclarations(ctx.appearance)) {
+		ctx.printRoot.style.setProperty(property, value);
+	}
 
 	// Taken down when the printing is over, not when the command returns:
 	// `print_pdf` opens the platform's print sheet and comes back while it is

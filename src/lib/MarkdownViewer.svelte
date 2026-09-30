@@ -400,7 +400,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		hasEditorPane && settings.showEditorToolbar ? editorToolbarHeight : 0,
 	);
 	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
-	let previewFontFamily = $derived(fontFamilyValue(settings.previewFont, 'sans-serif'));
+	let previewAppearance = $derived({
+		fontFamily: fontFamilyValue(settings.previewFont, 'sans-serif'),
+		fontSize: settings.previewFontSize,
+		codeFontFamily: fontFamilyValue(settings.codeFont, 'monospace'),
+		codeFontSize: settings.codeFontSize,
+		highlightColor: highlightColorMap[settings.highlightColor] || highlightColorMap.yellow,
+	});
 	let isOverhanging = $derived(
 		isTocOverhanging({
 			isEditing,
@@ -2757,8 +2763,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// so the exported file is read at the measure it was written at
 			// instead of the 900px the exporter used to hard-code (#467).
 			contentWidth: previewContentWidth,
-			fontFamily: previewFontFamily,
-			fontSize: settings.previewFontSize,
+			appearance: previewAppearance,
 			frontMatterTitle: t('frontMatter.properties', settings.language),
 		});
 		if (result?.missingImages) {
@@ -2808,8 +2813,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				mermaidTheme: currentMermaidTheme(),
 				libraries: richLibraries,
 				contentWidth: previewContentWidth,
-				fontFamily: previewFontFamily,
-				fontSize: settings.previewFontSize,
+				appearance: previewAppearance,
 				frontMatterTitle: t('frontMatter.properties', settings.language),
 				osType: settings.osType,
 				printRoot: printRootEl,
@@ -4089,7 +4093,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
 			<div
 				class="markdown-container"
-				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {settings.codeFont}, monospace; --code-font-size: {settings.codeFontSize}px; --highlight-color: {highlightColorMap[settings.highlightColor] || highlightColorMap.yellow};"
+				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize}px; --highlight-color: {previewAppearance.highlightColor};"
 				onwheel={handleWheel}
 				role="presentation">
 				<div class="layout-container" 
@@ -4190,7 +4194,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										if(e.key === 'Enter' || e.key === ' ') handleLinkClick(e as unknown as MouseEvent);
 									}}
 									tabindex="-1"
-									style="outline: none; font-family: {previewFontFamily}; font-size: {settings.previewFontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
+									style="outline: none; font-family: {previewAppearance.fontFamily}; font-size: {previewAppearance.fontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
 									{#if frontMatterInfo.exists}
 										<details
 											class="frontmatter-panel"
@@ -4625,10 +4629,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	.markdown-container :global(.markdown-body pre),
-	.markdown-container :global(.markdown-body pre code),
-	.markdown-container :global(.markdown-body pre tt),
-	.markdown-container :global(.markdown-body code) {
+	/* Not under `.markdown-container`: the exported article is outside it. */
+	:global(.markdown-body pre),
+	:global(.markdown-body pre code),
+	:global(.markdown-body pre tt),
+	:global(.markdown-body code) {
 		font-family: var(--code-font, Consolas, monospace) !important;
 		font-size: var(--code-font-size, 14px) !important;
 	}
@@ -4644,7 +4649,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * reader actually reads code, and `!important` because the rule above is —
 	 * specificity alone cannot answer it.
 	 */
-	.markdown-container :global(.markdown-body :is(h1, h2, h3, h4, h5, h6) code) {
+	:global(.markdown-body :is(h1, h2, h3, h4, h5, h6) code) {
 		font-size: 0.85em !important;
 	}
 

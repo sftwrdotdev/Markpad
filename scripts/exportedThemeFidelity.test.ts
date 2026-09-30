@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { buildExportDocument, exportThemeAttribute } from '../src/lib/utils/export.js';
 import { DEFAULT_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
+import { plainAppearance } from './exportFixtures.ts';
 import { readSource, sliceFrom } from './sourceTree.js';
 
 const styles = readSource('src/styles.css');
@@ -27,8 +28,7 @@ function build(theme: string | null | undefined, extra: Partial<{ styles: string
 		styles: extra.styles ?? '',
 		articleHtml: extra.articleHtml ?? '<p>body</p>',
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
-		fontFamily: 'sans-serif',
-		fontSize: 16,
+		appearance: plainAppearance,
 	});
 }
 

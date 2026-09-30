@@ -67,12 +67,14 @@ test('a blank preference is the fallback alone, not a leading comma', () => {
 	assert.equal(fontFamilyValue('  Lato  ', 'sans-serif'), '"Lato", sans-serif');
 });
 
-test('both places a chosen family reaches CSS go through the one helper', () => {
-	assert.match(viewerSource, /previewFontFamily = \$derived\(fontFamilyValue\(settings\.previewFont, 'sans-serif'\)\)/);
+test('every place a chosen family reaches CSS goes through the one helper', () => {
+	assert.match(viewerSource, /fontFamily: fontFamilyValue\(settings\.previewFont, 'sans-serif'\),/);
+	assert.match(viewerSource, /codeFontFamily: fontFamilyValue\(settings\.codeFont, 'monospace'\),/);
 	assert.match(editorOptionsSource, /fontFamily: fontFamilyValue\(settings\.editorFont, "monospace"\),/);
 	// The absence claim is the point of this one: a second bare interpolation of
 	// a font preference is the defect returning, and it cannot be observed by
 	// running the helper that does exist.
 	assert.doesNotMatch(viewerSource, /font-family: \{settings\./);
+	assert.doesNotMatch(viewerSource, /--code-font: \{settings\./);
 	assert.doesNotMatch(editorOptionsSource, /fontFamily: settings\./);
 });
