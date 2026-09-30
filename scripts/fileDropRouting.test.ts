@@ -24,6 +24,7 @@ import { readSource, sliceBetween } from './sourceTree.js';
 
 import {
 	DROPPABLE_IMAGE_EXTENSIONS,
+	dropZoneLabel,
 	routeDroppedFile,
 	type DropAction,
 	type DropPane,
@@ -76,6 +77,15 @@ test('the image list and the document list cannot overlap', () => {
 	for (const extension of DROPPABLE_IMAGE_EXTENSIONS) {
 		assert.equal(routeDroppedFile(`/notes/figure.${extension}`, 'editor'), 'insert', extension);
 	}
+});
+
+test('a drop zone names what the drop will do there (#928)', () => {
+	// The editor zone said "Drop to Embed" for every file, and a document
+	// dropped on it opened.
+	assert.equal(dropZoneLabel(['/notes/spec.md'], 'editor'), 'open');
+	assert.equal(dropZoneLabel(['/notes/img/figure.png'], 'editor'), 'embed');
+	assert.equal(dropZoneLabel(['/notes/spec.md', '/notes/img/figure.png'], 'editor'), 'embed');
+	assert.equal(dropZoneLabel(['/notes/img/figure.png'], 'preview'), 'open');
 });
 
 test('the viewer routes both panes through it, and acts on all three answers', () => {

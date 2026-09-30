@@ -46,7 +46,7 @@ import {
 	toggleFoldFromClick,
 	type FoldHost,
 } from './utils/foldState.js';
-import { routeDroppedFile, type DropPane } from './utils/fileDrop.js';
+import { dropZoneLabel, routeDroppedFile, type DropPane } from './utils/fileDrop.js';
 import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
@@ -241,6 +241,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	let isDragging = $state(false);
 	let dragTarget = $state<'editor' | 'preview' | null>(null);
+	let dragPaths = $state<string[]>([]);
 
 	/**
 	 * The reference for a heading of THIS document, in the spelling this
@@ -3860,6 +3861,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					if (event.payload.type === 'enter' || event.payload.type === 'over') {
 						const { x, y } = event.payload.position;
 						isDragging = true;
+						// Only `enter` carries the paths; `over` repeats the position.
+						if (event.payload.type === 'enter') dragPaths = event.payload.paths;
 						
 						if (editorPaneEl) {
 							const rect = editorPaneEl.getBoundingClientRect();
@@ -4502,7 +4505,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				{#if hasEditorPane}
 					<div class="drag-zone editor-zone" class:active={dragTarget === 'editor'}>
 								<div class="drag-message">
-									<span>{t('dragAndDrop.embed', settings.language)}</span>
+									<span>{dropZoneLabel(dragPaths, 'editor') === 'embed' ? t('dragAndDrop.embed', settings.language) : t('dragAndDrop.open', settings.language)}</span>
 								</div>
 							</div>
 				{/if}

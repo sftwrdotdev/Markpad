@@ -47,3 +47,12 @@ export function routeDroppedFile(path: string, pane: DropPane): DropAction {
 
 	return 'unsupported';
 }
+
+/**
+ * Which label a pane's drop zone shows while `paths` hover over the window.
+ * Asked of the same routing the drop itself uses, so the zone cannot promise
+ * an embed for a document the drop will open (#928).
+ */
+export function dropZoneLabel(paths: readonly string[], pane: DropPane): 'embed' | 'open' {
+	return paths.some((path) => routeDroppedFile(path, pane) === 'insert') ? 'embed' : 'open';
+}
