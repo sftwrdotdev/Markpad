@@ -820,9 +820,12 @@ pub fn get_os_type() -> String {
 /// per-command `Clipboard::new()`s below reuse arboard's global and their drop
 /// becomes a no-op.
 ///
-/// Nowhere else needs this. Wayland goes through wl-clipboard-rs, which forks
-/// a process that outlives us, and macOS and Windows write into a store the
-/// system owns.
+/// Nowhere else needs this. On Wayland arboard uses the data-control protocol
+/// (wl-clipboard-rs) when `WAYLAND_DISPLAY` is set and the compositor offers
+/// it. Each copy is then served by a detached thread that no `Clipboard` owns,
+/// so the instance forgotten here is an empty struct. A compositor without the
+/// protocol falls back to X11 through XWayland, where the above applies. macOS
+/// and Windows write into a store the system owns.
 #[cfg(all(unix, not(target_os = "macos")))]
 fn retain_clipboard_ownership() {
     use std::sync::atomic::{AtomicBool, Ordering};

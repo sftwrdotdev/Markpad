@@ -49,7 +49,7 @@ zip = { version = "2.1", default-features = false, features = ["deflate", "time"
 opener = { version = "0.7", features = ["reveal"] }
 font-kit = "0.14"
 base64 = "0.22"
-arboard = "3"
+arboard = { version = "3", features = ["wayland-data-control"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 chardetng = "1"
 encoding_rs = "0.8"
