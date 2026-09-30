@@ -718,7 +718,9 @@ body {
 	padding: 6px 13px;
 	border: 1px solid var(--color-border-default);
 	white-space: normal;
-	overflow-wrap: anywhere;
+	/* Not `anywhere`: that lets a column shrink to one character, so a long
+	   neighbour squeezes a short column into breaking mid-word (#927). */
+	overflow-wrap: break-word;
 	word-break: normal;
 	font-variant-numeric: tabular-nums;
 }
