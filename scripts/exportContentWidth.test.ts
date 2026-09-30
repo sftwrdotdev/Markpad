@@ -131,6 +131,8 @@ function exportedMaxWidth(contentWidth: number | null, styles = ''): string {
 		styles,
 		articleHtml: '<p>body</p>',
 		contentWidth,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 	const declared = declarationsFor(exportedStylesheet(document_), 'max-width', 'screen');
 	assert.ok(declared.length >= 1, 'the export must cap .markdown-body');
@@ -152,6 +154,8 @@ test('the exported file is capped at the width the preview was reading at', () =
 		styles: '',
 		articleHtml: '<p>body</p>',
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 	assert.doesNotMatch(document_, /max-width:\s*900px/);
 });
@@ -194,7 +198,7 @@ test('a full-width export is uncapped, still padded and still centred', () => {
 	// full-width means), and the padding is what still holds the text off the
 	// window edge.
 	const css = exportedStylesheet(
-		buildExportDocument({ theme: 'light', title: 'Notes', styles: '', articleHtml: '<p>body</p>', contentWidth: null }),
+		buildExportDocument({ theme: 'light', title: 'Notes', styles: '', articleHtml: '<p>body</p>', contentWidth: null, fontFamily: 'sans-serif', fontSize: 16 }),
 	);
 	assert.deepEqual(declarationsFor(css, 'margin', 'screen'), [{ value: '0 auto', important: false }]);
 	assert.deepEqual(declarationsFor(css, 'padding', 'screen'), [{ value: '40px', important: true }]);
@@ -228,6 +232,8 @@ test('a corrupted stored width is clamped instead of reaching the stylesheet raw
 			styles: '',
 			articleHtml: '<p>body</p>',
 			contentWidth,
+			fontFamily: 'sans-serif',
+			fontSize: 16,
 		});
 		assert.doesNotMatch(document_, /body \{ display: none/);
 		assert.equal(parseRules(exportedStylesheet(document_)).filter((r) => r.selectors.includes('body')).length, 1);
@@ -269,6 +275,8 @@ function exportDocumentWithAppStyles(contentWidth: number | null): string {
 		styles: appStyles,
 		articleHtml: '<p>body</p>',
 		contentWidth,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 }
 
@@ -325,6 +333,8 @@ async function exportedFile(contentWidth: number | null): Promise<string> {
 			mermaid: { initialize() {}, async render() { return { svg: '' }; } },
 		} as any,
 		contentWidth,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 
 	assert.equal(result?.path, '/tmp/notes.html', 'the export must have been written');

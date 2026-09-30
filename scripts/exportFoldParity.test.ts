@@ -235,6 +235,8 @@ const exportedStyles = (() => {
 		styles,
 		articleHtml: '',
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 	const match = document_.match(/<style>([\s\S]*)<\/style>/);
 	assert.ok(match, 'the export must carry a stylesheet');

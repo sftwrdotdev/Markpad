@@ -400,6 +400,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		hasEditorPane && settings.showEditorToolbar ? editorToolbarHeight : 0,
 	);
 	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
+	let previewFontFamily = $derived(fontFamilyValue(settings.previewFont, 'sans-serif'));
 	let isOverhanging = $derived(
 		isTocOverhanging({
 			isEditing,
@@ -2756,6 +2757,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// so the exported file is read at the measure it was written at
 			// instead of the 900px the exporter used to hard-code (#467).
 			contentWidth: previewContentWidth,
+			fontFamily: previewFontFamily,
+			fontSize: settings.previewFontSize,
 			frontMatterTitle: t('frontMatter.properties', settings.language),
 		});
 		if (result?.missingImages) {
@@ -2805,6 +2808,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				mermaidTheme: currentMermaidTheme(),
 				libraries: richLibraries,
 				contentWidth: previewContentWidth,
+				fontFamily: previewFontFamily,
+				fontSize: settings.previewFontSize,
 				frontMatterTitle: t('frontMatter.properties', settings.language),
 				osType: settings.osType,
 				printRoot: printRootEl,
@@ -4185,7 +4190,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										if(e.key === 'Enter' || e.key === ' ') handleLinkClick(e as unknown as MouseEvent);
 									}}
 									tabindex="-1"
-									style="outline: none; font-family: {fontFamilyValue(settings.previewFont, 'sans-serif')}; font-size: {settings.previewFontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
+									style="outline: none; font-family: {previewFontFamily}; font-size: {settings.previewFontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
 									{#if frontMatterInfo.exists}
 										<details
 											class="frontmatter-panel"

@@ -27,6 +27,8 @@ function build(theme: string | null | undefined, extra: Partial<{ styles: string
 		styles: extra.styles ?? '',
 		articleHtml: extra.articleHtml ?? '<p>body</p>',
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 }
 

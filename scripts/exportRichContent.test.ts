@@ -189,6 +189,8 @@ async function runExport(
 		// The width the preview was reading at, which the export follows (#467).
 		// Irrelevant to what this file asserts; `exportContentWidth.test.ts` owns it.
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
+		fontFamily: 'sans-serif',
+		fontSize: 16,
 	});
 
 	return {
