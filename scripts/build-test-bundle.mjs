@@ -18,17 +18,8 @@ const config = JSON.stringify({
 	productName: `Markpad ${version} Test`,
 	bundle: { targets: ['app'], createUpdaterArtifacts: false },
 });
-const rustRoot = resolve(root, '.local-rust');
-const env = {
-	...process.env,
-	CARGO_HOME: resolve(rustRoot, 'cargo'),
-	RUSTUP_HOME: resolve(rustRoot, 'rustup'),
-	PATH: `${resolve(rustRoot, 'rustup/toolchains/stable-aarch64-apple-darwin/bin')}:${process.env.PATH}`,
-};
-
 execFileSync('npm', ['run', 'tauri', '--', 'build', '--bundles', 'app', '--config', config], {
 	cwd: root,
-	env,
 	stdio: 'inherit',
 });
 
