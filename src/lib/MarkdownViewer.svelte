@@ -1202,18 +1202,26 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function setFrontMatterCollapsed(collapsed: boolean) {
-		frontMatterCollapsedByKey = {
-			...frontMatterCollapsedByKey,
-			[frontMatterPanelKey]: collapsed,
-		};
+		frontMatterCollapsedByKey[frontMatterPanelKey] = collapsed;
 	}
 
 	function clearFrontMatterEditError(field: FrontMatterField) {
-		const key = frontMatterFieldStateKey(field);
-		if (!frontMatterEditErrors[key]) return;
-		const next = { ...frontMatterEditErrors };
-		delete next[key];
-		frontMatterEditErrors = next;
+		delete frontMatterEditErrors[frontMatterFieldStateKey(field)];
+	}
+
+	// `nextValue` runs inside the try so a parse error lands on the field.
+	async function applyFrontMatter(tab: Tab, field: FrontMatterField, nextValue: () => unknown) {
+		try {
+			const nextRaw = updateFrontMatterField(tab.rawContent, field.key, nextValue());
+			tabManager.updateTabRawContent(tab.id, nextRaw);
+			clearFrontMatterEditError(field);
+			await renderTabPreviewFromRaw(tab);
+		} catch (error) {
+			frontMatterEditErrors = {
+				...frontMatterEditErrors,
+				[frontMatterFieldStateKey(field)]: String(error),
+			};
+		}
 	}
 
 	async function handleFrontMatterEdit(field: FrontMatterField, value: string) {
@@ -1226,19 +1234,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			addToast(t('toast.partialDocument', settings.language), 'error');
 			return;
 		}
-
-		try {
-			const nextValue = parseFrontMatterEditableValue(field, value);
-			const nextRaw = updateFrontMatterField(tab.rawContent, field.key, nextValue);
-			tabManager.updateTabRawContent(tab.id, nextRaw);
-			clearFrontMatterEditError(field);
-			await renderTabPreviewFromRaw(tab);
-		} catch (error) {
-			frontMatterEditErrors = {
-				...frontMatterEditErrors,
-				[frontMatterFieldStateKey(field)]: String(error),
-			};
-		}
+		await applyFrontMatter(tab, field, () => parseFrontMatterEditableValue(field, value));
 	}
 
 	function getFrontMatterTagDraft(field: FrontMatterField) {
@@ -1246,20 +1242,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function setFrontMatterTagDraft(field: FrontMatterField, value: string) {
-		frontMatterTagDrafts = {
-			...frontMatterTagDrafts,
-			[frontMatterFieldStateKey(field)]: value,
-		};
+		frontMatterTagDrafts[frontMatterFieldStateKey(field)] = value;
 		clearFrontMatterEditError(field);
 	}
 
 	function clearFrontMatterTagDraft(field: FrontMatterField) {
-		const key = frontMatterFieldStateKey(field);
-		if (!frontMatterTagDrafts[key]) return;
-
-		const next = { ...frontMatterTagDrafts };
-		delete next[key];
-		frontMatterTagDrafts = next;
+		delete frontMatterTagDrafts[frontMatterFieldStateKey(field)];
 	}
 
 	function getFrontMatterTagEditIndex(field: FrontMatterField) {
@@ -1271,34 +1259,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function setFrontMatterTagEditDraft(field: FrontMatterField, value: string) {
-		frontMatterTagEditDrafts = {
-			...frontMatterTagEditDrafts,
-			[frontMatterFieldStateKey(field)]: value,
-		};
+		frontMatterTagEditDrafts[frontMatterFieldStateKey(field)] = value;
 		clearFrontMatterEditError(field);
 	}
 
 	function startFrontMatterTagEdit(field: FrontMatterField, index: number, value: string) {
 		const key = frontMatterFieldStateKey(field);
-		frontMatterTagEditIndexes = {
-			...frontMatterTagEditIndexes,
-			[key]: index,
-		};
-		frontMatterTagEditDrafts = {
-			...frontMatterTagEditDrafts,
-			[key]: value,
-		};
+		frontMatterTagEditIndexes[key] = index;
+		frontMatterTagEditDrafts[key] = value;
 		clearFrontMatterEditError(field);
 	}
 
 	function clearFrontMatterTagEdit(field: FrontMatterField) {
 		const key = frontMatterFieldStateKey(field);
-		const nextIndexes = { ...frontMatterTagEditIndexes };
-		const nextDrafts = { ...frontMatterTagEditDrafts };
-		delete nextIndexes[key];
-		delete nextDrafts[key];
-		frontMatterTagEditIndexes = nextIndexes;
-		frontMatterTagEditDrafts = nextDrafts;
+		delete frontMatterTagEditIndexes[key];
+		delete frontMatterTagEditDrafts[key];
 	}
 
 	async function handleFrontMatterListChange(field: FrontMatterField, nextItems: string[]) {
@@ -1309,18 +1284,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			addToast(t('toast.partialDocument', settings.language), 'error');
 			return;
 		}
-
-		try {
-			const nextRaw = updateFrontMatterField(tab.rawContent, field.key, nextItems);
-			tabManager.updateTabRawContent(tab.id, nextRaw);
-			clearFrontMatterEditError(field);
-			await renderTabPreviewFromRaw(tab);
-		} catch (error) {
-			frontMatterEditErrors = {
-				...frontMatterEditErrors,
-				[frontMatterFieldStateKey(field)]: String(error),
-			};
-		}
+		await applyFrontMatter(tab, field, () => nextItems);
 	}
 
 	async function commitFrontMatterTagAdd(field: FrontMatterField) {
@@ -2533,15 +2497,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	);
 
 	function noteExternalChangeConflict(tabId: string) {
-		if (externalChangeConflicts[tabId]) return;
-		externalChangeConflicts = { ...externalChangeConflicts, [tabId]: true };
+		externalChangeConflicts[tabId] = true;
 	}
 
 	function clearExternalChangeConflict(tabId: string) {
-		if (!externalChangeConflicts[tabId]) return;
-		const next = { ...externalChangeConflicts };
-		delete next[tabId];
-		externalChangeConflicts = next;
+		delete externalChangeConflicts[tabId];
 	}
 
 	/** "Reload": the user chose the disk version over their own edits. */
