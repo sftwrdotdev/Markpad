@@ -775,22 +775,11 @@ pub fn self_update_supported(app: AppHandle) -> bool {
 
 #[tauri::command]
 pub fn get_os_type() -> String {
-    #[cfg(target_os = "macos")]
-    {
-        "macos".to_string()
+    match std::env::consts::OS {
+        os @ ("macos" | "windows" | "linux") => os,
+        _ => "unknown",
     }
-    #[cfg(target_os = "windows")]
-    {
-        "windows".to_string()
-    }
-    #[cfg(target_os = "linux")]
-    {
-        "linux".to_string()
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        "unknown".to_string()
-    }
+    .to_string()
 }
 
 /// Keep one `arboard::Clipboard` alive for the rest of the process, so that
