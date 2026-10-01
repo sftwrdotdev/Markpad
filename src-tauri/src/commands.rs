@@ -21,6 +21,15 @@ const MAX_THEME_JSON_BYTES: u64 = 2 * 1024 * 1024;
 const VSIX_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 const VSIX_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Runs `f` on the blocking pool. A panicked task reports its `JoinError` text.
+async fn blocking<T: Send + 'static>(
+    f: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()))
+}
+
 /// Reads a VSIX entry as text under a hard byte ceiling.
 ///
 /// The `size()` checks elsewhere use the size the archive *declares* in its
@@ -69,7 +78,7 @@ pub async fn open_markdown_preview(
     path: String,
     max_bytes: usize,
 ) -> Result<(String, String, bool, bool, String), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         crate::asset_protocol::trust_document_host(&path);
         let preview = build_markdown_preview(Path::new(&path), max_bytes)?;
         Ok((
@@ -81,7 +90,6 @@ pub async fn open_markdown_preview(
         ))
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// `front_matter_lines` is how many leading lines are front matter, which the
@@ -91,9 +99,7 @@ pub async fn list_heading_anchors(
     markdown: String,
     front_matter_lines: usize,
 ) -> Result<Vec<HeadingAnchor>, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(heading_anchors(&markdown, front_matter_lines)))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || Ok(heading_anchors(&markdown, front_matter_lines))).await
 }
 
 /// Off the main thread like `markdown_semantic_spans`: Monaco asks on every edit.
@@ -102,11 +108,7 @@ pub async fn list_fold_ranges(
     markdown: String,
     front_matter_lines: usize,
 ) -> Result<Vec<FoldRange>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        Ok(block_fold_ranges(&markdown, front_matter_lines))
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || Ok(block_fold_ranges(&markdown, front_matter_lines))).await
 }
 
 /// The ranges the editor should colour, from the same parse the preview uses.
@@ -119,21 +121,18 @@ pub async fn markdown_semantic_spans(
     content: String,
     front_matter_lines: usize,
 ) -> Result<Vec<crate::semantic::SemanticSpan>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         Ok(crate::semantic::semantic_spans(
             &content,
             front_matter_lines,
         ))
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 #[tauri::command]
 pub async fn render_markdown(content: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || Ok(convert_markdown(&content)))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || Ok(convert_markdown(&content))).await
 }
 
 /// Reads a file, with the fidelity of the decode and the encoding it was
@@ -146,14 +145,13 @@ pub async fn render_markdown(content: String) -> Result<String, String> {
 /// pool, not on the main thread that every window shares.
 #[tauri::command]
 pub async fn read_file_content_checked(path: String) -> Result<(String, bool, String), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         crate::asset_protocol::trust_document_host(&path);
         read_to_string_lossy(&path)
             .map(|decoded| (decoded.content, decoded.lossy, decoded.encoding))
             .map_err(|e| e.to_string())
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 fn mime_type_for_export_path(path: &Path) -> Option<&'static str> {
@@ -191,7 +189,7 @@ fn file_bytes_to_data_url(mime_type: &str, bytes: &[u8]) -> String {
 
 #[tauri::command]
 pub async fn read_file_as_data_url(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         // Only image types: the HTML export is the only caller, and inlining
         // whatever an `<img src>` names would embed `![](../../.ssh/id_rsa)`
         // in a file meant to be shared.
@@ -201,7 +199,6 @@ pub async fn read_file_as_data_url(path: String) -> Result<String, String> {
         Ok(file_bytes_to_data_url(mime_type, &bytes))
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// Writes `content` to `path` as `encoding` — the label the file was decoded
@@ -225,12 +222,11 @@ pub async fn save_file_content(
     content: String,
     encoding: String,
 ) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         let bytes = encode_text(&content, &encoding)?;
         atomic_write(Path::new(&path), &bytes).map_err(|e| e.to_string())
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// Resolve `path` to the identity the filesystem gives it — see
@@ -246,13 +242,12 @@ pub async fn save_file_content(
 /// a network volume that is slow or unreachable.
 #[tauri::command]
 pub async fn canonicalize_path(path: String) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         canonical_identity(Path::new(&path))
             .map(|resolved| resolved.to_string_lossy().into_owned())
             .map_err(|e| e.to_string())
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 #[tauri::command]
@@ -347,9 +342,7 @@ pub async fn export_pdf_windows(window: tauri::WebviewWindow, path: String) -> R
 /// every window until it returns.
 #[tauri::command]
 pub async fn open_file_folder(path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || opener::reveal(path).map_err(|e| e.to_string()))
-        .await
-        .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || opener::reveal(path).map_err(|e| e.to_string())).await
 }
 
 /// Extensions whose default handler runs the file instead of showing it,
@@ -441,11 +434,7 @@ pub async fn is_launchable_path(path: String) -> bool {
 /// operation that looks instant on a local disk.
 #[tauri::command]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        rename_file_blocking(Path::new(&old_path), Path::new(&new_path))
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || rename_file_blocking(Path::new(&old_path), Path::new(&new_path))).await
 }
 
 /// `fs::rename` replaces an existing target without asking, so a new name
@@ -483,12 +472,11 @@ pub async fn watch_file(
     path: String,
 ) -> Result<(), String> {
     let state_handle = handle.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         let state = state_handle.state::<WatcherState>();
         window_runtime::watch_file(window, handle, state, path)
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 /// Records what colour the NEXT window should be painted before it has a webview.
@@ -957,11 +945,8 @@ pub async fn save_image(
     base64_data: String,
     image_directory: String,
 ) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        save_image_blocking(&parent_dir, &filename, &base64_data, &image_directory)
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || save_image_blocking(&parent_dir, &filename, &base64_data, &image_directory))
+        .await
 }
 
 fn save_image_blocking(
@@ -1004,11 +989,7 @@ pub async fn copy_file_to_img(
     parent_dir: String,
     image_directory: String,
 ) -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        copy_file_to_img_blocking(&src_path, &parent_dir, &image_directory)
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || copy_file_to_img_blocking(&src_path, &parent_dir, &image_directory)).await
 }
 
 /// How many conflict names to try before giving up. Chromium's download path
@@ -1104,11 +1085,7 @@ fn copy_file_to_img_blocking(
 /// `copy_file_to_img` already runs on the blocking pool.
 #[tauri::command]
 pub async fn copy_file(src: String, dest: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        copy_file_blocking(Path::new(&src), Path::new(&dest))
-    })
-    .await
-    .unwrap_or_else(|e| Err(e.to_string()))
+    blocking(move || copy_file_blocking(Path::new(&src), Path::new(&dest))).await
 }
 
 /// `fs::copy` truncates `dest` before reading `src`, so copying a file onto
@@ -1122,7 +1099,7 @@ fn copy_file_blocking(src: &Path, dest: &Path) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn list_directory_contents(path: String) -> Result<Vec<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
+    blocking(move || {
         let dir = Path::new(&path);
         if !dir.exists() || !dir.is_dir() {
             return Err("Not a directory".to_string());
@@ -1142,7 +1119,6 @@ pub async fn list_directory_contents(path: String) -> Result<Vec<String>, String
         Ok(entries)
     })
     .await
-    .unwrap_or_else(|e| Err(e.to_string()))
 }
 
 #[cfg(test)]
