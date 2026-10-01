@@ -66,6 +66,14 @@ export function readSource(path: string | URL): string {
 }
 
 /**
+ * The translation dictionary as text: English in `i18n.ts`, every other
+ * language in its own file under `src/lib/locales/`.
+ */
+export function readDictionarySource(): string {
+	return [readSource('src/lib/utils/i18n.ts'), ...readSourceFiles('src/lib/locales').map((file) => file.text)].join('\n');
+}
+
+/**
  * `source` from the first occurrence of `start` onwards.
  *
  * The assertion is the whole point. `source.slice(source.indexOf(marker))` with

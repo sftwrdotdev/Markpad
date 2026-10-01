@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import { functionSource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, readDictionarySource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 /*
  * #372: a document in a legacy encoding (GBK, Big5, Shift-JIS, CP-1252 …) is
@@ -211,7 +211,7 @@ test('the status bar names the encoding the document was decoded from', () => {
 
 test('no locale still translates a hardcoded UTF-8 label', () => {
 	// A dead key reads like a supported feature to whoever finds it next.
-	assert.doesNotMatch(readSource('src/lib/utils/i18n.ts'), /utf8:/);
+	assert.doesNotMatch(readDictionarySource(), /utf8:/);
 });
 
 // ------------------------------------------- saying why a save was refused
@@ -237,7 +237,7 @@ test('the unmappable-character refusal crosses as a code, not as English prose',
 });
 
 test('every locale can say which encoding refused the save', () => {
-	const i18n = readSource('src/lib/utils/i18n.ts');
+	const i18n = readDictionarySource();
 	const locales = i18n.match(/lossySaveBlocked:/g) ?? [];
 	const translated = i18n.match(/encodingUnmappable:/g) ?? [];
 

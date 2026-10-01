@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getSupportedLanguages, t, translations, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, t, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
+import { translations } from './allTranslations.js';
 import { readSource } from './sourceTree.js';
 
 // WHAT THIS FILE COVERS, AND WHAT IT DOES NOT

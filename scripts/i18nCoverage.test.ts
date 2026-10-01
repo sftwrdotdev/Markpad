@@ -6,10 +6,10 @@ import { parse } from 'svelte/compiler';
 import {
 	getSupportedLanguages,
 	t,
-	translations,
 	type LanguageCode,
 	type Translation,
 } from '../src/lib/utils/i18n.js';
+import { translations } from './allTranslations.js';
 import { readSource, walkSourceFiles } from './sourceTree.js';
 
 // WHAT THIS FILE COVERS, AND WHY IT EXISTS
@@ -40,6 +40,7 @@ import { readSource, walkSourceFiles } from './sourceTree.js';
 
 const SOURCE_ROOT = 'src';
 const DICTIONARY = 'src/lib/utils/i18n.ts';
+const LOCALES = 'src/lib/locales/';
 
 const languages = getSupportedLanguages().map((l) => l.code) as LanguageCode[];
 
@@ -142,7 +143,7 @@ const indirectCalls = new Set<string>();
 const toastMessages: { arg: string; file: string }[] = [];
 
 for (const file of walkSourceFiles(SOURCE_ROOT)) {
-	if (file === DICTIONARY) continue;
+	if (file === DICTIONARY || file.startsWith(LOCALES)) continue;
 	const src = stripCommentLines(readSource(file));
 
 	// `t(` but not `format(`, `.at(`, `assert(` …

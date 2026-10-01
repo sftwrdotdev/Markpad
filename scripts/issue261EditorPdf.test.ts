@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { functionSource, offsetOf, readDictionarySource, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
@@ -64,7 +64,7 @@ test('every label the editor menu asks for exists in every language', () => {
 	// A missing key does not throw — `t()` falls back to English and then to
 	// the key itself, so a forgotten locale ships the string
 	// "menu.changeAllOccurrences" to the user.
-	const i18n = readSource('src/lib/utils/i18n.ts');
+	const i18n = readDictionarySource();
 	const locales = (i18n.match(/\n\s+menu: \{/g) ?? []).length;
 	assert.ok(locales >= 6, `expected at least six locales, found ${locales}`);
 

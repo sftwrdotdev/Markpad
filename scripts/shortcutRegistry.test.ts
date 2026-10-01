@@ -5,7 +5,8 @@ import ts from 'typescript';
 
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
 import { isHomePath } from '../src/lib/utils/homeTab.js';
-import { getSupportedLanguages, t, translations, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, t, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
+import { translations } from './allTranslations.js';
 import {
 	SHORTCUTS,
 	SHORTCUT_GROUPS,

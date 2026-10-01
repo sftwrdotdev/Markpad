@@ -4,7 +4,7 @@ import test from 'node:test';
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload } from '../src/lib/utils/tabTransfer.js';
-import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
+import { functionSource, offsetOf, readDictionarySource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 // Every read path decodes leniently (#371): a file it cannot read opens with
 // U+FFFD substituted for the bytes it could not, instead of failing. U+FFFD is
@@ -186,7 +186,7 @@ test('the refusal tells the user what to do and is not repeated per keystroke', 
 	const body = guard();
 	assert.match(body, /toast\.lossySaveBlocked/);
 	assert.match(body, /lossySaveWarnedTabs\.has\(tab\.id\)/);
-	const i18n = readSource('src/lib/utils/i18n.ts');
+	const i18n = readDictionarySource();
 	assert.match(i18n, /lossySaveBlocked: 'Not saved: parts of this file could not be read in any encoding/);
 	assert.match(i18n, /use "Save As" to write a copy/);
 });

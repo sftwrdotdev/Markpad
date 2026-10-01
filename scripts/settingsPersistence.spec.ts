@@ -6,7 +6,8 @@ import { onTestFinished, test } from 'vitest';
 
 import { callbackBodies, readSource, sliceBetween } from './sourceTree.js';
 // Plain TypeScript, no runes: safe to import statically, unlike the store below.
-import { getSupportedLanguages, translations } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages } from '../src/lib/utils/i18n.js';
+import { translations } from './allTranslations.js';
 
 /*
  * `settings.svelte.ts` is a runes module, and this file runs under vitest so

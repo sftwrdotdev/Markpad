@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readRustBackend, readSource, sliceBetween } from './sourceTree.js';
+import { readDictionarySource, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 
 const store = readSource('src/lib/stores/update.svelte.ts');
 const dialog = readSource('src/lib/components/UpdateDialog.svelte');
 const rust = readRustBackend();
-const i18n = readSource('src/lib/utils/i18n.ts');
+const i18n = readDictionarySource();
 
 // A `.deb`, `.rpm` or snap install cannot replace its own binary, but it used
 // to be offered an update anyway: the check succeeds, because latest.json
