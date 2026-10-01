@@ -879,7 +879,6 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     let image = clipboard.get_image().map_err(|e| e.to_string())?;
 
-    // encode as png
     let mut png_data = Vec::new();
     {
         let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
@@ -888,10 +887,8 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
         #[cfg(target_os = "macos")]
         {
             if macos_image_scaling {
-                // Use image crate for high-quality scaling
                 use image::{DynamicImage, ImageBuffer, Rgba};
 
-                // Convert arboard Image to ImageBuffer
                 let mut img_buffer = ImageBuffer::new(image.width as u32, image.height as u32);
                 for (x, y, pixel) in img_buffer.enumerate_pixels_mut() {
                     let idx = (y * image.width as u32 + x) as usize * 4;
@@ -905,17 +902,14 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
                     }
                 }
 
-                // Create DynamicImage
                 let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
 
-                // Resize with high-quality Lanczos3 filter
                 let resized = dynamic_image.resize(
                     (image.width / 2) as u32,
                     (image.height / 2) as u32,
                     image::imageops::FilterType::Lanczos3,
                 );
 
-                // Write the resized image
                 let resized_rgba = resized.to_rgba8();
                 encoder
                     .write_image(

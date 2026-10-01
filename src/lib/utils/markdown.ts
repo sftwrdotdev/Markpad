@@ -844,7 +844,6 @@ export function processMarkdownHtml(
 		}
 	};
 
-	// parse callouts
 	for (const bq of Array.from(doc.querySelectorAll("blockquote"))) {
 		// Only the text the quote's first paragraph opens with is a marker, as
 		// in Obsidian and GitHub: `[!note]` in code or a nested quote is text.

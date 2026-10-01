@@ -308,7 +308,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// write goes through `foldHost.setFolds`, which needs an active tab.
 	const NO_FOLD_OVERRIDES = new Set<string>();
 
-	// derived from tab manager
 	let activeTab = $derived(tabManager.activeTab);
 	// Fold state belongs to the document, so it lives on the tab (see
 	// `Tab.foldOverrides`). Reading it through a derived is what makes a tab
@@ -329,7 +328,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let hasPreviewPane = $derived(!isEditing || isSplit);
 	let frontMatterInfo = $derived(parseFrontMatter(rawContent));
 
-	// derived from tab manager
 	let currentFile = $derived(tabManager.activeTab?.path ?? '');
 	let frontMatterPanelKey = $derived(currentFile || tabManager.activeTabId || 'untitled');
 	let frontMatterCollapsedByKey = $state<Record<string, boolean>>({});
@@ -519,7 +517,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	});
 
-	// ui state
 	let tooltip = $state({ show: false, text: '', shortcut: '', html: '', isFootnote: false, x: 0, y: 0, align: 'top' as 'top' | 'right' | 'left' | 'below' });
 	let modalState = $state<{
 		show: boolean;
@@ -1974,7 +1971,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 
 		if (tabManager.activeTabId) {
-			// Update raw scroll pos
 			tabManager.updateTabScroll(tabManager.activeTabId, target.scrollTop);
 
 			// Percentage fallback
@@ -3066,7 +3062,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					]
 				: [];
 
-		// detect heading for copy ref
 		const heading = (e.target as HTMLElement).closest('h1, h2, h3, h4, h5, h6');
 		let copyRefItem: any[] = [];
 		if (heading) {

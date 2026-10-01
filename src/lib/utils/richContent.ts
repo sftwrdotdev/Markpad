@@ -433,7 +433,6 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		}
 	}
 
-	// KaTeX math rendering
 	if (katex) {
 		const mathElements = roots.flatMap((root) => selfAndDescendants(root, '[data-math]'));
 		for (const el of mathElements) {

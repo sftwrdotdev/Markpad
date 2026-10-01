@@ -68,12 +68,10 @@
 				onconfirm();
 			}
 		}
-		// Y for Yes/Confirm
 		if (!typingInInput && e.key.toLowerCase() === 'y' && !e.ctrlKey && !e.altKey && !e.metaKey) {
 			e.preventDefault();
 			onconfirm();
 		}
-		// N for No/Cancel
 		if (!typingInInput && e.key.toLowerCase() === 'n' && !e.ctrlKey && !e.altKey && !e.metaKey) {
 			e.preventDefault();
 			oncancel();
