@@ -31,6 +31,7 @@ concurrency:
 jobs:
   create-release:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       release_id: ${{ steps.create_release.outputs.id }}
       upload_url: ${{ steps.create_release.outputs.upload_url }}
@@ -224,6 +225,7 @@ jobs:
             rust_target: 'aarch64-apple-darwin,x86_64-apple-darwin'
 
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v7
@@ -538,6 +540,7 @@ jobs:
     # `ubuntu-latest` moving is a thing that happens to us with a commit rather
     # than without one.
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # The updater feed must describe a complete release. Do not publish an
     # update if any platform build failed or was cancelled.
     if: ${{ always() && needs.create-release.result == 'success' && needs.build.result == 'success' }}
