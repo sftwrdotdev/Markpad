@@ -1116,8 +1116,8 @@
 			{/each}
 		{/snippet}
 
-		{#if isCollapsed}
-			{#if configuredActionIds.visibleIds.length > 0}
+		{#snippet actionMenu(ids: string[])}
+			{#if ids.length > 0}
 				{@render kebabButton()}
 				{#if kebabMenuOpen}
 					<div
@@ -1130,32 +1130,20 @@
 						onkeydown={(e) => {
 							if (e.key === 'Escape') kebabMenuOpen = false;
 						}}>
-						{@render actionItems(configuredActionIds.visibleIds)}
+						{@render actionItems(ids)}
 					</div>
 				{/if}
 			{/if}
+		{/snippet}
+
+		{#if isCollapsed}
+			{@render actionMenu(configuredActionIds.visibleIds)}
 		{:else}
 			<div class="title-actions inline" data-tauri-drag-region>
 				{@render actionItems(configuredActionIds.barIds)}
 			</div>
 
-			{#if configuredActionIds.menuIds.length > 0}
-				{@render kebabButton()}
-				{#if kebabMenuOpen}
-					<div
-						class="title-actions show-dropdown"
-						data-tauri-drag-region
-						role="menu"
-						tabindex="-1"
-						transition:fly={{ y: 5, duration: 150 }}
-						onclick={(e) => e.stopPropagation()}
-						onkeydown={(e) => {
-							if (e.key === 'Escape') kebabMenuOpen = false;
-						}}>
-						{@render actionItems(configuredActionIds.menuIds)}
-					</div>
-				{/if}
-			{/if}
+			{@render actionMenu(configuredActionIds.menuIds)}
 		{/if}
 	</div>
 
