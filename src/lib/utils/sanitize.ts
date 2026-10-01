@@ -60,3 +60,15 @@ export const MARKDOWN_SANITIZE_CONFIG = {
 export function sanitizeMarkdownHtml(html: string): string {
 	return DOMPurify.sanitize(html, MARKDOWN_SANITIZE_CONFIG);
 }
+
+/**
+ * The same policy, answering with the filtered nodes instead of a string.
+ *
+ * For the preview, where they go straight into the article: serializing
+ * DOMPurify's tree only for `blockPatch.ts` to parse it again cost two passes
+ * over the whole document per render, and a round trip after the filter is
+ * the one place a parser could still rewrite what the filter approved.
+ */
+export function sanitizeMarkdownFragment(html: string): DocumentFragment {
+	return DOMPurify.sanitize(html, { ...MARKDOWN_SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true });
+}

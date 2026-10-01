@@ -43,7 +43,7 @@ const richContentSource = readSource('src/lib/utils/richContent.ts');
  * sanitizer's output.
  *
  * The chain is what matters — something is declared from
- * `sanitizeMarkdownHtml(...)` and *that* something is what reaches `{@html}` —
+ * `sanitizeMarkdownFragment(...)` and *that* something is what reaches `{@html}` —
  * so this reads the name out of the source instead of pinning it. The previous
  * form spelled the whole declaration out (`let sanitizedHtml = $derived(...)`),
  * which made the private binding name, the `let`, and the `$derived` wrapper
@@ -51,15 +51,15 @@ const richContentSource = readSource('src/lib/utils/richContent.ts');
  * have failed the suite while the security property held.
  */
 function sanitizedSinkName(): string {
-	const declaration = viewerSource.match(/(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*\bsanitizeMarkdownHtml\(/);
-	assert.ok(declaration, 'the preview must derive what it injects from sanitizeMarkdownHtml');
+	const declaration = viewerSource.match(/(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*\bsanitizeMarkdownFragment\(/);
+	assert.ok(declaration, 'the preview must derive what it injects from sanitizeMarkdownFragment');
 	return declaration![1];
 }
 
 test('the preview sanitizes through the shared policy, not a local config', () => {
 	assert.match(
 		viewerSource,
-		/import\s*\{[^}]*\bsanitizeMarkdownHtml\b[^}]*\}\s*from\s*'[^']*\/sanitize\.js'/,
+		/import\s*\{[^}]*\bsanitizeMarkdownFragment\b[^}]*\}\s*from\s*'[^']*\/sanitize\.js'/,
 		'the viewer must import the shared sanitizer',
 	);
 
@@ -113,17 +113,13 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 		'the preview must patch in the shared sanitizer output, once, and nothing else',
 	);
 
-	// And that the module it is handed to has no other way of making nodes out
-	// of a string: one `innerHTML`, assigned from the parameter above.
+	// And that the module it is handed to has no way of making nodes out of a
+	// string: it moves the sanitizer's own nodes and parses nothing.
 	const blockPatchSource = readSource('src/lib/utils/blockPatch.ts');
 	const parses = [...blockPatchSource.matchAll(/\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
 		(m) => m[1].trim(),
 	);
-	assert.deepEqual(
-		parses,
-		['sanitizedHtml'],
-		'blockPatch.ts must parse the sanitized string and never assemble markup of its own',
-	);
+	assert.deepEqual(parses, [], 'blockPatch.ts must move the sanitized nodes and never assemble markup of its own');
 
 	// Why the footnote sink is allowed, pinned as a direction rather than as a
 	// spelling: the tooltip body is read out of the rendered document, never
@@ -153,10 +149,15 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 });
 
 test('the shared policy the preview now gets is the one that forbids author stylesheets', () => {
-	// Read as one chain: the preview calls sanitizeMarkdownHtml (test above),
-	// sanitizeMarkdownHtml passes MARKDOWN_SANITIZE_CONFIG, and that config
+	// Read as one chain: the preview calls sanitizeMarkdownFragment (test
+	// above), which passes MARKDOWN_SANITIZE_CONFIG and only asks for nodes
+	// back, as the export's sanitizeMarkdownHtml passes it, and that config
 	// forbids the tag the payload needs.
 	assert.match(sanitizeSource, /return DOMPurify\.sanitize\(html, MARKDOWN_SANITIZE_CONFIG\)/);
+	assert.match(
+		sanitizeSource,
+		/return DOMPurify\.sanitize\(html, \{ \.\.\.MARKDOWN_SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true \}\)/,
+	);
 	assert.deepEqual(Object.keys(MARKDOWN_SANITIZE_CONFIG).sort(), ['ALLOWED_URI_REGEXP', 'FORBID_TAGS']);
 	assert.deepEqual(MARKDOWN_SANITIZE_CONFIG.FORBID_TAGS, ['style']);
 	// Identity, not equality: the regression this file exists for is a *copy* of
@@ -238,7 +239,7 @@ test('the two paths keep their opposite orders on purpose', () => {
 	);
 	assert.doesNotMatch(
 		viewerSource,
-		/processMarkdownHtml\(\s*sanitizeMarkdownHtml/,
+		/processMarkdownHtml\(\s*sanitizeMarkdown/,
 		'the preview must not move the filter ahead of processing without revisiting the note above',
 	);
 	// The sink half — that what `{@html}` injects is the sanitizer's output — is

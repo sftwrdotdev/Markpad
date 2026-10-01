@@ -59,7 +59,7 @@ test('the revision is published by the patch, not by the render', () => {
 	// than from the write to the DOM is the bug, spelled differently.
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	const patchEffect = viewer.slice(viewer.indexOf('const patch = patchPreviewBlocks('));
+	const patchEffect = viewer.slice(viewer.indexOf('patchPreviewBlocks(host, '));
 	const bump = patchEffect.indexOf('previewRevision = ++previewPatches;');
 	expect(bump).toBeGreaterThan(-1);
 	expect(bump).toBeLessThan(patchEffect.indexOf('\n\t});'));

@@ -154,27 +154,23 @@ function childKeys(container: ParentNode): string[] {
 }
 
 /**
- * Bring the preview's blocks up to date with `sanitizedHtml`, replacing as few
- * of them as possible.
+ * Bring the preview's blocks up to date with `sanitized`, replacing as few of
+ * them as possible.
  *
- * The string is parsed into a `<template>`, whose content lives in an inert
- * document: the blocks that turn out to be unchanged are discarded without ever
- * having loaded an image or run anything. Nothing is cut out of the string and
- * nothing is filtered a second time — the caller sanitizes the whole document,
- * exactly as it did when this was `{@html}`, and what is parsed here is that
- * one string.
+ * `sanitized` is `sanitizeMarkdownFragment`'s output: DOMPurify's own tree,
+ * which lives in an inert document, so the blocks that turn out to be
+ * unchanged are discarded without ever having loaded an image or run
+ * anything. This module parses no markup: the nodes the filter approved are
+ * the nodes that reach the document.
  */
-export function patchPreviewBlocks(host: HTMLElement, sanitizedHtml: string): BlockPatch {
-	const template = host.ownerDocument.createElement('template');
-	template.innerHTML = sanitizedHtml;
-
+export function patchPreviewBlocks(host: HTMLElement, sanitized: DocumentFragment): BlockPatch {
 	// Before the tree moves, not after: a patch that throws half-way through has
 	// still changed some of it, and an empty memo is only ever a slow answer
 	// where a stale one is a wrong one.
 	invalidateAnchorMemos();
 
 	const patch: BlockPatch = { inserted: [], replaced: 0, kept: 0 };
-	patchContainer(host, template.content, patch);
+	patchContainer(host, sanitized, patch);
 	return patch;
 }
 

@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, test } from 'vitest';
 
-import { patchPreviewBlocks } from '../src/lib/utils/blockPatch.js';
+import { patchPreviewBlocks as patchNodes } from '../src/lib/utils/blockPatch.js';
+
+/** The patch takes the sanitizer's nodes; these tests start from markup. */
+function patchPreviewBlocks(host: HTMLElement, html: string) {
+	const template = document.createElement('template');
+	template.innerHTML = html;
+	return patchNodes(host, template.content);
+}
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import {
 	findAnchorElement,
