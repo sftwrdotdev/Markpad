@@ -1108,18 +1108,6 @@ test('every command the document dispatcher can reach is advertised', () => {
 	);
 });
 
-/*
- * WHERE `DOCUMENT_NOT_ADVERTISED` WENT.
- *
- * It had one entry, `settings.previewFullWidth=`, and the entry existed only
- * because the harness recorded WRITES: the preview-width branch turns full
- * width off before it adjusts the width, so one shortcut looked like two
- * commands and the second one had to be excused in prose. A `ViewerCommand` is
- * the shortcut, not its side effects — `preview-width-narrower` covers both
- * writes — so there is nothing left to excuse, and the test above can assert
- * both directions instead of one.
- */
-
 /**
  * Every harness label one registry chord is answered by.
  *

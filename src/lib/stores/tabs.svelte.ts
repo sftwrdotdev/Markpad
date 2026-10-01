@@ -104,13 +104,9 @@ export interface Tab {
 	 * a getter, which is why this is `readonly` — `tab.isDirty = false` is now
 	 * a compile error rather than a fourth opinion about what "changed" means.
 	 *
-	 * It used to be a plain field that nine sites maintained by hand, in three
-	 * different ways, and every one of them was really saying one of two
-	 * things: "this text is the saved text now" (`originalContent = rawContent`,
-	 * which the navigation routes below still say) or nothing at all, because
-	 * the buffers already agreed. A flag that can be set independently of the
-	 * buffers it summarises can be wrong about them, and the tab close dialog,
-	 * the auto-save trigger and the reload guard all believe it.
+	 * A flag that can be set independently of the buffers it summarises can be
+	 * wrong about them, and the tab close dialog, the auto-save trigger and the
+	 * reload guard all believe it.
 	 */
 	readonly isDirty: boolean;
 	isEditing: boolean;
@@ -263,9 +259,7 @@ export interface Tab {
 	 * HTML and is allowed to lag; this says whether it lags.
 	 *
 	 * Optional, and absent is the safe direction: "nothing has been rendered
-	 * from this buffer", which costs one render. It lived on the tab as an
-	 * undeclared `_lastRenderedRawContent` reached through `as any` from two
-	 * files, which is the same field with nothing to check the spelling of it.
+	 * from this buffer", which costs one render.
 	 */
 	previewedRawContent?: string;
 	/**
@@ -1124,8 +1118,7 @@ class TabManager {
 	 * The two helpers stay separate because they are separate concerns with
 	 * separate reasons: a stale reading position moves the viewport, a stale
 	 * fold hides text, and each needs its own explanation. What they share is
-	 * this trigger — both doc comments below used to open by restating it, which
-	 * is what an unnamed shared concept looks like. This is its name.
+	 * this trigger.
 	 *
 	 * Not the buffer's TEXT: `rawContent`, `originalContent` and `content` are
 	 * overwritten by the load that follows, not cleared here. Only the saved

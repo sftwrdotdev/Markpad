@@ -283,8 +283,6 @@ export function createWindowSession(options: WindowSessionOptions) {
 						// both of its answers belong to the tab: `lossy` so a file
 						// nothing could decode is never written back over, and the
 						// encoding so a legacy one is written back as itself.
-						// Without this, reopening the app laundered them away and
-						// the next auto-save destroyed or converted the document.
 						const [raw, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
 						if (options.isDisposed()) return;
 						await options.applyRestoredContent(tab.id, raw);

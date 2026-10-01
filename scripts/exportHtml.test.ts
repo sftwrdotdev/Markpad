@@ -68,11 +68,9 @@ test('resolveExportImagePath preserves remote/data images and resolves local pat
 });
 
 test('the path resolver for documents and the one for hrefs differ on purpose', () => {
-	// Two functions called `resolvePath` used to sit in markdown.ts and
-	// markdownLinks.ts. They are NOT copies that drifted, and collapsing them
-	// would have silently changed one caller or the other, so they are named
-	// apart now and their three differences are pinned here — through the public
-	// entry points, since the href one is private to its module.
+	// The document and href resolvers differ on purpose; their three differences
+	// are pinned here, through the public entry points, since the href one is
+	// private to its module.
 	//
 	// The image side is `resolveDocumentRelativePath` (via resolveExportImagePath),
 	// the link side `resolveHrefRelativePath` (via resolveMarkdownTargetPath).

@@ -47,10 +47,8 @@ const BASE_TOOLBAR_TOOLS: ReadonlyArray<Omit<EditorToolbarTool, 'shortcut'>> = [
 ];
 
 /**
- * The tooltip hint used to be a second copy of each chord, kept in step with
- * `Editor.svelte` by hand until #480 wrote a test for it. It is now read from
- * `shortcuts.ts`, so a tool with no registry row advertises nothing — which is
- * the same rule the test enforces from the other side.
+ * The tooltip hint is read from `shortcuts.ts`, so a tool with no registry row
+ * advertises nothing.
  */
 const EDITOR_TOOLBAR_TOOLS: EditorToolbarTool[] = BASE_TOOLBAR_TOOLS.map((tool) =>
 	shortcutLabel(tool.id, 'Ctrl') === undefined

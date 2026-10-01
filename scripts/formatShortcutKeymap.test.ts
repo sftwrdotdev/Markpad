@@ -249,22 +249,7 @@ test('a chord that both layers answer means the same thing in both', () => {
 	}
 });
 
-/*
- * WHERE THE MONACO SIDE OF THIS WENT.
- *
- * This file used to end with `MONACO_DEFAULTS`: eleven chords hand-copied out
- * of Monaco 0.55, and a test that the six #121 bindings avoided them. It was
- * the weakest assertion here and said so — a copy of Monaco's keymap, not a
- * reading of it, covering the chords that happened to be considered at the
- * time. What it could not see is what it did not list, and `toggle-zen-mode`
- * sitting on `redo` was exactly that.
- *
- * `monacoChordOwnership.spec.ts` replaces it by importing `monaco-editor` under
- * jsdom and dumping `KeybindingsRegistry.getDefaultKeybindings()` per platform,
- * so the check is against ALL of Monaco's chords rather than a remembered
- * eleven — including Quote's deliberate `inPlaceReplace.down` override, which
- * is now argued in that file's allow-list instead of asserted by absence here.
- */
+// Monaco's own default chords are checked in `monacoChordOwnership.spec.ts`.
 
 // ------------------------------------- a core Monaco binding, left alone
 

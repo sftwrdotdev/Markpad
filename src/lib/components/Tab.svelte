@@ -116,7 +116,7 @@
 				{
 					label: t('menu.rename', currentLang),
 					// Rename renames the file on disk; untitled and home tabs have
-					// no file, and the handler previously no-oped silently.
+					// no file.
 					disabled: !hasRealFilePath(tab.path),
 					onClick: () => emitTo(selfLabel, 'menu-tab-rename', tab.id),
 				},

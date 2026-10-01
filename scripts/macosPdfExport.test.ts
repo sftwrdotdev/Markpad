@@ -16,10 +16,7 @@ test('all Markpad webviews may invoke Tauri native printing', () => {
 	);
 });
 
-// Salvaged from `windowsPdfExport.test.ts`, which was deleted for asserting the
-// spelling of the Rust body (it stayed green with the `await` dropped from the
-// call below). This part is the opposite kind of claim: a Tauri command name is
-// a bare string on the JS side and an identifier inside a macro on the Rust
+// A Tauri command name is a bare string on the JS side and an identifier inside a macro on the Rust
 // side, so nothing — not tsc, not `svelte-check`, not `cargo check` — notices
 // when one moves and the other does not. The failure is silent at build time
 // and total at runtime: "Export PDF" does nothing at all.

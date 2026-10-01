@@ -1,9 +1,9 @@
 /**
  * Numbered titles for untitled tabs ("Untitled 1", "Untitled 2", …).
  *
- * Untitled tabs used to share one identical title, so any UI that names a
- * tab — the tab strip, and especially the per-tab unsaved-changes dialog at
- * window close — could not tell the user which tab it was talking about.
+ * Distinct titles let any UI that names a tab — the tab strip, and especially
+ * the per-tab unsaved-changes dialog at window close — tell the user which tab
+ * it is talking about.
  * The smallest free number is reused, matching common editor behavior.
  */
 export function nextUntitledTitle(existingTitles: readonly string[], base: string): string {

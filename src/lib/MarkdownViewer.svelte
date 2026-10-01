@@ -231,9 +231,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// repeated Cmd/Ctrl+F expects.
 			const seed = findSeedFromSelection(window.getSelection(), markdownBody);
 			if (seed) findBar?.setQuery(seed);
-			// Focus explicitly: once the bar is open, `findOpen = true` changes
-			// nothing, so a repeated shortcut after clicking into the document
-			// used to be swallowed (#559).
+			// Focus explicitly: `findOpen = true` is a no-op once open.
 			findOpen = true;
 			findBar?.focusInput();
 		}
@@ -2760,8 +2758,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			mermaidTheme: currentMermaidTheme(),
 			libraries: richLibraries,
 			// The same value the live preview is wearing as `--preview-max-width`,
-			// so the exported file is read at the measure it was written at
-			// instead of the 900px the exporter used to hard-code (#467).
+			// so the exported file is read at the measure it was written at.
 			contentWidth: previewContentWidth,
 			appearance: previewAppearance,
 			frontMatterTitle: t('frontMatter.properties', settings.language),

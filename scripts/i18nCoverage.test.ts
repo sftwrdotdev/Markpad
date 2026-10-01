@@ -375,10 +375,7 @@ test('the tag-colour names reach the UI in every language', () => {
 	}
 });
 
-// The two tests below moved here from `toolbarCustomizationWiring.test.ts`,
-// which was deleted for asserting the spelling of `Settings.svelte` rather than
-// any behaviour. These two were the exception: they import the dictionary and
-// look keys up in it, and they are the only thing in the suite that fails when
+// The two tests below import the dictionary and look keys up in it. They are the only thing in the suite that fails when
 // a *specific locale* silently falls back to English. The general rules above
 // cannot see that — (1) only requires the key in English, and per-locale
 // completeness is reported rather than enforced. These keys are the exception

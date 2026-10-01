@@ -165,9 +165,8 @@ test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys 
 	);
 	// The shared helper clears the Rust snapshot and both localStorage keys.
 	// Only turning the setting off uses it: a restore that goes wrong must never
-	// delete the record of which documents were open
-	// (interruptedSessionRestore.test.ts), and quitting writes the snapshot now
-	// rather than discarding it (#390).
+	// delete the record of which documents were open, and quitting writes the
+	// snapshot rather than discarding it.
 	const discardScope = sliceBetween(session, 'async function discardPersistedState', 'async function readProgress');
 	assert.match(discardScope, /clear_window_state/);
 	assert.match(discardScope, /removeItem\(options\.windowStateKey\)/);

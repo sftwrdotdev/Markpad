@@ -123,11 +123,6 @@ pub(crate) fn markdown_options<'a>() -> Options<'a> {
     // rendered with the list bullet still showing AND the checkbox on its own
     // line above the text. The classes are GitHub's, which is where those
     // selectors came from.
-    //
-    // They went missing in the 0.18 → 0.54 upgrade (#426) together with the
-    // `disabled` change #320/#345 fixed, and unlike that one nobody reported
-    // it as its own defect — it arrived looking like part of the same
-    // breakage. #148 is where it finally surfaced, in a reader's screenshot.
     options.render.tasklist_classes = true;
     // `++ins++` — Pandoc's and CriticMarkup's spelling for inserted text, and
     // plain characters here until now. It is the only one of its group worth
@@ -255,9 +250,8 @@ fn wikilink_file_destination(path: &str) -> Option<String> {
 }
 
 /// Byte ranges of code regions — fenced code blocks, indented code blocks and
-/// inline code spans — paired with CommonMark's rules. The regex alternation
-/// previously used for
-/// protection (```` ```.*?```|`.*?` ````) cannot express them: a fence closes
+/// inline code spans — paired with CommonMark's rules. A regex alternation
+/// (```` ```.*?```|`.*?` ````) cannot express them: a fence closes
 /// only on a line-leading run of the same character at least as long as the
 /// opener, and a span opened by N backticks closes only on a run of exactly
 /// N. One mismatched pairing (e.g. a 4-backtick inline sample, or a ~~~
@@ -1399,12 +1393,8 @@ fn escape_html_text(text: &str) -> String {
 /// `mod tests` under "The line-number contract of `convert_markdown`" —
 /// a new step here must also be registered in `line_preserving_transforms()`.
 ///
-/// Not a Tauri command, despite having carried `#[tauri::command]` until the
-/// attribute was removed. It was never in `generate_handler!`, so no frontend
-/// could ever invoke it — the registered entry point is `render_markdown`, and
-/// this is what that and `build_markdown_preview` call underneath. A command
-/// name is a string with no compiler behind it, so an attribute that claims an
-/// exposure the app does not have is a claim nothing was ever going to check.
+/// Not a Tauri command: the registered entry point is `render_markdown`, and
+/// this is what that and `build_markdown_preview` call underneath.
 pub(crate) fn convert_markdown(content: &str) -> String {
     // The buffer this command was called with, captured before anything runs
     // and never rebound. What `annotate_task_checkboxes` is handed at the end
@@ -1436,21 +1426,16 @@ pub(crate) fn convert_markdown(content: &str) -> String {
 /// only agree while every preprocessing step preserves line numbers. Checking
 /// the raw buffer here is what turns a broken step into "the checkbox stays
 /// disabled" instead of a write aimed at the wrong line of the user's
-/// document — the P0 that issue #352 fixed.
+/// document.
 ///
-/// What a wrong line costs is narrower than it was, and worth stating
-/// precisely, because an overstated reason invites the next reader to check
-/// it, find it false, and delete the guard as theatre. Since #352 the
-/// frontend rewrites only lines that already match
+/// The frontend rewrites only lines that already match
 /// `/^(\s*(?:>\s*)*(?:[-+*]|\d+[.)])\s+)\[( |x|X)\]/`
 /// (`documentSession.toggleTaskCheckbox`), so a wrong line that is ordinary
-/// prose is a no-op and the toggle reports failure — it does NOT write a
-/// `- [x]` marker into whatever happens to sit there, as this comment used to
-/// claim of the pre-#352 frontend. What still corrupts is a wrong line that
-/// is itself task-shaped, and neither spelling of that is exotic: a task list
-/// quoted inside a fenced code block is ordinary content in a notes app, and
-/// a real task elsewhere in the same document means the user clicks one
-/// checkbox and a different one silently flips.
+/// prose is a no-op and the toggle reports failure. What still corrupts is a
+/// wrong line that is itself task-shaped, and neither spelling of that is
+/// exotic: a task list quoted inside a fenced code block is ordinary content
+/// in a notes app, and a real task elsewhere in the same document means the
+/// user clicks one checkbox and a different one silently flips.
 ///
 /// So do NOT "unify" this with the preprocessed text that produced the HTML.
 /// Passing `&processed_links` here would make the two sides agree by

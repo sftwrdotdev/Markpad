@@ -430,10 +430,6 @@
 			// contribute to that menu — Go to Definition, Go to References,
 			// inlay hints — needs a language provider this app does not
 			// register, so nothing is lost by drawing our own.
-			//
-			// #266 fixed the overlay that used to cover this menu, which was
-			// the right fix for that bug and left the reader pointed at a menu
-			// whose Paste silently did nothing (#207).
 			contextmenu: false,
 			// Monaco writes a styled `text/html` flavour beside the plain text on a
 			// copy. Everything Markpad produces IS plain text, so pasting into Word

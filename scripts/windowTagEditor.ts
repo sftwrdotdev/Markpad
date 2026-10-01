@@ -14,10 +14,10 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
  * component and evaluated over one shared set of component variables and the
  * REAL `TabManager`. Everything a test below drives is the code that ships.
  *
- * This started inside windowTagDismiss.test.ts and moved here when a second and
- * third file needed the same running control: the scope line and the context
- * menu read the same `tabManager.windowTag` the popover writes, and a second
- * copy of the lifting would be free to drift from the first.
+ * It is shared because several test files need the same running control: the
+ * scope line and the context menu read the same `tabManager.windowTag` the
+ * popover writes, and a second copy of the lifting would be free to drift from
+ * the first.
  *
  * What it does not model: focus, layout, CSS, or Svelte's scheduling. It
  * establishes what the handlers do when they run.

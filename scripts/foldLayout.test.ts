@@ -20,10 +20,7 @@ test('fold wrapper animates an explicit measured height instead of a fractional 
 	assert.match(styles, /foldable-content-wrapper\.is-collapsed[\s\S]*height:\s*0/);
 });
 
-// Salvaged from `findCollapsedMatches.test.ts`, which was deleted for asserting
-// the spelling of FindBar.svelte (it stayed green with `revealFoldsAround` made
-// a no-op). This assertion is a different kind: it couples a TypeScript constant
-// to a CSS duration in another file. Nothing else compares the two, and when
+// This assertion couples a TypeScript constant to a CSS duration in another file. Nothing else compares the two, and when
 // FindBar's re-aim timer fires before the height transition settles the scroll
 // lands on a target that is still moving — a defect that only shows up as "find
 // sometimes scrolls to the wrong place".

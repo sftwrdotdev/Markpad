@@ -39,9 +39,7 @@ test('moving to an existing window uses the acknowledged transfer protocol', () 
 	assert.match(viewer, /invoke\('offer_tab_to_window', \{ targetLabel, token \}\)/);
 });
 
-// Salvaged from `tabContextMenuIsolation.test.ts`, which was deleted for pinning
-// the exact text of two inline Svelte event handlers. This assertion is not
-// about spelling: `WebviewWindowBuilder::build()` deadlocks when called from a
+// `WebviewWindowBuilder::build()` deadlocks when called from a
 // *synchronous* Tauri command on Windows/WebView2, because the main thread is
 // blocked inside the command while WebView2 waits for that same thread to pump
 // messages (tauri-apps/tauri#12521). Both forms compile everywhere, and CI's

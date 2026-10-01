@@ -827,11 +827,7 @@ pub(crate) mod tests {
 
     // --- Decode fidelity ------------------------------------------------
     //
-    // #372: a legacy-encoded document used to be decoded as UTF-8 with U+FFFD
-    // substituted for every byte the decoder disagreed with, and writing that
-    // buffer back destroyed the file — U+FFFD is not reversible. The decoder
-    // now detects the encoding instead, and the save writes the same encoding
-    // back, so the bytes on disk survive a save that changed nothing.
+    // Legacy encodings must round-trip byte-for-byte; U+FFFD is not reversible.
     //
     // The load-bearing assertion in most of these is the byte-for-byte round
     // trip. Whether the detector names the encoding the author had in mind is

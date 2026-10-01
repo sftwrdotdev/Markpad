@@ -934,8 +934,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 			// first launch after the upgrade. The write effect seeds the new key
 			// immediately, and `??` prefers it, so the legacy one stops being
 			// consulted after that — the same treatment `editor.openFileMode` and
-			// `editor.autoSaveEdits` give theirs. It used to be deleted here
-			// instead, which a `read` that touches one field cannot do.
+			// `editor.autoSaveEdits` give theirs.
 			load: (s, raw) => {
 				s.previewFullWidth = getStoredPreviewFullWidth(raw, readStoredKey(LEGACY_PREVIEW_FULL_WIDTH_KEY));
 			},

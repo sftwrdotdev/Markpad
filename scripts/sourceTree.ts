@@ -185,27 +185,11 @@ export const SANITIZER_FILES = ['src/lib/utils/richContent.ts', 'src/lib/utils/s
 // ------------------------------------------------------------ syntax, parsed
 //
 // The three helpers below answer questions about *scope* — "which function is
-// this offset inside", "what is the body of this callback". Those were regexes
-// until they were shown to be answerable by writing the code differently:
-//
-//   const renderRawBypass = async (raw: string) => {
-//       return (await invoke('render_markdown', { content: raw })) as string;
-//   };
-//
-// dropped into MarkdownViewer.svelte left the whole suite green, because
-// `enclosingFunctionName` matched `\n\t…function NAME(` and nothing else, so the
-// call was attributed to whichever `function` happened to precede it — which was
-// the wrapper the convention test demands. Fixing that by adding arrow functions
-// to the pattern fixes one spelling. The forms actually in `src/` are 451 classic
-// declarations, 74 `const f = (…) =>` / `const f = async (…) =>`, the class
-// methods in `stores/`, and object-literal shorthand (`acceptNode(node) {`) — and
-// the next contributor is free to invent a 5th.
-//
-// So the scope questions are answered from the real AST instead. `svelte/compiler`
-// is already a dependency and `homeTabRender.spec.ts` already parses a component
-// with it; a function node is a function node whatever the spelling, and there is
-// no pattern left to write around. The cost is ~170ms for the largest component,
-// paid once per file thanks to the cache below.
+// this offset inside", "what is the body of this callback" — from the real AST.
+// `svelte/compiler` is already a dependency and `homeTabRender.spec.ts` already
+// parses a component with it, and a function node is a function node whatever
+// the spelling. The cost is ~170ms for the largest component, paid once per
+// file thanks to the cache below.
 
 type FunctionScope = { start: number; end: number; name: string | null };
 
