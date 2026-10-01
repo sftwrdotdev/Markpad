@@ -587,28 +587,20 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		});
 	}
 
-	function handlePromptConfirm() {
-		if (promptModal.resolve) promptModal.resolve(promptModal.value);
+	function closePrompt(value: string | null) {
+		promptModal.resolve?.(value);
 		promptModal.show = false;
 	}
 
-	function handlePromptCancel() {
-		if (promptModal.resolve) promptModal.resolve(null);
-		promptModal.show = false;
-	}
-
-	function handleModalSave() {
-		if (modalState.resolve) modalState.resolve('save');
+	function closeModal(choice: 'save' | 'cancel') {
+		modalState.resolve?.(choice);
 		modalState.show = false;
 	}
 
+	// Self-contained rather than closeModal('discard'): menuModalGuards.test.ts
+	// lifts it on its own.
 	function handleModalConfirm() {
 		if (modalState.resolve) modalState.resolve('discard');
-		modalState.show = false;
-	}
-
-	function handleModalCancel() {
-		if (modalState.resolve) modalState.resolve('cancel');
 		modalState.show = false;
 	}
 
@@ -627,25 +619,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		);
 	}
 
-	function setTocWidth(width: number) {
-		settings.setTocWidth(Math.min(TOC_WIDTH_RANGE.max, Math.max(TOC_WIDTH_RANGE.min, width)));
-	}
-
 	function handleTocResizeKeyDown(e: KeyboardEvent) {
 		const keyDelta = e.key === 'ArrowRight' ? TOC_RESIZE_STEP : e.key === 'ArrowLeft' ? -TOC_RESIZE_STEP : 0;
 		if (keyDelta !== 0) {
 			e.preventDefault();
 			const widthDelta = settings.tocSide === 'left' ? keyDelta : -keyDelta;
-			setTocWidth(settings.tocWidth + widthDelta);
+			settings.setTocWidth(settings.tocWidth + widthDelta);
 			return;
 		}
 
 		if (e.key === 'Home') {
 			e.preventDefault();
-			setTocWidth(TOC_WIDTH_RANGE.min);
+			settings.setTocWidth(TOC_WIDTH_RANGE.min);
 		} else if (e.key === 'End') {
 			e.preventDefault();
-			setTocWidth(TOC_WIDTH_RANGE.max);
+			settings.setTocWidth(TOC_WIDTH_RANGE.max);
 		}
 	}
 
@@ -1054,30 +1042,25 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		await appWindow.close();
 	}
 
+	const EDITOR_LANGUAGES: Record<string, string> = {
+		js: 'javascript',
+		jsx: 'javascript',
+		ts: 'typescript',
+		tsx: 'typescript',
+		html: 'html',
+		css: 'css',
+		json: 'json',
+		md: 'markdown',
+		markdown: 'markdown',
+		mdown: 'markdown',
+		mkd: 'markdown',
+	};
+
 	function getLanguage(path: string) {
 		if (!path) return 'markdown';
-		const ext = path.split('.').pop()?.toLowerCase();
-		switch (ext) {
-			case 'js':
-			case 'jsx':
-				return 'javascript';
-			case 'ts':
-			case 'tsx':
-				return 'typescript';
-			case 'html':
-				return 'html';
-			case 'css':
-				return 'css';
-			case 'json':
-				return 'json';
-			case 'md':
-			case 'markdown':
-			case 'mdown':
-			case 'mkd':
-				return 'markdown';
-			default:
-				return 'plaintext';
-		}
+		const ext = path.split('.').pop()?.toLowerCase() ?? '';
+		if (Object.hasOwn(EDITOR_LANGUAGES, ext)) return EDITOR_LANGUAGES[ext];
+		return 'plaintext';
 	}
 
 	/**
@@ -1926,17 +1909,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			isScrolling = false;
 		}, 300);
 
+		if (tabManager.activeTabId) tabManager.updateTabScroll(tabManager.activeTabId, target.scrollTop);
+
 		if (isProgrammaticScroll) {
 			isProgrammaticScroll = false;
-			if (tabManager.activeTabId) {
-				tabManager.updateTabScroll(tabManager.activeTabId, target.scrollTop);
-			}
 			return;
 		}
 
 		if (tabManager.activeTabId) {
-			tabManager.updateTabScroll(tabManager.activeTabId, target.scrollTop);
-
 			// Percentage fallback
 			if (target.scrollHeight > target.clientHeight) {
 				const percentage = target.scrollTop / (target.scrollHeight - target.clientHeight);
@@ -3598,7 +3578,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const onMove = (moveEvent: PointerEvent) => {
 			const deltaX = moveEvent.clientX - startX;
 			const widthDelta = side === 'left' ? deltaX : -deltaX;
-			setTocWidth(startWidth + widthDelta);
+			settings.setTocWidth(startWidth + widthDelta);
 		};
 
 		const onUp = (upEvent: PointerEvent) => {
@@ -3801,22 +3781,16 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						// Only `enter` carries the paths; `over` repeats the position.
 						if (event.payload.type === 'enter') dragPaths = event.payload.paths;
 						
+						const contains = (el: HTMLElement) => {
+							const rect = el.getBoundingClientRect();
+							return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+						};
 						if (editorPaneEl) {
-							const rect = editorPaneEl.getBoundingClientRect();
-							if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+							if (contains(editorPaneEl)) {
 								dragTarget = 'editor';
 								if (editorPane) editorPane.updateDragCaret(x, y);
-							} else if (viewerPaneEl) {
-								const vRect = viewerPaneEl.getBoundingClientRect();
-								if (x >= vRect.left && x <= vRect.right && y >= vRect.top && y <= vRect.bottom) {
-									dragTarget = 'preview';
-									if (editorPane) editorPane.hideDragCaret();
-								} else {
-									dragTarget = null;
-									if (editorPane) editorPane.hideDragCaret();
-								}
 							} else {
-								dragTarget = null;
+								dragTarget = viewerPaneEl && contains(viewerPaneEl) ? 'preview' : null;
 								if (editorPane) editorPane.hideDragCaret();
 							}
 						}
@@ -4400,8 +4374,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		kind={modalState.kind}
 		showSave={modalState.showSave}
 		onconfirm={handleModalConfirm}
-		onsave={handleModalSave}
-		oncancel={handleModalCancel} />
+		onsave={() => closeModal('save')}
+		oncancel={() => closeModal('cancel')} />
 
 	<Modal
 		show={promptModal.show}
@@ -4410,8 +4384,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		kind="info"
 		showInput={true}
 		bind:inputValue={promptModal.value}
-		onconfirm={handlePromptConfirm}
-		oncancel={handlePromptCancel} />
+		onconfirm={() => closePrompt(promptModal.value)}
+		oncancel={() => closePrompt(null)} />
 
 	{#if identifyFlash}
 		<div class="identify-flash" transition:fade={{ duration: 150 }}>
