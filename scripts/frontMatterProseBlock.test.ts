@@ -161,8 +161,7 @@ test('the editor tells Rust how many lines the front matter spans, fence to fenc
 	const editor = readSource('src/lib/components/Editor.svelte');
 	const tokens = readSource('src/lib/utils/semanticTokens.ts');
 	for (const [source, command] of [
-		[editor, 'list_heading_anchors'],
-		[editor, 'list_fold_ranges'],
+		[editor, 'markdown_outline'],
 		[tokens, 'markdown_semantic_spans'],
 	]) {
 		const call = source.slice(source.indexOf(`invoke(${source === editor ? '"' : "'"}${command}`));

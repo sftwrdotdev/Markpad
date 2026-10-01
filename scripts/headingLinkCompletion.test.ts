@@ -10,7 +10,7 @@
  * nowhere.
  *
  * The list comes from Rust, from the renderer's own parse and anchorizer
- * (`heading_anchors`, pinned against the rendered `id=` attributes in
+ * (`outline`, pinned against the rendered `id=` attributes in
  * `lib.rs`). What is asserted here is the other half: WHERE a heading is the
  * answer, and what gets written when it is — the two link syntaxes take
  * different text, which is the part that is easy to get backwards.
@@ -19,7 +19,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readRustBackend, readSource } from './sourceTree.js';
+import ts from 'typescript';
+
+import { functionSource, readRustBackend, readSource } from './sourceTree.js';
 
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
 
@@ -89,12 +91,41 @@ test('each context writes the text its own syntax resolves', () => {
 test('the list is read from Rust, and re-read only when the buffer changes', () => {
 	// A second anchorizer written in TypeScript would drift from comrak's
 	// without anything failing — the links would simply stop landing.
-	assert.match(editorSource, /const markdown = model\.getValue\(\);\s*const anchors = \(await invoke\("list_heading_anchors", \{\s*markdown,/);
-	assert.match(rustSource, /async fn list_heading_anchors\(\s*markdown: String,/);
+	assert.match(editorSource, /const markdown = model\.getValue\(\);\s*const outline = \(\s*invoke\("markdown_outline", \{\s*markdown,/);
+	assert.match(rustSource, /async fn markdown_outline\(\s*markdown: String,/);
 	// Completion fires per keystroke while the dropdown is open; the headings
 	// cannot have moved between two keystrokes of one edit. Keyed on the model
 	// too, because version ids are counted per model and each tab has its own.
-	assert.match(editorSource, /if \(anchorCache\?\.model === model && anchorCache\.version === version\) return anchorCache\.anchors;/);
+	assert.match(editorSource, /if \(outlineCache\?\.model === model && outlineCache\.version === version\) return outlineCache\.outline;/);
+});
+
+// The folding provider and the sticky-scroll symbols ask for the same version
+// together, and each ask sends the whole buffer to Rust to be parsed.
+test('two asks for one version share one Rust call', async () => {
+	const lift = (name: string) => {
+		try {
+			return functionSource(editorSource, name);
+		} catch {
+			return '';
+		}
+	};
+	const calls: string[] = [];
+	const invoke = async (cmd: string) => {
+		calls.push(cmd);
+		return cmd === 'markdown_outline' ? { anchors: [], folds: [] } : [];
+	};
+	const headingAnchors = new Function(
+		'invoke',
+		'frontMatterFenceLines',
+		ts.transpileModule(
+			`let anchorCache = null;\nlet outlineCache = null;\n${lift('documentOutline')}\n${lift('headingAnchors')}\nreturn headingAnchors;`,
+			{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+		).outputText,
+	)(invoke, () => 0) as (model: unknown) => Promise<unknown>;
+	const model = { getVersionId: () => 1, getValue: () => '# A\n' };
+
+	await Promise.all([headingAnchors(model), headingAnchors(model)]);
+	assert.equal(calls.length, 1, `one version, ${calls.length} calls: ${calls.join(', ')}`);
 });
 
 test('the Rust side numbers repeated headings the way the renderer does', () => {

@@ -5,10 +5,7 @@ use crate::fs_safety::{
     atomic_write, canonical_identity, encode_text, ensure_path_within_root, read_to_string_lossy,
     resolve_image_directory, safe_path_component,
 };
-use crate::markdown::{
-    block_fold_ranges, build_markdown_preview, convert_markdown, heading_anchors, FoldRange,
-    HeadingAnchor,
-};
+use crate::markdown::{build_markdown_preview, convert_markdown, outline, Outline};
 use crate::window_runtime::{self, WatcherState};
 use std::fs;
 use std::path::Path;
@@ -93,22 +90,14 @@ pub async fn open_markdown_preview(
 }
 
 /// `front_matter_lines` is how many leading lines are front matter, which the
-/// frontend decides (`frontMatterFenceLines`); the same for the two below.
-#[tauri::command]
-pub async fn list_heading_anchors(
-    markdown: String,
-    front_matter_lines: usize,
-) -> Result<Vec<HeadingAnchor>, String> {
-    blocking(move || Ok(heading_anchors(&markdown, front_matter_lines))).await
-}
-
+/// frontend decides (`frontMatterFenceLines`); the same for the one below.
 /// Off the main thread like `markdown_semantic_spans`: Monaco asks on every edit.
 #[tauri::command]
-pub async fn list_fold_ranges(
+pub async fn markdown_outline(
     markdown: String,
     front_matter_lines: usize,
-) -> Result<Vec<FoldRange>, String> {
-    blocking(move || Ok(block_fold_ranges(&markdown, front_matter_lines))).await
+) -> Result<Outline, String> {
+    blocking(move || Ok(outline(&markdown, front_matter_lines))).await
 }
 
 /// The ranges the editor should colour, from the same parse the preview uses.

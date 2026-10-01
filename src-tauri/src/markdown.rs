@@ -1579,6 +1579,25 @@ pub(crate) fn blank_front_matter(markdown: &str, lines: usize) -> Cow<'_, str> {
     Cow::Owned(blanked)
 }
 
+/// The editor's headings and foldable blocks, from one parse: its folding
+/// provider wants both for the same buffer, and parsing a long document is the
+/// expensive part.
+#[derive(serde::Serialize)]
+pub(crate) struct Outline {
+    anchors: Vec<HeadingAnchor>,
+    folds: Vec<FoldRange>,
+}
+
+pub(crate) fn outline(markdown: &str, front_matter_lines: usize) -> Outline {
+    let masked = preprocess_for_positions(markdown, front_matter_lines);
+    let arena = Arena::new();
+    let root = parse_document(&arena, &masked.text, &markdown_options());
+    Outline {
+        anchors: heading_anchors(root, &masked),
+        folds: block_fold_ranges(root, markdown),
+    }
+}
+
 /// Lines the editor can fold, 1-based and inclusive.
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
 pub(crate) struct FoldRange {
@@ -1595,11 +1614,8 @@ pub(crate) struct FoldRange {
 /// comrak ends a list item on the blank line after it, which would make every
 /// one-line item in a loose list a fold hiding that blank line, so trailing
 /// blank lines are dropped first — the same rule the heading folds use.
-pub(crate) fn block_fold_ranges(markdown: &str, front_matter_lines: usize) -> Vec<FoldRange> {
-    let masked = preprocess_for_positions(markdown, front_matter_lines);
+fn block_fold_ranges<'a>(root: &'a comrak::nodes::AstNode<'a>, markdown: &str) -> Vec<FoldRange> {
     let lines: Vec<&str> = markdown.lines().collect();
-    let arena = Arena::new();
-    let root = parse_document(&arena, &masked.text, &markdown_options());
     root.descendants()
         .filter_map(|node| {
             let data = node.data.borrow();
@@ -1664,12 +1680,10 @@ pub(crate) struct HeadingAnchor {
 /// `restore_math_spans` writes into an anchor — and the two agree because
 /// anchorizing is a per-character map with no collapsing, so doing it to the
 /// pieces and doing it to the whole give the same string.
-pub(crate) fn heading_anchors(markdown: &str, front_matter_lines: usize) -> Vec<HeadingAnchor> {
-    let masked = preprocess_for_positions(markdown, front_matter_lines);
-
-    let arena = Arena::new();
-    let options = markdown_options();
-    let root = parse_document(&arena, &masked.text, &options);
+fn heading_anchors<'a>(
+    root: &'a comrak::nodes::AstNode<'a>,
+    masked: &MaskedMath,
+) -> Vec<HeadingAnchor> {
     let mut anchorizer = Anchorizer::new();
     let mut anchors = Vec::new();
 
@@ -1682,7 +1696,7 @@ pub(crate) fn heading_anchors(markdown: &str, front_matter_lines: usize) -> Vec<
             }
         };
 
-        let text = unmask_math_text(&collect_inline_text(node), &masked);
+        let text = unmask_math_text(&collect_inline_text(node), masked);
         if text.trim().is_empty() {
             continue;
         }
@@ -2634,7 +2648,7 @@ pub(crate) mod tests {
             "```\n",
         );
 
-        let anchors = heading_anchors(markdown, 0);
+        let anchors = outline(markdown, 0).anchors;
         let texts: Vec<&str> = anchors.iter().map(|a| a.text.as_str()).collect();
         assert_eq!(
             texts,
@@ -2697,7 +2711,8 @@ pub(crate) mod tests {
             "|---|---|\n",       // 15
             "| 1 | 2 |\n",       // 16
         );
-        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown, 0)
+        let ranges: Vec<(u32, u32)> = outline(markdown, 0)
+            .folds
             .iter()
             .map(|r| (r.start, r.end))
             .collect();
@@ -2721,12 +2736,14 @@ pub(crate) mod tests {
             "> quote\n",      // 8
             "> more\n",       // 9
         );
-        let anchors: Vec<(u32, String)> = heading_anchors(markdown, 4)
+        let anchors: Vec<(u32, String)> = outline(markdown, 4)
+            .anchors
             .into_iter()
             .map(|a| (a.line, a.text))
             .collect();
         assert_eq!(anchors, vec![(6, "Intro".to_owned())]);
-        let ranges: Vec<(u32, u32)> = block_fold_ranges(markdown, 4)
+        let ranges: Vec<(u32, u32)> = outline(markdown, 4)
+            .folds
             .iter()
             .map(|r| (r.start, r.end))
             .collect();
@@ -2735,7 +2752,8 @@ pub(crate) mod tests {
         // Told there is none, it is markdown: a document that opens with a
         // thematic break keeps its heading, as it does in the preview.
         let rule = "---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n";
-        let anchors: Vec<(u32, String)> = heading_anchors(rule, 0)
+        let anchors: Vec<(u32, String)> = outline(rule, 0)
+            .anchors
             .into_iter()
             .map(|a| (a.line, a.text))
             .collect();
@@ -2751,7 +2769,7 @@ pub(crate) mod tests {
     fn blank_front_matter_empties_the_first_lines_and_keeps_their_endings() {
         let crlf = "\u{feff}--- \r\ntitle: Hello\r\n  ---\r\n# Top\r\n";
         assert_eq!(blank_front_matter(crlf, 3), "\r\n\r\n\r\n# Top\r\n");
-        let lines: Vec<u32> = heading_anchors(crlf, 3).iter().map(|a| a.line).collect();
+        let lines: Vec<u32> = outline(crlf, 3).anchors.iter().map(|a| a.line).collect();
         assert_eq!(lines, vec![4]);
 
         assert!(matches!(
@@ -2804,7 +2822,8 @@ pub(crate) mod tests {
                 .and_then(|rest| rest.split('"').next())
                 .unwrap_or_default()
                 .to_owned();
-            let ours = heading_anchors(markdown, 0)
+            let ours = outline(markdown, 0)
+                .anchors
                 .first()
                 .map(|anchor| anchor.slug.clone())
                 .unwrap_or_default();

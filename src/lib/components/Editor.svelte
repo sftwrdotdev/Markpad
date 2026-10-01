@@ -610,24 +610,31 @@
 	 *
 	 * Keyed on the model as well: each tab has its own, and version ids are
 	 * counted per model, so two tabs can stand at the same one.
+	 *
+	 * The block folds come with them, from the same parse: the folding provider
+	 * wants both for every version. The promise is what is cached, so the
+	 * folding and symbol providers asking at once share one call.
 	 */
-	let anchorCache: { model: Monaco.editor.ITextModel; version: number; anchors: HeadingAnchor[] } | null = null;
+	type Outline = { anchors: HeadingAnchor[]; folds: Monaco.languages.FoldingRange[] };
+	let outlineCache: { model: Monaco.editor.ITextModel; version: number; outline: Promise<Outline> } | null = null;
 
-	async function headingAnchors(model: Monaco.editor.ITextModel): Promise<HeadingAnchor[]> {
+	function documentOutline(model: Monaco.editor.ITextModel): Promise<Outline> {
 		const version = model.getVersionId();
-		if (anchorCache?.model === model && anchorCache.version === version) return anchorCache.anchors;
+		if (outlineCache?.model === model && outlineCache.version === version) return outlineCache.outline;
 
-		try {
-			const markdown = model.getValue();
-			const anchors = (await invoke("list_heading_anchors", {
+		const markdown = model.getValue();
+		const outline = (
+			invoke("markdown_outline", {
 				markdown,
 				frontMatterLines: frontMatterFenceLines(markdown),
-			})) as HeadingAnchor[];
-			anchorCache = { model, version, anchors };
-			return anchors;
-		} catch {
-			return [];
-		}
+			}) as Promise<Outline>
+		).catch(() => ({ anchors: [], folds: [] }));
+		outlineCache = { model, version, outline };
+		return outline;
+	}
+
+	async function headingAnchors(model: Monaco.editor.ITextModel): Promise<HeadingAnchor[]> {
+		return (await documentOutline(model)).anchors;
 	}
 
 	// The colours that come from the renderer rather than from the grammar's
@@ -652,17 +659,8 @@
 	// indentation folding covered: registering this turns that fallback off (#777).
 	const foldingRanges = monaco.languages.registerFoldingRangeProvider(MARKDOWN_LANGUAGE_ID, {
 		provideFoldingRanges: async (model) => {
-			const markdown = model.getValue();
-			const [anchors, blocks] = await Promise.all([
-				headingAnchors(model),
-				(
-					invoke("list_fold_ranges", {
-						markdown,
-						frontMatterLines: frontMatterFenceLines(markdown),
-					}) as Promise<Monaco.languages.FoldingRange[]>
-				).catch(() => []),
-			]);
-			return [...headingFoldRanges(anchors, model.getLineCount(), (n) => model.getLineContent(n)), ...blocks];
+			const { anchors, folds } = await documentOutline(model);
+			return [...headingFoldRanges(anchors, model.getLineCount(), (n) => model.getLineContent(n)), ...folds];
 		},
 	});
 

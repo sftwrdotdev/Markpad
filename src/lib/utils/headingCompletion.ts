@@ -20,7 +20,7 @@
  */
 export type HeadingLinkContext = 'slug' | 'wikilink';
 
-/** One row of `list_heading_anchors`. Mirrors `HeadingAnchor` in `lib.rs`. */
+/** One of `markdown_outline`'s anchors. Mirrors `HeadingAnchor` in `markdown.rs`. */
 export type HeadingAnchor = {
 	line: number;
 	level: number;
