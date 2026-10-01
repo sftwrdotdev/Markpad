@@ -101,6 +101,14 @@ jobs:
 
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 45
+    # The release profile's LTO and single codegen unit are most of the build
+    # step's compile time and change nothing this job checks; build.yml keeps
+    # them. Job-level so rust-cache hashes them into its key: set on the step
+    # alone, master would restore an exact hit, skip the save, and every pull
+    # request would recompile its dependencies against the cached LTO ones.
+    env:
+      CARGO_PROFILE_RELEASE_LTO: "false"
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "16"
     steps:
       - uses: actions/checkout@v7
 
