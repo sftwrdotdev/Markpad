@@ -55,7 +55,7 @@ let nextSaveTarget: string | null = null;
 	invoke: (cmd: string, args: any) => {
 		if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
 		if (cmd === 'read_file_content_checked') return Promise.resolve([disk.get(args.path) ?? '', false]);
-		if (cmd === 'open_markdown_preview') return Promise.resolve(['', disk.get(args.path) ?? '', true, false]);
+		if (cmd === 'open_markdown_preview') return Promise.resolve([disk.get(args.path) ?? '', true, false]);
 		if (cmd === 'save_file_content') {
 			const duration = writeDurationsMs[writeCount] ?? 0;
 			writeCount += 1;

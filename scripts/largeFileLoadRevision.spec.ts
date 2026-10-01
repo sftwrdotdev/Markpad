@@ -97,7 +97,7 @@ function reset() {
 		if (cmd === 'open_markdown_preview') {
 			const delay = previewDelays[previewCall++] ?? 0;
 			// Always return isFull=false to exercise the two-stage load path
-			return wait(delay).then(() => ['<p>preview</p>', PARTIAL, false, false, 'UTF-8']);
+			return wait(delay).then(() => [PARTIAL, false, false, 'UTF-8']);
 		}
 		if (cmd === 'read_file_content_checked') return [FULL, false, 'UTF-8'];
 		if (cmd === 'save_file_content') {

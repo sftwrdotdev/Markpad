@@ -65,7 +65,7 @@ let nextSaveTarget: string | null = null;
 		}
 		if (cmd === 'open_markdown_preview') {
 			const file = disk.get(lookup(args.path) ?? args.path);
-			return Promise.resolve(['', file?.body ?? '', true, file?.lossy ?? false]);
+			return Promise.resolve([file?.body ?? '', true, file?.lossy ?? false]);
 		}
 		if (cmd === 'save_file_content') {
 			writes.push({ path: args.path, content: args.content });

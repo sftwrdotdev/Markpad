@@ -44,7 +44,7 @@ let writes: Array<{ path: string; content: string; encoding: string }> = [];
 		if (cmd === 'get_os_type') return Promise.resolve('macos');
 		if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
 		if (cmd === 'open_markdown_preview') {
-			return Promise.resolve(['', BODY, true, fileLossy, fileEncoding]);
+			return Promise.resolve([BODY, true, fileLossy, fileEncoding]);
 		}
 		if (cmd === 'read_file_content_checked') return Promise.resolve([BODY, fileLossy, fileEncoding]);
 		if (cmd === 'save_file_content') {

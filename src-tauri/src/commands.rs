@@ -70,19 +70,18 @@ fn validate_vsix_archive_limits<R: std::io::Read + std::io::Seek>(
     Ok(())
 }
 
-/// Returns `(html, content, is_full, lossy, encoding)`. See `DecodedText`: the
+/// Returns `(content, is_full, lossy, encoding)`. See `DecodedText`: the
 /// frontend refuses to write a `lossy` buffer back over its file, and saves a
 /// faithful one as the `encoding` it came in.
 #[tauri::command]
 pub async fn open_markdown_preview(
     path: String,
     max_bytes: usize,
-) -> Result<(String, String, bool, bool, String), String> {
+) -> Result<(String, bool, bool, String), String> {
     blocking(move || {
         crate::asset_protocol::trust_document_host(&path);
         let preview = build_markdown_preview(Path::new(&path), max_bytes)?;
         Ok((
-            preview.html,
             preview.content,
             preview.is_full,
             preview.lossy,

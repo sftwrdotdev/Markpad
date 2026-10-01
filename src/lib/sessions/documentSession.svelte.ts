@@ -545,7 +545,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					[content, lossy, encoding] = (await invoke('read_file_content_checked', { path: filePath })) as [string, boolean, string];
 					isFull = true;
 				} else {
-					[, content, isFull, lossy, encoding] = (await invoke('open_markdown_preview', { path: filePath, maxBytes: 5_000_000 })) as [string, string, boolean, boolean, string];
+					[content, isFull, lossy, encoding] = (await invoke('open_markdown_preview', { path: filePath, maxBytes: 5_000_000 })) as [string, boolean, boolean, string];
 				}
 				// Ahead of the encoding verdict, not just the buffer: a prefix's
 				// detected encoding can differ from the whole file's, and

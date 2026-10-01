@@ -42,7 +42,7 @@ test('every #[tauri::command] is reachable from the frontend', () => {
 	//
 	// `convert_markdown` carried one for as long as it existed. It was never
 	// registered, so no `invoke` could ever have reached it; it is the internal
-	// renderer that `render_markdown` and `build_markdown_preview` call. The
+	// renderer that `render_markdown` calls. The
 	// attribute claimed an exposure the app did not have, and the only reason
 	// that was ever discovered was someone reading the two lists side by side.
 	const registered = registeredCommands();

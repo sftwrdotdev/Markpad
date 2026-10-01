@@ -39,7 +39,7 @@ function readsATruncatedFile() {
 	handleInvoke = (cmd, args) => {
 		if (cmd === 'get_os_type') return 'macos';
 		if (cmd === 'canonicalize_path') return args.path;
-		if (cmd === 'open_markdown_preview') return [args.path, 'the first five megabytes', false, false, 'UTF-8'];
+		if (cmd === 'open_markdown_preview') return ['the first five megabytes', false, false, 'UTF-8'];
 		// The background completion, left in flight: this is about the tab the
 		// first stage lands on, not about what finishes afterwards.
 		if (cmd === 'read_file_content_checked') return new Promise(() => {});

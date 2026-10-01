@@ -42,7 +42,7 @@ const LOSSY = 'text with � in it';
 		const cmd = command.replace(/^plugin:[^|]*\|/, '');
 		if (cmd === 'get_os_type') return Promise.resolve('macos');
 		if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
-		if (cmd === 'open_markdown_preview') return Promise.resolve(['', LOSSY, true, true]);
+		if (cmd === 'open_markdown_preview') return Promise.resolve([LOSSY, true, true]);
 		if (cmd === 'read_file_content_checked') return Promise.resolve([LOSSY, true]);
 		if (cmd === 'save_file_content') {
 			return writeFails ? Promise.reject(new Error('Os { code: 28, kind: StorageFull }')) : Promise.resolve(null);

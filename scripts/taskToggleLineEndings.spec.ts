@@ -80,7 +80,7 @@ async function toggledContent(doc: string, sourceLine: number, nowChecked: boole
 	tabManager.closeAll();
 	invokeCalls = [];
 	handleInvoke = (cmd) => {
-		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', doc, false, false];
+		if (cmd === 'open_markdown_preview') return [doc, false, false];
 		if (cmd === 'read_file_content_checked') return [doc, false];
 		if (cmd === 'save_file_content') return null;
 		return null;
@@ -249,7 +249,7 @@ test('a toggle tells the preview it is already up to date', async () => {
 	tabManager.closeAll();
 	invokeCalls = [];
 	handleInvoke = (cmd) => {
-		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', doc, false, false];
+		if (cmd === 'open_markdown_preview') return [doc, false, false];
 		if (cmd === 'read_file_content_checked') return [doc, false];
 		if (cmd === 'save_file_content') return null;
 		return null;
@@ -281,7 +281,7 @@ test('with auto-save off a toggle leaves the tab unsaved', async () => {
 	tabManager.closeAll();
 	invokeCalls = [];
 	handleInvoke = (cmd) => {
-		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', doc, false, false];
+		if (cmd === 'open_markdown_preview') return [doc, false, false];
 		if (cmd === 'read_file_content_checked') return [doc, false];
 		return null;
 	};

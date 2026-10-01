@@ -2,7 +2,7 @@
 //! run before it, the math masking that hides TeX from CommonMark, and the
 //! heading anchors the editor completes from.
 
-use crate::fs_safety::{decode_text, read_to_string_lossy, utf8_truncation_boundary};
+use crate::fs_safety::{decode_text, utf8_truncation_boundary};
 use comrak::nodes::NodeValue;
 use comrak::{markdown_to_html, parse_document, Anchorizer, Arena, Options};
 use regex::{Captures, Regex};
@@ -1395,7 +1395,7 @@ fn escape_html_text(text: &str) -> String {
 /// a new step here must also be registered in `line_preserving_transforms()`.
 ///
 /// Not a Tauri command: the registered entry point is `render_markdown`, and
-/// this is what that and `build_markdown_preview` call underneath.
+/// this is what it calls underneath.
 pub(crate) fn convert_markdown(content: &str) -> String {
     // The buffer this command was called with, captured before anything runs
     // and never rebound. What `annotate_task_checkboxes` is handed at the end
@@ -1478,7 +1478,6 @@ fn annotate_task_checkboxes(html: String, markdown: &str) -> String {
 }
 
 pub(crate) struct MarkdownPreview {
-    pub(crate) html: String,
     pub(crate) content: String,
     pub(crate) is_full: bool,
     pub(crate) lossy: bool,
@@ -1487,42 +1486,36 @@ pub(crate) struct MarkdownPreview {
 
 /// The body of `open_markdown_preview`, kept synchronous and path-taking so
 /// the decode-fidelity behaviour can be exercised against real files.
+///
+/// No HTML: the frontend renders the buffer itself (`render_markdown`), so
+/// rendering here too only doubled the work of opening a document.
 pub(crate) fn build_markdown_preview(
     path: &Path,
     max_bytes: usize,
 ) -> Result<MarkdownPreview, String> {
     use std::io::Read;
-    let path_str = path.to_str().ok_or("Invalid path")?;
-    let mut f = fs::File::open(path).map_err(|e| e.to_string())?;
+    let f = fs::File::open(path).map_err(|e| e.to_string())?;
 
-    let metadata = f.metadata().map_err(|e| e.to_string())?;
-    if metadata.len() <= max_bytes as u64 {
-        let decoded = read_to_string_lossy(path_str).map_err(|e| e.to_string())?;
-        let html = convert_markdown(&decoded.content);
-        return Ok(MarkdownPreview {
-            html,
-            content: decoded.content,
-            is_full: true,
-            lossy: decoded.lossy,
-            encoding: decoded.encoding,
-        });
-    }
-
+    // One byte past the budget tells a file that fits from one that does not,
+    // without a separate size check or a second open.
     // `Read::read` only guarantees *at most* `buf.len()` bytes and may
     // return a short read for reasons that have nothing to do with EOF,
     // truncating the preview well below the requested budget.
     // `take(..).read_to_end(..)` keeps reading to the limit or EOF.
     let mut vec_buf = Vec::new();
-    Read::by_ref(&mut f)
-        .take(max_bytes as u64)
+    f.take(max_bytes as u64 + 1)
         .read_to_end(&mut vec_buf)
         .map_err(|e| e.to_string())?;
-    // The cut lands on a raw byte offset, which can slice a multi-byte
-    // character in half; drop the partial tail instead of rendering it as
-    // a replacement character. This also keeps a perfectly good UTF-8 file
-    // from being reported as a lossy decode just because the preview budget
-    // fell inside one of its characters.
-    vec_buf.truncate(utf8_truncation_boundary(&vec_buf));
+    let is_full = vec_buf.len() <= max_bytes;
+    if !is_full {
+        vec_buf.truncate(max_bytes);
+        // The cut lands on a raw byte offset, which can slice a multi-byte
+        // character in half; drop the partial tail instead of rendering it as
+        // a replacement character. This also keeps a perfectly good UTF-8 file
+        // from being reported as a lossy decode just because the preview budget
+        // fell inside one of its characters.
+        vec_buf.truncate(utf8_truncation_boundary(&vec_buf));
+    }
 
     // Detection runs on the prefix, so it can differ from what the whole file
     // would say — and a legacy multi-byte character cut in half here is a
@@ -1531,12 +1524,9 @@ pub(crate) fn build_markdown_preview(
     // `saveContent` outright, and the full read that precedes any edit
     // (`ensureFullContent`) replaces both answers with the whole file's.
     let preview = decode_text(&vec_buf);
-
-    let html = convert_markdown(&preview.content);
     Ok(MarkdownPreview {
-        html,
         content: preview.content,
-        is_full: false,
+        is_full,
         lossy: preview.lossy,
         encoding: preview.encoding,
     })
@@ -1801,7 +1791,9 @@ pub(crate) mod tests {
         fs::write(&path, "中文标题很长".as_bytes()).unwrap();
 
         let preview = build_markdown_preview(&path, 4).unwrap();
+        let exact = build_markdown_preview(&path, "中文标题很长".len()).unwrap();
         fs::remove_file(&path).unwrap();
+        assert!(exact.is_full, "a file exactly the budget long is whole");
 
         assert!(!preview.is_full);
         assert!(!preview.lossy, "unexpected flag on {:?}", preview.content);

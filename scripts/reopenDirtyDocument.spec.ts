@@ -32,7 +32,7 @@ const reads: string[] = [];
 		}
 		if (cmd === 'open_markdown_preview') {
 			reads.push(args.path);
-			return Promise.resolve(['', disk.get(args.path) ?? '', true, false]);
+			return Promise.resolve([disk.get(args.path) ?? '', true, false]);
 		}
 		if (cmd === 'get_os_type') return Promise.resolve('macos');
 		return Promise.resolve(null);

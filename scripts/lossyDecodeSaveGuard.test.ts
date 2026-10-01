@@ -48,7 +48,7 @@ test('one decoder, and it reports what it destroyed', () => {
 });
 
 test('both read commands can report fidelity', () => {
-	assert.match(rust, /async fn open_markdown_preview\([^)]*\)\s*-> Result<\(String, String, bool, bool, String\), String>/s);
+	assert.match(rust, /async fn open_markdown_preview\([^)]*\)\s*-> Result<\(String, bool, bool, String\), String>/s);
 	assert.match(rust, /async fn read_file_content_checked\(path: String\) -> Result<\(String, bool, String\), String>/);
 	assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
 });
@@ -74,7 +74,7 @@ test('the tab carries the fidelity of its buffer', () => {
 test('every load decides the flag instead of leaving it stale', () => {
 	// A reload of a file the user has since converted to UTF-8 must clear it.
 	const body = loadMarkdown();
-	assert.match(body, /as \[string, string, boolean, boolean, string\]/);
+	assert.match(body, /as \[string, boolean, boolean, string\]/);
 	assert.match(body, /setTabDecodedLossy\(activeId, lossy\)/);
 	// The full load REPLACES the preview's buffer, so it brings its own
 	// verdict: a file can be valid UTF-8 for the first 50KB and not after.

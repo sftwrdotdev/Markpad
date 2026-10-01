@@ -80,7 +80,7 @@ async function openPartial() {
 	tabManager.closeAll();
 	errors.length = 0;
 	handleInvoke = (cmd) => {
-		if (cmd === 'open_markdown_preview') return ['<p>preview</p>', PARTIAL, false, false];
+		if (cmd === 'open_markdown_preview') return [PARTIAL, false, false];
 		if (cmd === 'read_file_content_checked') return new Promise(() => {});
 		throw new Error(`unexpected invoke: ${cmd}`);
 	};
