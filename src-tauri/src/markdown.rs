@@ -1322,14 +1322,31 @@ fn restore_math_spans(html: &str, masked: &MaskedMath) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
     let mut in_tag = false;
-    while let Some((at, anchored)) = [
-        (rest.find(masked.prefix.as_str()), false),
-        (rest.find(anchor_prefix.as_str()), true),
-    ]
-    .into_iter()
-    .filter_map(|(at, anchored)| at.map(|at| (at, anchored)))
-    .min()
-    {
+    // Where each spelling next occurs in `html`, searched again only once
+    // `rest` has moved past it. Searching `rest` afresh on every token
+    // rescans to the end for a spelling that no longer occurs, which made
+    // this quadratic in the number of math spans.
+    let mut next = [
+        html.find(masked.prefix.as_str()),
+        html.find(anchor_prefix.as_str()),
+    ];
+    loop {
+        let offset = html.len() - rest.len();
+        for (found, needle) in next
+            .iter_mut()
+            .zip([masked.prefix.as_str(), anchor_prefix.as_str()])
+        {
+            if found.is_some_and(|at| at < offset) {
+                *found = rest.find(needle).map(|at| at + offset);
+            }
+        }
+        let Some((at, anchored)) = [(next[0], false), (next[1], true)]
+            .into_iter()
+            .filter_map(|(at, anchored)| at.map(|at| (at - offset, anchored)))
+            .min()
+        else {
+            break;
+        };
         out.push_str(&rest[..at]);
         if let Some(bracket) = rest[..at].rfind(['<', '>']) {
             in_tag = rest.as_bytes()[bracket] == b'<';
@@ -2482,6 +2499,20 @@ pub(crate) mod tests {
         assert!(
             html.contains("id=\"a-heading-with-x_1\""),
             "the mask leaked into the anchor: {html}",
+        );
+    }
+
+    #[test]
+    fn math_tokens_in_headings_and_text_restore_in_order() {
+        // `restore_math_spans` tracks where each token spelling occurs next;
+        // interleave both so neither is consumed out of order or skipped.
+        let html = convert_markdown("# H $a$\n\n$b$\n\n# K $c$\n\n$d$ $e$\n");
+        assert!(html.contains("id=\"h-a\""), "got: {html}");
+        assert!(html.contains("id=\"k-c\""), "got: {html}");
+        let order = ["$a$", "$b$", "$c$", "$d$", "$e$"].map(|math| html.find(math));
+        assert!(
+            order.iter().all(Option::is_some) && order.is_sorted(),
+            "got: {html}",
         );
     }
 
