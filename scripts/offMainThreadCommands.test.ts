@@ -7,7 +7,7 @@ import { readRustBackend } from './sourceTree.js';
 // every window until it returns. These do enough of it to be seen.
 const rust = readRustBackend();
 
-for (const name of ['clipboard_read_image']) {
+for (const name of ['clipboard_read_image', 'save_window_state']) {
 	test(`${name} runs off the main thread`, () => {
 		assert.match(rust, new RegExp(`#\\[tauri::command\\]\\n(?:pub )?async fn ${name}\\(`));
 	});

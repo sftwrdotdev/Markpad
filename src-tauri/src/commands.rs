@@ -22,7 +22,7 @@ const VSIX_CONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 const VSIX_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Runs `f` on the blocking pool. A panicked task reports its `JoinError` text.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, String> + Send + 'static,
 ) -> Result<T, String> {
     tauri::async_runtime::spawn_blocking(f)

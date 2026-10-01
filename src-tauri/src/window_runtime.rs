@@ -433,9 +433,16 @@ fn window_state_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
 /// next launch restores no tabs at all. `atomic_write` publishes the new
 /// snapshot with a rename: the file on disk is either entirely the old
 /// session or entirely the new one.
+///
+/// Off the main thread: the two fsyncs cost ~8 ms, and closing main freezes
+/// every other window for that long. The caller still awaits the write.
 #[tauri::command]
-pub fn save_window_state(app: AppHandle, json: String) -> Result<(), String> {
-    atomic_write(&window_state_path(&app)?, json.as_bytes()).map_err(|e| e.to_string())
+pub async fn save_window_state(app: AppHandle, json: String) -> Result<(), String> {
+    let path = window_state_path(&app)?;
+    crate::commands::blocking(move || {
+        atomic_write(&path, json.as_bytes()).map_err(|e| e.to_string())
+    })
+    .await
 }
 
 #[tauri::command]
