@@ -1857,6 +1857,8 @@
 		return Math.max(0, editor.getContentHeight() - layout.height);
 	}
 
+	let frontMatterOffsetCache: { model: Monaco.editor.ITextModel; version: number; offset: number } | null = null;
+
 	function getEditorFrontMatterScrollEnd() {
 		if (!editor) return 0;
 
@@ -1865,8 +1867,13 @@
 
 		// The preview's rule, not a second one: a leading `---` block that is not
 		// a YAML mapping is body there, and the two panes must agree on where the
-		// front matter ends or every position above it syncs to the top.
-		const bodyStartLine = frontMatterLineOffset(model.getValue()) + 1;
+		// front matter ends or every position above it syncs to the top. Cached on
+		// the model's version because this runs on every scroll event.
+		const version = model.getVersionId();
+		if (frontMatterOffsetCache?.model !== model || frontMatterOffsetCache.version !== version) {
+			frontMatterOffsetCache = { model, version, offset: frontMatterLineOffset(model.getValue()) };
+		}
+		const bodyStartLine = frontMatterOffsetCache.offset + 1;
 		if (bodyStartLine <= 1) return 0;
 
 		const safeBodyStartLine = Math.max(1, Math.min(model.getLineCount(), bodyStartLine));

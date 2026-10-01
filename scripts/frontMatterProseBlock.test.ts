@@ -7,6 +7,8 @@ import {
 	getMarkdownBodyWithoutFrontMatter,
 	parseFrontMatter,
 } from '../src/lib/utils/frontMatter.js';
+import ts from 'typescript';
+
 import { functionSource, readSource } from './sourceTree.js';
 
 // A document may open with a thematic break and then use a setext underline for
@@ -95,6 +97,39 @@ test('the editor finds the end of the front matter through parseFrontMatter too'
 	const scrollEnd = functionSource(editor, 'getEditorFrontMatterScrollEnd');
 	assert.match(scrollEnd, /frontMatterLineOffset\(/);
 	assert.doesNotMatch(editor, /\.trim\(\) !== '---'/);
+});
+
+// Split view asks for it on every scroll event, and it costs a copy of the
+// buffer plus a YAML parse: once per document version is enough.
+test('the editor parses the front matter once per document version, not per scroll event', () => {
+	const scrollEnd = functionSource(readSource('src/lib/components/Editor.svelte'), 'getEditorFrontMatterScrollEnd');
+	const run = new Function(
+		'editor',
+		'frontMatterLineOffset',
+		'getEditorContentScrollMax',
+		ts.transpileModule(`let frontMatterOffsetCache = null;\n${scrollEnd}\nreturn getEditorFrontMatterScrollEnd;`, {
+			compilerOptions: { target: ts.ScriptTarget.ES2022 },
+		}).outputText,
+	);
+	let version = 1;
+	let reads = 0;
+	const model = {
+		getVersionId: () => version,
+		getValue: () => (reads++, '---\ntitle: x\n---\n\n# Body\n'),
+		getLineCount: () => 6,
+	};
+	const editor = {
+		getModel: () => model,
+		getTopForLineNumber: (line: number) => line * 10,
+	};
+	const scrollEndOf = run(editor, frontMatterLineOffset, () => 1000) as () => number;
+
+	assert.equal(scrollEndOf(), 50);
+	scrollEndOf();
+	assert.equal(reads, 1, 'the buffer was re-read and re-parsed at the same version');
+	version = 2;
+	scrollEndOf();
+	assert.equal(reads, 2, 'an edit must invalidate it');
 });
 
 test('an unresolved alias in the block is broken front matter, not an exception', () => {
