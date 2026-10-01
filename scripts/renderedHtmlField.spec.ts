@@ -55,7 +55,7 @@ import { readSource } from './sourceTree.js';
  */
 
 // ---------------------------------------------------------------- environment
-// Svelte runes and the Tauri bridge, faked as homeTabRender.test.ts does, so
+// Svelte runes and the Tauri bridge, faked as homeTabRender.spec.ts does, so
 // `tabs.svelte.ts` and `settings.svelte.ts` import under plain node.
 
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the

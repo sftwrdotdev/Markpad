@@ -3759,7 +3759,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						try {
 							await invoke('rename_file', { oldPath, newPath });
 							tabManager.renameTab(tabId, newPath);
-							// Update recent files if needed
 							recentFiles = updateStoredRecentFiles((current) => renameRecentFile(current, oldPath, newPath));
 						} catch (e) {
 							console.error('Failed to rename file', e);

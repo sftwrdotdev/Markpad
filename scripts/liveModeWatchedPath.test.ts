@@ -15,7 +15,7 @@ test('Live Mode routes a watcher notification to its watched path', () => {
 	// The listener no longer compares the payload with the active file itself:
 	// resolveExternalChange looks up the tab that OWNS the changed path (and
 	// refuses to reload it when it has unsaved edits). See
-	// externalChangeReload.test.ts for the routing behaviour.
+	// externalChangeReload.spec.ts for the routing behaviour.
 	assert.match(viewer, /if \(!liveMode\) return;/);
 	assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
 	const session = readSource('src/lib/sessions/documentSession.svelte.ts');

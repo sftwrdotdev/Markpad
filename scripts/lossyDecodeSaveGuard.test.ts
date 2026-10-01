@@ -14,7 +14,7 @@ import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween } f
 //
 // Detection (#372) removed the common cause rather than the guard: a legacy
 // encoding (GBK, Big5, Shift-JIS, CP-1252 ...) is now read properly and
-// written back as itself — `documentEncodingRoundTrip.test.ts` drives that.
+// written back as itself — `documentEncodingRoundTrip.spec.ts` drives that.
 // What is left here is the file NO encoding can read, which is still a buffer
 // that must never reach its own file.
 //
@@ -171,7 +171,7 @@ test('Save As onto the same file is still a destructive overwrite', () => {
 	// another spelling of the source file — a different case, or accents
 	// composed differently — and on macOS and Windows that still lands on the
 	// same bytes. The guard is therefore handed the target's resolved identity
-	// as well as its path. See pathIdentityCaseFolding.test.ts, which drives
+	// as well as its path. See pathIdentityCaseFolding.spec.ts, which drives
 	// that refusal for real instead of reading for it.
 	const refusal = offsetOf(body, 'refuseIfLossilyDecoded(tab, selected');
 	assert.ok(

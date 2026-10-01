@@ -12,7 +12,7 @@ import { functionSource, readRustBackend, readSource, sliceBetween } from './sou
  * against.
  *
  * The decoding and encoding themselves are Rust and are tested there
- * (`saving_an_unedited_legacy_document_reproduces_its_bytes_exactly` is the
+ * (`saving_an_unedited_legacy_document_reproduces_its_canonical_bytes` is the
  * one that matters). What has to hold on this side is the wiring, because it
  * is the wiring that decides which bytes reach the file:
  *

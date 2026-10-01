@@ -313,7 +313,7 @@ type Component = {
 /**
  * The lifted code is TypeScript (`function acquireTabModel(tabId: string, …)`)
  * and `new Function` only parses JavaScript, so it goes through `tsc` first —
- * as imageUndoKeepsFile.test.ts and foldStatePerDocument.test.ts already do.
+ * as imageUndoKeepsFile.spec.ts and foldStatePerDocument.spec.ts already do.
  * Types are erased, nothing else: the statements that run are the component's.
  */
 const factorySource = ts.transpileModule(

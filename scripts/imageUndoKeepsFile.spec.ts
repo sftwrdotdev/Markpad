@@ -21,7 +21,7 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
  *
  * They RUN the code rather than reading it. A `.svelte` file cannot be
  * imported by the Node test runner, so — following windowTagDismiss.test.ts
- * and homeTabRender.test.ts — the Ctrl+V command callback, the exported
+ * and homeTabRender.spec.ts — the Ctrl+V command callback, the exported
  * `handleDroppedFile`, and EVERY `onDidChangeModelContent` listener the
  * component registers are lifted out of the parsed component and evaluated
  * over one shared scope, one fake Monaco document with a real undo stack, and
@@ -239,8 +239,8 @@ type Component = {
 /**
  * The lifted code is TypeScript — `handleDroppedFile(path: string, …)`, `as
  * string | null`, `(editor as any)` — and `new Function` only takes JavaScript,
- * so it goes through `tsc` first, as foldStatePerDocument.test.ts and
- * viewModeWithoutSaving.test.ts already do. Types are erased, nothing else:
+ * so it goes through `tsc` first, as foldStatePerDocument.spec.ts and
+ * viewModeWithoutSaving.spec.ts already do. Types are erased, nothing else:
  * the statements that run are the component's own.
  */
 const factorySource = ts.transpileModule(

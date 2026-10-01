@@ -8,7 +8,7 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
  * A running window-tag control, lifted out of TitleBar.svelte.
  *
  * A `.svelte` file cannot be imported by the Node test runner, so — following
- * homeTabRender.test.ts — the component's own function declarations, the
+ * homeTabRender.spec.ts — the component's own function declarations, the
  * handlers its markup is actually wired to, and the body of the `$effect` that
  * installs the window-level dismissal listeners are read out of the parsed
  * component and evaluated over one shared set of component variables and the

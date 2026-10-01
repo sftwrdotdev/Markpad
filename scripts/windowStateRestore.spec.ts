@@ -127,10 +127,10 @@ test('startup restore reads content from disk, not from the snapshot', () => {
 	assert.match(restore, /read_file_content/);
 	// a file that cannot be read keeps its tab and its place in the snapshot —
 	// dropping it here also dropped it from the snapshot written moments later
-	// (sessionRestoreResilience.test.ts)
+	// (sessionRestoreResilience.spec.ts)
 	assert.match(restore, /tabManager\.markTabContentUnavailable\(tab\.id\);/);
 	// dropping is reserved for an entry that is not a file at all — a legacy
-	// 'HOME' sentinel (homeSentinelSnapshot.test.ts)
+	// 'HOME' sentinel (homeSentinelSnapshot.spec.ts)
 	assert.match(restore, /if \(!hasRealFilePath\(tab\.path\)\) \{\s*\n\s*options\.dropRestoredTab\(tab\.id\);/);
 	assert.match(viewer, /await windowSession\.restore\(\);/);
 });

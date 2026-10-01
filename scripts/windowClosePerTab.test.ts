@@ -175,7 +175,7 @@ test('the untitled save dialog prefills the numbered tab title', () => {
 test('save-as writes a snapshot rather than the buffer as it stands', () => {
 	// The other half — that a keystroke landing during that write is still
 	// unsaved afterwards — is `isDirty` reading the two buffers, and it runs
-	// for real in oneWritePerTabInFlight.test.ts.
+	// for real in oneWritePerTabInFlight.spec.ts.
 	const fn = sliceFrom(documentSession, 'async function saveContentAs');
 	assert.match(fn, /const snapshot = tab\.rawContent;/);
 });

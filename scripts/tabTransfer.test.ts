@@ -209,7 +209,7 @@ test('file-backed arrivals keep their title', () => {
 });
 
 // insertTransferredTab lives in the Svelte store ($state rune, not loadable
-// in node), so — like windowStateRestore.test.ts — the thin store wrapper is
+// in node), so — like windowStateRestore.spec.ts — the thin store wrapper is
 // checked statically; all decision logic above is exercised directly.
 test('insertTransferredTab is a thin wrapper: build, push, activate, return the id', () => {
 	const tabs = readSource('src/lib/stores/tabs.svelte.ts');

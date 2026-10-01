@@ -13,7 +13,7 @@ import { test } from 'vitest';
 // to "is this path a file" — every other caller already used it.
 //
 // These tests drive the real TabManager, so they lock the behaviour rather than
-// the wording. The restore-loop half lives in sessionRestoreResilience.test.ts,
+// the wording. The restore-loop half lives in sessionRestoreResilience.spec.ts,
 // which already has the window-session harness.
 
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the

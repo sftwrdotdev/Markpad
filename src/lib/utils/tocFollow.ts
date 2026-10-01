@@ -36,8 +36,7 @@ export type TocLineEntry = {
 export function activeTocIdForLine(entries: readonly TocLineEntry[], line: RendererLine): string | null {
 	if (!Number.isFinite(line) || entries.length === 0) return null;
 
-	// Above the first heading the first entry is the active one — what the
-	// preview's handler does with `visibleItems[0]` before its loop.
+	// Above the first heading the first entry is active.
 	let active: string | null = entries[0].id;
 	for (const entry of entries) {
 		if (entry.line !== null && entry.line <= line) active = entry.id;

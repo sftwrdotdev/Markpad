@@ -22,7 +22,7 @@ import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 // never reported because nobody could see it happen.
 //
 // These tests drive the real document session over both line endings. The
-// existing behavioural toggle test lives in `truncatedBufferGuard.test.ts` and
+// existing behavioural toggle test lives in `truncatedBufferGuard.spec.ts` and
 // passes `sourceLine: 1` — the one line number the bug cannot reach, since at
 // offset 0 there is no preceding terminator for `\s*` to eat.
 

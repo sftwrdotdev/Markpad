@@ -10,9 +10,8 @@ import { SANITIZER_FILES, type SourceFile, filesMatching, readSourceFiles } from
 // copy, nothing imports it, and it looks like a reusable shared helper — so the
 // next person to "reuse" or "sync" it silently reverts a merged fix.
 //
-// The existing behavior tests cannot see this. youtubeExternalFallback.test.ts,
-// taskToggleMemory.test.ts, mermaidPrintTheme.test.ts and previewScrollSync.ts
-// each read one hard-coded file, so a second copy living anywhere else is
+// The existing behavior tests cannot see this. youtubeExternalFallback.test.ts
+// and mermaidPrintTheme.test.ts read hard-coded files, so a second copy living anywhere else is
 // invisible to them. Every rule below therefore scans the whole `src` tree and
 // pins *which files* are allowed to contain the marker.
 //

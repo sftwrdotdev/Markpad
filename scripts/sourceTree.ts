@@ -202,7 +202,7 @@ export const SANITIZER_FILES = ['src/lib/utils/richContent.ts', 'src/lib/utils/s
 // the next contributor is free to invent a 5th.
 //
 // So the scope questions are answered from the real AST instead. `svelte/compiler`
-// is already a dependency and `homeTabRender.test.ts` already parses a component
+// is already a dependency and `homeTabRender.spec.ts` already parses a component
 // with it; a function node is a function node whatever the spelling, and there is
 // no pattern left to write around. The cost is ~170ms for the largest component,
 // paid once per file thanks to the cache below.
@@ -358,7 +358,7 @@ export function enclosingFunctionName(text: string, index: number): string | nul
  * pair `sliceBetween(text, 'async function subject', 'async function
  * whatever-comes-next')` names the neighbour rather than the subject: the slice
  * is then only as tight as the declaration order happens to make it, and it
- * widens silently as the file grows. Both uses in truncatedBufferGuard.test.ts
+ * widens silently as the file grows. Both uses in truncatedBufferGuard.spec.ts
  * had already grown past their subject — the transfer slice ran from
  * `canTransfer` through `canDetach`, the detach slice from `handleDetach`
  * through `moveTabToWindow` — and each swallowed function carries a

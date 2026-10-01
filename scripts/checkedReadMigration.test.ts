@@ -86,7 +86,7 @@ test('the session can tell a refusal from a failure', () => {
 	// `saveContent` returns false for both, which is why the auto-save timer
 	// could not tell them apart. The predicate is no longer set membership on
 	// its own: the set records what was SAID, and whether the refusal still
-	// stands is asked of the tab. `lossySaveRefusalScope.test.ts` exercises
+	// stands is asked of the tab. `lossySaveRefusalScope.spec.ts` exercises
 	// both halves for real; this only pins that the tab is consulted at all,
 	// since a predicate that answers from memory alone is the defect.
 	const body = sliceBetween(

@@ -16,7 +16,7 @@
  *
  *   editor scrollTop -> line -> ScrollSyncPosition -> preview scrollTop -> line
  *
- * `RATIO_ONLY` re-runs the same sweep with the `line` field stripped out of the
+ * `ratioOnly` re-runs the same sweep with the `line` field stripped out of the
  * position, which is exactly the pre-fix mapping, and is kept as the control:
  * if the block mapping ever collapses back into a proportional one the two
  * drift figures collapse into each other.
@@ -36,7 +36,7 @@
  * same parameter the browser fills with `offsetTop` / `offsetHeight`. What is
  * asserted is the mapping's arithmetic and its choice of element over real
  * `processMarkdownHtml` output; what is NOT asserted is that a browser lays a
- * table out the way `BLOCK_HEIGHTS` says. The property under test does not
+ * table out the way `leafHeight` says. The property under test does not
  * depend on the specific numbers, only on rendered height not being
  * proportional to source lines, which is the premise of the bug.
  */
@@ -361,8 +361,7 @@ function layOut(root: ShimElement, startTop = 0, gap = BLOCK_GAP): Map<ShimEleme
 	// where the block-wide interpolation already points. The anchors therefore
 	// change none of the numbers here, which is the point: this file's premise
 	// is that rendered height is not proportional to SOURCE lines across block
-	// types, not that a paragraph wraps unevenly. `scrollSyncSoftLineAnchors`
-	// covers the case where it does.
+	// types, not that a paragraph wraps unevenly.
 	for (const [block, box] of Array.from(boxes)) {
 		const span = sourceLineSpan(block);
 		if (span < 2) continue;

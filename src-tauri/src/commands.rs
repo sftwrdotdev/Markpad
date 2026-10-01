@@ -885,7 +885,6 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
         let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
         use image::ImageEncoder;
 
-        // Check if running on macOS and scale image if needed
         #[cfg(target_os = "macos")]
         {
             if macos_image_scaling {

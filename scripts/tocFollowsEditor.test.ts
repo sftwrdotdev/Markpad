@@ -57,10 +57,8 @@ test('the active entry is the last heading at or above the editor position', () 
 });
 
 test('a position above every heading takes the first entry, as the preview does', () => {
-	// `handleScroll` seeds `currentActive` with `visibleItems[0]` before its
-	// loop, so front matter — or anything above the first heading — leaves the
-	// first entry highlighted. Answering `null` here instead would blank the
-	// outline on the way past the top of a document scrolled in the editor.
+	// Answering `null` here would blank the outline on the way past the top of
+	// a document scrolled in the editor.
 	assert.equal(activeTocIdForLine([{ id: 'later', line: bodyLine(12) }], bodyLine(3)), 'later');
 });
 

@@ -61,8 +61,8 @@ const contentChangeBody = (() => {
 
 /**
  * The lifted body is TypeScript and `new Function` only parses JavaScript, so
- * it goes through `tsc` first, as undoHistoryPerTab.test.ts and
- * imageUndoKeepsFile.test.ts already do. Types are erased, nothing else: the
+ * it goes through `tsc` first, as undoHistoryPerTab.spec.ts and
+ * imageUndoKeepsFile.spec.ts already do. Types are erased, nothing else: the
  * statements that run are the component's.
  */
 const factorySource = ts.transpileModule(
