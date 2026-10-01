@@ -348,6 +348,10 @@ class TabManager {
 		return this.tabs.find((t) => t.id === this.activeTabId);
 	}
 
+	private tab(id: string) {
+		return this.tabs.find((t) => t.id === id);
+	}
+
 	setWindowTag(tag: { name: string; color: string; pinned?: boolean } | null) {
 		this.windowTag = tag ? { ...tag, pinned: tag.pinned === true } : null;
 	}
@@ -787,17 +791,13 @@ class TabManager {
 	}
 
 	updateTabContent(id: string, content: string) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.content = content;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.content = content;
 	}
 
 	updateTabRawContent(id: string, raw: string) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.rawContent = raw;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.rawContent = raw;
 	}
 
 	/**
@@ -812,7 +812,7 @@ class TabManager {
 	 * the preview read must pass it explicitly.
 	 */
 	setTabRawContent(id: string, raw: string, isTruncated = false) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			tab.rawContent = raw;
 			tab.originalContent = raw;
@@ -837,7 +837,7 @@ class TabManager {
 	 * failed read of the file it came from.
 	 */
 	markTabContentUnavailable(id: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab || tab.isDirty) return;
 		tab.rawContent = '';
 		tab.originalContent = '';
@@ -850,10 +850,8 @@ class TabManager {
 	 * flag, and Save As clears it once the buffer has a UTF-8 file of its own.
 	 */
 	setTabDecodedLossy(id: string, lossy: boolean) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.hasReplacementChars = lossy;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.hasReplacementChars = lossy;
 	}
 
 	/**
@@ -869,10 +867,8 @@ class TabManager {
 	 * together would buy a line and cost the name.
 	 */
 	setTabEncoding(id: string, encoding: string) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.encoding = encoding;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.encoding = encoding;
 	}
 
 	/**
@@ -888,29 +884,23 @@ class TabManager {
 	 * the tab no longer holds is worse than no key at all.
 	 */
 	setTabPathKey(id: string, path: string, pathKey: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab && tab.path === path) tab.pathKey = pathKey;
 	}
 
 	updateTabScroll(id: string, scrollTop: number) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.scrollTop = scrollTop;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.scrollTop = scrollTop;
 	}
 
 	updateTabEditorState(id: string, viewState: any) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.editorViewState = viewState;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.editorViewState = viewState;
 	}
 
 	updateTabScrollPercentage(id: string, percentage: number) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.scrollPercentage = percentage;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.scrollPercentage = percentage;
 	}
 
 	/**
@@ -925,7 +915,7 @@ class TabManager {
 	 * and forward walk the same path in both directions.
 	 */
 	pushScrollHistory(id: string, from: number) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab) return;
 		tab.scrollHistory.push(from);
 		tab.scrollFuture = [];
@@ -941,7 +931,7 @@ class TabManager {
 	 * (`goBack`), a different thing entirely.
 	 */
 	popScrollHistoryBack(id: string, from: number): number | null {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab || tab.scrollHistory.length === 0) return null;
 		tab.scrollFuture.push(from);
 		return tab.scrollHistory.pop()!;
@@ -949,7 +939,7 @@ class TabManager {
 
 	/** The mirror of `popScrollHistoryBack`; falls through to `goForward`. */
 	popScrollHistoryForward(id: string, from: number): number | null {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab || tab.scrollFuture.length === 0) return null;
 		tab.scrollHistory.push(from);
 		return tab.scrollFuture.pop()!;
@@ -965,7 +955,7 @@ class TabManager {
 	 * navigation routes rather than from a load.
 	 */
 	clearScrollHistory(id: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab) return;
 		tab.scrollHistory = [];
 		tab.scrollFuture = [];
@@ -976,10 +966,8 @@ class TabManager {
 	 * than mutating the old one — see `Tab.foldOverrides`.
 	 */
 	setTabFoldOverrides(id: string, foldOverrides: Set<string>) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.foldOverrides = foldOverrides;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.foldOverrides = foldOverrides;
 	}
 
 	/**
@@ -1000,21 +988,19 @@ class TabManager {
 	 * type error rather than a document that opens in the wrong place.
 	 */
 	updateTabAnchorLine(id: string, line: RendererLine) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.anchorLine = line;
-		}
+		const tab = this.tab(id);
+		if (tab) tab.anchorLine = line;
 	}
 
 	toggleSplit(id: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			this.setSplitEnabled(id, !tab.isSplit);
 		}
 	}
 
 	setSplitEnabled(id: string, enabled: boolean) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (!tab) return;
 
 		tab.isSplit = enabled;
@@ -1026,14 +1012,12 @@ class TabManager {
 	}
 
 	setSplitRatio(id: string, ratio: number) {
-		const tab = this.tabs.find((t) => t.id === id);
-		if (tab) {
-			tab.splitRatio = Math.max(0.1, Math.min(0.9, ratio));
-		}
+		const tab = this.tab(id);
+		if (tab) tab.splitRatio = Math.max(0.1, Math.min(0.9, ratio));
 	}
 
 	toggleScrollSync(id: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			tab.isScrollSynced = !tab.isScrollSynced;
 			this.splitScrollSyncPreference = tab.isScrollSynced;
@@ -1062,7 +1046,7 @@ class TabManager {
 	}
 
 	updateTabPath(id: string, path: string, pathKey?: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			// Save As can name a file that is already open here; the write has
 			// happened by the time this runs, so the other tab's buffer is
@@ -1089,7 +1073,7 @@ class TabManager {
 	}
 
 	renameTab(id: string, newPath: string, pathKey?: string) {
-		const tab = this.tabs.find((t) => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			this.claimPath(newPath, id, pathKey);
 			tab.path = newPath;
@@ -1214,7 +1198,7 @@ class TabManager {
 	}
 
 	navigate(id: string, path: string, pathKey?: string) {
-		const tab = this.tabs.find(t => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			if (tab.path === path) return;
 
@@ -1242,17 +1226,17 @@ class TabManager {
 	}
 
 	canGoBack(id: string): boolean {
-		const tab = this.tabs.find(t => t.id === id);
+		const tab = this.tab(id);
 		return tab ? canGoBackInHistory(tab) : false;
 	}
 
 	canGoForward(id: string): boolean {
-		const tab = this.tabs.find(t => t.id === id);
+		const tab = this.tab(id);
 		return tab ? canGoForwardInHistory(tab) : false;
 	}
 
 	goBack(id: string): string | null {
-		const tab = this.tabs.find(t => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			const result = goBackInHistory(tab);
 			if (!result.path) return null;
@@ -1274,7 +1258,7 @@ class TabManager {
 	}
 
 	goForward(id: string): string | null {
-		const tab = this.tabs.find(t => t.id === id);
+		const tab = this.tab(id);
 		if (tab) {
 			const result = goForwardInHistory(tab);
 			if (!result.path) return null;
