@@ -209,12 +209,12 @@
 	let savedVscodeThemes = $state<string[]>([]);
 	let themeImportUrl = $state('');
 	let importingTheme = $state(false);
-	let editorToolbarDraggingId = $state<string | null>(null);
-	let editorToolbarDragOverId = $state<string | null>(null);
-	let editorToolbarDragState = $state<ToolbarSettingsDragState | null>(null);
-	let titlebarToolbarDraggingId = $state<string | null>(null);
-	let titlebarToolbarDragOverId = $state<string | null>(null);
-	let titlebarToolbarDragState = $state<ToolbarSettingsDragState | null>(null);
+	const editorToolbarDrag = createToolbarRowDrag('data-editor-toolbar-tool-id', (id, targetId) =>
+		settings.reorderEditorToolbarTool(id, targetId),
+	);
+	const titlebarToolbarDrag = createToolbarRowDrag('data-titlebar-toolbar-action-id', (id, targetId) =>
+		settings.reorderTitlebarToolbarAction(id, targetId),
+	);
 	let settingsModalFrame = $state<SettingsModalFrame>({
 		// Placeholder until the modal is measured; matches `.settings-modal`.
 		width: 600,
@@ -287,108 +287,76 @@
 		};
 	}
 
-	function handleEditorToolbarDragPointerDown(e: PointerEvent, id: string) {
-		const dragState = createToolbarDragState(e, id);
-		if (!dragState) return;
-		editorToolbarDragState = dragState;
-		window.addEventListener('pointermove', handleEditorToolbarWindowPointerMove);
-		window.addEventListener('pointerup', handleEditorToolbarWindowPointerUp);
-		window.addEventListener('pointercancel', handleEditorToolbarWindowPointerCancel);
+	/**
+	 * Follows one press at window level until that pointer lifts or is
+	 * cancelled. `onEnd` gets the final event; its `type` tells up from cancel.
+	 */
+	function trackPointer(start: PointerEvent, onMove: (e: PointerEvent) => void, onEnd: (e: PointerEvent) => void) {
+		const move = (e: PointerEvent) => {
+			if (e.pointerId === start.pointerId) onMove(e);
+		};
+		const end = (e: PointerEvent) => {
+			if (e.pointerId !== start.pointerId) return;
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', end);
+			window.removeEventListener('pointercancel', end);
+			onEnd(e);
+		};
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', end);
+		window.addEventListener('pointercancel', end);
 	}
 
-	function handleEditorToolbarWindowPointerMove(e: PointerEvent) {
-		if (!editorToolbarDragState || e.pointerId !== editorToolbarDragState.pointerId) return;
-		e.preventDefault();
+	/** Drag-to-reorder for one toolbar list. Each row carries its id in `attributeName`. */
+	function createToolbarRowDrag(attributeName: string, reorder: (id: string, targetId: string) => void) {
+		const view = $state<{ draggingId: string | null; dragOverId: string | null }>({ draggingId: null, dragOverId: null });
+		let dragState: ToolbarSettingsDragState | null = null;
 
-		if (!editorToolbarDragState.isDragging) {
-			if (Math.abs(e.clientY - editorToolbarDragState.startY) <= 4) return;
-			editorToolbarDragState.isDragging = true;
-			editorToolbarDraggingId = editorToolbarDragState.id;
+		function onMove(e: PointerEvent) {
+			if (!dragState || e.pointerId !== dragState.pointerId) return;
+			e.preventDefault();
+
+			if (!dragState.isDragging) {
+				if (Math.abs(e.clientY - dragState.startY) <= 4) return;
+				dragState.isDragging = true;
+				view.draggingId = dragState.id;
+			}
+
+			const targetId = getToolbarDragTargetId(e, `[${attributeName}]`, attributeName);
+			if (!targetId || targetId === dragState.id) {
+				view.dragOverId = null;
+				dragState.lastTargetId = null;
+				return;
+			}
+
+			view.dragOverId = targetId;
+			if (targetId === dragState.lastTargetId) return;
+			dragState.lastTargetId = targetId;
+			reorder(dragState.id, targetId);
 		}
 
-		const targetId = getToolbarDragTargetId(e, '[data-editor-toolbar-tool-id]', 'data-editor-toolbar-tool-id');
-		if (!targetId || targetId === editorToolbarDragState.id) {
-			editorToolbarDragOverId = null;
-			editorToolbarDragState.lastTargetId = null;
-			return;
+		function onEnd(e: PointerEvent) {
+			if (!dragState || e.pointerId !== dragState.pointerId) return;
+			if (e.type === 'pointerup' && dragState.isDragging) e.preventDefault();
+			view.draggingId = null;
+			view.dragOverId = null;
+			dragState = null;
 		}
 
-		editorToolbarDragOverId = targetId;
-		if (targetId === editorToolbarDragState.lastTargetId) return;
-		editorToolbarDragState.lastTargetId = targetId;
-		settings.reorderEditorToolbarTool(editorToolbarDragState.id, targetId);
-	}
-
-	function clearEditorToolbarDragState() {
-		editorToolbarDraggingId = null;
-		editorToolbarDragOverId = null;
-		editorToolbarDragState = null;
-		window.removeEventListener('pointermove', handleEditorToolbarWindowPointerMove);
-		window.removeEventListener('pointerup', handleEditorToolbarWindowPointerUp);
-		window.removeEventListener('pointercancel', handleEditorToolbarWindowPointerCancel);
-	}
-
-	function handleEditorToolbarWindowPointerUp(e: PointerEvent) {
-		if (!editorToolbarDragState || e.pointerId !== editorToolbarDragState.pointerId) return;
-		if (editorToolbarDragState.isDragging) e.preventDefault();
-		clearEditorToolbarDragState();
-	}
-
-	function handleEditorToolbarWindowPointerCancel(e: PointerEvent) {
-		if (!editorToolbarDragState || e.pointerId !== editorToolbarDragState.pointerId) return;
-		clearEditorToolbarDragState();
-	}
-
-	function handleTitlebarToolbarDragPointerDown(e: PointerEvent, id: string) {
-		const dragState = createToolbarDragState(e, id);
-		if (!dragState) return;
-		titlebarToolbarDragState = dragState;
-		window.addEventListener('pointermove', handleTitlebarToolbarWindowPointerMove);
-		window.addEventListener('pointerup', handleTitlebarToolbarWindowPointerUp);
-		window.addEventListener('pointercancel', handleTitlebarToolbarWindowPointerCancel);
-	}
-
-	function handleTitlebarToolbarWindowPointerMove(e: PointerEvent) {
-		if (!titlebarToolbarDragState || e.pointerId !== titlebarToolbarDragState.pointerId) return;
-		e.preventDefault();
-
-		if (!titlebarToolbarDragState.isDragging) {
-			if (Math.abs(e.clientY - titlebarToolbarDragState.startY) <= 4) return;
-			titlebarToolbarDragState.isDragging = true;
-			titlebarToolbarDraggingId = titlebarToolbarDragState.id;
-		}
-
-		const targetId = getToolbarDragTargetId(e, '[data-titlebar-toolbar-action-id]', 'data-titlebar-toolbar-action-id');
-		if (!targetId || targetId === titlebarToolbarDragState.id) {
-			titlebarToolbarDragOverId = null;
-			titlebarToolbarDragState.lastTargetId = null;
-			return;
-		}
-
-		titlebarToolbarDragOverId = targetId;
-		if (targetId === titlebarToolbarDragState.lastTargetId) return;
-		titlebarToolbarDragState.lastTargetId = targetId;
-		settings.reorderTitlebarToolbarAction(titlebarToolbarDragState.id, targetId);
-	}
-
-	function clearTitlebarToolbarDragState() {
-		titlebarToolbarDraggingId = null;
-		titlebarToolbarDragOverId = null;
-		titlebarToolbarDragState = null;
-		window.removeEventListener('pointermove', handleTitlebarToolbarWindowPointerMove);
-		window.removeEventListener('pointerup', handleTitlebarToolbarWindowPointerUp);
-		window.removeEventListener('pointercancel', handleTitlebarToolbarWindowPointerCancel);
-	}
-
-	function handleTitlebarToolbarWindowPointerUp(e: PointerEvent) {
-		if (!titlebarToolbarDragState || e.pointerId !== titlebarToolbarDragState.pointerId) return;
-		if (titlebarToolbarDragState.isDragging) e.preventDefault();
-		clearTitlebarToolbarDragState();
-	}
-
-	function handleTitlebarToolbarWindowPointerCancel(e: PointerEvent) {
-		if (!titlebarToolbarDragState || e.pointerId !== titlebarToolbarDragState.pointerId) return;
-		clearTitlebarToolbarDragState();
+		return {
+			get draggingId() {
+				return view.draggingId;
+			},
+			get dragOverId() {
+				return view.dragOverId;
+			},
+			pointerDown(e: PointerEvent, id: string) {
+				const next = createToolbarDragState(e, id);
+				if (!next) return;
+				dragState = next;
+				trackPointer(e, onMove, onEnd);
+			},
+		};
 	}
 
 	function clampNumber(value: number, min: number, max: number) {
@@ -450,9 +418,7 @@
 			height: frame.height,
 		};
 		settingsModalIsDragging = true;
-		window.addEventListener('pointermove', handleSettingsModalDragWindowPointerMove);
-		window.addEventListener('pointerup', handleSettingsModalDragWindowPointerUp);
-		window.addEventListener('pointercancel', handleSettingsModalDragWindowPointerCancel);
+		trackPointer(e, handleSettingsModalDragWindowPointerMove, completeSettingsModalDrag);
 	}
 
 	function handleSettingsModalDragWindowPointerMove(e: PointerEvent) {
@@ -468,36 +434,20 @@
 		});
 	}
 
-	function completeSettingsModalDrag(e?: PointerEvent) {
-		if (!settingsModalDragStart) return;
-		e?.preventDefault();
-		e?.stopPropagation();
+	function completeSettingsModalDrag(e: PointerEvent) {
+		if (!settingsModalDragStart || e.pointerId !== settingsModalDragStart.pointerId) return;
+		e.preventDefault();
+		e.stopPropagation();
 		settingsModalDragStart = null;
 		settingsModalIsDragging = false;
-		window.removeEventListener('pointermove', handleSettingsModalDragWindowPointerMove);
-		window.removeEventListener('pointerup', handleSettingsModalDragWindowPointerUp);
-		window.removeEventListener('pointercancel', handleSettingsModalDragWindowPointerCancel);
 	}
 
-	function handleSettingsModalDragWindowPointerUp(e: PointerEvent) {
-		if (!settingsModalDragStart || e.pointerId !== settingsModalDragStart.pointerId) return;
-		completeSettingsModalDrag(e);
-	}
-
-	function handleSettingsModalDragWindowPointerCancel(e: PointerEvent) {
-		if (!settingsModalDragStart || e.pointerId !== settingsModalDragStart.pointerId) return;
-		completeSettingsModalDrag(e);
-	}
-
-	function completeSettingsResize(e?: PointerEvent) {
-		if (!settingsResizeStart) return;
-		e?.preventDefault();
-		e?.stopPropagation();
+	function completeSettingsResize(e: PointerEvent) {
+		if (!settingsResizeStart || e.pointerId !== settingsResizeStart.pointerId) return;
+		e.preventDefault();
+		e.stopPropagation();
 		settingsResizeStart = null;
 		settingsModalIsResizing = false;
-		window.removeEventListener('pointermove', handleSettingsResizeWindowPointerMove);
-		window.removeEventListener('pointerup', handleSettingsResizeWindowPointerUp);
-		window.removeEventListener('pointercancel', handleSettingsResizeWindowPointerCancel);
 	}
 
 	function handleSettingsResizePointerDown(e: PointerEvent, edges: SettingsResizeEdge[]) {
@@ -518,9 +468,7 @@
 		};
 		settingsModalFrame = frame;
 		settingsModalIsResizing = true;
-		window.addEventListener('pointermove', handleSettingsResizeWindowPointerMove);
-		window.addEventListener('pointerup', handleSettingsResizeWindowPointerUp);
-		window.addEventListener('pointercancel', handleSettingsResizeWindowPointerCancel);
+		trackPointer(e, handleSettingsResizeWindowPointerMove, completeSettingsResize);
 	}
 
 	function handleSettingsResizeWindowPointerMove(e: PointerEvent) {
@@ -565,16 +513,6 @@
 		}
 
 		settingsModalFrame = clampSettingsModalFrame({ width, height, left, top });
-	}
-
-	function handleSettingsResizeWindowPointerUp(e: PointerEvent) {
-		if (!settingsResizeStart || e.pointerId !== settingsResizeStart.pointerId) return;
-		completeSettingsResize(e);
-	}
-
-	function handleSettingsResizeWindowPointerCancel(e: PointerEvent) {
-		if (!settingsResizeStart || e.pointerId !== settingsResizeStart.pointerId) return;
-		completeSettingsResize(e);
 	}
 
 	async function loadVscodeThemes() {
@@ -1476,15 +1414,15 @@
 									{@const actionName = t(action.labelKey, settings.language) === action.labelKey ? action.fallbackName : t(action.labelKey, settings.language)}
 									<div
 										class="toolbar-tool-row titlebar-toolbar-row"
-										class:drag-source={titlebarToolbarDraggingId === action.id}
-										class:drag-over={titlebarToolbarDragOverId === action.id}
+										class:drag-source={titlebarToolbarDrag.draggingId === action.id}
+										class:drag-over={titlebarToolbarDrag.dragOverId === action.id}
 										role="listitem"
 										data-titlebar-toolbar-action-id={action.id}>
 										<button
 											type="button"
 											class="toolbar-drag-handle"
 											aria-label={`${t('settings.move', settings.language)}: ${actionName}`}
-											onpointerdown={(e) => handleTitlebarToolbarDragPointerDown(e, action.id)}>
+											onpointerdown={(e) => titlebarToolbarDrag.pointerDown(e, action.id)}>
 											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 												<circle cx="9" cy="5" r="1" fill="currentColor"/>
 												<circle cx="9" cy="12" r="1" fill="currentColor"/>
@@ -1561,15 +1499,15 @@
 								{#each editorToolbarSettingsTools as tool, index (tool.id)}
 									<div
 										class="toolbar-tool-row"
-										class:drag-source={editorToolbarDraggingId === tool.id}
-										class:drag-over={editorToolbarDragOverId === tool.id}
+										class:drag-source={editorToolbarDrag.draggingId === tool.id}
+										class:drag-over={editorToolbarDrag.dragOverId === tool.id}
 										role="listitem"
 										data-editor-toolbar-tool-id={tool.id}>
 										<button
 											type="button"
 											class="toolbar-drag-handle"
 											aria-label={`${t('settings.move', settings.language)}: ${tool.name}`}
-											onpointerdown={(e) => handleEditorToolbarDragPointerDown(e, tool.id)}>
+											onpointerdown={(e) => editorToolbarDrag.pointerDown(e, tool.id)}>
 											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 												<circle cx="9" cy="5" r="1" fill="currentColor"/>
 												<circle cx="9" cy="12" r="1" fill="currentColor"/>
