@@ -34,9 +34,7 @@ import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
 import {
-	loadRichContentLibraries,
 	renderRichContent as renderRichContentInto,
-	type RichContentLibraries,
 } from './utils/richContent.js';
 import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
 import { patchPreviewBlocks } from './utils/blockPatch.js';
@@ -127,13 +125,6 @@ import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
-
-	// syntax highlighting & latex — loaded through the shared module so the
-	// preview and the HTML export cannot end up with different libraries.
-	let richLibraries = $state<RichContentLibraries | null>(null);
-	let hljs = $derived(richLibraries ? richLibraries.hljs : null);
-	let renderMathInElement = $derived(richLibraries ? richLibraries.renderMathInElement : null);
-	let mermaid = $derived(richLibraries ? richLibraries.mermaid : null);
 
 	import 'highlight.js/styles/github-dark.css';
 	import 'katex/dist/katex.min.css';
@@ -479,9 +470,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// every diagram in the theme being replaced.
 		//
 		// `untrack` for the reason #740 established: `renderRichContent` reads
-		// `richLibraries` before its first `await`, so a tracked call makes this
-		// effect re-run when the libraries land — duplicating the cold-start
-		// enrichment the patch effect owns, over every open tab's host.
+		// reactive state before its first `await`, so a tracked call makes this
+		// effect re-run on unrelated changes — re-enriching every open tab's
+		// host on top of the pass the patch effect owns.
 		const recolourDiagrams = () => untrack(() => { if (markdownBody) renderRichContent(); });
 
 		if (theme === 'system' || theme === 'light' || theme === 'dark') {
@@ -1355,13 +1346,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * typeset one paragraph.
 	 */
 	async function renderRichContent(roots?: HTMLElement[]) {
-		if (!markdownBody || !richLibraries) return;
+		if (!markdownBody) return;
 		const targets = roots ?? [markdownBody];
 		if (targets.length === 0) return;
 
 		await renderRichContentInto({
 			roots: targets,
-			libraries: richLibraries,
 			mermaidTheme: currentMermaidTheme(),
 			onCopyCode: (code, label) => {
 				invoke('clipboard_write_text', { text: code.replace(/\n$/, '') })
@@ -1410,10 +1400,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * The one place a rendered document becomes preview DOM: patch, then enrich
 	 * only what the patch inserted.
 	 *
-	 * Cold start: the rich-content libraries usually land after the first patch.
-	 * This effect then re-runs with nothing inserted, so it enriches the whole
-	 * host once and restores the reading position again, because KaTeX and
-	 * Mermaid can push the anchor down by hundreds of pixels.
+	 * Cold start: the rich-content libraries a document needs are imported by
+	 * its first enrichment, which lands after the first patch, so that one
+	 * restores the reading position again, because KaTeX and Mermaid can push
+	 * the anchor down by hundreds of pixels.
 	 */
 	$effect(() => {
 		const host = previewBlocks;
@@ -1431,15 +1421,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// host would put back exactly the per-keystroke re-measure of every fold
 		// that keeping the observation alive removed.
 		for (const block of patch.inserted) foldLayout?.observe(block);
-		if (hljs && renderMathInElement && mermaid) {
-			// Nothing inserted and nothing enriched yet is the cold start above,
-			// and only that: a tab being re-activated also patches to nothing, but
-			// its host is in the set from the render that filled it.
-			const cold = patch.inserted.length === 0 && !enrichedHosts.has(host);
-			enrichedHosts.add(host);
-			const enrichment = renderRichContent(cold ? [host] : patch.inserted);
-			if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
-		}
+		// A host's first enrichment is the cold start above: it waits for
+		// whichever libraries the document needs. A tab being re-activated
+		// patches to nothing, and its host is in the set from that first render.
+		const cold = patch.inserted.length > 0 && !enrichedHosts.has(host);
+		if (cold) enrichedHosts.add(host);
+		const enrichment = renderRichContent(patch.inserted);
+		if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
 		previewRevision = ++previewPatches;
 	});
 
@@ -2692,7 +2680,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// `exportThemeAttribute`), and Mermaid bakes its theme into the SVG,
 			// so the diagrams have to be rendered for the same appearance.
 			mermaidTheme: currentMermaidTheme(),
-			libraries: richLibraries,
 			// The same value the live preview is wearing as `--preview-max-width`,
 			// so the exported file is read at the measure it was written at.
 			contentWidth: previewContentWidth,
@@ -2744,8 +2731,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				tabTitle: tab?.title || '',
 				tabPath: tab?.path || '',
 				mermaidTheme: currentMermaidTheme(),
-				libraries: richLibraries,
-				contentWidth: previewContentWidth,
+					contentWidth: previewContentWidth,
 				appearance: previewAppearance,
 				frontMatterTitle: t('frontMatter.properties', settings.language),
 				osType: settings.osType,
@@ -3603,13 +3589,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	onMount(() => {
 		loadRecentFiles();
 		isDisposed = false;
-
-		loadRichContentLibraries()
-			.then((libraries) => {
-				if (isDisposed) return;
-				richLibraries = libraries;
-			})
-			.catch((error) => console.error('Failed to load rich content libraries', error));
 
 		let unlisteners: (() => void)[] = [];
 

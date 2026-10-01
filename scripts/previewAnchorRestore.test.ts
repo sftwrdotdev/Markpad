@@ -481,17 +481,12 @@ test('the viewer restores through the measured resolver', async () => {
 test('a cold start restores again once its enrichment has landed', async () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	// The patch effect is the owner: when the libraries land, the diff finds
-	// nothing to do, so the roots are the host and the restore follows it.
+	// The patch effect is the owner: a host's first enrichment is the one that
+	// imports the libraries its document needs, so it lands after the restore.
 	assert.match(
 		viewer,
-		/const cold = patch\.inserted\.length === 0 && !enrichedHosts\.has\(host\)/,
-		'the patch effect must recognise a document that was patched in without the libraries',
-	);
-	assert.match(
-		viewer,
-		/renderRichContent\(cold \? \[host\] : patch\.inserted\)/,
-		'the cold pass must enrich the whole host — `patch.inserted` is empty on that run',
+		/const cold = patch\.inserted\.length > 0 && !enrichedHosts\.has\(host\)/,
+		'the patch effect must recognise the first enrichment of a host',
 	);
 	assert.match(
 		viewer,
@@ -510,10 +505,9 @@ test('a cold start restores again once its enrichment has landed', async () => {
 	assert.match(helper, /restorePreviewReadingPosition\(body, tab,/);
 
 	// And the accident that used to stand in for it must not come back. The
-	// theme effect's `renderRichContent()` reads `richLibraries` before its
-	// first await, so without `untrack` that effect re-runs when the libraries
-	// land — re-enriching every open tab's host on top of the pass below, and
-	// leaving the reading position where the old layout put it.
+	// theme effect's `renderRichContent()` reads reactive state before its
+	// first await, so without `untrack` that effect re-runs on unrelated
+	// changes — re-enriching every open tab's host on top of the pass above.
 	//
 	// Matched on the `untrack`, not on the guard beside it: the guard was
 	// `markdownBody && !isEditing` when this was written and is `markdownBody`

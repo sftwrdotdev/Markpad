@@ -9,11 +9,7 @@ import {
 	rewriteMarkdownHrefForExport,
 } from './exportHtml.js';
 import { sanitizeMarkdownHtml } from './sanitize.js';
-import {
-	loadRichContentLibraries,
-	renderRichContent,
-	type RichContentLibraries,
-} from './richContent.js';
+import { renderRichContent, type RichContentLibraries } from './richContent.js';
 import {
 	absolutizeKatexFontUrls,
 	collectUsedKatexFamilies,
@@ -71,14 +67,11 @@ export interface ExportContext {
 	 */
 	mermaidTheme: string;
 	/**
-	 * The libraries the preview is already using, handed in the same way
-	 * `renderDiagramsForPrint` takes `mermaid` and `sanitizeSvg`. Passing the
-	 * viewer's own instances is what guarantees the exported document was
-	 * produced by the same highlight.js language registry and the same KaTeX
-	 * the user was looking at. `null` (an export triggered before the lazy load
-	 * finished) falls back to the shared loader.
+	 * Stand-ins for tests. Omitted, `renderRichContent` loads what the
+	 * document needs through the same per-window instances the preview uses,
+	 * so the export gets the same highlight.js language registry and KaTeX.
 	 */
-	libraries: RichContentLibraries | null;
+	libraries?: RichContentLibraries;
 	/** The front-matter panel's heading in the UI language (`frontMatter.properties`). */
 	frontMatterTitle?: string;
 }
@@ -345,7 +338,6 @@ ${input.articleHtml}
  */
 async function renderExportRichContent(root: HTMLElement, ctx: ExportContext): Promise<void> {
 	try {
-		const libraries = ctx.libraries ?? (await loadRichContentLibraries());
 		await renderRichContent({
 			// One root, and always the whole thing: an exported file is a string,
 			// so there is no previous DOM to keep any of. The preview's split from
@@ -354,7 +346,7 @@ async function renderExportRichContent(root: HTMLElement, ctx: ExportContext): P
 			// `blockPatch.ts` takes an already-sanitized string and produces nodes
 			// rather than owning a render of its own.
 			roots: [root],
-			libraries,
+			libraries: ctx.libraries,
 			mermaidTheme: ctx.mermaidTheme,
 			onError: (error) => console.error('Rich content failed to render for HTML export', error),
 			// `onCopyCode` is deliberately not passed: an exported file cannot
