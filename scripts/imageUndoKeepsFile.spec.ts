@@ -246,6 +246,8 @@ type Component = {
 const factorySource = ts.transpileModule(
 	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed, routeDroppedFile) => {
 		let wordCount = 0;
+		let wordCountTimer;
+		let emittedText = null;
 		let currentLanguage = 'markdown';
 		let lineEnding = 'LF';
 

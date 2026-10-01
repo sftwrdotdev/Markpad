@@ -141,6 +141,9 @@
 	let selectionCount = $state(0);
 	let cursorCount = $state(0);
 	let wordCount = $state(0);
+	let wordCountTimer: ReturnType<typeof setTimeout> | undefined;
+	/** The attached model's text as the content listener last read it; null after a model swap. */
+	let emittedText: string | null = null;
 	let currentLanguage = $state("markdown");
 	let lineEnding = $state<"LF" | "CRLF">("LF");
 	/**
@@ -209,13 +212,19 @@
 	 * changed: a different document arrived. So switching tabs has to ask for
 	 * these explicitly, or the status bar keeps the previous document's numbers.
 	 */
-	function syncStatusFromModel() {
+	function syncStatusFromModel(deferWordCount = false) {
 		const model = editor.getModel();
 		if (!model) return;
 		currentLanguage = model.getLanguageId();
 		lineEnding = lineEndingLabel(model);
-		const text = model.getValue();
-		wordCount = countWords(text);
+		// `countWords` is several full-text regex passes, ~400 ms on a 1 MB
+		// document: skipped while the status bar hides it, and on a keystroke
+		// left for a pause in typing.
+		clearTimeout(wordCountTimer);
+		if (!settings.wordCount) return;
+		const count = () => (wordCount = countWords(model.getValue()));
+		if (deferWordCount) wordCountTimer = setTimeout(count, 300);
+		else count();
 	}
 
 	self.MonacoEnvironment = {
@@ -534,11 +543,12 @@
 		// be a write the user did not make.
 		editor.onDidChangeModelContent(() => {
 			const newValue = editor.getValue();
+			emittedText = newValue;
 			if (value !== newValue && tabManager.activeTabId) {
 				tabManager.updateTabRawContent(tabManager.activeTabId, newValue);
 			}
 
-			syncStatusFromModel();
+			syncStatusFromModel(true);
 		});
 
 		editor.onDidChangeCursorPosition((e) => {
@@ -866,6 +876,7 @@
 
 		return () => {
 			editorReady = false;
+			clearTimeout(wordCountTimer);
 			window.open = originalOpen;
 			mediaQuery.removeEventListener("change", updateTheme);
 			container.removeEventListener("wheel", wheelListener, { capture: true });
@@ -2283,10 +2294,15 @@
 
 		if (activeTabId) {
 			const model = acquireTabModel(activeTabId, content, languageId);
-			if (editor.getModel() !== model) editor.setModel(model);
+			if (editor.getModel() !== model) {
+				editor.setModel(model);
+				emittedText = null;
+			}
 		}
 
-		if (editor.getValue() !== content) {
+		// The keystroke that changed `value` came from this editor, and the
+		// model already holds it: no need to copy the buffer out to compare.
+		if (content !== emittedText && editor.getValue() !== content) {
 			editor.setValue(content);
 		}
 
@@ -2315,6 +2331,11 @@
 
 	$effect(() => {
 		if (editorReady && editor) applySettingsOptions();
+	});
+
+	// The count is not kept while hidden, so showing it has to take one.
+	$effect(() => {
+		if (editorReady && editor && settings.wordCount) syncStatusFromModel();
 	});
 
 	// Focus Mode (#819): the paragraph the cursor is in keeps full strength and

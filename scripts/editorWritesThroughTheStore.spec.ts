@@ -71,6 +71,7 @@ const factorySource = ts.transpileModule(
 		// the listener's other errand and have their own tests; what is under
 		// test here is where the text goes.
 		const syncStatusFromModel = () => {};
+		let emittedText = null;
 		return { contentChanged: () => ${contentChangeBody} };
 	};`,
 	{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },

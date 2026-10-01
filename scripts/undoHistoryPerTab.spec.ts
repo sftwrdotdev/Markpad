@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 
 import ts from 'typescript';
 
@@ -308,6 +308,7 @@ type Component = {
 	currentTabId: () => string | null;
 	currentLanguage: () => string;
 	wordCount: () => number;
+	settings: { wordCount: boolean };
 };
 
 /**
@@ -322,6 +323,9 @@ const factorySource = ts.transpileModule(
 		let language = 'markdown';
 		let currentLanguage = 'markdown';
 		let wordCount = 0;
+		let wordCountTimer;
+		let emittedText = null;
+		const settings = { wordCount: true };
 		let lineEnding = 'LF';
 		const editorReady = true;
 
@@ -340,6 +344,7 @@ const factorySource = ts.transpileModule(
 			currentTabId: () => currentTabId,
 			currentLanguage: () => currentLanguage,
 			wordCount: () => wordCount,
+			settings,
 		};
 	};`,
 	{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
@@ -611,6 +616,48 @@ test('switching tabs refreshes the readings that used to arrive with setValue', 
 	assert.equal(h.component.wordCount(), 1);
 	h.show(b);
 	assert.equal(h.component.wordCount(), 4, 'the word count still describes the tab that was left');
+});
+
+test('a keystroke does not copy the buffer out again to see whether it changed', () => {
+	// The activation effect re-runs on every keystroke because `value` changed,
+	// and the change it would detect is the one the editor itself just wrote.
+	const h = setup();
+	const a = h.open('/docs/a.md', 'one');
+	h.show(a);
+	h.type(' two');
+
+	const getValue = h.editor.getValue;
+	let reads = 0;
+	h.editor.getValue = () => (reads++, getValue());
+	h.component.activate();
+	h.editor.getValue = getValue;
+
+	assert.equal(reads, 0, 'the effect read the whole buffer back to compare it with what it was just told');
+	assert.equal(h.text(), 'one two');
+});
+
+test('the word count waits for a pause in typing, and is not taken while hidden', () => {
+	vi.useFakeTimers();
+	try {
+		const h = setup();
+		const a = h.open('/docs/a.md', 'one');
+		h.show(a);
+		assert.equal(h.component.wordCount(), 1);
+
+		h.type(' two');
+		assert.equal(h.component.wordCount(), 1, 'counted on the keystroke itself');
+		vi.advanceTimersByTime(300);
+		assert.equal(h.component.wordCount(), 2);
+
+		h.component.settings.wordCount = false;
+		const b = h.open('/docs/b.md', 'one two three');
+		h.show(b);
+		h.type(' four');
+		vi.runAllTimers();
+		assert.equal(h.component.wordCount(), 2, 'counted while the status bar hides the count');
+	} finally {
+		vi.useRealTimers();
+	}
 });
 
 // -------------------------------------------------------- view state on switch
