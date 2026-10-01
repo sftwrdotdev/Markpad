@@ -19,7 +19,6 @@
 		EDITOR_MAX_WIDTH_RANGE,
 		PREVIEW_FONT_SIZE_RANGE,
 		type NumericSettingRange,
-		type OSType,
 		type ThemeSetting,
 	} from '../stores/settings.svelte.js';
 	import { updateStore } from '../stores/update.svelte.js';
@@ -166,8 +165,7 @@
 	let previousActiveElement: HTMLElement | null = null;
 	let settingsModal = $state<HTMLDivElement>();
 	let appVersion = $state<string>('');
-	let osType = $state<OSType>('unknown');
-	let defaultFonts = $derived(DEFAULT_FONTS[osType] || DEFAULT_FONTS.unknown);
+	let defaultFonts = $derived(DEFAULT_FONTS[settings.osType] || DEFAULT_FONTS.unknown);
 
 	/**
 	 * Which rows still hold their shipped default, decided once.
@@ -526,22 +524,11 @@
 	async function loadFonts() {
 		if (loaded) return;
 		try {
-			const [fonts, os] = await Promise.all([
-				invoke('get_system_fonts') as Promise<string[]>,
-				invoke('get_os_type') as Promise<string>
-			]);
-			systemFonts = fonts;
-			osType = os as OSType;
+			systemFonts = await invoke<string[]>('get_system_fonts');
 			loaded = true;
 		} catch (e) {
 			console.error('Failed to load system fonts:', e);
 			systemFonts = ['Consolas', 'Courier New', 'Monaco', 'Menlo', 'Segoe UI'];
-			try {
-				osType = await invoke('get_os_type') as OSType;
-			} catch (e2) {
-				console.error('Failed to get OS type:', e2);
-				osType = 'unknown';
-			}
 		}
 	}
 
