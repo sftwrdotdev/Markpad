@@ -291,55 +291,31 @@ jobs:
       - name: Install Frontend Dependencies
         run: npm ci
 
-      # --- Windows Build (x64) ---
-      - name: Build Windows x64
-        if: matrix.os == 'windows' && matrix.arch == 'x64'
+      # --- Windows Build ---
+      - name: Build Windows
+        if: matrix.os == 'windows'
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build
+        run: npm run tauri build ${{ matrix.target && format('-- --target {0}', matrix.target) || '' }}
 
-      - name: Upload Windows x64 Artifacts
-        if: matrix.os == 'windows' && matrix.arch == 'x64'
+      # One `gh release upload` with explicit paths, not `find -exec`: find exits
+      # 0 when the command it runs fails, so a failed upload passed the step.
+      - name: Upload Windows Artifacts
+        if: matrix.os == 'windows'
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET: ${{ matrix.target }}
         run: |
+          set -euo pipefail
           VERSION="${{ needs.create-release.outputs.version }}"
-          cp src-tauri/target/release/Markpad.exe "Markpad_${VERSION}_x64.exe"
-          gh release upload v$VERSION "Markpad_${VERSION}_x64.exe" --clobber
-          find src-tauri/target/release/bundle/nsis -name "*-setup.exe" -exec gh release upload v$VERSION {} --clobber \;
-          find src-tauri/target/release/bundle/nsis -name "*-setup.exe.sig" -exec gh release upload v$VERSION {} --clobber \;
-
-      # --- Windows Build (ARM64) ---
-      - name: Build Windows ARM64
-        if: matrix.os == 'windows' && matrix.arch == 'arm64'
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri build -- --target aarch64-pc-windows-msvc
-
-      - name: Upload Windows ARM64 Artifacts
-        if: matrix.os == 'windows' && matrix.arch == 'arm64'
-        shell: bash
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION="${{ needs.create-release.outputs.version }}"
-          cp src-tauri/target/aarch64-pc-windows-msvc/release/Markpad.exe "Markpad_${VERSION}_arm64.exe"
-          gh release upload v$VERSION "Markpad_${VERSION}_arm64.exe" --clobber
-          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe" -exec gh release upload v$VERSION {} --clobber \;
-          find src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis -name "*-setup.exe.sig" -exec gh release upload v$VERSION {} --clobber \;
+          OUT="src-tauri/target/${TARGET:+$TARGET/}release"
+          PORTABLE="Markpad_${VERSION}_${{ matrix.arch }}.exe"
+          cp "$OUT/Markpad.exe" "$PORTABLE"
+          gh release upload "v$VERSION" "$PORTABLE" "$OUT"/bundle/nsis/*-setup.exe "$OUT"/bundle/nsis/*-setup.exe.sig --clobber
 
       # --- Linux Build ---
-      - name: Pre-download AppImage Dependencies
-        if: matrix.os == 'linux'
-        run: |
-          mkdir -p ~/.cache/tauri
-          wget -q https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64 -O ~/.cache/tauri/AppRun-x86_64
-          wget -q https://github.com/tauri-apps/binary-releases/releases/download/linuxdeploy/linuxdeploy-x86_64.AppImage -O ~/.cache/tauri/linuxdeploy-x86_64.AppImage
-          chmod +x ~/.cache/tauri/AppRun-x86_64 ~/.cache/tauri/linuxdeploy-x86_64.AppImage
-
       - name: Build Linux
         if: matrix.os == 'linux'
         env:
@@ -404,10 +380,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find src-tauri/target/release/bundle/deb -name "*.deb" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-          find src-tauri/target/release/bundle/rpm -name "*.rpm" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-          find src-tauri/target/release/bundle/appimage -name "*.AppImage" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-          find src-tauri/target/release/bundle/appimage -name "*.AppImage.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
+          set -euo pipefail
+          B=src-tauri/target/release/bundle
+          gh release upload "v${{ needs.create-release.outputs.version }}" "$B"/deb/*.deb "$B"/rpm/*.rpm "$B"/appimage/*.AppImage "$B"/appimage/*.AppImage.sig --clobber
 
       # --- MacOS Build ---
       # Developer ID takes precedence; without it the legacy signing path remains.
@@ -552,9 +527,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find src-tauri/target/universal-apple-darwin/release/bundle/dmg -name "*.dmg" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-          find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
-          find src-tauri/target/universal-apple-darwin/release/bundle/macos -name "*.app.tar.gz.sig" -exec gh release upload v${{ needs.create-release.outputs.version }} {} --clobber \;
+          set -euo pipefail
+          B=src-tauri/target/universal-apple-darwin/release/bundle
+          gh release upload "v${{ needs.create-release.outputs.version }}" "$B"/dmg/*.dmg "$B"/macos/*.app.tar.gz "$B"/macos/*.app.tar.gz.sig --clobber
 
   generate-update-feed:
     needs: [create-release, build]
