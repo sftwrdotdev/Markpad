@@ -6,8 +6,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    Mutex,
+    Arc, Mutex,
 };
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct WatcherState {
@@ -695,6 +696,31 @@ fn event_concerns(event: &notify::Event, file_name: Option<&OsStr>) -> bool {
     }
 }
 
+/// Turns a burst of calls into one call of `f`, `delay` after the first.
+///
+/// A save is several events — an editor's temp write and rename, or a
+/// truncate and a write — and each `file-changed` is a full reload. Calls
+/// that land while one is pending ride on it; it runs after them, so it sees
+/// their result. The flag is cleared before `f` runs, so a call made while
+/// `f` is running schedules another rather than being lost. A file written
+/// continuously still emits every `delay`, where a debounce would wait for it
+/// to go quiet.
+fn coalesced(delay: Duration, f: impl Fn() + Send + Sync + 'static) -> impl Fn() + Send + 'static {
+    let f = Arc::new(f);
+    let pending = Arc::new(AtomicBool::new(false));
+    move || {
+        if pending.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let (f, pending) = (f.clone(), pending.clone());
+        std::thread::spawn(move || {
+            std::thread::sleep(delay);
+            pending.store(false, Ordering::SeqCst);
+            f();
+        });
+    }
+}
+
 pub fn watch_file(
     window: tauri::Window,
     handle: AppHandle,
@@ -717,13 +743,16 @@ pub fn watch_file(
     // frontend only logs the error, so external edits would silently stop
     // being reported for the rest of the session. Inserting last swaps them
     // in one step — the map drops the previous watcher, which unregisters it.
+    let emit = coalesced(Duration::from_millis(150), move || {
+        let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
+    });
     let mut watcher = RecommendedWatcher::new(
         move |result: Result<notify::Event, notify::Error>| {
             let Ok(event) = result else { return };
             if !event_concerns(&event, file_name.as_deref()) {
                 return;
             }
-            let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
+            emit();
         },
         Config::default(),
     )
@@ -1407,6 +1436,39 @@ mod watch_targeting {
         assert!(!event_concerns(&event(&[]), name));
         // The fallback watch is on the file, so there is nothing to filter.
         assert!(event_concerns(&event(&["/notes/b.md"]), None));
+    }
+}
+
+#[cfg(test)]
+mod coalesced_calls {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn a_burst_runs_once_after_it_and_a_later_call_runs_again() {
+        let runs = Arc::new(AtomicUsize::new(0));
+        let counter = runs.clone();
+        let call = super::coalesced(Duration::from_millis(100), move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+        });
+
+        // Temp write, rename, metadata: one save.
+        for _ in 0..5 {
+            call();
+        }
+        assert_eq!(
+            runs.load(Ordering::SeqCst),
+            0,
+            "ran before the burst settled"
+        );
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(runs.load(Ordering::SeqCst), 1, "one save, one reload");
+
+        // The next save is its own change, not swallowed by the last one.
+        call();
+        std::thread::sleep(Duration::from_millis(400));
+        assert_eq!(runs.load(Ordering::SeqCst), 2);
     }
 }
 
