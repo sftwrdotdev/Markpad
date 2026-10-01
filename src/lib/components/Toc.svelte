@@ -384,7 +384,7 @@
 	<div class="toc-header" class:on-right={settings.tocSide === 'right'}>
 		<button 
 			class="toc-header-btn {settings.pinnedToc ? 'active' : ''}" 
-			onclick={() => { settings.togglePinnedToc(); onhideTooltip?.(); }}
+			onclick={() => { settings.pinnedToc = !settings.pinnedToc; onhideTooltip?.(); }}
 			onmouseenter={(e) => onshowTooltip?.(e, settings.pinnedToc ? t('tooltip.undock', settings.language) : t('tooltip.dock', settings.language), undefined, 'below')}
 			onmouseleave={() => onhideTooltip?.()}
 			aria-label={settings.pinnedToc ? t('tooltip.undockToc', settings.language) : t('tooltip.dockToc', settings.language)}>

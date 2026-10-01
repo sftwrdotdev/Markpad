@@ -630,7 +630,7 @@ test('zoom and preview width follow the other windows too', () => {
 	localStorage.setItem('preview.fullWidth', 'true');
 	dispatchStorage('preview.fullWidth', 'true');
 	assert.equal(store.previewFullWidth, true);
-	store.togglePreviewFullWidth();
+	store.previewFullWidth = !store.previewFullWidth;
 	assert.equal(store.previewFullWidth, false);
 });
 

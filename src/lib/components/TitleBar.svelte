@@ -897,7 +897,7 @@
 						class="title-action-btn"
 						style:opacity={settings.zenMode ? 0.3 : 1}
 						style:pointer-events={settings.zenMode ? 'none' : 'auto'}
-						onclick={() => settings.toggleTabs()}
+						onclick={() => { settings.showTabs = !settings.showTabs; }}
 						aria-label={t('tooltip.tabs', currentLanguage).replace('{{action}}', settings.showTabs ? t('tooltip.hide', currentLanguage) : t('tooltip.show', currentLanguage))}
 											onmouseenter={(e) => showTooltip(e, t('tooltip.tabs', currentLanguage).replace('{{action}}', settings.showTabs ? t('tooltip.hide', currentLanguage) : t('tooltip.show', currentLanguage)), shortcutLabel('toggle-tabs', modifier))}
 						onmousedown={(e) => e.preventDefault()}

@@ -1349,7 +1349,7 @@
 				id: "toggle-minimap",
 				label: t('settings.minimap', lang),
 				run: () => {
-					settings.toggleMinimap();
+					settings.minimap = !settings.minimap;
 				},
 			}),
 
@@ -1373,7 +1373,7 @@
 				id: "toggle-vim-mode",
 				label: t('settings.vimMode', lang),
 				run: () => {
-					settings.toggleVimMode();
+					settings.vimMode = !settings.vimMode;
 				},
 			}),
 
@@ -1381,7 +1381,7 @@
 				id: "toggle-status-bar",
 				label: t('settings.statusBar', lang),
 				run: () => {
-					settings.toggleStatusBar();
+					settings.statusBar = !settings.statusBar;
 				},
 			}),
 
@@ -1389,7 +1389,7 @@
 				id: "toggle-word-count",
 				label: t('settings.wordCount', lang),
 				run: () => {
-					settings.toggleWordCount();
+					settings.wordCount = !settings.wordCount;
 				},
 			}),
 
@@ -1405,7 +1405,7 @@
 				id: "toggle-occurrences-highlight",
 				label: t('settings.occurrencesHighlight', lang),
 				run: () => {
-					settings.toggleOccurrencesHighlight();
+					settings.occurrencesHighlight = !settings.occurrencesHighlight;
 				},
 			}),
 
@@ -1413,7 +1413,7 @@
 				id: "toggle-whitespace",
 				label: t('settings.showWhitespace', lang),
 				run: () => {
-					settings.toggleShowWhitespace();
+					settings.showWhitespace = !settings.showWhitespace;
 				},
 			}),
 
@@ -1424,7 +1424,7 @@
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyB,
 				],
 				run: () => {
-					settings.toggleTabs();
+					settings.showTabs = !settings.showTabs;
 				},
 			}),
 

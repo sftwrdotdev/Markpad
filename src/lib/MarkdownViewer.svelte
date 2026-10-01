@@ -4004,7 +4004,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontabclick={() => (showHome = false)}
 		onresetZoom={() => settings.resetZoom()}
 		isFullWidth={settings.previewFullWidth}
-		ontoggleFullWidth={() => settings.togglePreviewFullWidth()}
+		ontoggleFullWidth={() => { settings.previewFullWidth = !settings.previewFullWidth; }}
 		theme={settings.theme}
 		onSetTheme={(t: string) => (settings.theme = resolveTheme(t))}
 		onopenSettings={() => (showSettings = true)}
@@ -4037,7 +4037,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		ontoggleHome={toggleHome}
 		ononpenFileLocation={openFileLocation}
 		ontoggleLiveMode={toggleLiveMode}
-		ontoggleEditorToolbar={() => settings.toggleEditorToolbar()}
+		ontoggleEditorToolbar={() => { settings.showEditorToolbar = !settings.showEditorToolbar; }}
 		onsetViewMode={setViewMode}
 		onswapPanes={() => settings.toggleSplitEditorSide()}
 		{isEditing}
@@ -4046,7 +4046,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		{isScrollSynced}
 		ontoggleSync={() => tabManager.activeTabId && tabManager.toggleScrollSync(tabManager.activeTabId)}
 		isFullWidth={settings.previewFullWidth}
-		ontoggleFullWidth={() => settings.togglePreviewFullWidth()}
+		ontoggleFullWidth={() => { settings.previewFullWidth = !settings.previewFullWidth; }}
 		theme={settings.theme}
 		onSetTheme={(t: string) => (settings.theme = resolveTheme(t))}
 		onopenSettings={() => (showSettings = true)}
@@ -4116,7 +4116,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 										toolbarOrder={settings.editorToolbarOrder}
 										toolbarHidden={settings.editorToolbarHidden}
 										onaction={(actionId, payload) => editorPane?.runEditorAction(actionId, payload)}
-										ontoggleHide={() => settings.toggleEditorToolbar()}
+										ontoggleHide={() => { settings.showEditorToolbar = !settings.showEditorToolbar; }}
 										onshowTooltip={(e, text, shortcut, align) => {
 											const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
 											tooltip = {
@@ -4335,7 +4335,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							bind:this={tocToggleEl}
 							class="toc-toggle-floating {settings.showToc ? 'expanded' : ''}"
 							class:on-right={settings.tocSide === 'right'}
-								onclick={() => settings.toggleToc()}
+								onclick={() => { settings.showToc = !settings.showToc; }}
 							aria-label={settings.showToc ? t('tooltip.hideTableOfContents', settings.language) : t('tooltip.showTableOfContents', settings.language)}
 							onmouseenter={(e) => {
 								const rect = e.currentTarget.getBoundingClientRect();

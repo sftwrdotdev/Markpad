@@ -1025,7 +1025,7 @@
 							<div class="setting-item">
 								<label for="editor-minimap">{t('settings.minimap', settings.language)}</label>
 								<label class="toggle">
-									<input id="editor-minimap" type="checkbox" checked={settings.minimap} onchange={() => settings.toggleMinimap()} />
+									<input id="editor-minimap" type="checkbox" bind:checked={settings.minimap} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1033,7 +1033,7 @@
 							<div class="setting-item">
 								<label for="editor-vim-mode">{t('settings.vimMode', settings.language)}</label>
 								<label class="toggle">
-									<input id="editor-vim-mode" type="checkbox" checked={settings.vimMode} onchange={() => settings.toggleVimMode()} />
+									<input id="editor-vim-mode" type="checkbox" bind:checked={settings.vimMode} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1041,7 +1041,7 @@
 							<div class="setting-item">
 								<label for="editor-status-bar">{t('settings.statusBar', settings.language)}</label>
 								<label class="toggle">
-									<input id="editor-status-bar" type="checkbox" checked={settings.statusBar} onchange={() => settings.toggleStatusBar()} />
+									<input id="editor-status-bar" type="checkbox" bind:checked={settings.statusBar} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1049,7 +1049,7 @@
 							<div class="setting-item" class:inactive={!settings.statusBar}>
 								<label for="editor-word-count">{t('settings.wordCount', settings.language)}</label>
 								<label class="toggle">
-									<input id="editor-word-count" type="checkbox" checked={settings.wordCount} disabled={!settings.statusBar} onchange={() => settings.toggleWordCount()} />
+									<input id="editor-word-count" type="checkbox" bind:checked={settings.wordCount} disabled={!settings.statusBar} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1057,7 +1057,7 @@
 							<div class="setting-item">
 								<label for="editor-show-whitespace">{t('settings.showWhitespace', settings.language)}</label>
 								<label class="toggle">
-									<input id="editor-show-whitespace" type="checkbox" checked={settings.showWhitespace} onchange={() => settings.toggleShowWhitespace()} />
+									<input id="editor-show-whitespace" type="checkbox" bind:checked={settings.showWhitespace} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1065,7 +1065,7 @@
 						<div class="setting-item">
 							<label for="editor-sticky-scroll">{t('settings.stickyScroll', settings.language)}</label>
 							<label class="toggle">
-								<input id="editor-sticky-scroll" type="checkbox" checked={settings.stickyScroll} onchange={() => settings.toggleStickyScroll()} />
+								<input id="editor-sticky-scroll" type="checkbox" bind:checked={settings.stickyScroll} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1225,7 +1225,7 @@
 							<div class="setting-item">
 								<label for="preview-cursor">{t('settings.previewCursor', settings.language)}</label>
 								<label class="toggle">
-									<input id="preview-cursor" type="checkbox" checked={settings.previewCursor} onchange={() => settings.togglePreviewCursor()} />
+									<input id="preview-cursor" type="checkbox" bind:checked={settings.previewCursor} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1233,7 +1233,7 @@
 							<div class="setting-item">
 								<label for="preview-occurrences">{t('settings.previewOccurrences', settings.language)}</label>
 								<label class="toggle">
-									<input id="preview-occurrences" type="checkbox" checked={settings.previewOccurrences} onchange={() => settings.togglePreviewOccurrences()} />
+									<input id="preview-occurrences" type="checkbox" bind:checked={settings.previewOccurrences} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1241,7 +1241,7 @@
 							<div class="setting-item">
 								<label for="preview-annotations">{t('settings.previewAnnotations', settings.language)}</label>
 								<label class="toggle">
-									<input id="preview-annotations" type="checkbox" checked={settings.previewAnnotations} onchange={() => settings.togglePreviewAnnotations()} />
+									<input id="preview-annotations" type="checkbox" bind:checked={settings.previewAnnotations} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1337,7 +1337,7 @@
 							<div class="setting-item">
 								<label for="appearance-tabs">{t('settings.showTabs', settings.language)}</label>
 								<label class="toggle">
-									<input id="appearance-tabs" type="checkbox" checked={settings.showTabs} onchange={() => settings.toggleTabs()} />
+									<input id="appearance-tabs" type="checkbox" bind:checked={settings.showTabs} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1345,7 +1345,7 @@
 							<div class="setting-item" class:inactive={!settings.showTabs}>
 								<label for="appearance-duplicate-name-folder">{t('settings.showFolderForDuplicateNames', settings.language)}</label>
 								<label class="toggle">
-									<input id="appearance-duplicate-name-folder" type="checkbox" disabled={!settings.showTabs} checked={settings.showFolderForDuplicateNames} onchange={() => settings.toggleShowFolderForDuplicateNames()} />
+									<input id="appearance-duplicate-name-folder" type="checkbox" disabled={!settings.showTabs} bind:checked={settings.showFolderForDuplicateNames} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
@@ -1353,7 +1353,7 @@
 							<div class="setting-item">
 							<label for="appearance-toc">{t('settings.showTableOfContents', settings.language)}</label>
 							<label class="toggle">
-								<input id="appearance-toc" type="checkbox" checked={settings.showToc} onchange={() => settings.toggleToc()} />
+								<input id="appearance-toc" type="checkbox" bind:checked={settings.showToc} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1372,7 +1372,7 @@
 						<div class="setting-item">
 							<label for="appearance-animate-jump">{t('settings.animateJumpScroll', settings.language)}</label>
 							<label class="toggle">
-								<input id="appearance-animate-jump" type="checkbox" checked={settings.animateJumpScroll} onchange={() => settings.toggleAnimateJumpScroll()} />
+								<input id="appearance-animate-jump" type="checkbox" bind:checked={settings.animateJumpScroll} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1380,7 +1380,7 @@
 						<div class="setting-item">
 							<label for="appearance-animate-cursor">{t('settings.animateCursor', settings.language)}</label>
 							<label class="toggle">
-								<input id="appearance-animate-cursor" type="checkbox" checked={settings.animateCursor} onchange={() => settings.toggleAnimateCursor()} />
+								<input id="appearance-animate-cursor" type="checkbox" bind:checked={settings.animateCursor} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1438,7 +1438,7 @@
 					<div class="setting-item">
 						<label for="appearance-focus-mode" class="has-hint">{t('settings.focusMode', settings.language)}<span class="setting-hint">{t('settings.focusModeHint', settings.language)}</span></label>
 						<label class="toggle">
-							<input id="appearance-focus-mode" type="checkbox" checked={settings.focusMode} onchange={() => settings.toggleFocusMode()} />
+							<input id="appearance-focus-mode" type="checkbox" bind:checked={settings.focusMode} />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
@@ -1446,7 +1446,7 @@
 					<div class="setting-item">
 						<label for="appearance-typewriter-mode" class="has-hint">{t('settings.typewriterMode', settings.language)}<span class="setting-hint">{t('settings.typewriterModeHint', settings.language)}</span></label>
 						<label class="toggle">
-							<input id="appearance-typewriter-mode" type="checkbox" checked={settings.typewriterMode} onchange={() => settings.toggleTypewriterMode()} />
+							<input id="appearance-typewriter-mode" type="checkbox" bind:checked={settings.typewriterMode} />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
@@ -1544,7 +1544,7 @@
 								<span class="toolbar-settings-chevron" aria-hidden="true"></span>
 								<span>{t('settings.editorToolbar', settings.language)}</span>
 								<label class="toggle toolbar-summary-toggle">
-									<input id="editor-show-toolbar" type="checkbox" aria-label={t('settings.showEditorToolbar', settings.language)} checked={settings.showEditorToolbar} onchange={() => settings.toggleEditorToolbar()} />
+									<input id="editor-show-toolbar" type="checkbox" aria-label={t('settings.showEditorToolbar', settings.language)} bind:checked={settings.showEditorToolbar} />
 									<span class="toggle-slider"></span>
 								</label>
 							</summary>
@@ -1630,7 +1630,7 @@
 						<div class="setting-item">
 							<label for="files-new-file-mode">{t('settings.newFileDefaultMode', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-new-file-mode" type="checkbox" checked={settings.newFileDefaultMode} onchange={() => settings.toggleNewFileDefaultMode()} />
+								<input id="files-new-file-mode" type="checkbox" bind:checked={settings.newFileDefaultMode} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1638,7 +1638,7 @@
 						<div class="setting-item">
 							<label for="files-links-new-tab">{t('settings.linksOpenInNewTab', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-links-new-tab" type="checkbox" checked={settings.linksOpenInNewTab} onchange={() => settings.toggleLinksOpenInNewTab()} />
+								<input id="files-links-new-tab" type="checkbox" bind:checked={settings.linksOpenInNewTab} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1646,7 +1646,7 @@
 						<div class="setting-item">
 							<label for="files-recent-files">{t('settings.showRecentFiles', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-recent-files" type="checkbox" checked={settings.showRecentFiles} onchange={() => settings.toggleShowRecentFiles()} />
+								<input id="files-recent-files" type="checkbox" bind:checked={settings.showRecentFiles} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1654,7 +1654,7 @@
 						<div class="setting-item">
 							<label for="files-auto-save">{t('settings.autoSave', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-auto-save" type="checkbox" checked={settings.autoSave} onchange={() => settings.toggleAutoSave()} />
+								<input id="files-auto-save" type="checkbox" bind:checked={settings.autoSave} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1676,7 +1676,7 @@
 							<div class="setting-item">
 								<label for="macos-image-scaling">{t('settings.scaleMacOSScreenshots', settings.language)}</label>
 								<label class="toggle">
-									<input id="macos-image-scaling" type="checkbox" checked={settings.macosImageScaling} onchange={() => settings.toggleMacosImageScaling()} />
+									<input id="macos-image-scaling" type="checkbox" bind:checked={settings.macosImageScaling} />
 									<span class="toggle-slider"></span>
 								</label>
 								<span class="slider-value">{t('settings.reduceSizeBy50', settings.language)}</span>
@@ -1686,7 +1686,7 @@
 						<div class="setting-item">
 							<label for="files-restore-state">{t('settings.restoreStateOnReopen', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-restore-state" type="checkbox" checked={settings.restoreStateOnReopen} onchange={() => settings.toggleRestoreStateOnReopen()} />
+								<input id="files-restore-state" type="checkbox" bind:checked={settings.restoreStateOnReopen} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
@@ -1694,7 +1694,7 @@
 						<div class="setting-item">
 							<label for="files-close-window-last-tab">{t('settings.closeWindowWithLastTab', settings.language)}</label>
 							<label class="toggle">
-								<input id="files-close-window-last-tab" type="checkbox" checked={settings.closeWindowWithLastTab} onchange={() => settings.toggleCloseWindowWithLastTab()} />
+								<input id="files-close-window-last-tab" type="checkbox" bind:checked={settings.closeWindowWithLastTab} />
 								<span class="toggle-slider"></span>
 							</label>
 						</div>
