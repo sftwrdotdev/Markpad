@@ -847,8 +847,14 @@ pub fn clipboard_read_file_list() -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// Async so the resize and PNG encode of a screenshot-sized image run on the
+/// blocking pool: a sync command runs on the main thread and freezes the window.
 #[tauri::command]
-pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String> {
+pub async fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String> {
+    blocking(move || clipboard_read_image_blocking(macos_image_scaling)).await
+}
+
+fn clipboard_read_image_blocking(macos_image_scaling: bool) -> Result<String, String> {
     #[cfg(not(target_os = "macos"))]
     let _ = macos_image_scaling;
 
