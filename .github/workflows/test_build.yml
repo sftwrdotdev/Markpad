@@ -187,12 +187,15 @@ jobs:
       # test.yml runs the suites on Linux only, so a Windows- or macOS-only
       # regression in the cfg-gated code paths reaches a release build
       # unchallenged. Running them here makes the platform matrix prove
-      # behaviour, not just that the tree compiles.
+      # behaviour, not just that the tree compiles. Linux is skipped: test.yml
+      # already ran both on the same Ubuntu.
       - name: run frontend behavior tests
+        if: matrix.os-name != 'linux'
         shell: bash
         run: npm test
 
       - name: run cargo test
+        if: matrix.os-name != 'linux'
         working-directory: src-tauri
         run: cargo test
 
