@@ -87,7 +87,7 @@ pub struct PinnedTag {
 }
 
 /// `name` in the app config dir, which is created if missing.
-fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, crate::error::Error> {
+pub(crate) fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, crate::error::Error> {
     let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir)?;
     Ok(dir.join(name))

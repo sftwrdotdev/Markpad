@@ -490,10 +490,13 @@ pub async fn watch_file(
 /// `app.rs` is the only reader — see the background colour it picks at startup.
 #[tauri::command]
 pub fn save_theme(app: AppHandle, theme: String) -> Result<(), String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
-    let theme_path = config_dir.join("theme.txt");
+    let theme_path = window_runtime::config_file(&app, "theme.txt")?;
     atomic_write(&theme_path, theme.as_bytes()).map_err(|e| e.to_string())
+}
+
+fn themes_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    Ok(config_dir.join("themes"))
 }
 
 fn theme_slug(value: &str) -> String {
@@ -621,8 +624,7 @@ pub async fn fetch_vscode_theme(app: AppHandle, url: String) -> Result<String, S
         }
         let theme_json = read_zip_entry_to_string(theme_file, MAX_THEME_JSON_BYTES)?;
 
-        let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-        let themes_dir = config_dir.join("themes");
+        let themes_dir = themes_dir(&app)?;
         fs::create_dir_all(&themes_dir).map_err(|e| e.to_string())?;
 
         let dest_name = if matched_name_str.is_empty() {
@@ -642,8 +644,7 @@ pub async fn fetch_vscode_theme(app: AppHandle, url: String) -> Result<String, S
 
 #[tauri::command]
 pub fn get_saved_vscode_themes(app: AppHandle) -> Result<Vec<String>, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    let themes_dir = config_dir.join("themes");
+    let themes_dir = themes_dir(&app)?;
     let mut themes = Vec::new();
     if let Ok(entries) = fs::read_dir(themes_dir) {
         for entry in entries.flatten() {
@@ -661,9 +662,9 @@ pub fn get_saved_vscode_themes(app: AppHandle) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub fn read_vscode_theme(app: AppHandle, name: String) -> Result<String, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let themes_dir = themes_dir(&app)?;
     let name = safe_path_component(&name, "theme name")?;
-    let theme_file_path = config_dir.join("themes").join(format!("{}.json", name));
+    let theme_file_path = themes_dir.join(format!("{}.json", name));
     fs::read_to_string(theme_file_path).map_err(|e| e.to_string())
 }
 
@@ -673,8 +674,7 @@ pub fn read_vscode_theme(app: AppHandle, name: String) -> Result<String, String>
 /// is held to the same size limit as a downloaded theme.
 #[tauri::command]
 pub fn install_vscode_theme(app: AppHandle, name: String, json: String) -> Result<(), String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    write_vscode_theme(&config_dir.join("themes"), &name, &json)
+    write_vscode_theme(&themes_dir(&app)?, &name, &json)
 }
 
 fn write_vscode_theme(themes_dir: &Path, name: &str, json: &str) -> Result<(), String> {
@@ -690,9 +690,9 @@ fn write_vscode_theme(themes_dir: &Path, name: &str, json: &str) -> Result<(), S
 
 #[tauri::command]
 pub fn delete_vscode_theme(app: AppHandle, name: String) -> Result<(), String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let themes_dir = themes_dir(&app)?;
     let name = safe_path_component(&name, "theme name")?;
-    let theme_file_path = config_dir.join("themes").join(format!("{}.json", name));
+    let theme_file_path = themes_dir.join(format!("{}.json", name));
     fs::remove_file(theme_file_path).map_err(|e| e.to_string())
 }
 
@@ -856,72 +856,37 @@ pub fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String>
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     let image = clipboard.get_image().map_err(|e| e.to_string())?;
 
+    let (bytes, width, height) = (image.bytes, image.width as u32, image.height as u32);
+
+    #[cfg(target_os = "macos")]
+    let (bytes, width, height) = if macos_image_scaling {
+        use image::{DynamicImage, RgbaImage};
+        // Whole pixels only, zero-padded to the declared size: a short buffer
+        // leaves the missing pixels transparent rather than failing.
+        let mut raw = bytes[..bytes.len() / 4 * 4].to_vec();
+        raw.resize(width as usize * height as usize * 4, 0);
+        let buffer = RgbaImage::from_raw(width, height, raw)
+            .ok_or_else(|| "Clipboard image is too large".to_string())?;
+        let (width, height) = (width / 2, height / 2);
+        let resized = DynamicImage::ImageRgba8(buffer).resize(
+            width,
+            height,
+            image::imageops::FilterType::Lanczos3,
+        );
+        (
+            std::borrow::Cow::Owned(resized.to_rgba8().into_raw()),
+            width,
+            height,
+        )
+    } else {
+        (bytes, width, height)
+    };
+
+    use image::ImageEncoder;
     let mut png_data = Vec::new();
-    {
-        let encoder = image::codecs::png::PngEncoder::new(&mut png_data);
-        use image::ImageEncoder;
-
-        #[cfg(target_os = "macos")]
-        {
-            if macos_image_scaling {
-                use image::{DynamicImage, ImageBuffer, Rgba};
-
-                let mut img_buffer = ImageBuffer::new(image.width as u32, image.height as u32);
-                for (x, y, pixel) in img_buffer.enumerate_pixels_mut() {
-                    let idx = (y * image.width as u32 + x) as usize * 4;
-                    if idx + 3 < image.bytes.len() {
-                        *pixel = Rgba([
-                            image.bytes[idx],
-                            image.bytes[idx + 1],
-                            image.bytes[idx + 2],
-                            image.bytes[idx + 3],
-                        ]);
-                    }
-                }
-
-                let dynamic_image = DynamicImage::ImageRgba8(img_buffer);
-
-                let resized = dynamic_image.resize(
-                    (image.width / 2) as u32,
-                    (image.height / 2) as u32,
-                    image::imageops::FilterType::Lanczos3,
-                );
-
-                let resized_rgba = resized.to_rgba8();
-                encoder
-                    .write_image(
-                        resized_rgba.as_raw(),
-                        (image.width / 2) as u32,
-                        (image.height / 2) as u32,
-                        image::ExtendedColorType::Rgba8,
-                    )
-                    .map_err(|e| e.to_string())?;
-            } else {
-                // Use original image if scaling is disabled
-                encoder
-                    .write_image(
-                        image.bytes.as_ref(),
-                        image.width as u32,
-                        image.height as u32,
-                        image::ExtendedColorType::Rgba8,
-                    )
-                    .map_err(|e| e.to_string())?;
-            }
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        {
-            // For other platforms, use the original image
-            encoder
-                .write_image(
-                    image.bytes.as_ref(),
-                    image.width as u32,
-                    image.height as u32,
-                    image::ExtendedColorType::Rgba8,
-                )
-                .map_err(|e| e.to_string())?;
-        }
-    }
+    image::codecs::png::PngEncoder::new(&mut png_data)
+        .write_image(&bytes, width, height, image::ExtendedColorType::Rgba8)
+        .map_err(|e| e.to_string())?;
 
     use base64::{engine::general_purpose, Engine as _};
     Ok(general_purpose::STANDARD.encode(&png_data))
@@ -963,13 +928,16 @@ fn save_image_blocking(
 
     atomic_write(&file_path, &bytes).map_err(|e| e.to_string())?;
 
-    let rel_path = if image_directory.is_empty() {
-        filename.to_string()
-    } else {
-        format!("{}/{}", image_directory, filename)
-    };
+    Ok(image_rel_path(image_directory, filename))
+}
 
-    Ok(rel_path)
+/// The link text for `name` in `image_directory`, relative to the document.
+fn image_rel_path(image_directory: &str, name: &str) -> String {
+    if image_directory.is_empty() {
+        name.to_string()
+    } else {
+        format!("{}/{}", image_directory, name)
+    }
 }
 
 #[tauri::command]
@@ -1059,13 +1027,7 @@ fn copy_file_to_img_blocking(
         }
     }
 
-    let rel_path = if image_directory.is_empty() {
-        dest_name
-    } else {
-        format!("{}/{}", image_directory, dest_name)
-    };
-
-    Ok(rel_path)
+    Ok(image_rel_path(image_directory, &dest_name))
 }
 
 /// Async because `fs::copy` streams the whole file. On a network or removable
