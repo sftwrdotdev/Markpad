@@ -1,4 +1,5 @@
 import { hasMarkdownLinkExtension } from './markdownLinks.js';
+import { applyMove, getAdjacentMove, getReorderMove, type ToolbarMove } from './toolbarMove.js';
 
 export type TitlebarToolbarPlacement = 'bar' | 'menu';
 
@@ -12,11 +13,6 @@ type TitlebarToolbarAction = {
 	// Second line in Settings: when the button shows (see
 	// visibleTitlebarActionIds), or for viewMode, the modes it switches between.
 	hintKey?: string;
-};
-
-type TitlebarToolbarMove = {
-	fromIndex: number;
-	toIndex: number;
 };
 
 type ConfiguredTitlebarToolbarIds = {
@@ -140,46 +136,20 @@ export function getTitlebarToolbarReorderMove(
 	order: readonly string[],
 	draggedId: string,
 	targetId: string,
-): TitlebarToolbarMove | null {
-	const normalized = normalizeTitlebarToolbarOrder(order);
-	const fromIndex = normalized.indexOf(draggedId);
-	const toIndex = normalized.indexOf(targetId);
-
-	if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return null;
-	return { fromIndex, toIndex };
+): ToolbarMove | null {
+	return getReorderMove(normalizeTitlebarToolbarOrder(order), draggedId, targetId);
 }
 
 export function getTitlebarToolbarAdjacentMove(
 	order: readonly string[],
 	id: string,
 	direction: 'up' | 'down',
-): TitlebarToolbarMove | null {
-	const normalized = normalizeTitlebarToolbarOrder(order);
-	const fromIndex = normalized.indexOf(id);
-	if (fromIndex === -1) return null;
-
-	const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
-	if (toIndex < 0 || toIndex >= normalized.length) return null;
-
-	return { fromIndex, toIndex };
+): ToolbarMove | null {
+	return getAdjacentMove(normalizeTitlebarToolbarOrder(order), id, direction);
 }
 
-export function applyTitlebarToolbarMove(order: readonly string[], move: TitlebarToolbarMove): string[] {
-	const normalized = normalizeTitlebarToolbarOrder(order);
-	if (
-		move.fromIndex < 0 ||
-		move.fromIndex >= normalized.length ||
-		move.toIndex < 0 ||
-		move.toIndex >= normalized.length ||
-		move.fromIndex === move.toIndex
-	) {
-		return normalized;
-	}
-
-	const next = [...normalized];
-	const [moved] = next.splice(move.fromIndex, 1);
-	next.splice(move.toIndex, 0, moved);
-	return next;
+export function applyTitlebarToolbarMove(order: readonly string[], move: ToolbarMove): string[] {
+	return applyMove(normalizeTitlebarToolbarOrder(order), move);
 }
 
 export type TitlebarActionContext = {

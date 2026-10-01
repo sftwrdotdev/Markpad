@@ -6,6 +6,7 @@ import {
 	TASK_BOX,
 } from './listSyntax.js';
 import { shortcutLabel } from './shortcuts.js';
+import { applyMove, getAdjacentMove, getReorderMove, type ToolbarMove } from './toolbarMove.js';
 
 type EditorToolbarGroup = 'inline' | 'block' | 'list' | 'insert';
 
@@ -15,11 +16,6 @@ export type EditorToolbarTool = {
 	name: string;
 	shortcut?: (modifier: 'Ctrl' | 'Cmd') => string;
 	group: EditorToolbarGroup;
-};
-
-type EditorToolbarMove = {
-	fromIndex: number;
-	toIndex: number;
 };
 
 /**
@@ -453,44 +449,18 @@ export function getEditorToolbarReorderMove(
 	order: readonly string[],
 	draggedId: string,
 	targetId: string,
-): EditorToolbarMove | null {
-	const normalized = normalizeEditorToolbarOrder(order);
-	const fromIndex = normalized.indexOf(draggedId);
-	const toIndex = normalized.indexOf(targetId);
-
-	if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return null;
-	return { fromIndex, toIndex };
+): ToolbarMove | null {
+	return getReorderMove(normalizeEditorToolbarOrder(order), draggedId, targetId);
 }
 
 export function getEditorToolbarAdjacentMove(
 	order: readonly string[],
 	id: string,
 	direction: 'up' | 'down',
-): EditorToolbarMove | null {
-	const normalized = normalizeEditorToolbarOrder(order);
-	const fromIndex = normalized.indexOf(id);
-	if (fromIndex === -1) return null;
-
-	const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1;
-	if (toIndex < 0 || toIndex >= normalized.length) return null;
-
-	return { fromIndex, toIndex };
+): ToolbarMove | null {
+	return getAdjacentMove(normalizeEditorToolbarOrder(order), id, direction);
 }
 
-export function applyEditorToolbarMove(order: readonly string[], move: EditorToolbarMove): string[] {
-	const normalized = normalizeEditorToolbarOrder(order);
-	if (
-		move.fromIndex < 0 ||
-		move.fromIndex >= normalized.length ||
-		move.toIndex < 0 ||
-		move.toIndex >= normalized.length ||
-		move.fromIndex === move.toIndex
-	) {
-		return normalized;
-	}
-
-	const next = [...normalized];
-	const [moved] = next.splice(move.fromIndex, 1);
-	next.splice(move.toIndex, 0, moved);
-	return next;
+export function applyEditorToolbarMove(order: readonly string[], move: ToolbarMove): string[] {
+	return applyMove(normalizeEditorToolbarOrder(order), move);
 }
