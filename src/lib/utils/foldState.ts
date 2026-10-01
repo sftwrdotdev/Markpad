@@ -1,3 +1,5 @@
+import { invalidateAnchorMemos } from './previewAnchor.js';
+
 /**
  * Fold state for headings and callouts.
  *
@@ -204,6 +206,8 @@ export function toggleFoldFromClick(host: FoldHost, target: Element): boolean {
 function applyFold(region: FoldRegion, collapsed: boolean): void {
 	region.head.classList.toggle(COLLAPSED_CLASS, collapsed);
 	region.content.classList.toggle(COLLAPSED_CLASS, collapsed);
+	// A shut fold answers for its contents in scroll sync's sample table.
+	invalidateAnchorMemos();
 }
 
 /**

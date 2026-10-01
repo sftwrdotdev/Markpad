@@ -50,6 +50,7 @@ import { headingReference, preferredReferenceStyle } from './utils/headingRefere
 import {
 	findSourceLineRange,
 	getSourceLineAtPreviewOffset,
+	invalidateAnchorMemos,
 	measureAnchorBox,
 	mergeSourceLineRanges,
 	restorePreviewReadingPosition,
@@ -1414,8 +1415,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		//
 		// A host that already holds this document — a tab being re-activated —
 		// is not sanitized and diffed again: every block would compare equal.
+		// The switch did change which host is displayed, which the anchor memos
+		// read, and the patch is what would have invalidated them.
 		const unchanged = patchedHtml.get(host) === htmlContent;
 		patchedHtml.set(host, htmlContent);
+		if (unchanged) invalidateAnchorMemos();
 		const sanitized = unchanged ? null : sanitizeMarkdownFragment(htmlContent);
 		const patch = sanitized ? patchPreviewBlocks(host, sanitized) : { inserted: [] };
 		// Only the new blocks. `ResizeObserver.observe` on a target it is already

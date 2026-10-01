@@ -318,17 +318,25 @@ function elementChildren(node: AnchorNode): AnchorNode[] {
  *
  * Folding, task checkboxes and rich-content rendering still leave the annotated
  * blocks and their ranges exactly where they were.
+ *
+ * `sampleCache` is the third memo, the sample table per root (see
+ * `lineSamples`). It does depend on folds, on which host is displayed and on
+ * Mermaid replacing a `<pre>`, so `applyFold`, the viewer's tab switch and
+ * `renderRichContent` call this too.
  */
 let ownRangeCache = new WeakMap<object, LineRange | null>();
 let spanCache = new WeakMap<object, LineRange | null>();
+let sampleCache = new WeakMap<object, LineSample[]>();
 
 /**
- * Forget every memoised range. Whoever rewrites a `data-sourcepos` in place, or
- * changes what is inside a node that is being kept, owes this call.
+ * Forget every memoised range. Whoever rewrites a `data-sourcepos` in place,
+ * changes what is inside a node that is being kept, or changes which annotated
+ * elements are followed (a fold, a host shown or hidden), owes this call.
  */
 export function invalidateAnchorMemos(): void {
 	ownRangeCache = new WeakMap<object, LineRange | null>();
 	spanCache = new WeakMap<object, LineRange | null>();
+	sampleCache = new WeakMap<object, LineSample[]>();
 }
 
 function ownRange(node: AnchorNode): LineRange | null {
@@ -614,9 +622,9 @@ type LineSample = { element: AnchorNode; line: number };
  * at one line and give the interval between them zero span. The inner one is
  * kept because it is the one whose box actually bounds the text.
  *
- * Not memoised: this walks the tree without measuring anything, and the
- * measuring is what costs. Caching it would mean invalidating on every render,
- * and a stale table would silently map to the wrong lines.
+ * Called through `lineSamples`, which memoises the table: the walk visits the
+ * whole document and ran on every scroll event, twice per event in split
+ * view. Only the elements are cached; their boxes are measured live.
  */
 function collectLineSamples(root: AnchorNode): LineSample[] {
 	const samples: LineSample[] = [];
@@ -674,6 +682,15 @@ function collectLineSamples(root: AnchorNode): LineSample[] {
 	return samples;
 }
 
+function lineSamples(root: AnchorNode): LineSample[] {
+	let samples = sampleCache.get(root as object);
+	if (!samples) {
+		samples = collectLineSamples(root);
+		sampleCache.set(root as object, samples);
+	}
+	return samples;
+}
+
 /**
  * The samples either side of `offset`: the last one at or above it, and the
  * first one below.
@@ -720,7 +737,7 @@ export function getSourceLineAtPreviewOffset(
 ): RendererLine | null {
 	if (!Number.isFinite(offset)) return null;
 
-	const samples = collectLineSamples(root);
+	const samples = lineSamples(root);
 	if (samples.length === 0) return null;
 
 	const { previous, next } = samplesAround(samples, offset, measure);
@@ -758,7 +775,7 @@ export function getPreviewOffsetForSourceLine(
 ): number | null {
 	if (!Number.isFinite(line)) return null;
 
-	const samples = collectLineSamples(root);
+	const samples = lineSamples(root);
 	if (samples.length === 0) return null;
 
 	// The mirror of `samplesAround`, over lines rather than pixels. Both

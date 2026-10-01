@@ -11,6 +11,7 @@ import {
 	readDiagramTheme,
 	rememberDiagramSource,
 } from './mermaidPrint.js';
+import { invalidateAnchorMemos } from './previewAnchor.js';
 import { highlightedCode, renderedMath } from './richContentCache.js';
 
 /**
@@ -563,5 +564,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			errorDiv.textContent = `Error rendering Mermaid diagram: ${error}`;
 			preEl.replaceWith(errorDiv);
 		}
+		// Scroll sync's sample table may still hold the `<pre>`.
+		invalidateAnchorMemos();
 	}
 }
