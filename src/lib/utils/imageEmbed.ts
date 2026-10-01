@@ -1,3 +1,5 @@
+import { basename } from './pathIdentity.js';
+
 /**
  * The Markdown an image lands in when the *app* writes the link — a pasted
  * screenshot (`save_image`) or a dropped file (`copy_file_to_img`). Both used
@@ -121,7 +123,7 @@ const FILENAME_TOKEN = '${filename}';
 export function resolveImageDirectory(setting: string, documentPath: string): string {
 	const template = setting || DEFAULT_IMAGE_DIRECTORY;
 	if (!template.includes(FILENAME_TOKEN)) return template;
-	const base = documentPath.split(/[/\\]/).pop() ?? documentPath;
+	const base = basename(documentPath);
 	const dot = base.lastIndexOf('.');
 	// `.gitignore` is all name and no extension: only a dot with something in
 	// front of it separates the two.

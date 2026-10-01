@@ -4,7 +4,7 @@ import { settings } from './settings.svelte.js';
 import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { HOME_TAB_PATH, isHomePath } from '../utils/homeTab.js';
 import { buildTransferredTab, type TransferableTab } from '../utils/tabTransfer.js';
-import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
+import { basename, canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 import { asRendererLine, type RendererLine } from '../utils/lineCoordinates.js';
 import { outgoingTabAnchorLine } from '../utils/editorPosition.js';
 import { retainTabModels } from '../utils/tabModels.js';
@@ -29,11 +29,10 @@ export interface Tab {
 	 * chosen by `nextUntitledTitle` when there is no path to take a segment
 	 * from.
 	 *
-	 * Five of those sites spell the derivation `path.split(/[/\\]/).pop() ||
-	 * 'Untitled'`, and that English literal is dead code, not an i18n hole. It
-	 * is there because `Array.prototype.pop` is typed `string | undefined`; the
-	 * arm needs a path that is empty or ends in a separator, and every route
-	 * into those five is guarded against both upstream:
+	 * All but `addTab` and `restoreState` spell the derivation `basename(path)
+	 * || 'Untitled'`, and that English literal is dead code, not an i18n hole:
+	 * the arm needs a path that is empty or ends in a separator, and every
+	 * route into those sites is guarded against both upstream:
 	 *
 	 * - `navigate` is only ever handed a link target, and `getMarkdownLinkTarget`
 	 *   refuses an href whose path does not end in one of
@@ -446,7 +445,7 @@ class TabManager {
 			const restored: Tab[] = [];
 			for (const saved of data.tabs) {
 				if (!saved || typeof saved.path !== 'string' || !hasRealFilePath(saved.path)) continue;
-				const filename = saved.path.split('\\').pop()?.split('/').pop() || saved.path;
+				const filename = basename(saved.path) || saved.path;
 				const fileHistory = createFileHistory(saved.path);
 				restored.push({
 					id: typeof saved.id === 'string' ? saved.id : crypto.randomUUID(),
@@ -588,7 +587,7 @@ class TabManager {
 
 		const id = crypto.randomUUID();
 		const filename =
-			path.split('\\').pop()?.split('/').pop() ||
+			basename(path) ||
 			nextUntitledTitle(
 				this.tabs.map((tab) => tab.title),
 				t('tabs.untitled', settings.language),
@@ -1059,7 +1058,7 @@ class TabManager {
 			// file it no longer holds. Unset is the honest state until something
 			// resolves the new path.
 			tab.pathKey = pathKey;
-			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
+			tab.title = basename(path) || 'Untitled';
 			// The buffer is not touched here, so nothing about "changed?" changed
 			// either. This used to clear a dirty flag by hand, which was only ever
 			// right because both callers reach here mid-save and set
@@ -1210,7 +1209,7 @@ class TabManager {
 
 			tab.path = path;
 			tab.pathKey = pathKey;
-			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
+			tab.title = basename(path) || 'Untitled';
 			this.forgetPreviousDocument(tab);
 		}
 	}
@@ -1248,7 +1247,7 @@ class TabManager {
 		tab.historyIndex = result.historyIndex;
 		tab.path = path;
 		tab.pathKey = undefined;
-		tab.title = path.split(/[/\\]/).pop() || 'Untitled';
+		tab.title = basename(path) || 'Untitled';
 		this.forgetPreviousDocument(tab);
 		return path;
 	}

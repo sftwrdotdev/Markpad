@@ -4,6 +4,7 @@
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { duplicateNameSuffixes } from '../utils/duplicateTabNames.js';
+	import { basename } from '../utils/pathIdentity.js';
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 
 	let { recentFiles, pinnedTags = [], onselectFile, onloadFile, onremoveRecentFile, onnewFile, onopenPinnedTag, onunpinTag } = $props<{
@@ -28,7 +29,7 @@
 	});
 
 	function getFileName(path: string) {
-		return path.split(/[/\\]/).pop() || path;
+		return basename(path) || path;
 	}
 
 	let fileMenu = $state<{ x: number; y: number; items: ContextMenuItem[] } | null>(null);

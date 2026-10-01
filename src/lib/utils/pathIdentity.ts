@@ -6,6 +6,15 @@ import { hasRealFilePath } from './tabFileActions.js';
  * satisfies it structurally, so the comparison below can be handed a tab
  * directly without the store having to build a wrapper object.
  */
+/**
+ * The last segment of `path`, splitting on both `/` and `\\` so a Windows path
+ * read on macOS (or the reverse) still names its file. `''` for an empty path
+ * or one ending in a separator; each caller picks its own fallback.
+ */
+export function basename(path: string): string {
+	return path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1);
+}
+
 export interface PathIdentity {
 	path: string;
 	/**
