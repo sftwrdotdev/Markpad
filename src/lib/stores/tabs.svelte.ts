@@ -1226,42 +1226,31 @@ class TabManager {
 	}
 
 	goBack(id: string): string | null {
-		const tab = this.tab(id);
-		if (tab) {
-			const result = goBackInHistory(tab);
-			if (!result.path) return null;
-			const path = result.path;
-			// Back/forward walk this tab's own history, which can lead to a file
-			// that has since been opened in another tab. History holds the paths
-			// as they were typed, not their identities, so this claim compares
-			// literally; the caller loads the file straight afterwards and
-			// `loadMarkdown` resolves the key then.
-			this.claimPath(path, id);
-			tab.historyIndex = result.historyIndex;
-			tab.path = path;
-			tab.pathKey = undefined;
-			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			this.forgetPreviousDocument(tab);
-			return path;
-		}
-		return null;
+		return this.step(id, goBackInHistory);
 	}
 
 	goForward(id: string): string | null {
+		return this.step(id, goForwardInHistory);
+	}
+
+	private step(id: string, move: typeof goBackInHistory): string | null {
 		const tab = this.tab(id);
-		if (tab) {
-			const result = goForwardInHistory(tab);
-			if (!result.path) return null;
-			const path = result.path;
-			this.claimPath(path, id);
-			tab.historyIndex = result.historyIndex;
-			tab.path = path;
-			tab.pathKey = undefined;
-			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
-			this.forgetPreviousDocument(tab);
-			return path;
-		}
-		return null;
+		if (!tab) return null;
+		const result = move(tab);
+		if (!result.path) return null;
+		const path = result.path;
+		// Back/forward walk this tab's own history, which can lead to a file
+		// that has since been opened in another tab. History holds the paths
+		// as they were typed, not their identities, so this claim compares
+		// literally; the caller loads the file straight afterwards and
+		// `loadMarkdown` resolves the key then.
+		this.claimPath(path, id);
+		tab.historyIndex = result.historyIndex;
+		tab.path = path;
+		tab.pathKey = undefined;
+		tab.title = path.split(/[/\\]/).pop() || 'Untitled';
+		this.forgetPreviousDocument(tab);
+		return path;
 	}
 
 	recentlyClosed = $state<string[]>([]);
