@@ -99,8 +99,8 @@ export interface Tab {
 	scrollTop: number;
 	/**
 	 * Derived, never assigned: exactly `rawContent !== originalContent`, read
-	 * off the two buffers every time. Each construction site below spells it as
-	 * a getter, which is why this is `readonly` — `tab.isDirty = false` is now
+	 * off the two buffers every time. `makeTab` and `buildTransferredTab` spell
+	 * it as a getter, which is why this is `readonly` — `tab.isDirty = false` is now
 	 * a compile error rather than a fourth opinion about what "changed" means.
 	 *
 	 * A flag that can be set independently of the buffers it summarises can be
@@ -316,6 +316,45 @@ export interface Tab {
 /** How many in-page jumps back a tab remembers. See `Tab.scrollHistory`. */
 const SCROLL_HISTORY_LIMIT = 50;
 
+type TabFields = Pick<Tab, 'id' | 'path' | 'title' | 'history' | 'historyIndex' | 'hasReplacementChars' | 'encoding'> &
+	Partial<
+		Pick<
+			Tab,
+			'rawContent' | 'isEditing' | 'scrollTop' | 'scrollPercentage' | 'anchorLine' | 'isSplit' | 'splitRatio' | 'isScrollSynced' | 'pathKey'
+		>
+	>;
+
+/**
+ * A new tab: the buffers hold `rawContent` (default `''`) and are clean, the
+ * rendered `content` is empty, and every reading-position and layout field is
+ * at rest. `hasReplacementChars` and `encoding` have no default on purpose —
+ * see those fields — so every caller states them.
+ */
+function makeTab(fields: TabFields): Tab {
+	const rawContent = fields.rawContent ?? '';
+	return {
+		content: '',
+		rawContent,
+		originalContent: rawContent,
+		scrollTop: 0,
+		get isDirty() {
+			return this.rawContent !== this.originalContent;
+		},
+		isEditing: false,
+		editorViewState: null,
+		scrollPercentage: 0,
+		anchorLine: asRendererLine(0),
+		scrollHistory: [],
+		scrollFuture: [],
+		isSplit: false,
+		splitRatio: 0.5,
+		isScrollSynced: false,
+		foldOverrides: new Set<string>(),
+		isTruncated: false,
+		...fields,
+	};
+}
+
 class TabManager {
 	tabs = $state<Tab[]>([]);
 	activeTabId = $state<string | null>(null);
@@ -446,39 +485,28 @@ class TabManager {
 			for (const saved of data.tabs) {
 				if (!saved || typeof saved.path !== 'string' || !hasRealFilePath(saved.path)) continue;
 				const filename = basename(saved.path) || saved.path;
-				const fileHistory = createFileHistory(saved.path);
-				restored.push({
-					id: typeof saved.id === 'string' ? saved.id : crypto.randomUUID(),
-					path: saved.path,
-					title: typeof saved.title === 'string' && saved.title !== '' ? saved.title : filename,
-					content: '',
-					rawContent: '',
-					originalContent: '',
-					scrollTop: typeof saved.scrollTop === 'number' ? saved.scrollTop : 0,
-					get isDirty() {
-						return this.rawContent !== this.originalContent;
-					},
-					isEditing: saved.isEditing === true,
-					history: fileHistory.history,
-					historyIndex: fileHistory.historyIndex,
-					editorViewState: null,
-					scrollPercentage: typeof saved.scrollPercentage === 'number' ? saved.scrollPercentage : 0,
-					// The brand is phantom, so nothing of it survives JSON — which is
-					// exactly why the read side has to re-declare what came back.
-					// `serializeState` wrote a renderer line; this says so again.
-					anchorLine: asRendererLine(typeof saved.anchorLine === 'number' ? saved.anchorLine : 0),
-					// Not persisted — see serializeState.
-					scrollHistory: [],
-					scrollFuture: [],
-					isSplit: saved.isSplit === true,
-					splitRatio: typeof saved.splitRatio === 'number' ? saved.splitRatio : 0.5,
-					isScrollSynced: saved.isScrollSynced === true,
-					// Not persisted — see serializeState.
-					foldOverrides: new Set<string>(),
-					isTruncated: false,
-					hasReplacementChars: false,
-					encoding: 'UTF-8'
-				});
+				restored.push(
+					makeTab({
+						id: typeof saved.id === 'string' ? saved.id : crypto.randomUUID(),
+						path: saved.path,
+						title: typeof saved.title === 'string' && saved.title !== '' ? saved.title : filename,
+						...createFileHistory(saved.path),
+						scrollTop: typeof saved.scrollTop === 'number' ? saved.scrollTop : 0,
+						isEditing: saved.isEditing === true,
+						scrollPercentage: typeof saved.scrollPercentage === 'number' ? saved.scrollPercentage : 0,
+						// The brand is phantom, so nothing of it survives JSON — which is
+						// exactly why the read side has to re-declare what came back.
+						// `serializeState` wrote a renderer line; this says so again.
+						anchorLine: asRendererLine(typeof saved.anchorLine === 'number' ? saved.anchorLine : 0),
+						// `scrollHistory`, `scrollFuture` and `foldOverrides` start empty:
+						// not persisted — see serializeState.
+						isSplit: saved.isSplit === true,
+						splitRatio: typeof saved.splitRatio === 'number' ? saved.splitRatio : 0.5,
+						isScrollSynced: saved.isScrollSynced === true,
+						hasReplacementChars: false,
+						encoding: 'UTF-8',
+					}),
+				);
 			}
 
 			this.tabs = restored;
@@ -592,78 +620,45 @@ class TabManager {
 				this.tabs.map((tab) => tab.title),
 				t('tabs.untitled', settings.language),
 			);
-		const fileHistory = createFileHistory(path);
 
-		this.tabs.push({
-			id,
-			path,
-			title: filename,
-			content: '',
-			rawContent,
-			originalContent: rawContent,
-			scrollTop: 0,
-			get isDirty() {
-				return this.rawContent !== this.originalContent;
-			},
-			isEditing: false,
-			history: fileHistory.history,
-			historyIndex: fileHistory.historyIndex,
-			editorViewState: null,
-			scrollPercentage: 0,
-			anchorLine: asRendererLine(0),
-			scrollHistory: [],
-			scrollFuture: [],
-			isSplit: false,
-			splitRatio: 0.5,
-			isScrollSynced: false,
-			foldOverrides: new Set<string>(),
-			isTruncated: false,
-			hasReplacementChars: false,
-			encoding: 'UTF-8',
-			pathKey
-		});
+		this.tabs.push(
+			makeTab({
+				id,
+				path,
+				title: filename,
+				rawContent,
+				...createFileHistory(path),
+				hasReplacementChars: false,
+				encoding: 'UTF-8',
+				pathKey,
+			}),
+		);
 
 		this.activeTabId = id;
 	}
 
 	addNewTab() {
 		const id = crypto.randomUUID();
-		const content = '';
 
-		this.tabs.push({
-			id,
-			path: '',
-			title: nextUntitledTitle(
-				this.tabs.map((tab) => tab.title),
-				t('tabs.untitled', settings.language),
-			),
-			content,
-			rawContent: content,
-			originalContent: content,
-			scrollTop: 0,
-			get isDirty() {
-				return this.rawContent !== this.originalContent;
-			},
-			isEditing: settings.newFileDefaultMode,
-			// Empty, as `addHomeTab` below already had it. This used to be
-			// `[content]` — a PATH list seeded with the new buffer's text, which
-			// is `''` and so looked harmless, and was not: see
-			// `navigateFileHistory`.
-			history: [],
-			historyIndex: 0,
-			editorViewState: null,
-			scrollPercentage: 0,
-			anchorLine: asRendererLine(0),
-			scrollHistory: [],
-			scrollFuture: [],
-			isSplit: false,
-			splitRatio: 0.5,
-			isScrollSynced: false,
-			foldOverrides: new Set<string>(),
-			isTruncated: false,
-			hasReplacementChars: false,
-			encoding: 'UTF-8'
-		});
+		this.tabs.push(
+			makeTab({
+				id,
+				path: '',
+				title: nextUntitledTitle(
+					this.tabs.map((tab) => tab.title),
+					t('tabs.untitled', settings.language),
+				),
+				isEditing: settings.newFileDefaultMode,
+				// Empty, as `addHomeTab` below already had it. This used to be
+				// `[content]` — a PATH list seeded with the new buffer's text, which
+				// is `''` and so looked harmless, and was not: see
+				// `navigateFileHistory`.
+				history: [],
+				historyIndex: 0,
+				hasReplacementChars: false,
+				encoding: 'UTF-8',
+			}),
+		);
 
 		this.activeTabId = id;
 	}
@@ -676,33 +671,17 @@ class TabManager {
 		}
 
 		const id = crypto.randomUUID();
-		this.tabs.push({
-			id,
-			path: HOME_TAB_PATH,
-			title: t('tabs.home', settings.language),
-			content: '',
-			rawContent: '',
-			originalContent: '',
-			scrollTop: 0,
-			get isDirty() {
-				return this.rawContent !== this.originalContent;
-			},
-			isEditing: false,
-			history: [],
-			historyIndex: 0,
-			editorViewState: null,
-			scrollPercentage: 0,
-			anchorLine: asRendererLine(0),
-			scrollHistory: [],
-			scrollFuture: [],
-			isSplit: false,
-			splitRatio: 0.5,
-			isScrollSynced: false,
-			foldOverrides: new Set<string>(),
-			isTruncated: false,
-			hasReplacementChars: false,
-			encoding: 'UTF-8'
-		});
+		this.tabs.push(
+			makeTab({
+				id,
+				path: HOME_TAB_PATH,
+				title: t('tabs.home', settings.language),
+				history: [],
+				historyIndex: 0,
+				hasReplacementChars: false,
+				encoding: 'UTF-8',
+			}),
+		);
 
 		this.activeTabId = id;
 	}
