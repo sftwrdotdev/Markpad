@@ -512,15 +512,25 @@ fn in_code_region(regions: &[(usize, usize)], pos: usize) -> bool {
         .is_ok()
 }
 
-fn process_internal_embeds(content: &str) -> Cow<'_, str> {
+/// `re.replace_all`, leaving matches that start inside code verbatim.
+fn replace_outside_code<'a>(
+    content: &'a str,
+    re: &Regex,
+    mut f: impl FnMut(&Captures) -> String,
+) -> Cow<'a, str> {
     let regions = code_region_ranges(content);
-
-    INTERNAL_EMBED_RE.replace_all(content, |caps: &Captures| {
+    re.replace_all(content, |caps: &Captures| {
         let full = caps.get(0).unwrap();
         if in_code_region(&regions, full.start()) {
-            return full.as_str().to_string();
+            full.as_str().to_string()
+        } else {
+            f(caps)
         }
+    })
+}
 
+fn process_internal_embeds(content: &str) -> Cow<'_, str> {
+    replace_outside_code(content, &INTERNAL_EMBED_RE, |caps| {
         let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
         let mut parts = inner.split('|');
         let path = parts.next().unwrap_or("");
@@ -581,14 +591,10 @@ fn process_wikilinks<'a>(content: &'a str) -> Cow<'a, str> {
     //    definition). Every Copy Reference call site emits a "#", so requiring
     //    one fixes the defect completely without touching either.
     if WIKILINK_RE.is_match(&processed) {
-        let regions = code_region_ranges(&processed);
         let source: &str = &processed;
-        let replaced = WIKILINK_RE.replace_all(source, |caps: &Captures| {
+        let replaced = replace_outside_code(source, &WIKILINK_RE, |caps| {
             let full = caps.get(0).unwrap();
             let literal = || full.as_str().to_string();
-            if in_code_region(&regions, full.start()) {
-                return literal();
-            }
             // The pattern is line-agnostic, but neither a heading id nor a
             // filename contains a newline, so a target spanning lines can
             // never resolve. Leaving it literal also keeps the line count
@@ -653,12 +659,7 @@ fn process_wikilinks<'a>(content: &'a str) -> Cow<'a, str> {
     // 2. Process ^block-id at the end of lines
     // For block IDs, they are trailing. We skip code blocks but also need to be careful with inline code at EOL.
     if BLOCK_ID_RE.is_match(&processed) {
-        let regions = code_region_ranges(&processed);
-        let replaced = BLOCK_ID_RE.replace_all(&processed, |caps: &Captures| {
-            let full = caps.get(0).unwrap();
-            if in_code_region(&regions, full.start()) {
-                return full.as_str().to_string();
-            }
+        let replaced = replace_outside_code(&processed, &BLOCK_ID_RE, |caps| {
             // Re-emit the matched whitespace verbatim. For the common
             // trailing form (" ^id") that is the same single space this used
             // to hardcode; for an id on its own line it is the newline that

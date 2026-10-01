@@ -161,32 +161,16 @@ fn update_pinned_tags(
     Ok(())
 }
 
+/// Writes `color` and `files` to the pin named `name` and reports whether it
+/// existed. Only the explicit pin passes `create`: a window saves its pin as it
+/// ends, and another window may have unpinned the tag in the meantime.
 fn save_pinned_tag_at(
     lock: &Mutex<()>,
     path: &Path,
     name: String,
     color: String,
     files: Vec<String>,
-) -> Result<(), crate::error::Error> {
-    update_pinned_tags(lock, path, move |tags| {
-        if let Some(tag) = tags.iter_mut().find(|tag| tag.name == name) {
-            tag.color = color;
-            tag.files = files;
-        } else {
-            tags.push(PinnedTag { name, color, files });
-        }
-    })
-}
-
-/// Refreshes an existing pin and reports whether there was one. A window
-/// saves its pin as it ends, and another window may have unpinned the tag in
-/// the meantime; only the explicit pin in `save_pinned_tag_at` creates one.
-fn update_pinned_tag_at(
-    lock: &Mutex<()>,
-    path: &Path,
-    name: String,
-    color: String,
-    files: Vec<String>,
+    create: bool,
 ) -> Result<bool, crate::error::Error> {
     let mut found = false;
     update_pinned_tags(lock, path, |tags| {
@@ -194,6 +178,8 @@ fn update_pinned_tag_at(
             tag.color = color;
             tag.files = files;
             found = true;
+        } else if create {
+            tags.push(PinnedTag { name, color, files });
         }
     })?;
     Ok(found)
@@ -258,7 +244,9 @@ pub fn save_pinned_tag(
 ) -> Result<(), String> {
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
-    save_pinned_tag_at(&state.pinned_tags, &path, name, color, files).map_err(String::from)
+    save_pinned_tag_at(&state.pinned_tags, &path, name, color, files, true)
+        .map(|_| ())
+        .map_err(String::from)
 }
 
 #[tauri::command]
@@ -270,7 +258,7 @@ pub fn update_pinned_tag(
 ) -> Result<bool, String> {
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
-    update_pinned_tag_at(&state.pinned_tags, &path, name, color, files).map_err(String::from)
+    save_pinned_tag_at(&state.pinned_tags, &path, name, color, files, false).map_err(String::from)
 }
 
 #[tauri::command]
@@ -945,6 +933,7 @@ mod tests {
                             format!("keep-{writer}"),
                             "#222222".to_string(),
                             vec![format!("/tmp/{writer}-{round}.md")],
+                            true,
                         )
                         .unwrap();
                     }
@@ -987,6 +976,7 @@ mod tests {
             "work".to_string(),
             "#1a73e8".to_string(),
             vec!["/tmp/a.md".to_string()],
+            true,
         )
         .unwrap();
         save_pinned_tag_at(
@@ -995,6 +985,7 @@ mod tests {
             "work".to_string(),
             "#d93025".to_string(),
             vec!["/tmp/b.md".to_string()],
+            true,
         )
         .unwrap();
 
@@ -1024,14 +1015,16 @@ mod tests {
             "Research".to_string(),
             "#1a73e8".to_string(),
             vec!["/papers/a.md".to_string()],
+            true,
         )
         .unwrap();
-        let updated = update_pinned_tag_at(
+        let updated = save_pinned_tag_at(
             &lock,
             &path,
             "Research".to_string(),
             "#d93025".to_string(),
             vec!["/papers/b.md".to_string()],
+            false,
         )
         .unwrap();
         assert!(updated);
@@ -1041,12 +1034,13 @@ mod tests {
         assert_eq!(tags[0].files, vec!["/papers/b.md".to_string()]);
 
         remove_pinned_tag_at(&lock, &path, "Research".to_string()).unwrap();
-        let updated = update_pinned_tag_at(
+        let updated = save_pinned_tag_at(
             &lock,
             &path,
             "Research".to_string(),
             "#d93025".to_string(),
             vec!["/papers/b.md".to_string()],
+            false,
         )
         .unwrap();
         assert!(!updated, "the update reported a pin that is gone");
@@ -1069,6 +1063,7 @@ mod tests {
             "Research".to_string(),
             "#1a73e8".to_string(),
             vec!["/papers/a.md".to_string()],
+            true,
         )
         .unwrap();
         let outcome = rename_pinned_tag_at(
@@ -1086,12 +1081,13 @@ mod tests {
         assert_eq!(tags[0].color, "#d93025");
         assert_eq!(tags[0].files, vec!["/papers/a.md".to_string()]);
 
-        let updated = update_pinned_tag_at(
+        let updated = save_pinned_tag_at(
             &lock,
             &path,
             "Papers".to_string(),
             "#d93025".to_string(),
             vec!["/papers/b.md".to_string()],
+            false,
         )
         .unwrap();
         assert!(updated, "the closing save did not find the renamed pin");
@@ -1114,6 +1110,7 @@ mod tests {
                 name.to_string(),
                 "#1a73e8".to_string(),
                 vec![file.to_string()],
+                true,
             )
             .unwrap();
         }
@@ -1155,7 +1152,7 @@ mod tests {
     /// user set two windows up and gets one back.
     ///
     /// Asserted on the surviving file rather than on the call, because the call
-    /// succeeds in both worlds: `save_pinned_tag_at` returns `Ok(())` either
+    /// succeeds in both worlds: `save_pinned_tag` returns `Ok(())` either
     /// way and nothing anywhere reports the overwrite.
     #[test]
     fn two_windows_sharing_a_tag_name_overwrite_one_anothers_pinned_files() {
@@ -1169,6 +1166,7 @@ mod tests {
             "Research".to_string(),
             "#1a73e8".to_string(),
             vec!["/papers/a.md".to_string(), "/papers/b.md".to_string()],
+            true,
         )
         .unwrap();
         save_pinned_tag_at(
@@ -1177,6 +1175,7 @@ mod tests {
             "Research".to_string(),
             "#d93025".to_string(),
             vec!["/notes/c.md".to_string()],
+            true,
         )
         .unwrap();
 
@@ -1272,6 +1271,7 @@ mod tests {
             "after".to_string(),
             "#188038".to_string(),
             vec![],
+            true,
         )
         .unwrap();
         let tags = read_pinned_tags_at(&path);
