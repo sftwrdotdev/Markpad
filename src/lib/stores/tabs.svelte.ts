@@ -1045,6 +1045,7 @@ class TabManager {
 		this.activeTabId = this.tabs[nextIndex].id;
 	}
 
+	/** Save As, rename on disk, or an untitled tab picking up the file it loads. */
 	updateTabPath(id: string, path: string, pathKey?: string) {
 		const tab = this.tab(id);
 		if (tab) {
@@ -1053,6 +1054,10 @@ class TabManager {
 			// already stale and must stop claiming the path.
 			this.claimPath(path, id, pathKey);
 			tab.path = path;
+			// The old key described the old name (rename) or nothing (an untitled
+			// buffer), so keeping it would make this tab answer "same file" for a
+			// file it no longer holds. Unset is the honest state until something
+			// resolves the new path.
 			tab.pathKey = pathKey;
 			tab.title = path.split(/[/\\]/).pop() || 'Untitled';
 			// The buffer is not touched here, so nothing about "changed?" changed
@@ -1072,24 +1077,9 @@ class TabManager {
 		}
 	}
 
+	/** Rename on disk is the same repoint as Save As; kept for its callers. */
 	renameTab(id: string, newPath: string, pathKey?: string) {
-		const tab = this.tab(id);
-		if (tab) {
-			this.claimPath(newPath, id, pathKey);
-			tab.path = newPath;
-			// The old key described the old name, so keeping it would make this
-			// tab answer "same file" for a file it no longer holds. Unset is the
-			// honest state until something resolves the new path.
-			tab.pathKey = pathKey;
-			tab.title = newPath.split(/[/\\]/).pop() || 'Untitled';
-			const fileHistory = replaceCurrentHistoryEntry({
-				targetPath: newPath,
-				history: tab.history,
-				historyIndex: tab.historyIndex,
-			});
-			tab.history = fileHistory.history;
-			tab.historyIndex = fileHistory.historyIndex;
-		}
+		this.updateTabPath(id, newPath, pathKey);
 	}
 
 	/**
