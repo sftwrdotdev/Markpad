@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { invoke, convertFileSrc } from '@tauri-apps/api/core';
-	import { emitTo } from '@tauri-apps/api/event';
+	import { emitTo, type EventCallback } from '@tauri-apps/api/event';
 	import { getAllWindows, getCurrentWindow } from '@tauri-apps/api/window';
 	import { onMount, tick, untrack } from 'svelte';
 	import { fade, fly, slide } from 'svelte/transition';
@@ -3724,19 +3724,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				}),
 			);
 
-			unlisteners.push(
-				await appWindow.listen('file-path', (event) => {
+			const listeners: [string, EventCallback<any>][] = [
+				['file-path', (event) => {
 					const filePath = event.payload as string;
 					if (filePath) loadMarkdown(filePath);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-close-file', () => {
+				}],
+				['menu-close-file', () => {
 					closeFile();
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-rename', async (event) => {
+				}],
+				['menu-tab-rename', async (event) => {
 					const tabId = event.payload as string;
 					const tab = tabManager.tabs.find((t) => t.id === tabId);
 					if (!tab || !tab.path) return;
@@ -3757,70 +3753,51 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 							await askCustom(`Failed to rename file: ${e}`, { title: 'Error', kind: 'error' });
 						}
 					}
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-new', () => {
+				}],
+				['menu-tab-new', () => {
 					tabManager.addNewTab();
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-undo', () => {
+				}],
+				['menu-tab-undo', () => {
 					handleUndoCloseTab();
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-close', async (event) => {
+				}],
+				['menu-tab-close', async (event) => {
 					const tabId = event.payload as string;
 					await closeTabAndWindowIfLast(tabId);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-detach', (event) => {
+				}],
+				['menu-tab-detach', (event) => {
 					handleDetach(event.payload as string);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-move', (event) => {
+				}],
+				['menu-tab-move', (event) => {
 					const { tabId, targetLabel } = event.payload as { tabId: string; targetLabel: string };
 					moveTabToWindow(tabId, targetLabel).catch((error) => console.error('Failed to move tab', error));
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen<string>('tab-transfer-offer', (event) => {
+				}],
+				['tab-transfer-offer', (event) => {
 					if (isCloseWalkActive) return;
 					windowSession.acceptOfferedTransfer(event.payload);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen<string>('merge-into', (event) => {
+				}],
+				['merge-into', (event) => {
 					mergeSelfInto(event.payload).catch((error) => console.error('Failed to merge window', error));
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen<string>('window-identify', (event) => {
+				}],
+				['window-identify', (event) => {
 					identifyFlash = event.payload;
 					clearTimeout(identifyFlashTimer);
 					identifyFlashTimer = setTimeout(() => (identifyFlash = ''), 700);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-close-others', async (event) => {
+				}],
+				['menu-tab-close-others', async (event) => {
 					const tabId = event.payload as string;
 					const tabsToClose = tabManager.tabs.filter((t) => t.id !== tabId).map((t) => t.id);
 					await closeTabsWithConfirmation(tabsToClose);
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-tab-close-right', async (event) => {
+				}],
+				['menu-tab-close-right', async (event) => {
 					const tabId = event.payload as string;
 					const index = tabManager.tabs.findIndex((t) => t.id === tabId);
 					if (index !== -1) {
 						const tabsToClose = tabManager.tabs.slice(index + 1).map((t) => t.id);
 						await closeTabsWithConfirmation(tabsToClose);
 					}
-				}),
-			);
+				}],
+			];
+			for (const [event, handler] of listeners) unlisteners.push(await appWindow.listen(event, handler));
 			unlisteners.push(
 				await appWindow.listen('menu-app-settings', () => {
 					showSettings = true;
