@@ -408,31 +408,6 @@ function lineDistance(span: LineRange, line: number): number {
 }
 
 /**
- * A block owns the pixels `[top, top + height)` — half open at the bottom.
- *
- * Adjacent blocks touch: margins collapse, and one block's bottom edge is the
- * next one's top. If both claim that pixel the earlier one wins, because the
- * descent stops at the first candidate whose distance is zero. That is a
- * feedback loop rather than an off-by-one: a line resolved back to a pixel
- * lands on the TOP edge of its block, which the block ABOVE then claims, so
- * every echo between the panes walks the reader one block up the document.
- * (Observed in Chrome over this pipeline's own output; the DOM shim has no
- * layout, so its blocks never touched and the loop was invisible there.)
- *
- * A block whose bottom edge is exactly the offset therefore reports the
- * smallest positive distance instead of zero: still the nearest thing when
- * nothing contains the offset, but beaten by whatever does.
- */
-function boxDistance(box: AnchorBox, offset: number): number {
-	if (!Number.isFinite(box.top) || !Number.isFinite(box.height)) return Number.NaN;
-	if (offset < box.top) return box.top - offset;
-
-	const below = offset - (box.top + box.height);
-	if (below < 0) return 0;
-	return below > 0 ? below : Number.EPSILON;
-}
-
-/**
  * Descend to the narrowest annotated element `distanceOf` says is closest.
  *
  * `strict` is the difference between "which block owns this line" (a line
@@ -491,37 +466,6 @@ function descend(
 export function findAnchorElement(root: AnchorNode, line: number): AnchorMatch | null {
 	if (!Number.isFinite(line) || line <= 0) return null;
 	return descend(root, null, (span) => lineDistance(span, line), true);
-}
-
-/**
- * As `findAnchorElement`, but a line no block owns resolves to the nearest
- * block instead of to nothing. Only the scroll-sync mapping wants this: the
- * blank lines between blocks are a third of a typical document, and falling
- * back to the proportional mapping on every one of them would make the paired
- * pane jump back and forth as the reader scrolled.
- */
-function findNearestAnchorElement(root: AnchorNode, line: number): AnchorMatch | null {
-	if (!Number.isFinite(line) || line <= 0) return null;
-	return descend(root, null, (span) => lineDistance(span, line), false);
-}
-
-/**
- * The narrowest annotated element whose box covers `offset`, or the nearest one
- * when the offset falls in the margin between two blocks or in the padding
- * below the last one.
- *
- * `measure` supplies the layout — `offsetTop` / `offsetHeight` in the browser.
- * It is a parameter because this module is otherwise pure enough to run against
- * the render-protocol DOM shim, and that shim has no layout at all; injecting
- * one is what lets the mapping be tested over real pipeline output.
- */
-function findAnchorElementAtOffset(
-	root: AnchorNode,
-	offset: number,
-	measure: MeasureAnchorBox,
-): AnchorMatch | null {
-	if (!Number.isFinite(offset)) return null;
-	return descend(root, null, (_span, node) => boxDistance(measure(node), offset), false);
 }
 
 /**
