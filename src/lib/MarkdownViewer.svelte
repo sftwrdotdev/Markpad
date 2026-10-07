@@ -4075,6 +4075,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 									contenteditable="false"
 									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''}"
 									class:toc-in-gutter={settings.showToc && !settings.pinnedToc && !isOverhanging}
+									class:table-breakout={settings.previewTableBreakout}
+									class:table-fit={!settings.previewTableScroll}
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
 									onchange={handleTaskCheckboxChange}
@@ -4473,16 +4475,27 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/*
-	 * A table wider than the text column grows into the margins, centred on the
-	 * column, up to `--breakout-inset` from the pane edge; past that it scrolls.
+	 * With Wide Tables Can Exceed Max Width on, a table wider than the column
+	 * grows into the margins, centred on the column, up to `--breakout-inset`
+	 * from the pane edge; past that it scrolls.
 	 * `translate` because only it can use the table's own width: the shift is
 	 * half of what the table exceeds the column by, and 0 for one that fits.
 	 * Nested tables are left out, since their column does not start where the
-	 * text column does.
+	 * text column does. With the setting off, the base rule in styles.css
+	 * keeps the table in the column.
 	 */
-	.viewer-content :global(.markdown-body table:not(:is(li, blockquote, td, th, details, .markdown-alert, .footnotes) table)) {
+	.viewer-content :global(.markdown-body.table-breakout table:not(:is(li, blockquote, td, th, details, .markdown-alert, .footnotes) table)) {
 		max-width: max(100%, 100cqi - 2 * var(--breakout-inset));
 		translate: min(0px, (var(--measure) - 2 * var(--gutter)) / 2 - 50%);
+	}
+
+	/*
+	 * With Scroll Wide Tables off, a cell may break inside a word, so the table
+	 * shrinks to fit instead of scrolling. A short column next to a long one
+	 * can then break mid-word too (#927).
+	 */
+	.viewer-content :global(.markdown-body.table-fit table :is(td, th)) {
+		overflow-wrap: anywhere;
 	}
 
 	.loading-chip {

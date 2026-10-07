@@ -46,6 +46,8 @@ export default {
         previewCursor: '在預覽中點擊放置游標',
         previewOccurrences: '選取同詞醒目提示',
         previewAnnotations: '暫時醒目提示(右鍵選單)',
+        previewTableBreakout: '寬表格可超出最大寬度',
+        previewTableScroll: '寬表格橫向捲動',
         showTabs: '顯示分頁欄',
         restoreStateOnReopen: '重新開啟時還原狀態',
         closeWindowWithLastTab: '關閉最後一個分頁時關閉視窗',

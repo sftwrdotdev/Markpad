@@ -37,6 +37,8 @@ export default {
         previewCursor: '在预览中点击放置光标',
         previewOccurrences: '选中同词高亮',
         previewAnnotations: '临时高亮(右键菜单)',
+        previewTableBreakout: '宽表格可超出最大宽度',
+        previewTableScroll: '宽表格横向滚动',
         showTabs: '显示标签栏',
         restoreStateOnReopen: '重新打开时恢复标签页',
         closeWindowWithLastTab: '关闭最后一个标签时关闭窗口',

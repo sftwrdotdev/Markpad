@@ -114,6 +114,8 @@ const en: Translation = {
         previewCursor: 'Click in Preview Places Cursor',
         previewOccurrences: 'Highlight Matches of Selection',
         previewAnnotations: 'Temporary Highlights (Right-Click Menu)',
+        previewTableBreakout: 'Wide Tables Can Exceed Max Width',
+        previewTableScroll: 'Scroll Wide Tables',
         showTabs: 'Show Tab Bar',
         restoreStateOnReopen: 'Reopen Previous Tabs',
         closeWindowWithLastTab: 'Close Window with Last Tab',
