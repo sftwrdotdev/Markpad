@@ -50,6 +50,9 @@
 	},
 	"overrides": {
 		"cookie": "0.7.2",
-		"dompurify": "3.4.16"
+		"dompurify": "3.4.16",
+		"mermaid": {
+			"katex": "$katex"
+		}
 	}
 }
