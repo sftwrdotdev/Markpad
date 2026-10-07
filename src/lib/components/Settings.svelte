@@ -1172,7 +1172,7 @@
 							</div>
 
 							<div class="setting-item">
-								<label for="preview-table-breakout">{t('settings.previewTableBreakout', settings.language)}</label>
+								<label for="preview-table-breakout" class="has-hint">{t('settings.previewTableBreakout', settings.language)}<span class="setting-hint">{t('settings.previewTableBreakoutHint', settings.language)}</span></label>
 								<label class="toggle">
 									<input id="preview-table-breakout" type="checkbox" bind:checked={settings.previewTableBreakout} />
 									<span class="toggle-slider"></span>
@@ -1180,7 +1180,7 @@
 							</div>
 
 							<div class="setting-item">
-								<label for="preview-table-scroll">{t('settings.previewTableScroll', settings.language)}</label>
+								<label for="preview-table-scroll" class="has-hint">{t('settings.previewTableScroll', settings.language)}<span class="setting-hint">{t('settings.previewTableScrollHint', settings.language)}</span></label>
 								<label class="toggle">
 									<input id="preview-table-scroll" type="checkbox" bind:checked={settings.previewTableScroll} />
 									<span class="toggle-slider"></span>

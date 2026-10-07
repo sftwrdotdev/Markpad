@@ -116,6 +116,8 @@ const en: Translation = {
         previewAnnotations: 'Temporary Highlights (Right-Click Menu)',
         previewTableBreakout: 'Wide Tables Can Exceed Max Width',
         previewTableScroll: 'Scroll Wide Tables',
+        previewTableBreakoutHint: 'Spreads into the side margins',
+        previewTableScrollHint: 'On: scroll. Off: squeeze to fit',
         showTabs: 'Show Tab Bar',
         restoreStateOnReopen: 'Reopen Previous Tabs',
         closeWindowWithLastTab: 'Close Window with Last Tab',

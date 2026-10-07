@@ -48,6 +48,8 @@ export default {
         previewAnnotations: '暫時醒目提示(右鍵選單)',
         previewTableBreakout: '寬表格可超出最大寬度',
         previewTableScroll: '寬表格橫向捲動',
+        previewTableBreakoutHint: '可以伸進兩側頁邊',
+        previewTableScrollHint: '開：捲動細看　關：壓縮粗看',
         showTabs: '顯示分頁欄',
         restoreStateOnReopen: '重新開啟時還原狀態',
         closeWindowWithLastTab: '關閉最後一個分頁時關閉視窗',

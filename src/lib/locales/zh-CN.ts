@@ -39,6 +39,8 @@ export default {
         previewAnnotations: '临时高亮(右键菜单)',
         previewTableBreakout: '宽表格可超出最大宽度',
         previewTableScroll: '宽表格横向滚动',
+        previewTableBreakoutHint: '可以伸进两侧页边',
+        previewTableScrollHint: '开：滚动细看　关：压缩粗看',
         showTabs: '显示标签栏',
         restoreStateOnReopen: '重新打开时恢复标签页',
         closeWindowWithLastTab: '关闭最后一个标签时关闭窗口',
