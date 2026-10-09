@@ -1284,6 +1284,18 @@
 							</div>
 
 							<div class="setting-item" class:inactive={!settings.showTabs}>
+								<label for="appearance-tab-position">{t('settings.tabPosition', settings.language)}</label>
+								<div class="select-wrapper">
+									<select id="appearance-tab-position" disabled={!settings.showTabs} bind:value={settings.tabPosition}>
+										<option value="top">{t('settings.tabPositionTop', settings.language)}</option>
+										<option value="left">{t('settings.tabPositionLeft', settings.language)}</option>
+										<option value="right">{t('settings.tabPositionRight', settings.language)}</option>
+									</select>
+									<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+								</div>
+							</div>
+
+							<div class="setting-item" class:inactive={!settings.showTabs}>
 								<label for="appearance-duplicate-name-folder">{t('settings.showFolderForDuplicateNames', settings.language)}</label>
 								<label class="toggle">
 									<input id="appearance-duplicate-name-folder" type="checkbox" disabled={!settings.showTabs} bind:checked={settings.showFolderForDuplicateNames} />
