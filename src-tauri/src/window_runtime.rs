@@ -455,6 +455,108 @@ pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
     remove_if_exists(&window_state_path(&app)?)
 }
 
+fn unsaved_recovery_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
+    config_file(app, "unsaved-recovery")
+}
+
+fn recovery_path(dir: &Path, label: &str) -> Result<PathBuf, String> {
+    if label.is_empty()
+        || !label
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+    {
+        return Err(format!("invalid recovery window label: {label}"));
+    }
+    Ok(dir.join(format!("{label}.json")))
+}
+
+fn remove_recovery_file(path: &Path) -> Result<(), String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Each window replaces only its own snapshot, never a document on disk.
+fn save_unsaved_recovery_at(dir: &Path, label: &str, json: &str) -> Result<(), String> {
+    let path = recovery_path(dir, label)?;
+    if json.trim() == "[]" {
+        return remove_recovery_file(&path);
+    }
+    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    // atomic_write follows symlinks for document saves; recovery must not.
+    match fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err("recovery target is not a regular file".to_string());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    atomic_write(&path, json.as_bytes()).map_err(|error| error.to_string())
+}
+
+fn load_unsaved_recovery_at(dir: &Path) -> Result<Vec<(String, String)>, String> {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut snapshots = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(label) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
+            continue;
+        };
+        if recovery_path(dir, label).is_err() || !entry.file_type().is_ok_and(|kind| kind.is_file())
+        {
+            continue;
+        }
+        // One unreadable file must not hide the others. It arrives empty, which
+        // the frontend rejects as a corrupt record and leaves on disk.
+        let json = fs::read_to_string(entry.path()).unwrap_or_default();
+        snapshots.push((label.to_string(), json));
+    }
+    snapshots.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(snapshots)
+}
+
+fn clear_unsaved_recovery_at(dir: &Path, labels: &[String]) -> Result<(), String> {
+    // Validate the whole request before deleting any snapshot.
+    let paths = labels
+        .iter()
+        .map(|label| recovery_path(dir, label))
+        .collect::<Result<Vec<_>, _>>()?;
+    for path in paths {
+        remove_recovery_file(&path)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn save_unsaved_recovery(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+    json: String,
+) -> Result<(), String> {
+    let dir = unsaved_recovery_dir(&app)?;
+    let label = window.label().to_string();
+    crate::commands::blocking(move || save_unsaved_recovery_at(&dir, &label, &json)).await
+}
+
+#[tauri::command]
+pub async fn load_unsaved_recovery(app: AppHandle) -> Result<Vec<(String, String)>, String> {
+    let dir = unsaved_recovery_dir(&app)?;
+    crate::commands::blocking(move || load_unsaved_recovery_at(&dir)).await
+}
+
+#[tauri::command]
+pub async fn clear_unsaved_recovery(app: AppHandle, labels: Vec<String>) -> Result<(), String> {
+    let dir = unsaved_recovery_dir(&app)?;
+    crate::commands::blocking(move || clear_unsaved_recovery_at(&dir, &labels)).await
+}
+
 fn restore_progress_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
     config_file(app, "restore-progress-v1.json")
 }
@@ -826,6 +928,94 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("markpad-{tag}-{nonce}"));
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn recovery_paths_accept_only_safe_window_labels() {
+        let dir = Path::new("unsaved-recovery");
+        for label in ["main", "window-123", "A_b-09"] {
+            assert_eq!(
+                recovery_path(dir, label).unwrap(),
+                dir.join(format!("{label}.json"))
+            );
+        }
+        for label in [
+            "", ".", "..", "../main", "a/b", "a\\b", "/main", "a.json", "a b", "é",
+        ] {
+            assert!(recovery_path(dir, label).is_err(), "accepted {label:?}");
+        }
+    }
+
+    #[test]
+    fn recovery_snapshots_are_separate_and_empty_save_removes_only_its_window() {
+        let root = temp_dir("recovery");
+        let dir = root.join("unsaved-recovery");
+        assert!(load_unsaved_recovery_at(&dir).unwrap().is_empty());
+        save_unsaved_recovery_at(&dir, "main", "[]").unwrap();
+        assert!(!dir.exists());
+        save_unsaved_recovery_at(&dir, "main", r#"[{"content":"draft"}]"#).unwrap();
+        save_unsaved_recovery_at(&dir, "window-2", r#"[{"content":"other"}]"#).unwrap();
+        save_unsaved_recovery_at(&dir, "main", r#"[{"content":"updated"}]"#).unwrap();
+        assert_eq!(
+            load_unsaved_recovery_at(&dir).unwrap(),
+            vec![
+                ("main".to_string(), r#"[{"content":"updated"}]"#.to_string()),
+                (
+                    "window-2".to_string(),
+                    r#"[{"content":"other"}]"#.to_string()
+                ),
+            ]
+        );
+        save_unsaved_recovery_at(&dir, "main", " [] \n").unwrap();
+        assert_eq!(load_unsaved_recovery_at(&dir).unwrap().len(), 1);
+        clear_unsaved_recovery_at(&dir, &["window-2".into(), "missing".into()]).unwrap();
+        assert!(load_unsaved_recovery_at(&dir).unwrap().is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recovery_clear_validates_all_labels_before_removing_anything() {
+        let dir = temp_dir("recovery-validation");
+        save_unsaved_recovery_at(&dir, "main", "[1]").unwrap();
+        assert!(clear_unsaved_recovery_at(&dir, &["main".into(), "../outside".into()]).is_err());
+        assert_eq!(fs::read_to_string(dir.join("main.json")).unwrap(), "[1]");
+        assert!(save_unsaved_recovery_at(&dir, "../outside", "[2]").is_err());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn recovery_load_ignores_invalid_names_and_returns_unreadable_files_empty() {
+        let dir = temp_dir("recovery-read");
+        fs::write(dir.join("bad.name.json"), "ignored").unwrap();
+        fs::write(dir.join(".json"), "ignored").unwrap();
+        fs::write(dir.join("main.tmp"), "ignored").unwrap();
+        fs::create_dir(dir.join("directory.json")).unwrap();
+        assert!(load_unsaved_recovery_at(&dir).unwrap().is_empty());
+        fs::write(dir.join("main.json"), [0xff]).unwrap();
+        fs::write(dir.join("window-2.json"), "[1]").unwrap();
+        assert_eq!(
+            load_unsaved_recovery_at(&dir).unwrap(),
+            vec![
+                ("main".to_string(), String::new()),
+                ("window-2".to_string(), "[1]".to_string()),
+            ]
+        );
+        assert_eq!(fs::read(dir.join("main.json")).unwrap(), [0xff]);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn recovery_does_not_follow_a_snapshot_symlink_into_a_document() {
+        let dir = temp_dir("recovery-symlink");
+        let document = dir.join("original.md");
+        fs::write(&document, "original").unwrap();
+        std::os::unix::fs::symlink(&document, dir.join("main.json")).unwrap();
+        assert!(save_unsaved_recovery_at(&dir, "main", "[1]").is_err());
+        assert!(load_unsaved_recovery_at(&dir).unwrap().is_empty());
+        clear_unsaved_recovery_at(&dir, &["main".into()]).unwrap();
+        assert_eq!(fs::read_to_string(document).unwrap(), "original");
+        fs::remove_dir_all(dir).unwrap();
     }
 
     /// argv, as the shell would hand it over: `argv[0]` and then the arguments.

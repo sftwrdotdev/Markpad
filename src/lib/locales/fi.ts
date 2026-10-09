@@ -66,6 +66,8 @@ export default {
         files: 'Tiedostot',
         fileSettings: 'Tiedostoasetukset',
         autoSave: 'Tallenna muutokset automaattisesti',
+        persistOpenEditors: 'Säilytä tallentamattomat muutokset suljettaessa',
+        persistOpenEditorsHint: 'Ikkunan sulkeminen säilyttää tallentamattomat muutokset ja nimettömät asiakirjat tallennuskysymyksen sijaan. Ne palaavat, kun Markpad avataan seuraavan kerran.',
         toolbarPlacement: 'Työkalupalkin sijainti',
         toolbarOnBar: 'Palkki',
         toolbarInMenu: 'Valikko',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Sarake'
     },
     toast: {
+        recoveryFailed: 'Tallentamattomia muutoksia ei voitu säilyttää.',
         imageSavedSuccessfully: 'Kuva tallennettu onnistuneesti',
         failedToSaveImage: 'Kuvan tallennus epäonnistui',
         diagramSavedAsSVG: 'Kaavio tallennettu SVG-muodossa',

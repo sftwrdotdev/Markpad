@@ -17,7 +17,9 @@
  * was whether the unsaved-changes dialog still appears on close.
  *
  * One switch now, with the two states the code always had: on, edits are saved
- * silently; off, they are kept until you save, and closing asks.
+ * silently; off, they are not written to the file until you save. Closing the
+ * window then keeps them as a backup that comes back on the next launch while
+ * "Keep unsaved changes on close" is on (the default), and asks when it is off.
  */
 export const DEFAULT_AUTO_SAVE = true;
 

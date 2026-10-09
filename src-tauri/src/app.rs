@@ -270,6 +270,9 @@ pub fn run() {
             window_runtime::save_window_state,
             window_runtime::load_window_state,
             window_runtime::clear_window_state,
+            window_runtime::save_unsaved_recovery,
+            window_runtime::load_unsaved_recovery,
+            window_runtime::clear_unsaved_recovery,
             window_runtime::save_restore_progress,
             window_runtime::load_restore_progress,
             window_runtime::clear_restore_progress

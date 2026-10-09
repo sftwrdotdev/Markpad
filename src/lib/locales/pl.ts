@@ -85,6 +85,8 @@ export default {
         files: 'Pliki',
         fileSettings: 'Ustawienia plików',
         autoSave: 'Autozapis zmian',
+        persistOpenEditors: 'Zachowuj niezapisane zmiany przy zamykaniu',
+        persistOpenEditorsHint: 'Zamknięcie okna zachowuje niezapisane zmiany i dokumenty bez tytułu zamiast pytać o zapisanie. Wracają przy następnym otwarciu Markpad.',
         resizeWindow: 'Zmień rozmiar okna ustawień'
     },
     colors: {
@@ -190,6 +192,7 @@ export default {
         wordWrapColumn: 'Kolumna'
     },
     toast: {
+        recoveryFailed: 'Nie udało się zachować niezapisanych zmian.',
         imageSavedSuccessfully: 'Obraz zapisany pomyślnie',
         failedToSaveImage: 'Nie udało się zapisać obrazu',
         diagramSavedAsSVG: 'Diagram zapisany jako SVG',

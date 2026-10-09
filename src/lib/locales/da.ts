@@ -66,6 +66,8 @@ export default {
         files: 'Filer',
         fileSettings: 'Filindstillinger',
         autoSave: 'Gem ændringer automatisk',
+        persistOpenEditors: 'Bevar ikke-gemte ændringer ved lukning',
+        persistOpenEditorsHint: 'Når et vindue lukkes, bevares ikke-gemte ændringer og unavngivne dokumenter i stedet for at spørge om at gemme. De kommer tilbage, næste gang Markpad åbnes.',
         toolbarPlacement: 'Værktøjslinjens placering',
         toolbarOnBar: 'Linje',
         toolbarInMenu: 'Menu',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Kolonne'
     },
     toast: {
+        recoveryFailed: 'Kunne ikke bevare ikke-gemte ændringer.',
         imageSavedSuccessfully: 'Billede gemt',
         failedToSaveImage: 'Kunne ikke gemme billede',
         diagramSavedAsSVG: 'Diagram gemt som SVG',

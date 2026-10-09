@@ -125,6 +125,7 @@ import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
+import { createUnsavedRecovery, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
@@ -636,6 +637,67 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// their snapshot could never be restored under the same label, and N
 	// writers would leave whichever window closed last.
 	const isMainWindow = appWindow.label === 'main';
+	let recoveryReady = $state(false);
+	let recoveryErrorShown = false;
+	function reportRecoveryError(error: unknown) {
+		console.error('Unsaved-change recovery failed', error);
+		if (!recoveryErrorShown) {
+			recoveryErrorShown = true;
+			addToast(t('toast.recoveryFailed', settings.language), 'error');
+		}
+	}
+	const unsavedRecovery = createUnsavedRecovery({
+		write: (json) => invoke('save_unsaved_recovery', { json }),
+		onError: reportRecoveryError,
+	});
+	$effect(() => {
+		if (!recoveryReady) return;
+		if (!settings.persistOpenEditors) return void unsavedRecovery.update('[]');
+		// Track only what the snapshot keeps, so scrolling does not re-serialize.
+		for (const tab of tabManager.tabs) void [tab.path, tab.isDirty, tab.rawContent, tab.originalContent, tab.encoding];
+		unsavedRecovery.update(untrack(() => recoverySnapshot(tabManager.tabs)));
+	});
+
+	// Startup, setting on. Without it nothing is read, written or removed.
+	async function restoreUnsavedChanges() {
+		try {
+			if (isMainWindow) {
+				const records = await invoke<Array<[string, string]>>('load_unsaved_recovery');
+				const windows = await invoke<Array<{ label: string }>>('list_viewer_windows');
+				const live = new Set(windows.map((win) => win.label).filter((label) => label !== appWindow.label));
+				const consumed = restoreRecords(tabManager, records, live, appWindow.label, reportRecoveryError);
+				// Publish the new owner before removing stale window copies.
+				await invoke('save_unsaved_recovery', { json: recoverySnapshot(tabManager.tabs) });
+				await invoke('clear_unsaved_recovery', { labels: consumed });
+			}
+			recoveryReady = true;
+		} catch (error) {
+			// Not ready: nothing overwrites the record, and close asks as usual.
+			reportRecoveryError(error);
+		}
+	}
+
+	/**
+	 * Hot exit: keep unsaved buffers instead of asking. Pending auto-saves write
+	 * their files first; a refused or failed save stays dirty and is kept. False
+	 * when the backup cannot be written, and the caller asks as usual.
+	 */
+	async function keepUnsavedForExit(): Promise<boolean> {
+		if (!recoveryReady) return false;
+		isCloseWalkActive = true;
+		try {
+			if (settings.autoSave) {
+				for (const tab of tabManager.tabs.filter((t) => t.isDirty && t.path !== '')) await saveSilently(tab.id);
+			}
+			if (!(await unsavedRecovery.flush(recoverySnapshot(tabManager.tabs)))) return false;
+		} finally {
+			isCloseWalkActive = false;
+		}
+		await savePinnedTagIfNeeded();
+		if (settings.restoreStateOnReopen) await persistWindowState();
+		return true;
+	}
+
 	const windowSession = createWindowSession({
 		isMainWindow,
 		windowStateKey: WINDOW_STATE_KEY,
@@ -903,6 +965,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
+	 * The save/discard close, used when "Keep unsaved changes on close" is off or its
+	 * backup cannot be written (`keepUnsavedForExit` runs first otherwise).
 	 * Resolve this window's unsaved tabs, then write the restore snapshot: the
 	 * work that has to happen before the window goes away. False when the reader
 	 * cancelled, and nothing has been written.
@@ -992,6 +1056,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * last-tab close, merge or Close Tag.
 	 */
 	async function settleForUpdate(): Promise<boolean> {
+		if (settings.persistOpenEditors && (await keepUnsavedForExit())) return true;
 		try {
 			return await settleForExit();
 		} finally {
@@ -2196,7 +2261,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function flushBeforeLeavingEditableMode(tab: Tab) {
 		if (!tab.isDirty || tab.path === '') return;
 		// Auto-save off means edits are kept until the user saves them, so
-		// leaving the pane must not write either — the close dialog asks.
+		// leaving the pane must not write either — closing keeps or asks.
 		if (!settings.autoSave) return;
 
 		const success = await saveSilently(tab.id);
@@ -2837,6 +2902,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	async function destroyWindowAfterTabsClosed() {
+		// No tabs left: drop this window's backup so a discarded buffer stays gone.
+		if (recoveryReady) await unsavedRecovery.flush('[]');
 		if (settings.restoreStateOnReopen) {
 			await persistWindowState();
 		}
@@ -3526,7 +3593,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			}
 			await moveTabToWindow(tab.id, targetLabel);
 		}
-		if (tabManager.tabs.length === 0) await appWindow.destroy();
+		if (tabManager.tabs.length === 0) {
+			if (recoveryReady) await unsavedRecovery.flush('[]');
+			await appWindow.destroy();
+		}
 	}
 
 	function startDrag(e: MouseEvent, tabId: string | null) {
@@ -3608,6 +3678,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				if (isDisposed) return;
 
 			await windowSession.restore();
+			if (isDisposed) return;
+			if (settings.persistOpenEditors) await restoreUnsavedChanges();
 			if (isDisposed) return;
 			const pinnedName = pinnedTagFromWindowLabel(appWindow.label);
 			if (pinnedName === null) await windowSession.claimTransferredTab();
@@ -3751,6 +3823,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						return;
 					}
 
+					// Hot exit: the backup is written, nothing to ask, close proceeds.
+					// Decided before `hadDirtyTabs`: the buffers stay dirty, and a
+					// re-triggered close would only find them again.
+					if (settings.persistOpenEditors && (await keepUnsavedForExit())) return;
+
 					// With tabs to review the close is held open while their
 					// dialogs are up, then re-triggered: the handler re-enters,
 					// finds nothing dirty, and the close proceeds.
@@ -3851,6 +3928,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 		return () => {
 			isDisposed = true;
+			unsavedRecovery.dispose();
 			clearTimeout(identifyFlashTimer);
 			unlisteners.forEach((u) => u());
 		};

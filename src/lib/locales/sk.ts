@@ -66,6 +66,8 @@ export default {
         files: 'Súbory',
         fileSettings: 'Nastavenia súborov',
         autoSave: 'Automaticky ukladať úpravy',
+        persistOpenEditors: 'Pri zatvorení zachovať neuložené zmeny',
+        persistOpenEditorsHint: 'Zatvorenie okna zachová neuložené zmeny a dokumenty bez názvu namiesto výzvy na uloženie. Vrátia sa pri ďalšom otvorení Markpadu.',
         toolbarPlacement: 'Umiestnenie panela',
         toolbarOnBar: 'Panel',
         toolbarInMenu: 'Ponuka',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Stĺpec'
     },
     toast: {
+        recoveryFailed: 'Neuložené zmeny sa nepodarilo zachovať.',
         imageSavedSuccessfully: 'Obrázok úspešne uložený',
         failedToSaveImage: 'Nepodarilo sa uložiť obrázok',
         diagramSavedAsSVG: 'Diagram uložený ako SVG',

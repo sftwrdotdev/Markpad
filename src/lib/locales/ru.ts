@@ -12,6 +12,8 @@ export default {
         appearanceSettings: 'Настройки внешнего вида',
         fileSettings: 'Настройки файлов',
         autoSave: 'Автосохранение изменений',
+        persistOpenEditors: 'Сохранять несохранённые изменения при закрытии',
+        persistOpenEditorsHint: 'При закрытии окна несохранённые изменения и документы без названия сохраняются вместо запроса на сохранение. Они вернутся при следующем запуске Markpad.',
         resetEditorSettings: 'Сбросить настройки редактора',
         font: 'Шрифт',
         fontSize: 'Размер шрифта',
@@ -182,6 +184,7 @@ export default {
         wordWrapColumn: 'Столбец'
     },
     toast: {
+        recoveryFailed: 'Не удалось сохранить несохранённые изменения.',
         imageSavedSuccessfully: 'Изображение сохранено',
         failedToSaveImage: 'Не удалось сохранить изображение',
         diagramSavedAsSVG: 'Диаграмма сохранена как SVG',

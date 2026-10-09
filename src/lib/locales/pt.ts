@@ -66,6 +66,8 @@ export default {
         files: 'Ficheiros',
         fileSettings: 'Definições de ficheiros',
         autoSave: 'Guardar edições automaticamente',
+        persistOpenEditors: 'Manter alterações não guardadas ao fechar',
+        persistOpenEditorsHint: 'Fechar uma janela mantém as alterações não guardadas e os documentos sem título em vez de pedir para guardar. Voltam na próxima vez que o Markpad abrir.',
         toolbarPlacement: 'Posição da barra',
         toolbarOnBar: 'Barra',
         toolbarInMenu: 'Menu',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Coluna'
     },
     toast: {
+        recoveryFailed: 'Não foi possível manter as alterações não guardadas.',
         imageSavedSuccessfully: 'Imagem guardada com sucesso',
         failedToSaveImage: 'Falha ao guardar imagem',
         diagramSavedAsSVG: 'Diagrama guardado como SVG',

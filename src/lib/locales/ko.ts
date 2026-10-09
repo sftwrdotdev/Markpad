@@ -85,6 +85,8 @@ export default {
         files: '파일',
         fileSettings: '파일 설정',
         autoSave: '편집 내용 자동 저장',
+        persistOpenEditors: '닫을 때 저장되지 않은 변경 사항 유지',
+        persistOpenEditorsHint: '창을 닫을 때 저장 여부를 묻는 대신 저장되지 않은 변경 사항과 제목 없는 문서를 유지합니다. 다음에 Markpad를 열면 다시 나타납니다.',
         move: '이동',
         resizeWindow: '설정 창 크기 조정'
     },
@@ -204,6 +206,7 @@ export default {
         wholeWord: '단어 단위로 찾기'
     },
     toast: {
+        recoveryFailed: '저장되지 않은 변경 사항을 유지할 수 없습니다.',
         imageSavedSuccessfully: '이미지가 저장되었습니다',
         failedToSaveImage: '이미지 저장 실패',
         diagramSavedAsSVG: '다이어그램이 SVG로 저장되었습니다',
