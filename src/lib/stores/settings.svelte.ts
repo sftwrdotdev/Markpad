@@ -199,6 +199,13 @@ export const DEFAULT_FONTS: Record<OSType, DefaultFonts> = {
 	},
 };
 
+export type TabPosition = 'top' | 'left' | 'right';
+export type SidebarStackOrder = 'openFilesTop' | 'folderTop';
+
+export function isTabPosition(value: unknown): value is TabPosition {
+	return value === 'top' || value === 'left' || value === 'right';
+}
+
 /**
  * The allowed range of a numeric setting. Single source of truth: the settings
  * UI renders `min`/`max`/`step` from it and every write path (typing, spin
@@ -221,6 +228,10 @@ export const PREVIEW_FONT_SIZE_RANGE: NumericSettingRange = { min: 12, max: 48, 
 export const CODE_FONT_SIZE_RANGE: NumericSettingRange = { min: 10, max: 48, step: 1, default: 14 };
 export const EDITOR_MAX_WIDTH_RANGE: NumericSettingRange = { min: 20, max: 500, step: 10, default: 80 };
 export const TOC_WIDTH_RANGE: NumericSettingRange = { min: 180, max: 420, step: 1, default: 240 };
+// Width of the tab column when tabs are drawn down the side of the window (#884).
+export const TAB_COLUMN_WIDTH_RANGE: NumericSettingRange = { min: 140, max: 420, step: 1, default: 200 };
+// Share of the sidebar column the upper section takes when both are shown, in percent.
+export const SIDEBAR_SPLIT_RANGE: NumericSettingRange = { min: 15, max: 85, step: 1, default: 40 };
 // Preview zoom, in percent. The only place its bounds and default live.
 export const ZOOM_LEVEL_RANGE: NumericSettingRange = { min: 25, max: 500, step: 10, default: 100 };
 
@@ -563,6 +574,33 @@ export class SettingsStore {
 	 */
 	splitEditorSide = $state<'left' | 'right'>('left');
 	tocWidth = $state(TOC_WIDTH_RANGE.default);
+	/**
+	 * Where the open documents are listed (#884): across the title bar, or as
+	 * a column down one side of the window. A long horizontal strip hides most
+	 * of its tabs once a dozen files are open; a column shows them all by name.
+	 * `showTabs` still decides whether they are shown at all, so zen mode hides
+	 * the column the same way it hides the strip.
+	 */
+	tabPosition = $state<TabPosition>('top');
+	tabColumnWidth = $state(TAB_COLUMN_WIDTH_RANGE.default);
+	/** Where the tabs are drawn, or null with them hidden. Every place that asks where the tabs are reads this. */
+	get tabPlacement(): TabPosition | null {
+		return this.showTabs ? this.tabPosition : null;
+	}
+	/**
+	 * The folder sidebar. When the tabs are in a side column the folder stacks
+	 * into that column, so `folderSide` only places it while they are not.
+	 * `sidebarStackOrder` says which section is upper when both share the column, and `sidebarSplit` how much of it the
+	 * upper one takes.
+	 */
+	folderSide = $state<'left' | 'right'>('left');
+	sidebarStackOrder = $state<SidebarStackOrder>('openFilesTop');
+	sidebarSplit = $state(SIDEBAR_SPLIT_RANGE.default);
+	/**
+	 * Off: the folder lists only what Markpad opens. On: every file, the rest
+	 * dimmed and opened by the system's default app.
+	 */
+	folderShowAllFiles = $state(false);
 	osType = $state<OSType>('unknown');
 	imageDirectory = $state('img');
 	macosImageScaling = $state(true);
@@ -704,6 +742,14 @@ export class SettingsStore {
 
 	setTocWidth(width: number) {
 		this.tocWidth = clampToRange(width, TOC_WIDTH_RANGE);
+	}
+
+	setTabColumnWidth(width: number) {
+		this.tabColumnWidth = clampToRange(width, TAB_COLUMN_WIDTH_RANGE);
+	}
+
+	setSidebarSplit(percent: number) {
+		this.sidebarSplit = clampToRange(Math.round(percent), SIDEBAR_SPLIT_RANGE);
 	}
 
 	setLanguage(lang: LanguageCode) {
@@ -969,6 +1015,30 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 			},
 		},
 		numberSetting('editor.tocWidth', TOC_WIDTH_RANGE, (s) => s.tocWidth, (s, v) => { s.tocWidth = v; }),
+		{
+			key: 'editor.tabPosition',
+			read: (s) => s.tabPosition,
+			load: (s, raw) => {
+				if (isTabPosition(raw)) s.tabPosition = raw;
+			},
+		},
+		numberSetting('editor.tabColumnWidth', TAB_COLUMN_WIDTH_RANGE, (s) => s.tabColumnWidth, (s, v) => { s.tabColumnWidth = v; }),
+		{
+			key: 'folder.side',
+			read: (s) => s.folderSide,
+			load: (s, raw) => {
+				if (raw === 'left' || raw === 'right') s.folderSide = raw;
+			},
+		},
+		{
+			key: 'folder.stackOrder',
+			read: (s) => s.sidebarStackOrder,
+			load: (s, raw) => {
+				if (raw === 'openFilesTop' || raw === 'folderTop') s.sidebarStackOrder = raw;
+			},
+		},
+		numberSetting('folder.split', SIDEBAR_SPLIT_RANGE, (s) => s.sidebarSplit, (s, v) => { s.sidebarSplit = v; }),
+		booleanSetting('folder.showAllFiles', (s) => s.folderShowAllFiles, (s, v) => { s.folderShowAllFiles = v; }),
 		stringSetting('editor.imageDirectory', (s) => s.imageDirectory, (s, v) => { s.imageDirectory = v; }),
 		booleanSetting('editor.macosImageScaling', (s) => s.macosImageScaling, (s, v) => { s.macosImageScaling = v; }),
 		{

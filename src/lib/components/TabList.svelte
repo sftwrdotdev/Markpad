@@ -8,6 +8,7 @@
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { duplicateNameSuffixes } from '../utils/duplicateTabNames.js';
+	import { closestSlotIndex, dragDistance } from '../utils/tabReorder.js';
 
 	import { flip } from 'svelte/animate';
 	import { tick } from 'svelte';
@@ -17,12 +18,18 @@
 		showHome = false,
 		ontabclick,
 		oncloseTab,
+		orientation = 'horizontal',
 	} = $props<{
 		onnewTab: () => void;
 		showHome?: boolean;
 		ontabclick?: () => void;
 		oncloseTab?: (id: string) => void;
+		/** `vertical` lists the tabs down the tab column instead of across the title bar (#884). */
+		orientation?: 'horizontal' | 'vertical';
 	}>();
+
+	const vertical = $derived(orientation === 'vertical');
+	const axis = $derived(vertical ? 'y' : 'x');
 
 	// Which tabs need a folder to be told apart, recomputed as the strip
 	// changes: a suffix is a fact about the SET of open tabs, not about any one
@@ -38,6 +45,7 @@
 	let justDragged = false;
 	let dragState = $state<{
 		startX: number;
+		startY: number;
 		currentX: number;
 		currentY: number;
 		initialRect: DOMRect;
@@ -73,6 +81,7 @@
 		const rect = (element.firstElementChild ?? element).getBoundingClientRect();
 		dragState = {
 			startX: e.clientX,
+			startY: e.clientY,
 			currentX: e.clientX,
 			currentY: e.clientY,
 			initialRect: rect,
@@ -88,7 +97,7 @@
 		if (!dragState || !scrollContainer) return;
 
 		if (!dragState.isDragging) {
-			if (Math.abs(e.clientX - dragState.startX) > 5) {
+			if (dragDistance({ x: dragState.startX, y: dragState.startY }, { x: e.clientX, y: e.clientY }, axis) > 5) {
 				dragState.isDragging = true;
 				draggingId = dragState.tab.id;
 			} else {
@@ -101,28 +110,21 @@
 
 		const containerRect = scrollContainer.getBoundingClientRect();
 		const scrollZone = 50;
-		if (e.clientX < containerRect.left + scrollZone) {
+		if (vertical) {
+			if (e.clientY < containerRect.top + scrollZone) {
+				scrollContainer.scrollTop -= 10;
+			} else if (e.clientY > containerRect.bottom - scrollZone) {
+				scrollContainer.scrollTop += 10;
+			}
+		} else if (e.clientX < containerRect.left + scrollZone) {
 			scrollContainer.scrollLeft -= 10;
 		} else if (e.clientX > containerRect.right - scrollZone) {
 			scrollContainer.scrollLeft += 10;
 		}
 
 		const children = Array.from(scrollContainer.children) as HTMLElement[];
-		let closestIndex = -1;
-		let minDist = Infinity;
-
-		children.forEach((child, index) => {
-			if (!child.classList.contains('tab-item-wrapper')) return;
-
-			const rect = child.getBoundingClientRect();
-			const center = rect.left + rect.width / 2;
-			const dist = Math.abs(e.clientX - center);
-
-			if (dist < minDist) {
-				minDist = dist;
-				closestIndex = index;
-			}
-		});
+		const slots = children.map((child) => (child.classList.contains('tab-item-wrapper') ? child.getBoundingClientRect() : null));
+		const closestIndex = closestSlotIndex(slots, { x: e.clientX, y: e.clientY }, axis);
 
 		if (closestIndex !== -1) {
 			const currentIndex = tabManager.tabs.findIndex((t) => t.id === draggingId);
@@ -160,6 +162,14 @@
 			if (!el) return;
 			// Each side's own padding: counting padding the strip lacks scrolled it mid-flip.
 			const pad = getComputedStyle(strip);
+			if (vertical) {
+				const top = el.offsetTop - strip.offsetTop - parseFloat(pad.paddingTop);
+				const bottom = el.offsetTop - strip.offsetTop + el.offsetHeight + parseFloat(pad.paddingBottom);
+				const targetTop = top < strip.scrollTop ? top : bottom > strip.scrollTop + strip.clientHeight ? bottom - strip.clientHeight : null;
+				if (targetTop === null) return;
+				strip.scrollTo({ top: targetTop, behavior: settings.animateJumpScroll ? 'smooth' : 'instant' });
+				return;
+			}
 			const left = el.offsetLeft - strip.offsetLeft - parseFloat(pad.paddingLeft);
 			const right = el.offsetLeft - strip.offsetLeft + el.offsetWidth + parseFloat(pad.paddingRight);
 			const target = left < strip.scrollLeft ? left : right > strip.scrollLeft + strip.clientWidth ? right - strip.clientWidth : null;
@@ -187,17 +197,20 @@
 	}
 </script>
 
-<div class="tab-list-wrapper">
+<div class="tab-list-wrapper" class:vertical>
 	<div class="scroll-viewport">
+		<!-- The column is not part of the title bar, so it is not a window drag region. -->
 		<div
 			bind:this={scrollContainer}
 			class="tab-list-container"
-			data-tauri-drag-region
+			data-tauri-drag-region={vertical ? undefined : true}
 			role="tablist"
+			aria-orientation={orientation}
 			tabindex="-1"
 			oncontextmenu={handleContainerContextMenu}
 			onwheel={(e) => {
-				if (e.deltaY !== 0) {
+				// A vertical column scrolls natively; only the strip turns the wheel sideways.
+				if (!vertical && e.deltaY !== 0) {
 					e.preventDefault();
 					e.currentTarget.scrollLeft += e.deltaY;
 				}
@@ -218,6 +231,7 @@
 					}}>
 					<Tab
 						{tab}
+						{vertical}
 						folderSuffix={folderSuffixes.get(tab.id)}
 						isActive={!showHome && tabManager.activeTabId === tab.id}
 						onclick={() => selectTab(tab)}
@@ -227,8 +241,12 @@
 		</div>
 
 		{#if draggingId && dragState}
-			<div class="drag-proxy" style:left="{dragState.initialRect.left + (dragState.currentX - dragState.startX)}px" style:top="{dragState.initialRect.top}px">
-				<Tab tab={dragState.tab} folderSuffix={folderSuffixes.get(dragState.tab.id)} isActive={!showHome && tabManager.activeTabId === dragState.tab.id} onclick={() => {}} onclose={() => {}} />
+			<div
+				class="drag-proxy"
+				style:left="{dragState.initialRect.left + (vertical ? 0 : dragState.currentX - dragState.startX)}px"
+				style:top="{dragState.initialRect.top + (vertical ? dragState.currentY - dragState.startY : 0)}px"
+				style:width={vertical ? `${dragState.initialRect.width}px` : null}>
+				<Tab tab={dragState.tab} {vertical} folderSuffix={folderSuffixes.get(dragState.tab.id)} isActive={!showHome && tabManager.activeTabId === dragState.tab.id} onclick={() => {}} onclose={() => {}} />
 			</div>
 		{/if}
 	</div>
@@ -238,7 +256,9 @@
 			><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
 	</button>
 
-	<div class="tab-list-spacer" data-tauri-drag-region></div>
+	{#if !vertical}
+		<div class="tab-list-spacer" data-tauri-drag-region></div>
+	{/if}
 </div>
 
 <style>
@@ -326,6 +346,49 @@
 	.tab-item-wrapper.drag-opacity {
 		opacity: 0;
 		pointer-events: none;
+	}
+
+	/* Tab column (#884): the same list, stacked, with the new-tab button underneath. */
+	.tab-list-wrapper.vertical {
+		flex-direction: column;
+		align-items: stretch;
+		height: 100%;
+		width: 100%;
+	}
+
+	.vertical .scroll-viewport {
+		flex: 0 1 auto;
+		min-height: 0;
+		height: auto;
+		width: 100%;
+	}
+
+	.vertical .tab-list-container {
+		flex-direction: column;
+		align-items: stretch;
+		overflow-x: hidden;
+		overflow-y: auto;
+		gap: 2px;
+		width: 100%;
+		height: auto;
+		padding: 6px 6px 0 6px;
+		box-sizing: border-box;
+		scrollbar-width: thin;
+	}
+
+	.vertical .tab-list-container::-webkit-scrollbar {
+		display: block;
+		width: 6px;
+	}
+
+	.vertical .tab-list-container::-webkit-scrollbar-thumb {
+		background: var(--color-neutral-muted);
+		border-radius: 3px;
+	}
+
+	.vertical .new-tab-btn {
+		align-self: flex-start;
+		margin: 4px 6px;
 	}
 
 	.drag-proxy {

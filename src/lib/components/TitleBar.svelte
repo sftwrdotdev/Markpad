@@ -27,6 +27,7 @@
 		showHome,
 		onnewFile,
 		onopenFile,
+		onopenFolder,
 		onmergeAllWindows,
 		onclosetag,
 		onsaveFile,
@@ -69,6 +70,7 @@
 		showHome: boolean;
 		onnewFile?: () => void;
 		onopenFile?: () => void;
+		onopenFolder?: () => void;
 		onmergeAllWindows?: () => void;
 		onclosetag?: () => void;
 		onsaveFile?: () => void;
@@ -518,6 +520,16 @@
 				{t('menu.openFile', currentLanguage)}
 				<span class="menu-shortcut">{shortcutLabel('file-open', modifier)}</span>
 			</button>
+			<button
+				class="home-menu-item"
+				onclick={() => {
+					homeMenuOpen = false;
+					onopenFolder?.();
+				}}>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+					><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+				{t('folder.openFolder', currentLanguage)}
+			</button>
 					{#if currentFile !== '' || (tabManager.activeTab && tabManager.activeTab.isEditing)}
 						<button
 						class="home-menu-item"
@@ -719,7 +731,8 @@
 		{/if}
 	</div>
 
-	{#if tabManager.tabs.length > 0 && settings.showTabs}
+	<!-- With the tabs in a side column (#884) the bar shows the window title, as it does with tabs hidden. -->
+	{#if tabManager.tabs.length > 0 && settings.tabPlacement === 'top'}
 		<div class="tab-area" class:tagged={tabManager.windowTag !== null} style:--tag-color={tabManager.windowTag?.color}>
 			<TabList onnewTab={() => tabManager.addNewTab()} {showHome} {ontabclick} {oncloseTab} />
 		</div>

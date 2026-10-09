@@ -712,7 +712,10 @@ fn event_concerns(event: &notify::Event, file_name: Option<&OsStr>) -> bool {
 /// `f` is running schedules another rather than being lost. A file written
 /// continuously still emits every `delay`, where a debounce would wait for it
 /// to go quiet.
-fn coalesced(delay: Duration, f: impl Fn() + Send + Sync + 'static) -> impl Fn() + Send + 'static {
+pub(crate) fn coalesced(
+    delay: Duration,
+    f: impl Fn() + Send + Sync + 'static,
+) -> impl Fn() + Send + 'static {
     let f = Arc::new(f);
     let pending = Arc::new(AtomicBool::new(false));
     move || {
@@ -803,6 +806,9 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
         tauri::WindowEvent::Destroyed => {
             let state = window.state::<WatcherState>();
             lock_recover(&state.watchers).remove(window.label());
+            window
+                .state::<crate::folder::FolderWatcherState>()
+                .forget_window(window.label());
             let app_state = window.state::<AppState>();
             lock_recover(&app_state.window_registry).remove(window.label());
         }

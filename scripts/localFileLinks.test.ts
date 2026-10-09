@@ -121,6 +121,9 @@ const viewer = readSource('src/lib/MarkdownViewer.svelte');
 // zoom moved into the settings store — an anchor whose only qualification is
 // being the next thing down is an anchor that moves for unrelated reasons.
 const handler = functionSource(viewer, 'handleDocumentClick');
+// The OS half of a local-file click, shared with the folder sidebar so a file
+// opened from either place gets the same launchable-target guard.
+const opener = functionSource(viewer, 'openWithSystem');
 
 test('markdown targets are still claimed before the local-file branch', () => {
 	const markdown = offsetOf(handler, 'getRelativeMarkdownTarget(rawHref)');
@@ -129,7 +132,8 @@ test('markdown targets are still claimed before the local-file branch', () => {
 });
 
 test('a local file is handed to the OS as a path, not as a URL', () => {
-	assert.match(handler, /await openPath\(localFilePath\)/);
+	assert.match(handler, /await openWithSystem\(localFilePath\)/);
+	assert.match(opener, /await openPath\(path\)/);
 	// The raw attribute, not `anchor.href`: the latter is the origin-resolved
 	// URL that caused the bug.
 	assert.match(handler, /resolveLocalFileLinkPath\(rawHref, currentFile\)/);
@@ -143,11 +147,11 @@ test('a launchable target is revealed, not opened', () => {
 	// `./setup.command`, `Calculator.app` or `x.exe` that handler runs it. The
 	// capability scope stays `**` because a link may point anywhere; this
 	// check, answered in Rust where the file's metadata is, is the guard.
-	const check = offsetOf(handler, "invoke<boolean>('is_launchable_path', { path: localFilePath })");
-	const reveal = offsetOf(handler, "invoke('open_file_folder', { path: localFilePath })");
-	const open = offsetOf(handler, 'await openPath(localFilePath)');
+	const check = offsetOf(opener, "invoke<boolean>('is_launchable_path', { path })");
+	const reveal = offsetOf(opener, "invoke('open_file_folder', { path })");
+	const open = offsetOf(opener, 'await openPath(path)');
 	assert.ok(check < reveal && reveal < open, 'the check must decide between reveal and open');
-	assert.match(handler, /t\('toast\.launchableLinkRevealed'/);
+	assert.match(opener, /t\('toast\.launchableLinkRevealed'/);
 });
 
 test('the capability still grants the command this depends on', () => {
@@ -167,15 +171,19 @@ test('neither OS call can leave an unhandled rejection behind', () => {
 	// `openUrl` rejects for anything outside the opener scope. Unawaited-in-
 	// try/catch, that rejection was the whole visible symptom on macOS: nothing
 	// happened, and nothing said why.
-	for (const call of ['await openPath(localFilePath)', 'await openUrl(anchor.href)']) {
-		const at = offsetOf(handler, call);
-		const before = handler.slice(0, at);
+	for (const [source, call] of [
+		[opener, 'await openPath(path)'],
+		[handler, 'await openUrl(anchor.href)'],
+	] as const) {
+		const at = offsetOf(source, call);
+		const before = source.slice(0, at);
 		const tryAt = before.lastIndexOf('try {');
 		assert.notEqual(tryAt, -1, `${call} must be inside a try block`);
-		offsetOf(handler, '} catch (error) {', at); // must have a catch after it
+		offsetOf(source, '} catch (error) {', at); // must have a catch after it
 		assert.ok(before.slice(tryAt).split('} catch').length === 1, `${call} must be inside the nearest try`);
 	}
-	assert.equal(handler.match(/t\('toast\.openFailed'/g)?.length, 2, 'both failures are reported');
+	assert.equal(opener.match(/t\('toast\.openFailed'/g)?.length, 1, 'a failed file open is reported');
+	assert.equal(handler.match(/t\('toast\.openFailed'/g)?.length, 1, 'a failed URL open is reported');
 });
 
 test('an asset URL is never treated as a link to a local file', () => {

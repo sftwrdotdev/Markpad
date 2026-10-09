@@ -25,6 +25,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState::new())
         .manage(WatcherState::new())
+        .manage(crate::folder::FolderWatcherState::new())
         .manage(tab_transfer::TabTransferBroker::new())
         // Replaces Tauri's own `asset:` handler so UNC hosts go through
         // `asset_protocol`'s trust rule. Registering the scheme here is what
@@ -238,6 +239,10 @@ pub fn run() {
             commands::rename_file,
             commands::watch_file,
             window_runtime::unwatch_file,
+            crate::folder::read_folder_entries,
+            crate::folder::watch_folder,
+            crate::folder::unwatch_folder,
+            crate::folder::unwatch_all_folders,
             window_runtime::show_window,
             commands::save_theme,
             commands::get_system_fonts,
