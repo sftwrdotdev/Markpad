@@ -4,13 +4,16 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 
-	let { message, type = 'info', onremove } = $props<{
+	let { message, type = 'info', sticky = false, onremove } = $props<{
 		message: string;
 		type?: 'info' | 'error' | 'warning';
+		/** Stays until its owner removes it, for work that outlasts the timer. */
+		sticky?: boolean;
 		onremove: () => void;
 	}>();
 
 	onMount(() => {
+		if (sticky) return;
 		const timer = setTimeout(onremove, 3000);
 		return () => clearTimeout(timer);
 	});

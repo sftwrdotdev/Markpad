@@ -196,6 +196,7 @@ export default {
         failedToSaveDiagram: 'Nie udało się zapisać diagramu',
         exportedHtmlMissingImages: 'Wyeksportowano HTML, ale nie udało się osadzić {{count}} obrazów lokalnych.',
         exportPdfFailed: 'Nie udało się wyeksportować do PDF',
+        exportingPdf: 'Eksportowanie do PDF…',
         reloadedFromDisk: 'Wczytano ponownie z dysku',
         remoteImageNotSupported: 'Zapisywanie zdalnego obrazu nie jest jeszcze obsługiwane',
         openFailed: 'Nie udało się otworzyć {{target}}',
@@ -208,7 +209,8 @@ export default {
         unsavedChanges: 'Niezapisane zmiany',
         youHaveUnsavedChanges: 'Masz niezapisane zmiany w "{title}". Czy chcesz je zapisać przed zamknięciem?',
         openExportedFileTitle: 'Otworzyć wyeksportowany plik?',
-        openExportedHtmlMessage: 'Eksport HTML został zapisany. Otworzyć go teraz?'
+        openExportedHtmlMessage: 'Eksport HTML został zapisany. Otworzyć go teraz?',
+        openExportedPdfMessage: 'Eksport PDF został zapisany. Otworzyć go teraz?'
     },
     home: {
         welcomeToMarkpad: 'Witaj w Markpad',

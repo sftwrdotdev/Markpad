@@ -258,10 +258,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	let viewerPaneEl = $state<HTMLElement>();
 	let isProgrammaticScroll = false;
 
-	let toasts = $state<{ id: string; message: string; type: 'info' | 'error' | 'warning' }[]>([]);
-	function addToast(message: string, type: 'info' | 'error' | 'warning' = 'info') {
+	let toasts = $state<{ id: string; message: string; type: 'info' | 'error' | 'warning'; sticky?: boolean }[]>([]);
+	function addToast(message: string, type: 'info' | 'error' | 'warning' = 'info', sticky = false): string {
 		const id = crypto.randomUUID();
-		toasts.push({ id, message, type });
+		toasts.push({ id, message, type, sticky });
+		return id;
+	}
+	function removeToast(id: string) {
+		toasts = toasts.filter((toast) => toast.id !== id);
 	}
 
 	// --- Auto-save bookkeeping (see saveContent + auto-save $effect below) ---
@@ -2723,6 +2727,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
+	// One export at a time: a second would refill `#print-root` under the first.
+	let pdfExporting = false;
 	async function exportAsPdf() {
 		// The gate belongs here rather than at each caller: the menu hides its
 		// item behind the same condition, but the chord reaches this function
@@ -2731,12 +2737,15 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// still printed a blank page from the other (#673).
 		if (!hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)) return;
 		const tab = tabManager.activeTab;
-		if (!printRootEl) return;
+		if (!printRootEl || pdfExporting) return;
+		pdfExporting = true;
+		let progressToast: string | null = null;
+		let path: string | null = null;
 		try {
 			// The same context the HTML export is given: the PDF is now rendered
 			// from the buffer through the same path, so neither the preview's
 			// state nor the window's has anything to do with what prints (#668).
-			await _exportPdf({
+			path = await _exportPdf({
 				rawContent,
 				tabTitle: tab?.title || '',
 				tabPath: tab?.path || '',
@@ -2746,10 +2755,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				frontMatterTitle: t('frontMatter.properties', settings.language),
 				osType: settings.osType,
 				printRoot: printRootEl,
+				onStart: () => {
+					progressToast = addToast(t('toast.exportingPdf', settings.language), 'info', true);
+				},
 			});
 		} catch (error) {
 			console.error('Failed to export PDF', error);
 			addToast(t('toast.exportPdfFailed', settings.language), 'error');
+		} finally {
+			if (progressToast) removeToast(progressToast);
+			pdfExporting = false;
+		}
+		if (!path) return;
+		const openResult = await askToOpenExportedFile(path, 'PDF', {
+			ask,
+			openPath,
+			labels: {
+				title: t('modal.openExportedFileTitle', settings.language),
+				message: t('modal.openExportedPdfMessage', settings.language),
+			},
+			onError: (error) => {
+				console.error('Failed to open exported PDF file', path, error);
+			},
+		});
+		if (openResult === 'failed') {
+			addToast(t('toast.openExportedFileFailed', settings.language), 'error');
 		}
 	}
 
@@ -4389,7 +4419,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			<Toast 
 				message={toast.message} 
 				type={toast.type} 
-				onremove={() => toasts = toasts.filter(t => t.id !== toast.id)} />
+				sticky={toast.sticky}
+				onremove={() => removeToast(toast.id)} />
 		{/each}
 	</div>
 

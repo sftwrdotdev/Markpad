@@ -210,6 +210,7 @@ export default {
         failedToSaveDiagram: '다이어그램 저장 실패',
         exportedHtmlMissingImages: 'HTML을 내보냈지만 로컬 이미지 {{count}}개를 포함하지 못했습니다.',
         exportPdfFailed: 'PDF 내보내기 실패',
+        exportingPdf: 'PDF 내보내는 중…',
         reloadedFromDisk: '디스크에서 다시 로드했습니다',
         remoteImageNotSupported: '원격 이미지 저장은 아직 지원되지 않습니다',
         openFailed: '{{target}}을(를) 열 수 없습니다',
@@ -226,7 +227,8 @@ export default {
         unsavedChanges: '저장되지 않은 변경 사항',
         youHaveUnsavedChanges: '"{title}"에 저장되지 않은 변경 사항이 있습니다. 닫기 전에 저장하시겠습니까?',
         openExportedFileTitle: '내보낸 파일을 여시겠습니까?',
-        openExportedHtmlMessage: 'HTML 내보내기가 저장되었습니다. 지금 여시겠습니까?'
+        openExportedHtmlMessage: 'HTML 내보내기가 저장되었습니다. 지금 여시겠습니까?',
+        openExportedPdfMessage: 'PDF 내보내기가 저장되었습니다. 지금 여시겠습니까?'
     },
     update: {
         checkingHeader: '업데이트 확인 중…',

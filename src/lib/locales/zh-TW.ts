@@ -240,6 +240,7 @@ export default {
         failedToSaveDiagram: '圖表儲存失敗',
         exportedHtmlMissingImages: '已匯出 HTML，但有 {{count}} 張本機圖片無法內嵌。',
         exportPdfFailed: 'PDF 匯出失敗',
+        exportingPdf: '正在匯出 PDF…',
         reloadedFromDisk: '已從磁碟重新讀取',
         remoteImageNotSupported: '尚不支援儲存遠端圖片',
         openFailed: '無法開啟 {{target}}',
@@ -270,7 +271,8 @@ export default {
         unsavedChanges: '有未儲存的變更',
         youHaveUnsavedChanges: '「{title}」有未儲存的變更，關閉前要儲存嗎？',
         openExportedFileTitle: '開啟匯出的檔案？',
-        openExportedHtmlMessage: 'HTML 已匯出並儲存，現在要開啟嗎？'
+        openExportedHtmlMessage: 'HTML 已匯出並儲存，現在要開啟嗎？',
+        openExportedPdfMessage: 'PDF 已匯出並儲存，現在要開啟嗎？'
     },
     update: {
         checkingHeader: '正在檢查更新…',

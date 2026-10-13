@@ -308,6 +308,7 @@ const en: Translation = {
         failedToSaveDiagram: 'Failed to save diagram',
         exportedHtmlMissingImages: 'Exported HTML, but {{count}} local image(s) could not be embedded.',
         exportPdfFailed: 'Failed to export PDF',
+        exportingPdf: 'Exporting PDF…',
         reloadedFromDisk: 'Reloaded from disk',
         remoteImageNotSupported: 'Saving a remote image is not supported yet',
         openFailed: 'Failed to open {{target}}',
@@ -338,7 +339,8 @@ const en: Translation = {
         unsavedChanges: 'Unsaved Changes',
         youHaveUnsavedChanges: 'You have unsaved changes in "{title}". Do you want to save them before closing?',
         openExportedFileTitle: 'Open exported file?',
-        openExportedHtmlMessage: 'HTML export was saved. Open it now?'
+        openExportedHtmlMessage: 'HTML export was saved. Open it now?',
+        openExportedPdfMessage: 'PDF export was saved. Open it now?'
     },
     update: {
         checkingHeader: 'Checking for updates…',

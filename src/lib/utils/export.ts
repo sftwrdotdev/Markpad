@@ -86,6 +86,8 @@ export interface PdfExportContext extends ExportContext {
 	osType: 'macos' | 'windows' | 'linux' | 'unknown';
 	/** The empty `#print-root` article in the viewer's markup, filled here. */
 	printRoot: HTMLElement;
+	/** Called once the export is committed, after a Windows reader has picked a path. */
+	onStart?: () => void;
 }
 
 const IMAGE_LOAD_TIMEOUT_MS = 3000;
@@ -523,7 +525,11 @@ export async function exportAsHtml(ctx: ExportContext): Promise<ExportHtmlResult
  * `printRoot` is handed in rather than created here: it lives in the viewer's
  * markup, where the component's own `.markdown-body` rules reach it.
  */
-export async function exportAsPdf(ctx: PdfExportContext) {
+/**
+ * Resolves to the written file on Windows, where the app writes it. Elsewhere
+ * the print sheet owns the path, so there is none to report.
+ */
+export async function exportAsPdf(ctx: PdfExportContext): Promise<string | null> {
 	// Windows writes the file itself, so it asks for the path first: a reader
 	// who cancels the dialog should not have waited for a render.
 	let windowsTarget = '';
@@ -533,9 +539,10 @@ export async function exportAsPdf(ctx: PdfExportContext) {
 			filters: [{ name: 'PDF', extensions: ['pdf'] }],
 			defaultPath: defaultName,
 		});
-		if (!selected) return;
+		if (!selected) return null;
 		windowsTarget = selected;
 	}
+	ctx.onStart?.();
 
 	// Whatever the last export left behind, this one starts empty.
 	ctx.printRoot.replaceChildren();
@@ -566,8 +573,12 @@ export async function exportAsPdf(ctx: PdfExportContext) {
 	// boxes — the failure that made a screen-printed PDF look plausible and
 	// ship half a document.
 	await waitForImages(ctx.printRoot);
-	if (ctx.osType === 'windows') await invoke('export_pdf_windows', { path: windowsTarget });
-	else await invoke('print_pdf');
+	if (ctx.osType !== 'windows') {
+		await invoke('print_pdf');
+		return null;
+	}
+	await invoke('export_pdf_windows', { path: windowsTarget });
+	return windowsTarget;
 }
 
 /** Resolves when every image in `root` has loaded, failed, or run out of time. */

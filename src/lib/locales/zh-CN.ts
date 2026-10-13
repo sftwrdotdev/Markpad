@@ -240,6 +240,7 @@ export default {
         failedToSaveDiagram: '保存图表失败',
         exportedHtmlMissingImages: '已导出 HTML，但有 {{count}} 张本地图片无法嵌入。',
         exportPdfFailed: '导出 PDF 失败',
+        exportingPdf: '正在导出 PDF…',
         reloadedFromDisk: '已从磁盘重新加载',
         remoteImageNotSupported: '暂不支持保存远程图片',
         openFailed: '无法打开 {{target}}',
@@ -270,7 +271,8 @@ export default {
         unsavedChanges: '未保存的更改',
         youHaveUnsavedChanges: '"{title}"中有未保存的更改。关闭前要保存吗？',
         openExportedFileTitle: '打开导出的文件？',
-        openExportedHtmlMessage: 'HTML 导出已保存。现在打开吗？'
+        openExportedHtmlMessage: 'HTML 导出已保存。现在打开吗？',
+        openExportedPdfMessage: 'PDF 导出已保存。现在打开吗？'
     },
     update: {
         checkingHeader: '正在检查更新…',
