@@ -565,6 +565,7 @@ test('the settings panes were actually read', () => {
 		'preview-cursor',
 		'preview-font',
 		'preview-font-size',
+		'preview-keep-line-breaks',
 		'preview-max-width',
 		'preview-occurrences',
 		'preview-table-breakout',
