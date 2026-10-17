@@ -5,6 +5,7 @@ mod app;
 mod asset_protocol;
 mod commands;
 mod error;
+mod folder;
 mod fs_safety;
 mod markdown;
 mod semantic;

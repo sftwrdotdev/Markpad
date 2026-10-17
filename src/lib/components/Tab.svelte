@@ -11,7 +11,7 @@
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { windowDisplay, type ViewerWindowEntry } from '../utils/viewerWindows.js';
 
-	let { tab, folderSuffix, isActive, onclick, onclose } = $props<{
+	let { tab, folderSuffix, isActive, onclick, onclose, vertical = false } = $props<{
 		tab: Tab;
 		/**
 		 * The containing folder, when another tab in this window holds a
@@ -23,6 +23,8 @@
 		isActive: boolean;
 		onclick: () => void;
 		onclose: (e: MouseEvent) => void;
+		/** Drawn as a full-width row of the tab column rather than a chip in the strip (#884). */
+		vertical?: boolean;
 	}>();
 
 	let tabContextMenu = $state<{
@@ -162,6 +164,7 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
 	class="tab {isActive ? 'active' : ''}"
+	class:vertical
 	role="group"
 	title={tabTooltip(tab)}
 	oncontextmenu={handleContextMenu}
@@ -215,6 +218,14 @@
 		transition:
 			background-color 0.25s cubic-bezier(0.05, 0.95, 0.05, 0.95),
 			color 0.25s cubic-bezier(0.05, 0.95, 0.05, 0.95);
+	}
+
+	.tab.vertical {
+		width: 100%;
+		min-width: 0;
+		max-width: none;
+		height: 30px;
+		box-sizing: border-box;
 	}
 
 	.tab:hover {
