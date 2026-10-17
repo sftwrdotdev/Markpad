@@ -160,3 +160,17 @@ test('the hook offers every associated extension to the Open With dialog', () =>
 		}
 	}
 });
+
+// `File` fails the installer build when its source is missing, and NSIS only
+// runs on the Windows release runner. This catches a renamed icon before that.
+test('the Markdown file icon the hook installs is in the repo', () => {
+	if (installerHooks === undefined) return;
+	const hooks = readSource(`src-tauri/${installerHooks}`);
+	for (const match of hooks.matchAll(/\$\{__FILEDIR__\}\\([^"]+)"/g)) {
+		const path = match[1].replaceAll('\\', '/');
+		assert.doesNotThrow(
+			() => readSource(`src-tauri/${path}`),
+			`hooks.nsi installs src-tauri/${path}, which is not in the repo`
+		);
+	}
+});

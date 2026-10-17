@@ -92,8 +92,26 @@
   DeleteRegValue SHCTX "Software\Classes\.markdown\OpenWithProgids" "${MARKPAD_PROGID}"
 !macroend
 
+; Give `.md` and `.markdown` a document icon of their own (#975).
+;
+; APP_ASSOCIATE points the ProgID's DefaultIcon at `Markpad.exe,0`, so Explorer
+; draws every Markdown file with the app icon. The bundler embeds one icon in
+; the executable and has no per-association icon option, so the file icon is
+; shipped next to the executable and DefaultIcon is pointed at it.
+;
+; `${__FILEDIR__}` has to be read here, at the top level: inside a macro body it
+; would expand where the macro is inserted, which is the bundler's script.
+!define MARKPAD_FILE_ICON_SOURCE "${__FILEDIR__}\icons\markdown-file.ico"
+!define MARKPAD_FILE_ICON "$INSTDIR\markdown-file.ico"
+
+!macro MARKPAD_REGISTER_FILE_ICON
+  File "/oname=${MARKPAD_FILE_ICON}" "${MARKPAD_FILE_ICON_SOURCE}"
+  WriteRegStr SHCTX "Software\Classes\${MARKPAD_PROGID}\DefaultIcon" "" "${MARKPAD_FILE_ICON}"
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   !insertmacro MARKPAD_REGISTER_OPEN_WITH
+  !insertmacro MARKPAD_REGISTER_FILE_ICON
 
   ; The template registers the file associations through FileAssociation.nsh but
   ; never inserts that header's own UPDATEFILEASSOC, so Explorer can go on
@@ -111,6 +129,12 @@
 
 !macro NSIS_HOOK_POSTUNINSTALL
   !insertmacro MARKPAD_UNREGISTER_OPEN_WITH
+
+  ; APP_UNASSOCIATE already removed the ProgID with its DefaultIcon. The template
+  ; tried to remove $INSTDIR before this hook ran, which fails while the icon is
+  ; still in it, so retry once the icon is gone.
+  Delete "${MARKPAD_FILE_ICON}"
+  RMDir "$INSTDIR"
 
   ; And again once APP_UNASSOCIATE has handed `.md` back.
   System::Call 'shell32::SHChangeNotify(i 0x08000000, i 0, p 0, p 0)'
