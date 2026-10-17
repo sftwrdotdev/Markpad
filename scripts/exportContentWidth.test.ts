@@ -323,6 +323,7 @@ async function exportedFile(contentWidth: number | null): Promise<string> {
 		tabTitle: 'Notes',
 		tabPath: '/documents/notes.md',
 		mermaidTheme: 'neutral',
+		newlineBreaks: true,
 		libraries: {
 			hljs: { getLanguage: () => null },
 			katex: { renderToString: () => '' },

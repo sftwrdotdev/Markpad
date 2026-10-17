@@ -42,6 +42,7 @@ function exportWith(osType: 'windows' | 'macos', savePath: string | null) {
 		tabTitle: 'Notes',
 		tabPath: 'C:/Docs/notes.md',
 		mermaidTheme: 'neutral',
+		newlineBreaks: true,
 		libraries: {
 			hljs: { getLanguage: () => null },
 			katex: { renderToString: () => '' },

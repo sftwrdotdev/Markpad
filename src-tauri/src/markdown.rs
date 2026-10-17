@@ -3,10 +3,12 @@
 //! heading anchors the editor completes from.
 
 use crate::fs_safety::{decode_text, utf8_truncation_boundary};
+use comrak::html::render_sourcepos;
 use comrak::nodes::NodeValue;
-use comrak::{markdown_to_html, parse_document, Anchorizer, Arena, Options};
+use comrak::{create_formatter, parse_document, Anchorizer, Arena, Options};
 use regex::{Captures, Regex};
 use std::borrow::Cow;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::sync::LazyLock;
@@ -1429,8 +1431,31 @@ pub(crate) fn convert_markdown(content: &str) -> String {
 
     let options = markdown_options();
 
-    let html = markdown_to_html(&masked_math.text, &options);
+    let html = render_html(&masked_math.text, &options);
     annotate_task_checkboxes(restore_math_spans(&html, &masked_math), raw_buffer)
+}
+
+// `hardbreaks` renders a soft break as the same `<br>` as a hard one. The class
+// lets the Every Newline Breaks the Line setting hide just these in CSS (#967). The
+// `<br>` itself stays: scroll sync and display math read source lines off it.
+create_formatter!(PreviewFormatter, {
+    NodeValue::SoftBreak => |context, node, entering| {
+        if entering {
+            context.write_str("<br class=\"softbreak\"")?;
+            render_sourcepos(context, node)?;
+            context.write_str(" />")?;
+            context.lf()?;
+        }
+    },
+});
+
+fn render_html(markdown: &str, options: &Options) -> String {
+    let arena = Arena::new();
+    let root = parse_document(&arena, markdown, options);
+    let mut html = String::new();
+    PreviewFormatter::format_document(root, options, &mut html)
+        .expect("writing to a String cannot fail");
+    html
 }
 
 /// Marks the rendered task checkboxes the frontend is allowed to toggle.
@@ -2468,6 +2493,20 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn only_a_soft_break_is_marked_as_one() {
+        // Two trailing spaces and a trailing backslash are hard breaks, which
+        // Every Newline Breaks the Line must never hide.
+        let html = convert_markdown("soft\nspaces  \nslash\\\nend\n");
+        assert_eq!(
+            html,
+            "<p data-sourcepos=\"1:1-4:3\">soft<br class=\"softbreak\" data-sourcepos=\"1:5-1:5\" />\n\
+             spaces<br data-sourcepos=\"2:7-2:9\" />\n\
+             slash<br data-sourcepos=\"3:6-3:7\" />\n\
+             end</p>\n",
+        );
+    }
+
+    #[test]
     fn the_math_contract_corpus_is_a_live_capture() {
         // Keeps the `html` the frontend test consumes honest: it is what
         // this renderer produces today, not what it produced once.
@@ -3437,7 +3476,7 @@ pub(crate) mod tests {
         // touches the text at all; it is shared with `heading_anchors`, which
         // has to parse the document the way the renderer does.
         let not_a_transform = [
-            "markdown_to_html",
+            "render_html",
             "annotate_task_checkboxes",
             "restore_math_spans",
             "markdown_options",

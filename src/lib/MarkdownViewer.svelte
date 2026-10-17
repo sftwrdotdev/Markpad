@@ -2698,6 +2698,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// so the exported file is read at the measure it was written at.
 			contentWidth: previewContentWidth,
 			appearance: previewAppearance,
+			newlineBreaks: settings.previewNewlineBreaks,
 			frontMatterTitle: t('frontMatter.properties', settings.language),
 		});
 		if (result?.missingImages) {
@@ -2752,6 +2753,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				mermaidTheme: currentMermaidTheme(),
 					contentWidth: previewContentWidth,
 				appearance: previewAppearance,
+				newlineBreaks: settings.previewNewlineBreaks,
 				frontMatterTitle: t('frontMatter.properties', settings.language),
 				osType: settings.osType,
 				printRoot: printRootEl,
@@ -4108,6 +4110,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 									class:toc-in-gutter={settings.showToc && !settings.pinnedToc && !isOverhanging}
 									class:table-breakout={settings.previewTableBreakout}
 									class:table-fit={!settings.previewTableScroll}
+									class:soft-breaks={!settings.previewNewlineBreaks}
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
 									onchange={handleTaskCheckboxChange}

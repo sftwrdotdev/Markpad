@@ -135,7 +135,7 @@ interface ExportRun {
 }
 
 async function runExport(
-	options: { css?: string; theme?: string; mermaidTheme?: string } = {},
+	options: { css?: string; theme?: string; mermaidTheme?: string; newlineBreaks?: boolean; rendered?: string } = {},
 ): Promise<ExportRun> {
 	const record = { mermaidThemes: [] as string[], mathCalls: [] as string[] };
 	const fetched: string[] = [];
@@ -148,7 +148,7 @@ async function runExport(
 				case 'plugin:dialog|save':
 					return '/tmp/notes.html';
 				case 'render_markdown':
-					return RENDERED;
+					return options.rendered ?? RENDERED;
 				case 'save_file_content':
 					saved = { path: args.path, content: args.content };
 					return null;
@@ -191,6 +191,7 @@ async function runExport(
 		// Irrelevant to what this file asserts; `exportContentWidth.test.ts` owns it.
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
 		appearance: plainAppearance,
+		newlineBreaks: options.newlineBreaks ?? true,
 	});
 
 	return {
@@ -203,6 +204,16 @@ async function runExport(
 }
 
 // ------------------------------------------------------------------- tests
+
+test('Every Newline Breaks the Line off drops only the soft breaks from the file (#967)', async () => {
+	const rendered = '<p>soft<br class="softbreak" />\nhard<br />\nend</p>';
+	const kept = await runExport({ rendered });
+	assert.match(kept.document, /soft<br class="softbreak"\s*\/?>\s*hard<br\s*\/?>\s*end/);
+
+	const joined = await runExport({ rendered, newlineBreaks: false });
+	assert.doesNotMatch(joined.document, /softbreak/);
+	assert.match(joined.document, /soft\s+hard<br\s*\/?>\s*end/);
+});
 
 test('an exported file contains typeset math, not its LaTeX source', async () => {
 	const run = await runExport();

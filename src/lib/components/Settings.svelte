@@ -1186,6 +1186,14 @@
 									<span class="toggle-slider"></span>
 								</label>
 							</div>
+
+							<div class="setting-item">
+								<label for="preview-newline-breaks" class="has-hint">{t('settings.previewNewlineBreaks', settings.language)}<span class="setting-hint">{t('settings.previewNewlineBreaksHint', settings.language)}</span></label>
+								<label class="toggle">
+									<input id="preview-newline-breaks" type="checkbox" bind:checked={settings.previewNewlineBreaks} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
 						</div>
 					{:else if activeCategory === 'appearance'}
 						<div class="settings-group">
