@@ -44,6 +44,7 @@ const {
 	EDITOR_MAX_WIDTH_RANGE,
 	PREVIEW_FONT_SIZE_RANGE,
 	SettingsStore,
+	TAB_COLUMN_WIDTH_RANGE,
 	ZOOM_LEVEL_RANGE,
 	clampToRange,
 	createSettingsPersistence,
@@ -1106,4 +1107,34 @@ test('no settings row buries a sized control below its own flex level', () => {
 	// stops meaning "width" as soon as some other element becomes the flex item.
 	const buried = rows.flatMap((row) => row.nested.map((found) => `${row.label}: ${found}`));
 	assert.deepEqual(buried, [], 'a sized control must be a direct child of its .setting-item');
+});
+
+test('tab position survives a restart and an unknown value keeps the strip on top (#884)', () => {
+	for (const position of ['left', 'right', 'top'] as const) {
+		resetStorage({ 'editor.tabPosition': position });
+		assert.equal(createStore().tabPosition, position);
+	}
+	for (const stored of ['bottom', '', 'LEFT', 'null']) {
+		resetStorage({ 'editor.tabPosition': stored });
+		assert.equal(createStore().tabPosition, 'top', `editor.tabPosition=${JSON.stringify(stored)}`);
+	}
+	resetStorage();
+	assert.equal(createStore().tabPosition, 'top', 'a fresh install keeps the tabs where they were');
+});
+
+test('the tab column width is clamped to its shared range on load and on resize', () => {
+	resetStorage({ 'editor.tabColumnWidth': '9000' });
+	const store = createStore();
+	assert.equal(store.tabColumnWidth, TAB_COLUMN_WIDTH_RANGE.max);
+	store.setTabColumnWidth(10);
+	assert.equal(store.tabColumnWidth, TAB_COLUMN_WIDTH_RANGE.min);
+	resetStorage({ 'editor.tabColumnWidth': 'banana' });
+	assert.equal(createStore().tabColumnWidth, TAB_COLUMN_WIDTH_RANGE.default);
+});
+
+test('the tab position select offers exactly the values the store accepts', () => {
+	const select = sliceBetween(componentSource, 'id="appearance-tab-position"', '</select>');
+	const offered = [...select.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
+	assert.deepEqual(offered, ['top', 'left', 'right']);
+	for (const value of offered) assert.ok(settingsModule.isTabPosition(value), value);
 });

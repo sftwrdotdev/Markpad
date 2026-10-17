@@ -205,13 +205,14 @@ const RULES: Rule[] = [
 		allowed: [],
 	},
 	{
-		name: 'the TOC separator advertises the settings range',
+		name: 'a resize separator advertises its settings range',
 		why: 'aria-valuemin/max is the bound assistive tech reports; a literal there goes stale silently because no visual check can see it. This is the half of the TOC rule above that a differently-named copy would escape.',
 		marker: /aria-valuemin=/g,
-		allowed: ['src/lib/MarkdownViewer.svelte'],
+		// TabColumn.svelte's separator advertises TAB_COLUMN_WIDTH_RANGE, its own setting's range (#884).
+		allowed: ['src/lib/MarkdownViewer.svelte', 'src/lib/components/TabColumn.svelte'],
 		requires: {
-			pattern: /aria-valuemin=\{TOC_WIDTH_RANGE\.min\}\s*\n\s*aria-valuemax=\{TOC_WIDTH_RANGE\.max\}/,
-			message: 'the resize separator must advertise TOC_WIDTH_RANGE.min/.max, not numbers of its own',
+			pattern: /aria-valuemin=\{([A-Z_]+_WIDTH_RANGE)\.min\}\s*\n\s*aria-valuemax=\{\1\.max\}/,
+			message: 'the resize separator must advertise its setting\'s *_WIDTH_RANGE.min/.max, not numbers of its own',
 		},
 	},
 	{
