@@ -86,7 +86,7 @@ test('a PDF is printed in the preview appearance', async () => {
 		tabTitle: 'Notes',
 		tabPath: '/documents/notes.md',
 		mermaidTheme: 'neutral',
-		keepLineBreaks: true,
+		newlineBreaks: true,
 		libraries: {
 			hljs: { getLanguage: () => null },
 			katex: { renderToString: () => '' },

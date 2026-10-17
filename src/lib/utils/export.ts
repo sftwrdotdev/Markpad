@@ -59,8 +59,8 @@ export interface ExportContext {
 	 */
 	contentWidth: number | null;
 	appearance: ExportAppearance;
-	/** Keep Single Line Breaks. Off, the export drops the soft `<br>`s the preview hides. */
-	keepLineBreaks: boolean;
+	/** Every Newline Breaks the Line. Off, the export drops the soft `<br>`s the preview hides. */
+	newlineBreaks: boolean;
 	/**
 	 * Mermaid's theme name for the appearance this export is being made in.
 	 * Unlike the PDF route — paper is always white, so that one forces a light
@@ -407,7 +407,7 @@ async function buildExportArticle(
 	// grants it no script privilege, so all of it has to be baked in here.
 	await renderExportRichContent(wrapper, ctx);
 
-	if (!ctx.keepLineBreaks) {
+	if (!ctx.newlineBreaks) {
 		for (const br of Array.from(wrapper.querySelectorAll('br.softbreak'))) br.remove();
 	}
 

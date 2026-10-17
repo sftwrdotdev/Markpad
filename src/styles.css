@@ -242,7 +242,7 @@ body {
 	-webkit-user-select: text;
 }
 
-/* Keep Single Line Breaks off: a newline in a paragraph reads as the space
+/* Every Newline Breaks the Line off: a newline in a paragraph reads as the space
    after the hidden `<br>`, as CommonMark renders it (#967). */
 .markdown-body.soft-breaks br.softbreak {
 	display: none;

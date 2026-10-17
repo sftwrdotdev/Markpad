@@ -1188,9 +1188,9 @@
 							</div>
 
 							<div class="setting-item">
-								<label for="preview-keep-line-breaks" class="has-hint">{t('settings.previewKeepLineBreaks', settings.language)}<span class="setting-hint">{t('settings.previewKeepLineBreaksHint', settings.language)}</span></label>
+								<label for="preview-newline-breaks" class="has-hint">{t('settings.previewNewlineBreaks', settings.language)}<span class="setting-hint">{t('settings.previewNewlineBreaksHint', settings.language)}</span></label>
 								<label class="toggle">
-									<input id="preview-keep-line-breaks" type="checkbox" bind:checked={settings.previewKeepLineBreaks} />
+									<input id="preview-newline-breaks" type="checkbox" bind:checked={settings.previewNewlineBreaks} />
 									<span class="toggle-slider"></span>
 								</label>
 							</div>

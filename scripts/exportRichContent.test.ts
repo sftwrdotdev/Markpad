@@ -135,7 +135,7 @@ interface ExportRun {
 }
 
 async function runExport(
-	options: { css?: string; theme?: string; mermaidTheme?: string; keepLineBreaks?: boolean; rendered?: string } = {},
+	options: { css?: string; theme?: string; mermaidTheme?: string; newlineBreaks?: boolean; rendered?: string } = {},
 ): Promise<ExportRun> {
 	const record = { mermaidThemes: [] as string[], mathCalls: [] as string[] };
 	const fetched: string[] = [];
@@ -191,7 +191,7 @@ async function runExport(
 		// Irrelevant to what this file asserts; `exportContentWidth.test.ts` owns it.
 		contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
 		appearance: plainAppearance,
-		keepLineBreaks: options.keepLineBreaks ?? true,
+		newlineBreaks: options.newlineBreaks ?? true,
 	});
 
 	return {
@@ -205,12 +205,12 @@ async function runExport(
 
 // ------------------------------------------------------------------- tests
 
-test('Keep Single Line Breaks off drops only the soft breaks from the file (#967)', async () => {
+test('Every Newline Breaks the Line off drops only the soft breaks from the file (#967)', async () => {
 	const rendered = '<p>soft<br class="softbreak" />\nhard<br />\nend</p>';
 	const kept = await runExport({ rendered });
 	assert.match(kept.document, /soft<br class="softbreak"\s*\/?>\s*hard<br\s*\/?>\s*end/);
 
-	const joined = await runExport({ rendered, keepLineBreaks: false });
+	const joined = await runExport({ rendered, newlineBreaks: false });
 	assert.doesNotMatch(joined.document, /softbreak/);
 	assert.match(joined.document, /soft\s+hard<br\s*\/?>\s*end/);
 });

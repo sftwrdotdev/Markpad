@@ -1436,7 +1436,7 @@ pub(crate) fn convert_markdown(content: &str) -> String {
 }
 
 // `hardbreaks` renders a soft break as the same `<br>` as a hard one. The class
-// lets the Keep Single Line Breaks setting hide just these in CSS (#967). The
+// lets the Every Newline Breaks the Line setting hide just these in CSS (#967). The
 // `<br>` itself stays: scroll sync and display math read source lines off it.
 create_formatter!(PreviewFormatter, {
     NodeValue::SoftBreak => |context, node, entering| {
@@ -2495,7 +2495,7 @@ pub(crate) mod tests {
     #[test]
     fn only_a_soft_break_is_marked_as_one() {
         // Two trailing spaces and a trailing backslash are hard breaks, which
-        // Keep Single Line Breaks must never hide.
+        // Every Newline Breaks the Line must never hide.
         let html = convert_markdown("soft\nspaces  \nslash\\\nend\n");
         assert_eq!(
             html,
