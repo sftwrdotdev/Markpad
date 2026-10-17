@@ -1101,6 +1101,23 @@ test('every control in a settings row is a flex item the stylesheet sizes', () =
 	assert.deepEqual(unstyled, [], 'a direct child of .setting-item that no rule sizes gets no column');
 });
 
+test('editor persistence is on by default, persistent, exported, and independent of auto-save', () => {
+	resetStorage();
+	const store = createStore();
+	flushSync();
+	assert.equal(store.persistOpenEditors, true);
+	const autoSave = store.autoSave;
+	store.persistOpenEditors = false;
+	flushSync();
+	assert.equal(localStorage.getItem('editor.persistOpenEditors'), 'false');
+	assert.equal(store.autoSave, autoSave);
+	const exported = settingsModule.parseSettingsFile(settingsModule.exportSettings(store));
+	assert.equal(exported.settings['editor.persistOpenEditors'], false);
+	assert.equal(createStore().persistOpenEditors, false);
+	settingsModule.applySettings(store, { 'editor.persistOpenEditors': true });
+	assert.equal(store.persistOpenEditors, true);
+});
+
 test('no settings row buries a sized control below its own flex level', () => {
 	// `.select-wrapper` one level deeper is the theme-row defect: its sizing
 	// stops meaning "width" as soon as some other element becomes the flex item.

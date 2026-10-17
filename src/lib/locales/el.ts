@@ -66,6 +66,8 @@ export default {
         files: 'Αρχεία',
         fileSettings: 'Ρυθμίσεις αρχείων',
         autoSave: 'Αυτόματη αποθήκευση αλλαγών',
+        persistOpenEditors: 'Διατήρηση μη αποθηκευμένων αλλαγών κατά το κλείσιμο',
+        persistOpenEditorsHint: 'Το κλείσιμο ενός παραθύρου διατηρεί τις μη αποθηκευμένες αλλαγές και τα έγγραφα χωρίς τίτλο αντί να ζητά αποθήκευση. Επανέρχονται την επόμενη φορά που θα ανοίξει το Markpad.',
         toolbarPlacement: 'Θέση γραμμής εργαλείων',
         toolbarOnBar: 'Γραμμή',
         toolbarInMenu: 'Μενού',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Στήλη'
     },
     toast: {
+        recoveryFailed: 'Δεν ήταν δυνατή η διατήρηση των μη αποθηκευμένων αλλαγών.',
         imageSavedSuccessfully: 'Η εικόνα αποθηκεύτηκε με επιτυχία',
         failedToSaveImage: 'Αποτυχία αποθήκευσης εικόνας',
         diagramSavedAsSVG: 'Το διάγραμμα αποθηκεύτηκε ως SVG',

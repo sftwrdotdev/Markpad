@@ -66,6 +66,8 @@ export default {
         files: 'Fájlok',
         fileSettings: 'Fájlbeállítások',
         autoSave: 'Módosítások automatikus mentése',
+        persistOpenEditors: 'Nem mentett módosítások megőrzése bezáráskor',
+        persistOpenEditorsHint: 'Az ablak bezárása megőrzi a nem mentett módosításokat és a névtelen dokumentumokat, ahelyett hogy mentést kérne. A Markpad következő megnyitásakor visszatérnek.',
         toolbarPlacement: 'Eszköztár helye',
         toolbarOnBar: 'Sáv',
         toolbarInMenu: 'Menü',
@@ -181,6 +183,7 @@ export default {
         wordWrapColumn: 'Oszlop'
     },
     toast: {
+        recoveryFailed: 'Nem sikerült megőrizni a nem mentett módosításokat.',
         imageSavedSuccessfully: 'Kép sikeresen mentve',
         failedToSaveImage: 'Kép mentése sikertelen',
         diagramSavedAsSVG: 'Diagram SVG-ként mentve',

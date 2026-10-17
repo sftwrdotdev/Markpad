@@ -582,10 +582,12 @@ export class SettingsStore {
 	codeFontSize = $state(CODE_FONT_SIZE_RANGE.default);
 
 	// File-save behavior: on, edits are persisted without Cmd+S; off, they are
-	// kept until saved and closing asks. One switch, because that is the number
+	// kept until saved (closing backs them up or asks, see `persistOpenEditors`).
+	// One switch, because that is the number
 	// of behaviours the app has — see `autoSaveSetting.ts` for the pair it
 	// replaced and why the two of them were never independent.
 	autoSave = $state(DEFAULT_AUTO_SAVE);
+	persistOpenEditors = $state(true);
 
 	/** The `$effect.root` disposer from the constructor. See {@link dispose}. */
 	#disposeEffects: (() => void) | null = null;
@@ -894,6 +896,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.wordCount', (s) => s.wordCount, (s, v) => { s.wordCount = v; }),
 		stringSetting('editor.renderLineHighlight', (s) => s.renderLineHighlight, (s, v) => { s.renderLineHighlight = v; }),
 		booleanSetting('editor.showTabs', (s) => s.showTabs, (s, v) => { s.showTabs = v; }),
+		booleanSetting('editor.persistOpenEditors', (s) => s.persistOpenEditors, (s, v) => { s.persistOpenEditors = v; }),
 		booleanSetting('editor.restoreStateOnReopen', (s) => s.restoreStateOnReopen, (s, v) => { s.restoreStateOnReopen = v; }),
 		booleanSetting('editor.closeWindowWithLastTab', (s) => s.closeWindowWithLastTab, (s, v) => { s.closeWindowWithLastTab = v; }),
 		booleanSetting('editor.zenMode', (s) => s.zenMode, (s, v) => { s.zenMode = v; }),

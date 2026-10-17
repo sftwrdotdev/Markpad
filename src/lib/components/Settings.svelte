@@ -1601,6 +1601,14 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="files-recovery" title={t('settings.persistOpenEditorsHint', settings.language)}>{t('settings.persistOpenEditors', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-recovery" type="checkbox" bind:checked={settings.persistOpenEditors} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
 							<label for="image-directory">{t('settings.imageDirectory', settings.language)}</label>
 							<input
 								type="text"
