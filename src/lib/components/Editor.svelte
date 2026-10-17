@@ -299,6 +299,9 @@
 					"menu.separatorBackground": "#454545",
 					"editorWidget.background": "#181818",
 					"editorWidget.border": "#454545",
+					"scrollbarSlider.background": "#78787859",
+					"scrollbarSlider.hoverBackground": "#7878788c",
+					"scrollbarSlider.activeBackground": "#7878788c",
 				},
 			});
 
@@ -315,6 +318,9 @@
 					"menu.separatorBackground": "#cccccc",
 					"editorWidget.background": "#FDFDFD",
 					"editorWidget.border": "#cccccc",
+					"scrollbarSlider.background": "#78787859",
+					"scrollbarSlider.hoverBackground": "#7878788c",
+					"scrollbarSlider.activeBackground": "#7878788c",
 				},
 			});
 		};
@@ -477,8 +483,11 @@
 				useShadows: false,
 				verticalHasArrows: false,
 				horizontalHasArrows: false,
-				verticalScrollbarSize: 10,
-				horizontalScrollbarSize: 10,
+				// Same track and thumb as the preview's ::-webkit-scrollbar in styles.css.
+				verticalScrollbarSize: 12,
+				horizontalScrollbarSize: 12,
+				verticalSliderSize: 6,
+				horizontalSliderSize: 6,
 			},
 		});
 
@@ -2783,6 +2792,24 @@
 		height: 100%;
 		width: 100%;
 		min-width: 0;
+	}
+
+	/* Monaco sizes the slider inline. Grow it under the pointer the way the
+	   preview's thumb does. */
+	.editor-container :global(.monaco-scrollable-element > .scrollbar > .slider) {
+		border-radius: 10px;
+	}
+
+	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider:hover),
+	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider.active) {
+		width: 10px !important;
+		left: 1px !important;
+	}
+
+	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider:hover),
+	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider.active) {
+		height: 10px !important;
+		top: 1px !important;
 	}
 
 	:global(.ghost-caret) {
