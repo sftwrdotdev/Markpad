@@ -16,14 +16,15 @@ test('Live Mode routes a watcher notification to its watched path', () => {
 	// resolveExternalChange looks up the tab that OWNS the changed path (and
 	// refuses to reload it when it has unsaved edits). See
 	// externalChangeReload.spec.ts for the routing behaviour.
-	assert.match(viewer, /if \(!liveMode\) return;/);
 	assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
+	// A conflict is reported with Live Mode off too; Live Mode gates only the reload.
+	assert.match(viewer, /if \(liveMode\) loadMarkdown\(outcome\.path\);/);
 	const session = readSource('src/lib/sessions/documentSession.svelte.ts');
 	assert.match(session, /tabManager\.tabs\.find\(\(tab\) => tab\.path === changedPath\)/);
 });
 
-test('Live Mode follows the active file instead of retaining a previous tab watcher', () => {
-	assert.match(viewer, /if \(liveMode && currentFile\) \{\n\t\t\tinvoke\('watch_file', \{ path: currentFile \}\)/);
+test('the watcher follows the active file instead of retaining a previous tab watcher', () => {
+	assert.match(viewer, /if \(currentFile\) \{\n\t\t\tinvoke\('watch_file', \{ path: currentFile \}\)/);
 
 	// The defect #296 fixed was `documentSession` re-issuing `watch_file` on
 	// every load, so the watcher followed whichever document loaded last rather

@@ -1100,8 +1100,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		});
 	});
 
+	// Watched whether or not Live Mode is on: an edit made elsewhere under
+	// unsaved changes is reported when it happens, not at the next save.
+	// Live Mode only decides whether a clean tab reloads.
 	$effect(() => {
-		if (liveMode && currentFile) {
+		if (currentFile) {
 			invoke('watch_file', { path: currentFile }).catch(console.error);
 		} else {
 			invoke('unwatch_file').catch(console.error);
@@ -2846,7 +2849,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		tabManager.closeTab(tabId);
 		if (tabManager.tabs.length > 0) return;
 
-		if (liveMode) invoke('unwatch_file').catch(console.error);
+		invoke('unwatch_file').catch(console.error);
 		// Off, the empty window stays and renders Home.
 		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
 	}
@@ -3669,7 +3672,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			unlisteners.push(
 				await appWindow.listen('file-changed', async (event) => {
 					const changedPath = event.payload as string;
-					if (!liveMode) return;
 					// The event names the changed file. Which tab that touches —
 					// and whether it may be reloaded at all — is decided by the
 					// session: it owns the self-write grace window (so our own
@@ -3681,7 +3683,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						noteExternalChangeConflict(outcome.tabId);
 						return;
 					}
-					loadMarkdown(outcome.path);
+					if (liveMode) loadMarkdown(outcome.path);
 				}),
 			);
 
@@ -3983,7 +3985,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	<Settings show={showSettings} theme={settings.theme} onSetTheme={(t) => (settings.theme = t)} onclose={() => (showSettings = false)} />
 
 	{#if activeExternalChangeConflict && !showHome}
-		<div class="external-change-bar" role="status">
+		<div class="external-change-bar" role="status" style:top="{36 + paneTopChrome}px">
 			<span class="external-change-text">{t('externalChange.message', settings.language)}</span>
 			<button class="external-change-action" onclick={compareExternalChange}>
 				{t('externalChange.compare', settings.language)}
