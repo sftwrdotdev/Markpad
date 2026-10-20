@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabel: rij erboven · Anders: lege regel erboven'
     },
     menu: {
+        about: 'Over Markpad',
+        services: 'Voorzieningen',
+        hideApp: 'Verberg Markpad',
+        quit: 'Stop Markpad',
+        undo: 'Herstel',
+        redo: 'Opnieuw',
+        format: 'Opmaak',
+        tableOfContents: 'Inhoudsopgave',
+        previewNarrower: 'Smallere voorvertoning',
+        previewWider: 'Bredere voorvertoning',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Verplaats tabblad naar volgend venster',
         file: 'Bestand',
         edit: 'Bewerken',
         view: 'Weergave',

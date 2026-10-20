@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabel: række over · Ellers: tom linje over'
     },
     menu: {
+        about: 'Om Markpad',
+        services: 'Tjenester',
+        hideApp: 'Skjul Markpad',
+        quit: 'Slut Markpad',
+        undo: 'Fortryd',
+        redo: 'Gentag',
+        format: 'Format',
+        tableOfContents: 'Indholdsfortegnelse',
+        previewNarrower: 'Smallere eksempel',
+        previewWider: 'Bredere eksempel',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Flyt fane til næste vindue',
         file: 'Fil',
         edit: 'Rediger',
         view: 'Vis',

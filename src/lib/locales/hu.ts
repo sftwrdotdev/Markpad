@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Táblázat: sor fölé · Egyébként: üres sor fölé'
     },
     menu: {
+        about: 'A Markpad névjegye',
+        services: 'Szolgáltatások',
+        hideApp: 'Markpad elrejtése',
+        quit: 'Kilépés a Markpadből',
+        undo: 'Visszavonás',
+        redo: 'Ismétlés',
+        format: 'Formátum',
+        tableOfContents: 'Tartalomjegyzék',
+        previewNarrower: 'Keskenyebb előnézet',
+        previewWider: 'Szélesebb előnézet',
+        zoomWindow: 'Nagyítás/kicsinyítés',
+        moveToNextWindow: 'Lap áthelyezése a következő ablakba',
         file: 'Fájl',
         edit: 'Szerkesztés',
         view: 'Nézet',

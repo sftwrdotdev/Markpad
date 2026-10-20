@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tableau : ligne au-dessus · Sinon : ligne vide au-dessus'
     },
     menu: {
+        about: 'À propos de Markpad',
+        services: 'Services',
+        hideApp: 'Masquer Markpad',
+        quit: 'Quitter Markpad',
+        undo: 'Annuler',
+        redo: 'Rétablir',
+        format: 'Format',
+        tableOfContents: 'Table des matières',
+        previewNarrower: 'Aperçu plus étroit',
+        previewWider: 'Aperçu plus large',
+        zoomWindow: 'Réduire/agrandir',
+        moveToNextWindow: 'Déplacer l’onglet vers la fenêtre suivante',
         file: 'Fichier',
         edit: 'Édition',
         view: 'Affichage',

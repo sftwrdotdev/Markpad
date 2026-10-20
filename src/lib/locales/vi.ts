@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Bảng: thêm hàng trên · Nơi khác: dòng trống trên'
     },
     menu: {
+        about: 'Giới thiệu về Markpad',
+        services: 'Dịch vụ',
+        hideApp: 'Ẩn Markpad',
+        quit: 'Thoát Markpad',
+        undo: 'Hoàn tác',
+        redo: 'Làm lại',
+        format: 'Định dạng',
+        tableOfContents: 'Mục lục',
+        previewNarrower: 'Thu hẹp bản xem trước',
+        previewWider: 'Mở rộng bản xem trước',
+        zoomWindow: 'Thu/phóng',
+        moveToNextWindow: 'Di chuyển tab sang cửa sổ tiếp theo',
         file: 'Tệp',
         edit: 'Chỉnh sửa',
         view: 'Xem',

@@ -122,6 +122,18 @@ export default {
         modShiftEnter: 'Tabela: wiersz powyżej · Poza nią: pusty wiersz powyżej'
     },
     menu: {
+        about: 'Markpad – informacje',
+        services: 'Usługi',
+        hideApp: 'Ukryj Markpad',
+        quit: 'Zakończ Markpad',
+        undo: 'Cofnij',
+        redo: 'Przywróć',
+        format: 'Format',
+        tableOfContents: 'Spis treści',
+        previewNarrower: 'Węższy podgląd',
+        previewWider: 'Szerszy podgląd',
+        zoomWindow: 'Zmień rozmiar',
+        moveToNextWindow: 'Przenieś kartę do następnego okna',
         file: 'Plik',
         edit: 'Edycja',
         view: 'Widok',

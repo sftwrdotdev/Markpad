@@ -212,6 +212,18 @@ const en: Translation = {
         modShiftEnter: 'Table: row above · Else: line above'
     },
     menu: {
+        about: 'About Markpad',
+        services: 'Services',
+        hideApp: 'Hide Markpad',
+        quit: 'Quit Markpad',
+        undo: 'Undo',
+        redo: 'Redo',
+        format: 'Format',
+        tableOfContents: 'Table of Contents',
+        previewNarrower: 'Narrower Preview',
+        previewWider: 'Wider Preview',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Move Tab to Next Window',
         file: 'File',
         edit: 'Edit',
         view: 'View',

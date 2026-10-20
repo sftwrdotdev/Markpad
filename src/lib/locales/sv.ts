@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabell: rad över · Annars: tom rad över'
     },
     menu: {
+        about: 'Om Markpad',
+        services: 'Tjänster',
+        hideApp: 'Göm Markpad',
+        quit: 'Avsluta Markpad',
+        undo: 'Ångra',
+        redo: 'Gör om',
+        format: 'Format',
+        tableOfContents: 'Innehållsförteckning',
+        previewNarrower: 'Smalare förhandsvisning',
+        previewWider: 'Bredare förhandsvisning',
+        zoomWindow: 'Zooma',
+        moveToNextWindow: 'Flytta flik till nästa fönster',
         file: 'Arkiv',
         edit: 'Redigera',
         view: 'Visa',

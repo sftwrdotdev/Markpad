@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Taulukko: rivi ylle · Muualla: tyhjä rivi ylle'
     },
     menu: {
+        about: 'Tietoja Markpadista',
+        services: 'Palvelut',
+        hideApp: 'Kätke Markpad',
+        quit: 'Lopeta Markpad',
+        undo: 'Kumoa',
+        redo: 'Tee uudelleen',
+        format: 'Muoto',
+        tableOfContents: 'Sisällysluettelo',
+        previewNarrower: 'Kapeampi esikatselu',
+        previewWider: 'Leveämpi esikatselu',
+        zoomWindow: 'Zoomaa',
+        moveToNextWindow: 'Siirrä välilehti seuraavaan ikkunaan',
         file: 'Tiedosto',
         edit: 'Muokkaa',
         view: 'Näytä',

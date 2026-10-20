@@ -123,6 +123,18 @@ export default {
         modShiftEnter: '표: 위에 행 추가 · 그 외: 위에 빈 줄'
     },
     menu: {
+        about: 'Markpad에 관하여',
+        services: '서비스',
+        hideApp: 'Markpad 가리기',
+        quit: 'Markpad 종료',
+        undo: '실행 취소',
+        redo: '실행 복귀',
+        format: '포맷',
+        tableOfContents: '목차',
+        previewNarrower: '미리보기 좁게',
+        previewWider: '미리보기 넓게',
+        zoomWindow: '확대/축소',
+        moveToNextWindow: '탭을 다음 윈도우로 이동',
         file: '파일',
         edit: '편집',
         view: '보기',
