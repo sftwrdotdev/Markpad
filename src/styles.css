@@ -196,8 +196,8 @@ body {
 
 /* Floating Scrollbar */
 ::-webkit-scrollbar {
-	width: 12px;
-	height: 12px;
+	width: 14px;
+	height: 14px;
 }
 
 ::-webkit-scrollbar-corner {
@@ -208,7 +208,7 @@ body {
 	background: transparent;
 }
 
-/* 6px at rest, 10px under the pointer, like the system overlay scrollbars.
+/* 8px at rest, 12px under the pointer, between the Windows and macOS thumbs.
    Keep in step with the Monaco scrollbar in Editor.svelte. */
 ::-webkit-scrollbar-thumb {
 	background-color: rgba(120, 120, 120, 0.35);

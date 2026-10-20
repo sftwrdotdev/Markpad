@@ -477,6 +477,9 @@
 			// they stay as visible as they ever were. Only the dialog goes.
 			unusualLineTerminators: "off",
 			padding: { top: 20 },
+			// The overview ruler sits under the vertical scrollbar, and its
+			// border drew a 1px line down the track's left edge.
+			overviewRulerBorder: false,
 			scrollbar: {
 				vertical: "visible",
 				horizontal: "visible",
@@ -484,10 +487,10 @@
 				verticalHasArrows: false,
 				horizontalHasArrows: false,
 				// Same track and thumb as the preview's ::-webkit-scrollbar in styles.css.
-				verticalScrollbarSize: 12,
-				horizontalScrollbarSize: 12,
-				verticalSliderSize: 6,
-				horizontalSliderSize: 6,
+				verticalScrollbarSize: 14,
+				horizontalScrollbarSize: 14,
+				verticalSliderSize: 8,
+				horizontalSliderSize: 8,
 			},
 		});
 
@@ -2802,13 +2805,13 @@
 
 	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider:hover),
 	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider.active) {
-		width: 10px !important;
+		width: 12px !important;
 		left: 1px !important;
 	}
 
 	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider:hover),
 	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider.active) {
-		height: 10px !important;
+		height: 12px !important;
 		top: 1px !important;
 	}
 
