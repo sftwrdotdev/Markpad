@@ -49,7 +49,7 @@ function handleInvoke(command: string, args: Record<string, any>): unknown {
 	transformCallback: (fn: unknown) => fn,
 };
 
-const { FolderManager, LAST_FOLDER_KEY, folderName, isInside, snapshotFolder } = await import('../src/lib/stores/folder.svelte.js');
+const { FolderManager, folderName, isInside, snapshotFolder } = await import('../src/lib/stores/folder.svelte.js');
 
 function freshDisk() {
 	disk = {};
@@ -67,8 +67,6 @@ test('opening a folder reads and watches only its top level', async () => {
 	assert.deepEqual(Object.keys(folder.entries), ['/notes']);
 	assert.deepEqual([...watched], ['/notes']);
 	assert.equal(folder.rootName, 'notes');
-	// Each window keeps its folder in its own snapshot, not in shared storage.
-	assert.equal(localStorage.getItem(LAST_FOLDER_KEY), null);
 });
 
 test('collapsing a folder stops watching it and everything expanded under it', async () => {
@@ -139,27 +137,6 @@ test('each window reopens the folder its own snapshot names', async () => {
 	assert.equal(first.root, '/notes');
 	assert.equal(second.root, null);
 	assert.equal(snapshotFolder('not json'), null);
-});
-
-test('the install-wide folder of older builds goes to the first window, once', async () => {
-	freshDisk();
-	localStorage.setItem(LAST_FOLDER_KEY, '/notes');
-	const launch = new FolderManager();
-	await launch.restore(null);
-	assert.equal(launch.root, '/notes');
-	assert.equal(localStorage.getItem(LAST_FOLDER_KEY), null);
-	const later = new FolderManager();
-	await later.restore(null);
-	assert.equal(later.root, null);
-});
-
-test('a window’s own folder wins over the migrated one, which is still removed', async () => {
-	freshDisk();
-	localStorage.setItem(LAST_FOLDER_KEY, '/notes/drafts');
-	const folder = new FolderManager();
-	await folder.restore('/notes');
-	assert.equal(folder.root, '/notes');
-	assert.equal(localStorage.getItem(LAST_FOLDER_KEY), null);
 });
 
 test('path helpers work on both separators', () => {

@@ -1,7 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { writeStoredSetting } from './settings.svelte.js';
 
 /** One child of a folder, as `read_folder_entries` lists it. */
 export interface FolderEntry {
@@ -9,10 +8,6 @@ export interface FolderEntry {
 	path: string;
 	isDir: boolean;
 }
-
-/** Where builds that kept one folder for the whole install saved it. Each
- * window keeps its folder in its restore snapshot now; this is read once. */
-export const LAST_FOLDER_KEY = 'folder.lastRoot';
 
 /** The folder a window's restore snapshot names, if any. */
 export function snapshotFolder(json: string): string | null {
@@ -62,22 +57,10 @@ export class FolderManager {
 		await invoke('unwatch_all_folders').catch(console.error);
 	}
 
-	/**
-	 * Reopens this window's folder from its snapshot, if it is still there.
-	 * The install-wide folder of older builds goes to the first window to
-	 * start, the launch window, which removes it before any other window exists.
-	 */
+	/** Reopens this window's folder from its snapshot, if it is still there. */
 	async restore(saved: string | null) {
-		let legacy: string | null = null;
-		try {
-			legacy = localStorage.getItem(LAST_FOLDER_KEY);
-			writeStoredSetting(LAST_FOLDER_KEY, null);
-		} catch {
-			// Storage unavailable: there is nothing to migrate.
-		}
-		const path = saved ?? legacy;
-		if (!path) return;
-		await this.open(path);
+		if (!saved) return;
+		await this.open(saved);
 		// A folder deleted or unmounted since: drop it rather than show an error on launch.
 		if (this.error) await this.close();
 	}
