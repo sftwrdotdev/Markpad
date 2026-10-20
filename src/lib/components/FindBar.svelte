@@ -6,6 +6,7 @@
 	import { collapsedFoldsAround } from '../utils/foldState.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { jumpScrollBehavior } from '../utils/motion.js';
+	import { findMatches, markMatches } from '../utils/findText.js';
 
 	// Stepping between matches is a jump, so it answers the same preference the
 	// table of contents and back/forward do.
@@ -67,8 +68,9 @@
 
 	function isHostElement(el: Element | null): boolean {
 		if (!el) return false;
-		// Skip elements whose text is not user-visible (script/style/noscript)
-		// and our own find marks (to avoid re-walking already-highlighted text).
+		// Skip elements whose text is not user-visible (script/style/noscript,
+		// KaTeX's hidden MathML copy of each formula) and our own find marks
+		// (to avoid re-walking already-highlighted text).
 		// CODE and PRE intentionally NOT skipped: code blocks contain real
 		// content the user expects to be searchable, even when highlight.js
 		// has wrapped tokens in nested <span>s.
@@ -77,6 +79,7 @@
 			tag === 'SCRIPT' ||
 			tag === 'STYLE' ||
 			tag === 'NOSCRIPT' ||
+			el.classList.contains('katex-mathml') ||
 			el.classList.contains(FIND_MARK_CLASS)
 		);
 	}
@@ -131,31 +134,6 @@
 		}
 	}
 
-	function findInTextNode(text: string, needle: string): number[] {
-		// returns array of start indices for non-overlapping matches
-		const indices: number[] = [];
-		if (!needle) return indices;
-		const haystack = caseSensitive ? text : text.toLowerCase();
-		const search = caseSensitive ? needle : needle.toLowerCase();
-		let from = 0;
-		while (from <= haystack.length - search.length) {
-			const i = haystack.indexOf(search, from);
-			if (i === -1) break;
-			if (wholeWord) {
-				const before = i === 0 ? '' : haystack.charAt(i - 1);
-				const after = haystack.charAt(i + search.length);
-				const isBoundary = (c: string) => c === '' || !/[\p{L}\p{N}_]/u.test(c);
-				if (!isBoundary(before) || !isBoundary(after)) {
-					from = i + 1;
-					continue;
-				}
-			}
-			indices.push(i);
-			from = i + search.length;
-		}
-		return indices;
-	}
-
 	function applyHighlights() {
 		if (!contentRoot) {
 			matchCount = 0;
@@ -172,56 +150,15 @@
 		}
 
 		const root = contentRoot;
-		const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-			acceptNode(node: Node) {
-				const text = (node as Text).nodeValue;
-				if (!text) return NodeFilter.FILTER_REJECT;
-				if (isInsideHost(node, root)) return NodeFilter.FILTER_REJECT;
-				return NodeFilter.FILTER_ACCEPT;
-			},
-		});
-
-		let total = 0;
-		let hitCap = false;
-
-		// Walk and process in a single pass. We advance the walker BEFORE
-		// mutating each text node so its internal currentNode never points
-		// at a detached node — replaceChild on the previous text node would
-		// otherwise leave the walker in an undefined state.
-		let textNode = walker.nextNode() as Text | null;
-		while (textNode) {
-			const next = walker.nextNode() as Text | null;
-
-			const text = textNode.nodeValue || '';
-			const indices = findInTextNode(text, query);
-			if (indices.length > 0) {
-				const parent = textNode.parentNode;
-				if (parent) {
-					const doc = textNode.ownerDocument || document;
-					const frag = doc.createDocumentFragment();
-					let cursor = 0;
-					let breakOut = false;
-					for (const i of indices) {
-						if (total >= MAX_MATCHES) {
-							hitCap = true;
-							breakOut = true;
-							break;
-						}
-						if (i > cursor) frag.appendChild(doc.createTextNode(text.slice(cursor, i)));
-						const mark = doc.createElement('mark');
-						mark.className = FIND_MARK_CLASS;
-						mark.textContent = text.slice(i, i + query.length);
-						frag.appendChild(mark);
-						cursor = i + query.length;
-						total++;
-					}
-					if (cursor < text.length) frag.appendChild(doc.createTextNode(text.slice(cursor)));
-					parent.replaceChild(frag, textNode);
-					if (breakOut) break;
-				}
-			}
-			textNode = next;
-		}
+		const { matches, truncated: hitCap } = findMatches(
+			root,
+			query,
+			{ caseSensitive, wholeWord },
+			(node) => isInsideHost(node, root),
+			MAX_MATCHES,
+		);
+		markMatches(matches, FIND_MARK_CLASS);
+		const total = matches.length;
 
 		matchCount = total;
 		truncated = hitCap;
@@ -233,25 +170,33 @@
 		}
 	}
 
-	function getMarks(): HTMLElement[] {
+	/** The marks of each match, in order: one per text node the match covers. */
+	function getMatches(): HTMLElement[][] {
 		const root = contentRoot as HTMLElement | null;
 		if (!root) return [];
-		return Array.from(
-			root.querySelectorAll(`mark.${FIND_MARK_CLASS}`),
-		) as HTMLElement[];
+		const groups = new Map<string, HTMLElement[]>();
+		for (const mark of root.querySelectorAll<HTMLElement>(`mark.${FIND_MARK_CLASS}`)) {
+			const key = mark.dataset.findMatch ?? '';
+			const group = groups.get(key);
+			if (group) group.push(mark);
+			else groups.set(key, [mark]);
+		}
+		return [...groups.values()];
 	}
 
 	function setActive(index: number, scroll: boolean = true) {
-		const marks = getMarks();
-		if (marks.length === 0) {
+		const matches = getMatches();
+		if (matches.length === 0) {
 			activeIndex = -1;
 			return;
 		}
-		const safe = ((index % marks.length) + marks.length) % marks.length;
-		marks.forEach((m, i) => m.classList.toggle(FIND_MARK_ACTIVE_CLASS, i === safe));
+		const safe = ((index % matches.length) + matches.length) % matches.length;
+		matches.forEach((marks, i) => {
+			for (const m of marks) m.classList.toggle(FIND_MARK_ACTIVE_CLASS, i === safe);
+		});
 		activeIndex = safe;
 		if (scroll) {
-			const target = marks[safe];
+			const target = matches[safe][0];
 			const revealed = revealFoldsAround(target);
 			target.scrollIntoView({ block: 'center', behavior: jumpBehavior });
 			if (revealed) {
