@@ -454,7 +454,7 @@
 			// Still needed after cut/copy/paste were collapsed onto three functions
 			// of our own, which is easy to get wrong: those cover ⌘C and the context
 			// menu, and macOS has a third way in. Edit > Copy in the menu bar is a
-			// `PredefinedMenuItem::copy` (#527), which asks the webview to perform
+			// predefined Copy item (#527), which asks the webview to perform
 			// its own copy — Monaco's, not ours. Without this the menu bar would put
 			// a different clipboard on the pasteboard than the other two routes.
 			copyWithSyntaxHighlighting: false,

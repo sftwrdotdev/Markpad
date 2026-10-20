@@ -11,14 +11,14 @@ function showWindowSource(): string {
 	return match[0];
 }
 
-test('the main window is shown without being activated on a cold start', () => {
+test('the launch window is shown without being activated on a cold start', () => {
 	const showWindow = showWindowSource();
 
 	// The defect (#702): the window is built hidden and revealed once the
 	// frontend mounts, seconds after launch, and the reveal called `set_focus`
 	// unconditionally — pulling the user out of whatever they had switched to.
 	// The label and the one-shot flag together are what make it the FIRST show
-	// of the MAIN window that stays quiet.
+	// of the LAUNCH window that stays quiet.
 	assert.match(showWindow, /window\.label\(\)\s*==\s*LAUNCH_LABEL/);
 	assert.match(showWindow, /MAIN_WINDOW_SHOWN\.swap\(true,/);
 

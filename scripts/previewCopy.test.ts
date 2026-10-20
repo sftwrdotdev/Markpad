@@ -4,7 +4,7 @@ import test from 'node:test';
 import { filesMatching, functionSource, readSource, readSourceFiles, sliceBetween } from './sourceTree.js';
 
 // #549 put both DOM-selection copy routes — ⌘C in the preview, and Edit ▸ Copy
-// in the menu bar, which is a `PredefinedMenuItem::copy` asking the webview to
+// in the menu bar, which is a predefined Copy item asking the webview to
 // perform its own copy — on one handler that writes the clipboard itself.
 //
 // The reason it cancels the native copy has not changed. WebKit's own copy

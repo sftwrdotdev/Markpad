@@ -727,9 +727,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
 		serializeState: () => {
 			// Same reason as `transferPayload` below, at a different moment: this
-			// runs on window close with the editor still mounted, so the tab being
-			// edited would be persisted at the position it held when the editor
-			// last came down. Only the active tab can be the one the editor holds.
+			// runs at close and at each checkpoint with the editor still mounted,
+			// so the tab being edited would be persisted at the position it held
+			// when the editor last came down. Only the active tab can be the one
+			// the editor holds.
 			if (tabManager.activeTabId) editorPane?.flushPositionTo(tabManager.activeTabId);
 			return windowStateJson();
 		},
@@ -997,10 +998,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// to the WebKit storage process that dies in transit when the last
 	// window's close ends the process (reproduced in QA as "close secondary
 	// first, then main → snapshot gone"). An awaited invoke keeps the close
-	// handler — and the process — alive until the bytes are on disk, so one
-	// deterministic write at close replaces any keep-writing-while-running
-	// scheme. The localStorage keys are read once for migration and removed
-	// after the first successful Rust write; a downgraded build then starts
+	// handler — and the process — alive until the bytes are on disk. The
+	// localStorage keys are read once for migration and removed after the
+	// first successful Rust write; a downgraded build then starts
 	// a fresh session instead of misreading anything.
 	//
 	// `remember` false: this window closed on its own while others stay, so it

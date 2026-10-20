@@ -608,16 +608,16 @@ fn remembered_window_labels_in(config: &Path) -> Vec<String> {
 
 /// Persists the calling window's restore snapshot atomically.
 ///
-/// This runs while the last window is closing — the moment the WebKit storage
-/// process is already tearing down — so a partial write is a realistic
-/// outcome, not a theoretical one. `fs::write` truncates first and then
-/// streams, so a crash mid-write leaves behind half a JSON document, and the
-/// next launch restores no tabs at all. `atomic_write` publishes the new
+/// This runs as the window changes and while it closes, when the WebKit
+/// storage process may already be tearing down, so a partial write is a
+/// realistic outcome, not a theoretical one. `fs::write` truncates first and
+/// then streams, so a crash mid-write leaves behind half a JSON document, and
+/// the next launch restores no tabs at all. `atomic_write` publishes the new
 /// snapshot with a rename: the file on disk is either entirely the old
 /// session or entirely the new one.
 ///
-/// Off the main thread: the two fsyncs cost ~8 ms, and closing main freezes
-/// every other window for that long. The caller still awaits the write.
+/// Off the main thread: the two fsyncs cost ~8 ms, and on it every window
+/// freezes for that long. The caller still awaits the write.
 #[tauri::command]
 pub async fn save_window_state(
     window: tauri::Window,
