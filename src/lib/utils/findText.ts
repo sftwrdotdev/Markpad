@@ -49,18 +49,40 @@ export function findInText(text: string, needle: string, options: FindOptions): 
 	return indices;
 }
 
-function blockOf(node: Node, root: Element): Element {
-	for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+function blockOf(parent: Element | null, root: Element): Element {
+	for (let el = parent; el && el !== root; el = el.parentElement) {
 		if (BLOCK_TAGS.has(el.tagName)) return el;
 	}
 	return root;
 }
 
-/** What one text node put into a run: from `start`, a character per entry of `offsets`. */
+const WHITESPACE = /\s+/g;
+
+/** What one text node put into a run: `length` characters from `start`. */
 interface Segment {
 	node: Text;
 	start: number;
-	offsets: Uint32Array;
+	length: number;
+	literal: boolean;
+	/** The node's leading whitespace was dropped, the line already ending in a space. */
+	dropLead: boolean;
+	/** Where each drawn character sits in the node. Worked out only for a node a match reaches. */
+	offsets?: Uint32Array;
+}
+
+function offsetsOf(segment: Segment): Uint32Array {
+	if (segment.offsets) return segment.offsets;
+	const value = segment.node.nodeValue ?? '';
+	const offsets = new Uint32Array(segment.length);
+	let length = 0;
+	let inGap = segment.dropLead;
+	for (let i = 0; i < value.length && length < segment.length; i++) {
+		const space = !segment.literal && /\s/.test(value[i]);
+		if (space && inGap) continue;
+		offsets[length++] = i;
+		inGap = space;
+	}
+	return (segment.offsets = offsets);
 }
 
 /** One block's text as drawn, and the text nodes it came from. */
@@ -84,6 +106,9 @@ export function findMatches(
 	const runs: Run[] = [];
 	let run: Run | null = null;
 	let runBlock: Element | null = null;
+	// Siblings share a parent, so most nodes find their block in one lookup.
+	let lastParent: Element | null = null;
+	let lastBlock: Element = root;
 
 	const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
 	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -91,7 +116,11 @@ export function findMatches(
 		if (node.nodeType !== Node.TEXT_NODE && !isBreak) continue;
 		if (node.nodeType === Node.TEXT_NODE && (!(node as Text).nodeValue || skip(node as Text))) continue;
 
-		const block = blockOf(node, root);
+		if (node.parentElement !== lastParent) {
+			lastParent = node.parentElement;
+			lastBlock = blockOf(lastParent, root);
+		}
+		const block = lastBlock;
 		if (!run || block !== runBlock) {
 			run = { text: '', segments: [] };
 			runs.push(run);
@@ -108,22 +137,14 @@ export function findMatches(
 
 		const text = node as Text;
 		const value = text.nodeValue ?? '';
-		const literal = !!text.parentElement?.closest('pre');
-		const offsets = new Uint32Array(value.length);
-		let drawn = '';
-		let last = run.text.charAt(run.text.length - 1);
-		for (let i = 0; i < value.length; i++) {
-			let char = value[i];
-			if (!literal && /\s/.test(char)) {
-				if (last === '' || last === ' ' || last === '\n') continue;
-				char = ' ';
-			}
-			offsets[drawn.length] = i;
-			drawn += char;
-			last = char;
-		}
+		// `<pre>` is a block, so text inside one has it as its block.
+		const literal = block.tagName === 'PRE';
+		let drawn = literal ? value : value.replace(WHITESPACE, ' ');
+		const tail = run.text.charAt(run.text.length - 1);
+		const dropLead = !literal && drawn.startsWith(' ') && (tail === '' || tail === ' ' || tail === '\n');
+		if (dropLead) drawn = drawn.slice(1);
 		if (drawn) {
-			run.segments.push({ node: text, start: run.text.length, offsets: offsets.subarray(0, drawn.length) });
+			run.segments.push({ node: text, start: run.text.length, length: drawn.length, literal, dropLead });
 			run.text += drawn;
 		}
 	}
@@ -135,13 +156,14 @@ export function findMatches(
 		for (const start of findInText(text, query, options)) {
 			if (matches.length >= limit) return { matches, truncated: true };
 			const end = start + query.length;
-			while (first < segments.length && segments[first].start + segments[first].offsets.length <= start) first++;
+			while (first < segments.length && segments[first].start + segments[first].length <= start) first++;
 			const pieces: MatchPiece[] = [];
 			for (let i = first; i < segments.length && segments[i].start < end; i++) {
-				const { node, start: at, offsets } = segments[i];
-				const from = Math.max(start, at) - at;
-				const to = Math.min(end, at + offsets.length) - at;
-				pieces.push({ node, start: offsets[from], end: offsets[to - 1] + 1 });
+				const segment = segments[i];
+				const offsets = offsetsOf(segment);
+				const from = Math.max(start, segment.start) - segment.start;
+				const to = Math.min(end, segment.start + segment.length) - segment.start;
+				pieces.push({ node: segment.node, start: offsets[from], end: offsets[to - 1] + 1 });
 			}
 			if (pieces.length > 0) matches.push(pieces);
 		}
