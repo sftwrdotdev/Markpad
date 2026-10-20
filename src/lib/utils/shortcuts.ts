@@ -205,6 +205,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+Shift+R'],
 		group: 'file',
 		editorAction: true,
+		documentCommands: ['reveal-file'],
 	},
 	{
 		id: 'app-exit',

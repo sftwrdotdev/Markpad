@@ -3535,6 +3535,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return toggleHome();
 			case 'export-pdf':
 				return void exportAsPdf();
+			case 'reveal-file':
+				return void openFileLocation();
 			case 'find':
 				return triggerFindAction();
 		}
