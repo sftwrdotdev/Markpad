@@ -6,7 +6,7 @@ import { callbackBodies, filesMatching, readSource, readSourceFiles, sliceBetwee
 const runtime = readSource('src-tauri/src/window_runtime.rs');
 const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-test('Live Mode routes a watcher notification to its watched path', () => {
+test('a watcher notification is routed to its watched path', () => {
 	assert.match(runtime, /emit_to\(event_label\.as_str\(\), "file-changed", watched_path\.clone\(\)\)/);
 	// `async` because deciding what an event means now reads the file: the
 	// answer to "did somebody else write this" is the file itself, not a clock.

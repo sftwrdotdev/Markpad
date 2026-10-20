@@ -4,12 +4,12 @@ import { test } from 'vitest';
 
 import { readSource, sliceBetween } from './sourceTree.js';
 
-// Live Mode watches the open file and reloads it when something else writes
-// it — git checkout, a cloud sync, a second Markpad window. The reload path
+// Live Mode reloads the open file when something else writes it — git
+// checkout, a cloud sync, a second Markpad window. The reload path
 // replaces rawContent AND originalContent, so a buffer with unsaved edits is
 // not just overwritten, it stops looking dirty afterwards: the user cannot
 // even tell what they lost. Turning Live Mode ON must likewise never pull
-// disk content over the buffer; it only installs the watcher.
+// disk content over the buffer.
 //
 // Whether an event is somebody else's write used to be guessed from the clock:
 // each of our own writes opened a 400ms window in which events for that path
@@ -236,8 +236,8 @@ test('a foreign write moments after our own is still reported', async () => {
 // --- the guard that does not depend on the watcher ---
 
 test('a save is refused when the disk moved under it', async () => {
-	// Live Mode is off by default and its events can be missed, so this is the
-	// check every editor that does not lose work has: VS Code refuses the save
+	// The watcher's events can be missed, so this is the check every editor
+	// that does not lose work has: VS Code refuses the save
 	// ("The content of the file is newer"), Vim re-stats before each write, and
 	// Vim has no watcher at all.
 	reset();
@@ -364,8 +364,8 @@ test('an explicit save answers the conflict and takes the bar down', () => {
 	assert.match(body, /clearExternalChangeConflict/);
 });
 
-test('turning Live Mode on installs the watcher without reloading', () => {
-	// Enabling a watcher is not a request to discard the buffer, and this was
+test('turning Live Mode on does not reload', () => {
+	// Enabling reload is not a request to discard the buffer, and this was
 	// the one loadMarkdown call in the app with no canCloseTab in front of it.
 	const body = sliceBetween(viewer, 'function toggleLiveMode', '\n\t}');
 	assert.doesNotMatch(body, /loadMarkdown/);

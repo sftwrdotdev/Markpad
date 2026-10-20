@@ -1120,14 +1120,14 @@ fn build_viewer_window(app: &AppHandle, label: &str) -> Result<(), String> {
 /// VS Code, Vim, JetBrains and Emacs — saves by writing a temp file alongside
 /// and renaming it over the top. That leaves a new inode at the same path, so
 /// the watch was left holding the unlinked old one: after the first save, its
-/// own or anyone else's, Live Mode on Linux reported nothing for the rest of
+/// own or anyone else's, the watcher on Linux reported nothing for the rest of
 /// the session, and the callback swallowed the error that said so.
 /// `watch_survives_rename` below is that failure, pinned per platform.
 ///
 /// A directory watch has no such problem, because the directory is the thing
 /// whose entries changed. The cost is hearing about every sibling file, which
 /// `event_concerns` drops on a name comparison — cheaper than the emit it
-/// replaces, and paid only while Live Mode is on.
+/// replaces.
 ///
 /// Falls back to the target itself when there is no usable parent (a bare
 /// relative filename, or a filesystem root), which keeps the previous
@@ -2274,8 +2274,8 @@ mod tests {
 /// it is what one Markpad save does to its own watch, and what most editors do
 /// to it (VS Code, Vim, JetBrains, Emacs all rename on save).
 ///
-/// If this fails on a platform, Live Mode there stops reporting anything after
-/// the first save, silently and for the rest of the session.
+/// If this fails on a platform, the watcher there stops reporting anything
+/// after the first save, silently and for the rest of the session.
 #[cfg(test)]
 mod watch_targeting {
     use super::{event_concerns, watch_root};

@@ -708,11 +708,11 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// the previous write drained is part of what this save is for.
 			const snapshot = tab.rawContent;
 			// The second line of defence, and the only one that does not rest on
-			// the watcher. Live Mode is off by default, its events can be
-			// dropped, and until recently a watch armed on a file did not
-			// survive that file being renamed over — which is how `atomic_write`
-			// and most other editors save. None of that reaches this check,
-			// because it asks the file itself at the moment of writing.
+			// the watcher. Its events can be dropped, and until recently a
+			// watch armed on a file did not survive that file being renamed
+			// over — which is how `atomic_write` and most other editors save.
+			// None of that reaches this check, because it asks the file itself
+			// at the moment of writing.
 			//
 			// Every editor with a claim to not losing work has one. VS Code
 			// refuses the save ("The content of the file is newer"), Vim

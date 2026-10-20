@@ -5257,8 +5257,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	/*
 	 * `.layout-container` is absolutely positioned from top: 0, so a bar in
-	 * normal flow would end up underneath it. Pinned just below the 36px
-	 * title bar instead, the way editors surface file-changed-on-disk notices.
+	 * normal flow would end up underneath it. Pinned below the 36px title bar
+	 * and the pane's top chrome (`style:top`), the way editors surface
+	 * file-changed-on-disk notices.
 	 * Absolute inside `.content-area`, so it spans the document beside a tab column.
 	 */
 	.external-change-bar {
