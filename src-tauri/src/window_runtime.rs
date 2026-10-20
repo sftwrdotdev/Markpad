@@ -991,6 +991,7 @@ pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
 /// A file macOS opened. Until the launch window has taken the launch's files it
 /// joins them, so it lands there and in no other window; after that it goes
 /// where `pick_delivery_window` says.
+#[cfg(target_os = "macos")]
 pub fn deliver_opened_path(app: &AppHandle, path: String) {
     let state = app.state::<AppState>();
     let target = {
