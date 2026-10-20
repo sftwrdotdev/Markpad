@@ -1,10 +1,5 @@
-import {
-	Menu,
-	Submenu,
-	type CheckMenuItemOptions,
-	type MenuItemOptions,
-	type PredefinedMenuItemOptions,
-} from '@tauri-apps/api/menu';
+import type { Resource } from '@tauri-apps/api/core';
+import { CheckMenuItem, Menu, MenuItem, Submenu, type PredefinedMenuItemOptions } from '@tauri-apps/api/menu';
 
 import { t, type LanguageCode } from './i18n.js';
 import { SHORTCUTS } from './shortcuts.js';
@@ -242,36 +237,54 @@ export function buildMenuModel(state: MenuState): MenuNode[] {
 	];
 }
 
-type NativeItem = MenuItemOptions | CheckMenuItemOptions | PredefinedMenuItemOptions | { text: string; items: NativeItem[] } | Submenu;
+type NativeItem = PredefinedMenuItemOptions | { text: string; items: NativeItem[] } | MenuItem | CheckMenuItem | Submenu;
 
-function toNative(node: MenuNode, run: (action: MenuAction) => void, windowsMenus: Submenu[]): Promise<NativeItem> | NativeItem {
+/*
+ * Every clickable item is created on its own (`MenuItem.new`) and held here
+ * until the next install. Tauri keeps an item's click channel only while its
+ * Rust wrapper lives (`tauri/src/menu/mod.rs:98` drops the channel with it),
+ * and an item written inline into `Menu.new({ items })` has no owner once the
+ * menu is built (`menu/menu.rs:264` hands AppKit only the native item), so its
+ * clicks went nowhere.
+ */
+type Built = { owned: Resource[]; windowsMenu?: Submenu };
+
+async function toNative(node: MenuNode, run: (action: MenuAction) => void, built: Built): Promise<NativeItem> {
 	switch (node.kind) {
 		case 'separator':
 			return { item: 'Separator' };
 		case 'predefined':
 			return { item: node.item, text: node.text };
-		case 'item':
-			return { text: node.text, accelerator: node.accelerator, enabled: node.enabled ?? true, action: () => run(node.action) };
-		case 'check':
-			return { text: node.text, accelerator: node.accelerator, checked: node.checked, action: () => run(node.action) };
-		case 'submenu':
-			return Promise.all(node.items.map((child) => toNative(child, run, windowsMenus))).then(async (items) => {
-				if (!node.windowsMenu) return { text: node.text, items };
-				const submenu = await Submenu.new({ text: node.text, items: items as never });
-				windowsMenus.push(submenu);
-				return submenu;
-			});
+		case 'item': {
+			const item = await MenuItem.new({ text: node.text, accelerator: node.accelerator, enabled: node.enabled ?? true, action: () => run(node.action) });
+			built.owned.push(item);
+			return item;
+		}
+		case 'check': {
+			const item = await CheckMenuItem.new({ text: node.text, accelerator: node.accelerator, checked: node.checked, action: () => run(node.action) });
+			built.owned.push(item);
+			return item;
+		}
+		case 'submenu': {
+			const items = await Promise.all(node.items.map((child) => toNative(child, run, built)));
+			const submenu = await Submenu.new({ text: node.text, items: items as never });
+			built.owned.push(submenu);
+			if (node.windowsMenu) built.windowsMenu = submenu;
+			return submenu;
+		}
 	}
 }
 
 let generation = 0;
-let installed: Menu | null = null;
+let installed: Resource[] = [];
 let queue: Promise<void> = Promise.resolve();
+
+const closeAll = (resources: Resource[]) => Promise.all(resources.map((resource) => resource.close()));
 
 /**
  * Build `model` and make it the app menu, unless a newer call came in behind
  * it or `stillWanted` says the window lost focus meanwhile. Installs run one
- * at a time, so `installed` is always the menu this window last set.
+ * at a time, so `installed` is always what this window last set.
  *
  * Ids are left to Tauri on purpose: its click channels are keyed by item id
  * app-wide and dropped when an item is, so fixed ids would let one window's
@@ -281,19 +294,17 @@ export function installAppMenu(model: MenuNode[], run: (action: MenuAction) => v
 	const mine = ++generation;
 	queue = queue.then(async () => {
 		if (mine !== generation) return;
-		const windowsMenus: Submenu[] = [];
-		const items = await Promise.all(model.map((node) => toNative(node, run, windowsMenus)));
+		const built: Built = { owned: [] };
+		const items = await Promise.all(model.map((node) => toNative(node, run, built)));
 		const menu = await Menu.new({ items: items as never });
-		// Building takes a round trip, in which another window may have taken focus.
-		if (mine !== generation || !stillWanted()) {
-			await Promise.all([menu, ...windowsMenus].map((resource) => resource.close()));
-			return;
-		}
+		built.owned.push(menu);
+		// Building takes round trips, in which another window may have taken focus.
+		if (mine !== generation || !stillWanted()) return void (await closeAll(built.owned));
 		const previous = await menu.setAsAppMenu();
-		await Promise.all(windowsMenus.map((submenu) => submenu.setAsWindowsMenuForNSApp().then(() => submenu.close())));
+		await built.windowsMenu?.setAsWindowsMenuForNSApp();
 		await previous?.close();
-		await installed?.close();
-		installed = menu;
+		await closeAll(installed);
+		installed = built.owned;
 	}).catch(console.error);
 	return queue;
 }
