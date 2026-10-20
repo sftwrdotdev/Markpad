@@ -138,7 +138,7 @@ test('startup restore reads content from disk, not from the snapshot', () => {
 test('the close flow resolves dirty tabs before serializing window state', () => {
 	const body = settleForExit();
 	const walk = offsetOf(body, 'reviewDirtyTabs({');
-	const persist = offsetOf(body, 'persistWindowState()');
+	const persist = offsetOf(body, 'persistWindowState(');
 	assert.ok(walk < persist, 'dirty tabs must be resolved before the snapshot is written');
 });
 

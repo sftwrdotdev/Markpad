@@ -116,7 +116,7 @@ test('with the window kept open, closing the empty window later does not empty t
 	await w.fns.closeTabAndWindowIfLast('a');
 	await w.fns.closeTabAndWindowIfLast('b');
 	assert.equal(w.isDestroyed(), false);
-	assert.equal(await w.fns.settleForExit(), true);
+	assert.equal(await w.fns.settleForExit(async () => true), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/b.md']);
 });
 
@@ -124,16 +124,16 @@ test('the close review with restore off keeps the dirty tabs it closes in the pi
 	const tabs = twoFiles();
 	tabs[0].isDirty = true;
 	const w = pinnedWindow(tabs);
-	assert.equal(await w.fns.settleForExit(), true);
+	assert.equal(await w.fns.settleForExit(async () => true), true);
 	assert.deepEqual(w.tabs.map((tab) => tab.id), ['b'], 'the review closed the dirty tab');
 	// The handler re-triggers the close after a review, and settles again.
-	assert.equal(await w.fns.settleForExit(), true);
+	assert.equal(await w.fns.settleForExit(async () => true), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
 
 	// A window that lives on after that (an update that failed to install)
 	// saves what it has open, not the list the review started from.
 	w.tabs.push({ id: 'c', path: '/notes/c.md', isDirty: false });
-	assert.equal(await w.fns.settleForExit(), true);
+	assert.equal(await w.fns.settleForExit(async () => true), true);
 	assert.deepEqual(w.saves.at(-1), ['/notes/b.md', '/notes/c.md']);
 });
 
@@ -163,7 +163,7 @@ test('merging a pinned window into another keeps its files in the pin', async ()
 test('a pin another window removed stays removed when this window closes', async () => {
 	const w = pinnedWindow(twoFiles());
 	w.pin.exists = false;
-	assert.equal(await w.fns.settleForExit(), true);
+	assert.equal(await w.fns.settleForExit(async () => true), true);
 	assert.deepEqual(w.tabManager.windowTag, { name: 'work', color: '#f00', pinned: false }, 'the window still claims the pin');
 });
 

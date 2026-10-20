@@ -424,7 +424,7 @@ test('closing the window still reviews unsaved tabs', () => {
 	assert.doesNotMatch(exit, /askCustom/, 'quit asks nothing of its own; the close handler does the asking');
 
 	const closeHandler = sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
-	assert.match(closeHandler, /await settleForExit\(\)/, 'the close still runs the review');
+	assert.match(closeHandler, /await settleForExit\(/, 'the close still runs the review');
 	assert.match(pluck('settleForExit'), /canCloseTab,\n/, 'the walk still runs the per-tab dialog');
 });
 

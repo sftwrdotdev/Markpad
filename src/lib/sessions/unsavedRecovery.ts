@@ -47,19 +47,30 @@ function restoreRecoveryTabs(manager: RecoveryTarget, json: string) {
 	}
 }
 
-/** Restore the records of windows that are gone and return the other labels consumed.
+/** The backups a window takes in at startup: its own, and on main every record
+ * no other window will claim. `owned` names the windows that will: open now, or
+ * reopened from the last session, which may not have registered yet. A backup
+ * of a window nobody reopens (after a crash, say) lands in main. */
+export function claimableRecords(
+	records: readonly [string, string][],
+	ownLabel: string,
+	isMain: boolean,
+	owned: ReadonlySet<string>,
+): [string, string][] {
+	return records.filter(([label]) => label === ownLabel || (isMain && !owned.has(label)));
+}
+
+/** Restore the given records and return the other labels consumed.
  * A corrupt record of another window is reported and left on disk. A corrupt
  * record of this window throws: the caller must not overwrite it. */
 export function restoreRecords(
 	manager: RecoveryTarget,
 	records: readonly [string, string][],
-	live: ReadonlySet<string>,
 	ownLabel: string,
 	onError: (error: unknown) => void,
 ): string[] {
 	const consumed: string[] = [];
 	for (const [label, json] of records) {
-		if (live.has(label)) continue;
 		try {
 			restoreRecoveryTabs(manager, json);
 		} catch (error) {

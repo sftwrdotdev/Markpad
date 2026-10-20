@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-// #767. There is one snapshot slot, and startup restores it into main whoever
-// wrote it. A detached window left on its own used to skip writing it, so the
-// next launch brought back main's older tabs instead of the ones on screen.
+// Every window keeps its own snapshot, keyed by its label on the Rust side. A
+// secondary window writes its snapshot whoever else is open, and nobody else's:
+// that is what lets each window come back on relaunch, and what ended the quit
+// race where the last window to close overwrote main's single slot.
 
-let viewerWindows: Array<{ label: string }> = [];
-let saved: string | null = null;
+let calls: Array<{ cmd: string; args: any }> = [];
 
 (window as any).__TAURI_INTERNALS__ = {
 	metadata: {
@@ -15,28 +15,18 @@ let saved: string | null = null;
 		currentWebview: { windowLabel: 'window-abc', label: 'window-abc' },
 	},
 	invoke: (cmd: string, args: any) => {
-		switch (cmd) {
-			case 'get_os_type':
-				return Promise.resolve('macos');
-			case 'list_viewer_windows':
-				return Promise.resolve(viewerWindows);
-			case 'save_window_state':
-				saved = args.json;
-				return Promise.resolve(null);
-			default:
-				return Promise.resolve(null);
-		}
+		calls.push({ cmd, args });
+		return Promise.resolve(cmd === 'get_os_type' ? 'macos' : null);
 	},
 };
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createWindowSession } = await import('../src/lib/sessions/windowSession.svelte.js');
 
-async function persistFromDetachedWindow(open: string[]) {
+async function persistFromDetachedWindow(remember: boolean) {
 	tabManager.closeAll();
 	tabManager.addTab('/notes/a.md', '# a');
-	viewerWindows = open.map((label) => ({ label }));
-	saved = null;
+	calls = [];
 	await createWindowSession({
 		isMainWindow: false,
 		windowStateKey: 'savedTabsDataV2',
@@ -57,23 +47,22 @@ async function persistFromDetachedWindow(open: string[]) {
 		onError: () => {},
 		onWarning: () => {},
 		onInterrupted: () => {},
-	}).persistState();
+	}).persistState(remember);
 }
 
-test('the last window left writes the session, though it is not main', async () => {
-	await persistFromDetachedWindow(['window-abc']);
+test('a detached window writes its own snapshot without asking who else is open', async () => {
+	await persistFromDetachedWindow(true);
+	const saves = calls.filter((call) => call.cmd === 'save_window_state');
+	assert.equal(saves.length, 1);
 	assert.deepEqual(
-		JSON.parse(saved ?? '{"tabs":[]}').tabs.map((tab: { path: string }) => tab.path),
+		JSON.parse(saves[0].args.json).tabs.map((tab: { path: string }) => tab.path),
 		['/notes/a.md'],
 	);
+	assert.ok(!calls.some((call) => call.cmd === 'forget_window_state'));
 });
 
-test('while another window is open, a detached window leaves the session alone', async () => {
-	await persistFromDetachedWindow(['main', 'window-abc']);
-	assert.equal(saved, null);
-});
-
-test('a registry that has not heard from this window yet does not make it the last one', async () => {
-	await persistFromDetachedWindow(['main']);
-	assert.equal(saved, null);
+test('a window closed on its own is forgotten, not saved', async () => {
+	await persistFromDetachedWindow(false);
+	assert.ok(calls.some((call) => call.cmd === 'forget_window_state'));
+	assert.ok(!calls.some((call) => call.cmd === 'save_window_state'));
 });

@@ -550,7 +550,7 @@ test('a deferred document is released once Markpad has read it', async () => {
 	const deferredTab = tabManager.tabs.find((tab) => tab.path === '/big.md')!;
 	tabManager.setTabRawContent(deferredTab.id, '# big');
 
-	await session.persistState();
+	await session.persistState(true);
 
 	assert.equal(breadcrumb(), null, 'the deferral is not permanent');
 });

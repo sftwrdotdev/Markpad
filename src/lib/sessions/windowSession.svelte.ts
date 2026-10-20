@@ -108,12 +108,13 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 * `restoreInProgressKey` stays as a read-once migration path: a breadcrumb
 	 * an older build left behind is still honoured, and dropped as soon as a
 	 * Rust write succeeds. The Rust file wins when both exist, so a downgrade
-	 * and re-upgrade cannot resurrect a stale localStorage record.
+	 * and re-upgrade cannot resurrect a stale localStorage record. Only main
+	 * reads it: localStorage is shared by every window, and the record is main's.
 	 */
 	async function readProgress(): Promise<RestoreProgress | null> {
 		const raw =
 			((await invoke('load_restore_progress').catch(() => null)) as string | null) ??
-			localStorage.getItem(options.restoreInProgressKey);
+			(options.isMainWindow ? localStorage.getItem(options.restoreInProgressKey) : null);
 		if (!raw) return null;
 		try {
 			const data = JSON.parse(raw) as Partial<RestoreProgress> | null;
@@ -174,19 +175,19 @@ export function createWindowSession(options: WindowSessionOptions) {
 	}
 
 	/**
-	 * Main writes the snapshot, and so does the last window left. Startup
-	 * restores the one slot into main whoever wrote it, so a lone detached
-	 * window overwrites nobody, and skipping it brought back main's older tabs
-	 * instead of the ones on screen (#767).
+	 * Every window keeps its own snapshot, keyed by its label on the Rust side,
+	 * so no window can overwrite another's. `remember` false is a window closed
+	 * on its own while others stay: it is not reopened next launch.
 	 */
-	async function ownsSnapshot(): Promise<boolean> {
-		if (options.isMainWindow) return true;
-		const windows = ((await invoke('list_viewer_windows').catch(() => null)) ?? []) as Array<{ label: string }>;
-		return windows.length === 1 && windows[0].label === appWindow.label;
-	}
-
-	async function persistState() {
-		if (!(await ownsSnapshot())) return;
+	async function persistState(remember: boolean) {
+		if (!remember) {
+			try {
+				await invoke('forget_window_state');
+			} catch (error) {
+				options.onError('Failed to forget window state on close', error);
+			}
+			return;
+		}
 		await releaseReadableDeferrals();
 		try {
 			await invoke('save_window_state', { json: options.serializeState() });
@@ -197,8 +198,12 @@ export function createWindowSession(options: WindowSessionOptions) {
 		}
 	}
 
-	async function restore() {
-		if (!options.isMainWindow || options.isDisposed()) return;
+	/**
+	 * Restores this window's own snapshot. True when it had one: a reopened
+	 * window, which has no tab transfer or pinned group to claim.
+	 */
+	async function restore(): Promise<boolean> {
+		if (options.isDisposed()) return false;
 		if (!options.shouldRestoreState()) {
 			// Through `discardPersistedState`, because the snapshot is a file on
 			// the Rust side now. This branch is what makes turning the setting off
@@ -211,7 +216,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 			// Nothing will be restored, so there is nothing for a breadcrumb to
 			// say about the next launch.
 			await writeProgress({ running: false, pending: null, deferred: [], interruptions: 0 });
-			return;
+			return false;
 		}
 		const previous = await readProgress();
 		const deferred = previous ? [...previous.deferred] : [];
@@ -253,10 +258,11 @@ export function createWindowSession(options: WindowSessionOptions) {
 		const progress: RestoreProgress = { running: true, pending: null, deferred, interruptions };
 		await writeProgress(progress);
 
+		// The localStorage copies are main's, from builds that kept one snapshot.
 		const savedData =
-			localStorage.getItem(options.windowStateKey) ??
-			localStorage.getItem(options.legacyStateKey) ??
-			((await invoke('load_window_state').catch(() => null)) as string | null);
+			(options.isMainWindow
+				? (localStorage.getItem(options.windowStateKey) ?? localStorage.getItem(options.legacyStateKey))
+				: null) ?? ((await invoke('load_window_state').catch(() => null)) as string | null);
 		if (savedData) {
 			try {
 				options.restoreState(savedData);
@@ -284,13 +290,13 @@ export function createWindowSession(options: WindowSessionOptions) {
 						// nothing could decode is never written back over, and the
 						// encoding so a legacy one is written back as itself.
 						const [raw, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-						if (options.isDisposed()) return;
+						if (options.isDisposed()) return true;
 						await options.applyRestoredContent(tab.id, raw);
 						tabManager.setTabDecodedLossy(tab.id, lossy);
 						tabManager.setTabEncoding(tab.id, encoding);
-						if (options.isDisposed()) return;
+						if (options.isDisposed()) return true;
 					} catch (error) {
-						if (options.isDisposed()) return;
+						if (options.isDisposed()) return true;
 						// One failed read is not a decision to close the document.
 						// The file may be on a share that is down or a drive that is
 						// not plugged in; dropping the tab here also dropped it from
@@ -317,10 +323,13 @@ export function createWindowSession(options: WindowSessionOptions) {
 			// restore, so claiming early cannot accumulate phantom strikes.
 			await writeProgress({ running: false, pending: null, deferred, interruptions: 0 });
 		}
-		if (options.isDisposed()) return;
-		if (options.restoredTabs().length > 0) await persistState();
-		localStorage.removeItem(options.windowStateKey);
-		localStorage.removeItem(options.legacyStateKey);
+		if (options.isDisposed()) return Boolean(savedData);
+		if (options.restoredTabs().length > 0) await persistState(true);
+		if (options.isMainWindow) {
+			localStorage.removeItem(options.windowStateKey);
+			localStorage.removeItem(options.legacyStateKey);
+		}
+		return Boolean(savedData);
 	}
 
 	/**

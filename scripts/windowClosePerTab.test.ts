@@ -125,7 +125,7 @@ test('the close is prevented synchronously before the walk starts', () => {
 	// Not the re-entry guard's `preventDefault`: the one between that guard and
 	// the walk.
 	const guardEnd = offsetOf(handler, 'return;', offsetOf(handler, 'if (isCloseWalkActive)'));
-	const walk = offsetOf(handler, 'await settleForExit()');
+	const walk = offsetOf(handler, 'await settleForExit(');
 	const prevent = handler.lastIndexOf('event.preventDefault()', walk);
 	assert.ok(guardEnd < prevent, 'the close is prevented before the walk starts');
 	assert.match(settle(), /reviewDirtyTabs\(\{/, 'and the walk is what settleForExit runs');
@@ -133,7 +133,7 @@ test('the close is prevented synchronously before the walk starts', () => {
 
 test('the window closes only after every dirty tab is resolved', () => {
 	const handler = closeHandler();
-	const walk = offsetOf(handler, 'await settleForExit()');
+	const walk = offsetOf(handler, 'await settleForExit(');
 	const close = offsetOf(handler, 'appWindow.close()', walk);
 	assert.ok(walk < close, 'the window closes after the walk, not during it');
 });
@@ -142,10 +142,10 @@ test('a cancelled walk stops the handler before it persists or closes', () => {
 	const body = settle();
 	const walk = offsetOf(body, 'reviewDirtyTabs({');
 	const bail = offsetOf(body, 'return false;', offsetOf(body, 'if (!resolved)', walk));
-	assert.ok(bail < offsetOf(body, 'persistWindowState()', walk), 'cancel returns before the snapshot');
+	assert.ok(bail < offsetOf(body, 'persistWindowState(', walk), 'cancel returns before the snapshot');
 
 	const handler = closeHandler();
-	const stop = offsetOf(handler, 'return;', offsetOf(handler, 'if (!(await settleForExit())) {'));
+	const stop = offsetOf(handler, 'return;', offsetOf(handler, 'if (!(await settleForExit(endsSession))) {'));
 	assert.ok(stop < offsetOf(handler, 'appWindow.close()', stop), 'and before the close is re-triggered');
 });
 
@@ -181,7 +181,7 @@ test('save-as writes a snapshot rather than the buffer as it stands', () => {
 });
 
 test('the restore-on-reopen branch persists window state via the shared helper', () => {
-	assert.match(settle(), /persistWindowState\(\);/);
+	assert.match(settle(), /persistWindowState\(await remember\(\)\);/);
 	// no durable-write experiment left behind
 	assert.doesNotMatch(viewer, /saveSessionState|sessionState\.js/);
 });

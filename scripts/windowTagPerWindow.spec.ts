@@ -16,7 +16,7 @@ import { test } from 'vitest';
  * here rather than read:
  *
  *   1. `TabManager.windowTag`'s own initial value;
- *   2. session restore, which is where a window gets its previous state back;
+ *   2. session restore, which gives a window back only its own previous state;
  *   3. the tab-transfer claim, the only channel through which one window's
  *      content reaches another.
  *
@@ -63,6 +63,8 @@ const TRANSFER_PAYLOAD = JSON.stringify({
 });
 
 let invokeCalls: Array<{ cmd: string; args: any }> = [];
+/** What Rust holds for this window's label: snapshots are keyed by the caller. */
+let ownSnapshot: string | null = null;
 
 (window as any).__TAURI_INTERNALS__ = {
 	// A detached window, which is what `create_transfer_window` builds.
@@ -76,7 +78,7 @@ let invokeCalls: Array<{ cmd: string; args: any }> = [];
 			case 'get_os_type':
 				return Promise.resolve('macos');
 			case 'load_window_state':
-				return Promise.resolve(TAGGED_SNAPSHOT);
+				return Promise.resolve(ownSnapshot);
 			case 'claim_detached_tab':
 				return Promise.resolve(TRANSFER_PAYLOAD);
 			case 'read_file_content_checked':
@@ -132,30 +134,44 @@ function reset() {
 	tabManager.setWindowTag(null);
 	localStorage.clear();
 	invokeCalls = [];
+	ownSnapshot = null;
 }
 
 test('a freshly constructed TabManager holds no window tag', () => {
 	assert.equal(INITIAL_WINDOW_TAG, null, 'the store starts a window off under a tag');
 });
 
-test('a detached window does not restore, so it cannot pick up the tag in the snapshot', async () => {
+test('a new window has no snapshot of its own, so it cannot pick up another window’s tag', async () => {
+	// Main's snapshot from a build that kept it in localStorage, which every
+	// window shares. Only main may read it.
 	reset();
+	localStorage.setItem(WINDOW_STATE_KEY, TAGGED_SNAPSHOT);
 
-	await makeSession(false).restore();
+	const restored = await makeSession(false).restore();
 
+	assert.equal(restored, false, 'a new window reported a snapshot of its own');
 	assert.equal(tabManager.windowTag, null, 'a new window came up wearing the saved window tag');
 	assert.deepEqual(tabManager.tabs, [], 'a new window restored the previous session');
-	assert.equal(
-		invokeCalls.filter((call) => call.cmd === 'load_window_state').length,
-		0,
-		'a new window read the saved session at all',
-	);
+});
+
+test('a reopened window gets its own tag back', async () => {
+	// The window was open when the app quit, and comes back under its label.
+	reset();
+	ownSnapshot = TAGGED_SNAPSHOT;
+
+	const restored = await makeSession(false).restore();
+
+	assert.equal(restored, true);
+	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: '#188038', pinned: true });
+	assert.equal(tabManager.tabs.length, 1);
 });
 
 test('the main window does restore its own tag — this is not a test that restore is broken', async () => {
-	// The fence. Without it the test above passes for a build that simply never
-	// restores anything, which is a much worse defect than the one it guards.
+	// The fence. Without it the first restore test passes for a build that
+	// simply never restores anything, which is a much worse defect than the
+	// one it guards.
 	reset();
+	ownSnapshot = TAGGED_SNAPSHOT;
 
 	await makeSession(true).restore();
 

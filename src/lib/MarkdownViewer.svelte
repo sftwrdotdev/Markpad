@@ -127,7 +127,7 @@ import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
-import { createUnsavedRecovery, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
+import { claimableRecords, createUnsavedRecovery, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
@@ -649,10 +649,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	const LEGACY_STATE_KEY = 'savedTabsData';
 	const RESTORE_IN_PROGRESS_KEY = 'markpad-window-restore-in-progress';
 
-	// Every window shares the one snapshot slot. Only the main window persists
-	// and restores tabs: secondary window labels carry a per-session token, so
-	// their snapshot could never be restored under the same label, and N
-	// writers would leave whichever window closed last.
+	// Each window persists and restores its own snapshot, keyed by its label.
+	// Main always opens and reopens the other windows of the last session
+	// under the labels they had.
 	const isMainWindow = appWindow.label === 'main';
 	let recoveryReady = $state(false);
 	let recoveryErrorShown = false;
@@ -676,18 +675,19 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	});
 
 	// Startup, setting on. Without it nothing is read, written or removed.
-	async function restoreUnsavedChanges() {
+	// `reopened`: the windows main just rebuilt, which take their own backups
+	// and may not be in `list_viewer_windows` yet.
+	async function restoreUnsavedChanges(reopened: ReadonlySet<string>) {
 		try {
-			if (isMainWindow) {
-				const records = await invoke<Array<[string, string]>>('load_unsaved_recovery');
-				const windows = await invoke<Array<{ label: string }>>('list_viewer_windows');
-				const live = new Set(windows.map((win) => win.label).filter((label) => label !== appWindow.label));
-				const consumed = restoreRecords(tabManager, records, live, appWindow.label, reportRecoveryError);
-				// Publish the new owner before removing stale window copies.
-				await invoke('save_unsaved_recovery', { json: recoverySnapshot(tabManager.tabs) });
-				await invoke('clear_unsaved_recovery', { labels: consumed });
-				for (const id of await documentSession.dirtyTabsChangedOnDisk()) noteExternalChangeConflict(id);
-			}
+			const records = await invoke<Array<[string, string]>>('load_unsaved_recovery');
+			const windows = isMainWindow ? await invoke<Array<{ label: string }>>('list_viewer_windows') : [];
+			const owned = new Set([...reopened, ...windows.map((win) => win.label)].filter((label) => label !== appWindow.label));
+			const claimable = claimableRecords(records, appWindow.label, isMainWindow, owned);
+			const consumed = restoreRecords(tabManager, claimable, appWindow.label, reportRecoveryError);
+			// Publish the new owner before removing stale window copies.
+			await invoke('save_unsaved_recovery', { json: recoverySnapshot(tabManager.tabs) });
+			await invoke('clear_unsaved_recovery', { labels: consumed });
+			for (const id of await documentSession.dirtyTabsChangedOnDisk()) noteExternalChangeConflict(id);
 			recoveryReady = true;
 		} catch (error) {
 			// Not ready: nothing overwrites the record, and close asks as usual.
@@ -714,7 +714,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			isCloseWalkActive = false;
 		}
 		await savePinnedTagIfNeeded();
-		if (settings.restoreStateOnReopen) await persistWindowState();
+		await persistWindowState(true);
 		return true;
 	}
 
@@ -980,8 +980,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	// scheme. The localStorage keys are read once for migration and removed
 	// after the first successful Rust write; a downgraded build then starts
 	// a fresh session instead of misreading anything.
-	async function persistWindowState() {
-		await windowSession.persistState();
+	//
+	// `remember` false: this window closed on its own while others stay, so it
+	// is forgotten — even with restore off, or a later quit with it back on
+	// would reopen it from a stale snapshot.
+	async function persistWindowState(remember: boolean) {
+		if (!remember) await windowSession.persistState(false);
+		else if (settings.restoreStateOnReopen) await windowSession.persistState(true);
 	}
 
 	/**
@@ -997,7 +1002,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	 * `downloadAndInstall`, `relaunch()` requests an exit elsewhere — so
 	 * CloseRequested never fires, and both jobs used to go down with it (#761).
 	 */
-	async function settleForExit(): Promise<boolean> {
+	async function settleForExit(remember: () => Promise<boolean>): Promise<boolean> {
 		// Unsaved content and session restore are separate concerns: dirty tabs
 		// are resolved FIRST through the per-tab dialogs, then the restore
 		// snapshot records window state only (open files, active tab, edit mode,
@@ -1064,9 +1069,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		await savePinnedTagIfNeeded();
 		// The re-triggered close finds nothing to review and uses the list last.
 		if (dirtyTabs.length === 0) pinFilesAtClose = null;
-		if (settings.restoreStateOnReopen) {
-			await persistWindowState();
-		}
+		// Asked now, not when the close began: the review above can take minutes.
+		await persistWindowState(await remember());
 		return true;
 	}
 
@@ -1079,7 +1083,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function settleForUpdate(): Promise<boolean> {
 		if (settings.persistOpenEditors && (await keepUnsavedForExit())) return true;
 		try {
-			return await settleForExit();
+			// The process exits with every window, so this one is remembered.
+			return await settleForExit(async () => true);
 		} finally {
 			pinFilesAtClose = null;
 		}
@@ -2993,9 +2998,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	async function destroyWindowAfterTabsClosed() {
 		// No tabs left: drop this window's backup so a discarded buffer stays gone.
 		if (recoveryReady) await unsavedRecovery.flush('[]');
-		if (settings.restoreStateOnReopen) {
-			await persistWindowState();
-		}
+		await persistWindowState(false);
 
 		await appWindow.destroy();
 	}
@@ -3665,6 +3668,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 		if (tabManager.tabs.length === 0) {
 			if (recoveryReady) await unsavedRecovery.flush('[]');
+			await persistWindowState(false);
 			await appWindow.destroy();
 		}
 	}
@@ -3747,18 +3751,31 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				const appWindow = getCurrentWindow();
 				if (isDisposed) return;
 
-			await windowSession.restore();
+			const restoredOwnState = await windowSession.restore();
 			if (isDisposed) return;
 			// The first window reopens the last folder; windows opened later start without one.
 			if (appWindow.label === 'main') void folderManager.restore();
-			if (settings.persistOpenEditors) await restoreUnsavedChanges();
+			// After main's own restore, which discards every snapshot when restore is off.
+			const reopened = new Set(
+				isMainWindow && settings.restoreStateOnReopen
+					? await invoke<string[]>('reopen_remembered_windows').catch((error) => {
+							console.error('Failed to reopen windows', error);
+							return [];
+						})
+					: [],
+			);
+			if (settings.persistOpenEditors) await restoreUnsavedChanges(reopened);
 			if (isDisposed) return;
-			const pinnedName = pinnedTagFromWindowLabel(appWindow.label);
-			if (pinnedName === null) await windowSession.claimTransferredTab();
-			else {
-				const tags = (await invoke('list_pinned_tags')) as typeof pinnedTags;
-				const tag = tags.find((pinned) => pinned.name === pinnedName);
-				if (tag) await openPinnedTag(tag);
+			// A reopened window's snapshot owns its tabs, a pinned one's included:
+			// opening the pinned group as well would open its files twice.
+			if (!restoredOwnState) {
+				const pinnedName = pinnedTagFromWindowLabel(appWindow.label);
+				if (pinnedName === null) await windowSession.claimTransferredTab();
+				else {
+					const tags = (await invoke('list_pinned_tags')) as typeof pinnedTags;
+					const tag = tags.find((pinned) => pinned.name === pinnedName);
+					if (tag) await openPinnedTag(tag);
+				}
 			}
 			if (isDisposed) return;
 
@@ -3907,7 +3924,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					// finds nothing dirty, and the close proceeds.
 					const hadDirtyTabs = tabManager.tabs.some((t) => t.isDirty);
 					if (hadDirtyTabs) event.preventDefault();
-					if (!(await settleForExit())) {
+					// Closing one of several windows forgets it; quit or the last window remembers.
+					const endsSession = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => true);
+					if (!(await settleForExit(endsSession))) {
 						// A cancelled close cancels the quit, so the windows left ask again.
 						invoke('set_quitting', { quitting: false }).catch(console.error);
 						return;
