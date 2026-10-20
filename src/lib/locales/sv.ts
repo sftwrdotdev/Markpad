@@ -122,6 +122,7 @@ export default {
         edit: 'Redigera',
         view: 'Visa',
         newFile: 'Ny fil',
+        newWindow: 'Nytt fönster',
         openFile: 'Öppna fil',
         save: 'Spara',
         saveAs: 'Spara som',

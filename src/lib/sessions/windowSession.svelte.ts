@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tabManager } from '../stores/tabs.svelte.js';
+import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
 import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { validateTransferPayload, type TransferableTab } from '../utils/tabTransfer.js';
 
@@ -381,7 +382,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		const claimToken = appWindow.label.startsWith('window-')
 			? appWindow.label.slice('window-'.length)
 			: null;
-		if (!claimToken) return;
+		if (!claimToken || isNewWindowLabel(appWindow.label)) return;
 		await acceptOfferedTransfer(claimToken);
 	}
 

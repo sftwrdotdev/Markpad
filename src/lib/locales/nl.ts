@@ -122,6 +122,7 @@ export default {
         edit: 'Bewerken',
         view: 'Weergave',
         newFile: 'Nieuw bestand',
+        newWindow: 'Nieuw venster',
         openFile: 'Open bestand',
         save: 'Opslaan',
         saveAs: 'Opslaan als',

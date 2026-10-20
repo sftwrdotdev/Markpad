@@ -216,6 +216,7 @@ const en: Translation = {
         edit: 'Edit',
         view: 'View',
         newFile: 'New File',
+        newWindow: 'New Window',
         openFile: 'Open File',
         save: 'Save',
         saveAs: 'Save As',

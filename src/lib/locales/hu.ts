@@ -122,6 +122,7 @@ export default {
         edit: 'Szerkesztés',
         view: 'Nézet',
         newFile: 'Új fájl',
+        newWindow: 'Új ablak',
         openFile: 'Fájl megnyitása',
         save: 'Mentés',
         saveAs: 'Mentés másként',

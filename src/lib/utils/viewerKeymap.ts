@@ -54,6 +54,7 @@ export type ViewerCommand =
 	| 'move-tab-to-next-window'
 	| 'close-file'
 	| 'new-file'
+	| 'new-window'
 	| 'open-file'
 	| 'app-exit'
 	| 'toggle-split-view'
@@ -253,6 +254,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// outside the editor. Both are listed here so the two paths cannot
 	// drift again; `formatShortcutKeymap.test.ts` holds them equal.
 	if (mod && (key === 't' || key === 'n')) return 'new-file';
+	if (modShift && key === 'n') return 'new-window';
 	if (mod && key === 'o') return 'open-file';
 	if (mod && key === 'q') return 'app-exit';
 	if (mod && (code === 'Backslash' || code === 'IntlBackslash')) return 'toggle-split-view';

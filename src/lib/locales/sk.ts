@@ -122,6 +122,7 @@ export default {
         edit: 'Upraviť',
         view: 'Zobraziť',
         newFile: 'Nový súbor',
+        newWindow: 'Nové okno',
         openFile: 'Otvoriť súbor',
         save: 'Uložiť',
         saveAs: 'Uložiť ako',

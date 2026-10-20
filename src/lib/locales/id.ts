@@ -122,6 +122,7 @@ export default {
         edit: 'Edit',
         view: 'Lihat',
         newFile: 'Berkas Baru',
+        newWindow: 'Jendela Baru',
         openFile: 'Buka Berkas',
         save: 'Simpan',
         saveAs: 'Simpan Sebagai',

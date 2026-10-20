@@ -122,6 +122,7 @@ export default {
         edit: 'Bearbeiten',
         view: 'Ansicht',
         newFile: 'Neue Datei',
+        newWindow: 'Neues Fenster',
         openFile: 'Datei öffnen',
         save: 'Speichern',
         saveAs: 'Speichern unter',

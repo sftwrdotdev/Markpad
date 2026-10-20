@@ -274,3 +274,12 @@ test('AltGr typing a character is not a Mod+Alt chord', () => {
 	const zen = { ...chord('z', 'KeyZ', { ctrlKey: true, altKey: true }), getModifierState: () => false };
 	assert.equal(viewerCommandFor(zen, READING), 'toggle-zen-mode');
 });
+
+test('Mod+Shift+N opens a new window and Mod+N stays New File', () => {
+	for (const [osType, mods] of [['macos', { metaKey: true }], ['windows', { ctrlKey: true }], ['linux', { ctrlKey: true }]] as const) {
+		const context = { ...READING, osType, isEditing: true, editorHasFocus: true };
+		assert.equal(viewerCommandFor(chord('N', 'KeyN', { ...mods, shiftKey: true }), context), 'new-window', osType);
+		assert.equal(viewerCommandFor(chord('n', 'KeyN', mods), context), 'new-file', osType);
+		assert.equal(viewerCommandFor(chord('N', 'KeyN', { ...mods, shiftKey: true, altKey: true }), context), null, osType);
+	}
+});

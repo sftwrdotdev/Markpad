@@ -139,6 +139,13 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		documentCommands: ['new-file'],
 	},
 	{
+		id: 'file-new-window',
+		labelKey: 'menu.newWindow',
+		chords: ['Mod+Shift+N'],
+		group: 'file',
+		documentCommands: ['new-window'],
+	},
+	{
 		id: 'file-open',
 		labelKey: 'menu.openFile',
 		chords: ['Mod+O'],

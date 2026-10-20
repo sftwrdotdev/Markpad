@@ -122,6 +122,7 @@ export default {
         edit: 'Επεξεργασία',
         view: 'Προβολή',
         newFile: 'Νέο αρχείο',
+        newWindow: 'Νέο παράθυρο',
         openFile: 'Άνοιγμα αρχείου',
         save: 'Αποθήκευση',
         saveAs: 'Αποθήκευση ως',

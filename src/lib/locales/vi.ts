@@ -122,6 +122,7 @@ export default {
         edit: 'Chỉnh sửa',
         view: 'Xem',
         newFile: 'Tệp mới',
+        newWindow: 'Cửa sổ mới',
         openFile: 'Mở tệp',
         save: 'Lưu',
         saveAs: 'Lưu dưới dạng',

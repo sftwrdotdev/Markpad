@@ -148,6 +148,7 @@ export default {
         edit: '编辑',
         view: '视图',
         newFile: '新建文件',
+        newWindow: '新建窗口',
         openFile: '打开文件',
         save: '保存',
         saveAs: '另存为',

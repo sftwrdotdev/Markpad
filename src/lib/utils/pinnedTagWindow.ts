@@ -30,3 +30,12 @@ export async function openPinnedTagWindow(name: string): Promise<void> {
 	if (holder) await invoke('focus_window', { label: holder });
 	else await invoke('create_transfer_window', { token: pinnedWindowToken(name, Date.now()) });
 }
+
+/** New Window stages no tab, so its window must not try to claim one. */
+export function isNewWindowLabel(label: string): boolean {
+	return /^window-new-\d+$/.test(label);
+}
+
+export async function openNewWindow(): Promise<void> {
+	await invoke('create_transfer_window', { token: `new-${Date.now()}` });
+}

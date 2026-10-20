@@ -123,6 +123,7 @@ export default {
         edit: '編集',
         view: '表示',
         newFile: '新しいファイル',
+        newWindow: '新しいウィンドウ',
         openFile: 'ファイルを開く',
         save: '保存',
         saveAs: '名前を付けて保存',

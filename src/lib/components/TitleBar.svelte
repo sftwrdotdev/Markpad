@@ -12,7 +12,7 @@
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
 	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
-	import { openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
+	import { openNewWindow, openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
 	import { getVersion } from '@tauri-apps/api/app';
 
 	let currentLanguage = $derived(settings.language);
@@ -503,6 +503,17 @@
 					></svg>
 				{t('menu.newFile', currentLanguage)}
 				<span class="menu-shortcut">{shortcutLabel('file-new', modifier)}</span>
+			</button>
+			<button
+				class="home-menu-item"
+				onclick={() => {
+					homeMenuOpen = false;
+					openNewWindow().catch(console.error);
+				}}>
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+					><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line></svg>
+				{t('menu.newWindow', currentLanguage)}
+				<span class="menu-shortcut">{shortcutLabel('file-new-window', modifier)}</span>
 			</button>
 			<button
 				class="home-menu-item"

@@ -108,7 +108,7 @@ import {
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
-	import { pinnedTagFromWindowLabel, pinnedTagHolder, pinnedWindowToken } from './utils/pinnedTagWindow.js';
+	import { openNewWindow, pinnedTagFromWindowLabel, pinnedTagHolder, pinnedWindowToken } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
@@ -3488,6 +3488,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return void closeFile();
 			case 'new-file':
 				return void handleNewFile();
+			case 'new-window':
+				return void openNewWindow().catch(console.error);
 			case 'open-file':
 				return void selectFile();
 			case 'app-exit':

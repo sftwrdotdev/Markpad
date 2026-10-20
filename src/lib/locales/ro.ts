@@ -122,6 +122,7 @@ export default {
         edit: 'Editare',
         view: 'Vizualizare',
         newFile: 'Fișier nou',
+        newWindow: 'Fereastră nouă',
         openFile: 'Deschidere fișier',
         save: 'Salvare',
         saveAs: 'Salvare ca',

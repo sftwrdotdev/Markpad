@@ -122,6 +122,7 @@ export default {
         edit: 'Muokkaa',
         view: 'Näytä',
         newFile: 'Uusi tiedosto',
+        newWindow: 'Uusi ikkuna',
         openFile: 'Avaa tiedosto',
         save: 'Tallenna',
         saveAs: 'Tallenna nimellä',

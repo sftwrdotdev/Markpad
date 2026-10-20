@@ -148,6 +148,7 @@ export default {
         edit: '編輯',
         view: '檢視',
         newFile: '新增檔案',
+        newWindow: '新增視窗',
         openFile: '開啟檔案',
         save: '儲存',
         saveAs: '另存新檔',

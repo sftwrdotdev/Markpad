@@ -122,6 +122,7 @@ export default {
         edit: 'Düzenle',
         view: 'Görünüm',
         newFile: 'Yeni Dosya',
+        newWindow: 'Yeni Pencere',
         openFile: 'Dosya Aç',
         save: 'Kaydet',
         saveAs: 'Farklı Kaydet',

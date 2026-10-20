@@ -122,6 +122,7 @@ export default {
         edit: 'Rediger',
         view: 'Vis',
         newFile: 'Ny fil',
+        newWindow: 'Nyt vindue',
         openFile: 'Åbn fil',
         save: 'Gem',
         saveAs: 'Gem som',

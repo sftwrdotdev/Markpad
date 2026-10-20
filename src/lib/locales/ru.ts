@@ -123,6 +123,7 @@ export default {
         edit: 'Редактирование',
         view: 'Вид',
         newFile: 'Новый файл',
+        newWindow: 'Новое окно',
         openFile: 'Открыть файл',
         save: 'Сохранить',
         saveAs: 'Сохранить как',

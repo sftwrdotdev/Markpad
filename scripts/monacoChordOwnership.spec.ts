@@ -555,3 +555,14 @@ test('zen mode is off redo, and on a chord nothing else wants', async () => {
 		expect(defaultsFor(platform.name).get(chord), platform.name).toBeUndefined();
 	}
 });
+
+test('New Window has no editor binding, so the chord reaches the app from the editor', () => {
+	// Mod+Shift+N is answered only by the document handler. Monaco stops
+	// propagation only for a chord it resolves, so with nothing bound here
+	// on either side the keystroke bubbles out of the editor.
+	for (const platform of PLATFORMS) {
+		const chord = platform.mac ? 'Shift+Meta+N' : 'Ctrl+Shift+N';
+		expect(defaultsFor(platform.name).get(chord), platform.name).toBeUndefined();
+		expect(appEditorChords(platform.mac, platform.os).get(chord), platform.name).toBeUndefined();
+	}
+});
