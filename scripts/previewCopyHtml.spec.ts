@@ -129,6 +129,22 @@ test('a selection with no math takes its plain text from the selection itself', 
 	assert.match(text, /two/);
 });
 
+test('a soft break the preview hides is not pasted as a line break (#967)', () => {
+	const copy = (article: string) => {
+		document.body.innerHTML = `<article class="${article}"><p>one<br class="softbreak">\ntwo<br>\nthree</p></article>`;
+		const paragraph = document.querySelector('p') as HTMLElement;
+		const range = document.createRange();
+		range.setStart(paragraph.firstChild as Text, 0);
+		range.setEnd(paragraph.lastChild as Text, 6);
+		const selection = window.getSelection() as Selection;
+		selection.removeAllRanges();
+		selection.addRange(range);
+		return copyableFlavours(selection, '').html;
+	};
+	assert.match(copy('markdown-body'), /one<br class="softbreak">\ntwo<br>/);
+	assert.match(copy('markdown-body soft-breaks'), /one\ntwo<br>\nthree/);
+});
+
 test('both flavours come back from one call', () => {
 	const { text, html } = copyableFlavours(selectionOver('<p><strong>bold</strong></p>'), '');
 	assert.match(html, /<strong>bold<\/strong>/);

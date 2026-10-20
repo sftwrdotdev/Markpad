@@ -85,11 +85,13 @@ function holderFor(fragment: DocumentFragment): HTMLElement {
  *     broken image. `file:` is what a desktop application can open. A remote
  *     image or a data URI resolves to null here and keeps the src it has.
  */
-export function copyableHtml(fragment: DocumentFragment, tabPath: string): string {
+export function copyableHtml(fragment: DocumentFragment, tabPath: string, dropSoftBreaks = false): string {
 	const holder = holderFor(fragment);
 
 	for (const duplicate of holder.querySelectorAll('.katex-mathml')) duplicate.remove();
 	for (const control of holder.querySelectorAll('.header-fold-icon, .callout-fold-icon')) control.remove();
+	// Hidden by `.soft-breaks` in the preview, which the clipboard does not carry (#967).
+	if (dropSoftBreaks) for (const br of holder.querySelectorAll('br.softbreak')) br.remove();
 
 	for (const img of holder.querySelectorAll('img')) {
 		const src = img.getAttribute('src');
@@ -121,10 +123,12 @@ export function copyableFlavours(selection: Selection, tabPath: string): { text:
 	const range = expandToWholeFormulas(selection.getRangeAt(0));
 	const fragment = range.cloneContents();
 	const hasMath = !!fragment.querySelector('.katex-mathml');
+	const start = range.startContainer;
+	const dropSoftBreaks = !!(start instanceof Element ? start : start.parentElement)?.closest('.soft-breaks');
 
 	return {
 		// A second clone: the HTML pass consumes the first one.
 		text: hasMath ? (texSubstituted(holderFor(range.cloneContents())).textContent ?? '') : selection.toString(),
-		html: copyableHtml(fragment, tabPath),
+		html: copyableHtml(fragment, tabPath, dropSoftBreaks),
 	};
 }
