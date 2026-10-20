@@ -216,9 +216,9 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	const modShift = cmdOrCtrl && e.shiftKey && !e.altKey;
 	const modAlt = cmdOrCtrl && !e.shiftKey && e.altKey && !isAltGraphChord(e);
 
-	// The macOS application menu owns ⌘Q. Document shortcuts remain in the
-	// in-window controls, so they continue to act on the current webview.
-	if (context.osType === 'macos' && mod && key === 'q') return null; // → menu-app-quit
+	// The macOS application menu owns ⌘Q: left unprevented, it reaches the
+	// menu's Quit.
+	if (context.osType === 'macos' && mod && key === 'q') return null;
 
 	if (modAlt && (code === 'BracketLeft' || code === 'BracketRight')) {
 		if (!canUsePreviewWidthShortcut(e.target, context)) return null;

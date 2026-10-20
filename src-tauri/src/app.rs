@@ -1,5 +1,5 @@
-//! The Tauri application itself: the builder chain, the macOS menu, and the
-//! command registry.
+//! The Tauri application itself: the builder chain and the command registry.
+//! The macOS menu bar is built by each window's frontend (`appMenu.ts`).
 
 use crate::window_runtime::{AppState, WatcherState};
 use crate::{asset_protocol, commands, tab_transfer, window_runtime};
@@ -23,6 +23,9 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        // The frontend installs the menu; Tauri's default would answer ⌘W and
+        // friends natively until it does.
+        .enable_macos_default_menu(false)
         .manage(AppState::new())
         .manage(WatcherState::new())
         .manage(crate::folder::FolderWatcherState::new())
@@ -100,75 +103,6 @@ pub fn run() {
             }
 
             let window = window_builder.build()?;
-
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::{
-                    MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
-                };
-
-                let app_name = app.package_info().name.clone();
-
-                let check_item =
-                    MenuItemBuilder::with_id("check-updates", "Check for Updates…").build(app)?;
-                let settings_item = MenuItemBuilder::with_id("menu-app-settings", "Settings…")
-                    .accelerator("CmdOrCtrl+,")
-                    .build(app)?;
-
-                let app_submenu = SubmenuBuilder::new(app, &app_name)
-                    .item(&PredefinedMenuItem::about(
-                        app,
-                        Some(&format!("About {}", app_name)),
-                        None,
-                    )?)
-                    .separator()
-                    .item(&settings_item)
-                    .item(&check_item)
-                    .separator()
-                    .item(&PredefinedMenuItem::services(app, None)?)
-                    .separator()
-                    .item(&PredefinedMenuItem::hide(app, None)?)
-                    .separator()
-                    .item(
-                        &MenuItemBuilder::with_id("menu-app-quit", format!("Quit {}", app_name))
-                            .accelerator("CmdOrCtrl+Q")
-                            .build(app)?,
-                    )
-                    .build()?;
-
-                // WKWebView declines ⌘X/⌘C/⌘V/⌘A/⌘Z in plain inputs and hands
-                // them to the main menu, so without an Edit submenu those keys
-                // are dead in every native field (settings, modals). Monaco is
-                // unaffected either way: it preventDefault()s the key first, so
-                // the menu never sees it and its own paste handler still runs.
-                let edit_submenu = SubmenuBuilder::new(app, "Edit")
-                    .item(&PredefinedMenuItem::undo(app, None)?)
-                    .item(&PredefinedMenuItem::redo(app, None)?)
-                    .separator()
-                    .item(&PredefinedMenuItem::cut(app, None)?)
-                    .item(&PredefinedMenuItem::copy(app, None)?)
-                    .item(&PredefinedMenuItem::paste(app, None)?)
-                    .item(&PredefinedMenuItem::select_all(app, None)?)
-                    .build()?;
-
-                // ⌘M and ⌃⌘F are window-server actions, not document actions:
-                // there is no web API the in-window controls could bind them
-                // to, so they only exist as long as a menu item carries them.
-                // Full Screen belongs in a View menu by convention, but View
-                // would hold that one item and nothing else — Markpad's view
-                // actions are all in-window (#281) — so it rides here instead.
-                let window_submenu = SubmenuBuilder::new(app, "Window")
-                    .item(&PredefinedMenuItem::minimize(app, None)?)
-                    .separator()
-                    .item(&PredefinedMenuItem::fullscreen(app, None)?)
-                    .build()?;
-
-                let menu = MenuBuilder::new(app)
-                    .items(&[&app_submenu, &edit_submenu, &window_submenu])
-                    .build()?;
-
-                app.set_menu(menu)?;
-            }
 
             let config_dir = app.path().app_config_dir()?;
             let theme_path = config_dir.join("theme.txt");
@@ -283,28 +217,6 @@ pub fn run() {
             window_runtime::clear_restore_progress
         ])
         .on_window_event(window_runtime::handle_window_event)
-        .on_menu_event(|app, event| {
-            let id = event.id().as_ref();
-            // Emit to the focused webview window's label rather than
-            // `window.emit(...)`, which broadcasts to every webview and
-            // would fire menu actions (New/Close/Save…) in all windows at
-            // once. Falls back to "main" if no window is focused (e.g. menu
-            // fired while the app is in the background).
-            let target = app
-                .webview_windows()
-                .into_values()
-                .find(|w| w.is_focused().unwrap_or(false))
-                .or_else(|| app.get_webview_window("main"));
-            let Some(window) = target else { return };
-
-            if id == "menu-app-settings" {
-                let _ = app.emit_to(window.label(), "menu-app-settings", ());
-            } else if id == "check-updates" {
-                let _ = app.emit_to(window.label(), "menu-check-updates", ());
-            } else if id == "menu-app-quit" {
-                let _ = app.emit_to(window.label(), id, ());
-            }
-        })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|_app_handle, _event| {
