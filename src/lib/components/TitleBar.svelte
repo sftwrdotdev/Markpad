@@ -134,7 +134,7 @@
 	let tagDraftColor = $state(tagColors[1]);
 	let tagError = $state('');
 
-	function openTagEditor() {
+	export function openTagEditor() {
 		tagDraftName = tabManager.windowTag?.name ?? '';
 		tagDraftColor = tabManager.windowTag?.color ?? tagColors[1];
 		tagError = '';

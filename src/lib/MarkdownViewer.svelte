@@ -28,6 +28,7 @@
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
+	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { processMarkdownHtml } from './utils/markdown';
 import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
@@ -3535,8 +3536,70 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return toggleHome();
 			case 'export-pdf':
 				return void exportAsPdf();
+			case 'reveal-file':
+				return void openFileLocation();
 			case 'find':
 				return triggerFindAction();
+		}
+	}
+
+	/*
+	 * The macOS menu bar. The focused window installs its own, so every click
+	 * lands here. Rebuilt whenever what it shows changes, and after every click:
+	 * AppKit flips a check item itself, and a click that changes nothing (the
+	 * mode already shown) would otherwise leave it unchecked.
+	 */
+	let menuRevision = $state(0);
+	// `isFocused` starts out true; the menu waits for the real answer.
+	let focusKnown = $state(false);
+	let titleBar = $state<{ openTagEditor: () => void } | undefined>();
+
+	$effect(() => {
+		if (settings.osType !== 'macos' || !focusKnown || !isFocused) return;
+		void menuRevision;
+		const model = buildMenuModel({
+			language: settings.language,
+			viewMode: activeTab ? viewModeOf(activeTab) : null,
+			liveMode,
+			hasEditorPane,
+		});
+		void installAppMenu(model, runMenuAction, () => isFocused);
+	});
+
+	function runMenuAction(action: MenuAction) {
+		menuRevision++;
+		if ('viewer' in action && action.viewer === 'app-exit') return void appExit();
+		// A dialog leaves its chords unprevented, so they reach the menu.
+		const context = keyContext();
+		if (context.mode !== 'app' || context.dialogOpen) return;
+		if ('viewer' in action) return runViewerCommand(action.viewer);
+		if ('editor' in action) return editorPane?.runEditorAction(action.editor);
+		if ('viewMode' in action) return void setViewMode(action.viewMode);
+		switch (action.app) {
+			case 'check-updates':
+				return updateStore.openDialog();
+			case 'open-folder':
+				return void selectFolder();
+			case 'close-folder':
+				return void folderManager.close();
+			case 'export-html':
+				return void exportAsHtml();
+			case 'toggle-toc':
+				settings.showToc = !settings.showToc;
+				return;
+			case 'toggle-tabs':
+				settings.showTabs = !settings.showTabs;
+				return;
+			case 'toggle-editor-toolbar':
+				settings.showEditorToolbar = !settings.showEditorToolbar;
+				return;
+			case 'toggle-full-width':
+				settings.previewFullWidth = !settings.previewFullWidth;
+				return;
+			case 'merge-windows':
+				return void mergeAllWindowsHere();
+			case 'set-window-tag':
+				return titleBar?.openTagEditor();
 		}
 	}
 
@@ -3752,6 +3815,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			const init = async () => {
 				const appWindow = getCurrentWindow();
 				if (isDisposed) return;
+				// Before the restore below: the macOS menu follows focus from here on.
+				unlisteners.push(
+					await appWindow.onFocusChanged(({ payload: focused }) => {
+						isFocused = focused;
+					}),
+				);
+				isFocused = await appWindow.isFocused();
+				focusKnown = true;
 
 			const restoredOwnState = await windowSession.restore();
 			if (isDisposed) return;
@@ -3791,11 +3862,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				if (isDisposed) return;
 			}
 
-			unlisteners.push(
-				await appWindow.onFocusChanged(({ payload: focused }) => {
-					isFocused = focused;
-				}),
-			);
 			unlisteners.push(
 				await appWindow.listen('file-changed', async (event) => {
 					const changedPath = event.payload as string;
@@ -3888,18 +3954,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				}],
 			];
 			for (const [event, handler] of listeners) unlisteners.push(await appWindow.listen(event, handler));
-			unlisteners.push(
-				await appWindow.listen('menu-app-settings', () => {
-					showSettings = true;
-				}),
-			);
-			unlisteners.push(
-				await appWindow.listen('menu-check-updates', () => {
-					updateStore.openDialog();
-				}),
-			);
-			// Native macOS application menu only owns application-level actions.
-			unlisteners.push(await appWindow.listen('menu-app-quit',         () => appExit()));
 			unlisteners.push(
 				await appWindow.onCloseRequested(async (event) => {
 					// The red button is a native control, so it is NOT blocked
@@ -4047,6 +4101,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 {#if mode === 'loading'}
 	<TitleBar
+		bind:this={titleBar}
 		{isFocused}
 		isScrolled={false}
 		currentFile={''}
@@ -4087,6 +4142,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	</div>
 {:else}
 	<TitleBar
+		bind:this={titleBar}
 		{isFocused}
 		{isScrolled}
 		{currentFile}

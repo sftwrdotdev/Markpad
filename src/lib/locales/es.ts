@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabla: fila encima · Si no: línea encima'
     },
     menu: {
+        about: 'Acerca de Markpad',
+        services: 'Servicios',
+        hideApp: 'Ocultar Markpad',
+        quit: 'Salir de Markpad',
+        undo: 'Deshacer',
+        redo: 'Rehacer',
+        format: 'Formato',
+        tableOfContents: 'Índice',
+        previewNarrower: 'Vista previa más estrecha',
+        previewWider: 'Vista previa más ancha',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Mover pestaña a la siguiente ventana',
         file: 'Archivo',
         edit: 'Editar',
         view: 'Ver',

@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabel: rând deasupra · În rest: rând gol deasupra'
     },
     menu: {
+        about: 'Despre Markpad',
+        services: 'Servicii',
+        hideApp: 'Ascunde Markpad',
+        quit: 'Închide Markpad',
+        undo: 'Anulează',
+        redo: 'Refă',
+        format: 'Format',
+        tableOfContents: 'Cuprins',
+        previewNarrower: 'Previzualizare mai îngustă',
+        previewWider: 'Previzualizare mai lată',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Mută fila în fereastra următoare',
         file: 'Fișier',
         edit: 'Editare',
         view: 'Vizualizare',

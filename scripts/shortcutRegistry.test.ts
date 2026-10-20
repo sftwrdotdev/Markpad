@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import ts from 'typescript';
 
+import { buildMenuModel, type MenuNode } from '../src/lib/utils/appMenu.js';
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
 import { isHomePath } from '../src/lib/utils/homeTab.js';
 import { getSupportedLanguages, t, type LanguageCode, type Translation } from '../src/lib/utils/i18n.js';
@@ -28,7 +29,7 @@ import {
 	registeredActions,
 	type Chord,
 } from './keymapHarness.js';
-import { functionSource, readRustBackend, readSource, readSourceFiles } from './sourceTree.js';
+import { functionSource, readSource, readSourceFiles } from './sourceTree.js';
 
 /*
  * THE CONTRACT: every chord the shortcuts panel shows is a chord that actually
@@ -150,7 +151,7 @@ test('no registry entry is unverifiable', () => {
 	// that implements it, or it cannot be checked and must not be advertised.
 	for (const entry of SHORTCUTS) {
 		assert.ok(
-			entry.editorAction || entry.editorCommand || entry.documentCommands || entry.nativeMenuAccelerator,
+			entry.editorAction || entry.editorCommand || entry.documentCommands,
 			`${entry.id} names no implementation, so nothing here can confirm its chord fires`,
 		);
 	}
@@ -231,24 +232,62 @@ test('every chord the registry advertises runs the command it names, outside the
 	assert.ok(checked > 40, `only ${checked} document chords were checked`);
 });
 
-test('the native accelerator the registry defers to is the one the Rust menu claims', () => {
-	// Quit is the one entry whose chord is answered neither by Monaco nor by the
-	// document handler on macOS. Saying so in the registry is only honest if the
-	// menu really does claim it.
-	const rust = readRustBackend();
-	const accelerators = new Set([...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]));
-	assert.ok(accelerators.size > 0, 'the native menu accelerators were found');
+/** Every macOS menu item that carries an accelerator, in every state that changes which. */
+function menuAccelerators(): Array<{ text: string; accelerator: string; action: MenuNode & { kind: 'item' | 'check' } }> {
+	const flatten = (nodes: readonly MenuNode[]): MenuNode[] =>
+		nodes.flatMap((node) => (node.kind === 'submenu' ? flatten(node.items) : [node]));
+	return flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true })).flatMap((node) =>
+		(node.kind === 'item' || node.kind === 'check') && node.accelerator
+			? [{ text: node.text, accelerator: node.accelerator, action: node }]
+			: [],
+	);
+}
 
-	let checked = 0;
-	for (const entry of SHORTCUTS) {
-		if (!entry.nativeMenuAccelerator) continue;
-		assert.ok(
-			accelerators.has(entry.nativeMenuAccelerator),
-			`${entry.id} defers to the native ${entry.nativeMenuAccelerator}, which the menu does not claim`,
-		);
-		checked++;
+/** A menu accelerator as a registry chord (`CmdOrCtrl` is `Mod`). */
+function chordOfAccelerator(accelerator: string): string {
+	return accelerator.replace(/^CmdOrCtrl\b/, 'Mod');
+}
+
+test('every macOS menu accelerator is a chord the registry advertises for the command the item runs', () => {
+	const items = menuAccelerators();
+	assert.ok(items.length > 30, `${items.length} menu accelerators`);
+	const seen = new Set<string>();
+	for (const { text, accelerator, action: { action } } of items) {
+		assert.ok(!seen.has(accelerator), `${accelerator} is on two menu items`);
+		seen.add(accelerator);
+		const chord = chordOfAccelerator(accelerator);
+		const row = SHORTCUTS.find((entry) => entry.chords.includes(chord));
+		assert.ok(row, `${text} claims ${accelerator}, which no registry row advertises`);
+		const runs =
+			'viewer' in action ? row.documentCommands?.includes(action.viewer)
+			: 'editor' in action ? row.id === action.editor
+			: 'app' in action ? row.id === action.app
+			: false;
+		assert.ok(runs, `${text} claims ${accelerator}, but the registry says that chord is ${row.id}`);
 	}
-	assert.equal(checked, 2, 'Quit and Settings are the two entries the native menu also claims');
+});
+
+test('a chord the macOS document handler leaves alone is one the menu answers', () => {
+	// Quit is the registry's one macOS exemption: the page lets ⌘Q through.
+	const claimed = new Set(menuAccelerators().map((item) => chordOfAccelerator(item.accelerator)));
+	const exempt = SHORTCUTS.filter((entry) => entry.documentExempt?.includes('macos'));
+	assert.ok(exempt.length > 0);
+	for (const entry of exempt) assert.ok(claimed.has(entry.chords[0]), `${entry.id} is answered by nothing on macOS`);
+});
+
+test('the page answers a menu accelerator with the menu item\'s own command, or not at all', () => {
+	// WKWebView offers a key equivalent to the page first and the page prevents
+	// every chord it answers, so the menu never ALSO runs. What could still go
+	// wrong is the page answering the menu's chord with a different command.
+	const keymap = documentKeymap('macos');
+	let answered = 0;
+	for (const { text, accelerator, action: { action } } of menuAccelerators()) {
+		const command = keymap.get(toMonacoLabel(chordOfAccelerator(accelerator), true));
+		if (command === undefined) continue;
+		answered++;
+		assert.ok('viewer' in action && action.viewer === command, `${accelerator}: the page runs ${command}, the menu's ${text} something else`);
+	}
+	assert.ok(answered > 15, `the page answered ${answered} menu accelerators`);
 });
 
 test('each zoom chord reaches its own zoom operation, not just the zoom code', () => {
@@ -1081,9 +1120,6 @@ test('the panel’s groups are visibly separated, not run together', () => {
 // The editor layer's half of this is `every keybinding the editor registers is
 // either advertised or consciously not`, above.
 
-/** Native menu accelerators deliberately not advertised. Also empty today. */
-const NATIVE_NOT_ADVERTISED: Record<string, string> = {};
-
 test('every command the document dispatcher can reach is advertised', () => {
 	const advertised = new Set(SHORTCUTS.flatMap((entry) => entry.documentCommands ?? []));
 	assert.ok(advertised.size > 10, `${advertised.size} commands are named by a registry row`);
@@ -1192,22 +1228,4 @@ test('every chord the document handler answers is advertised, or consciously not
 			`${chord} is no longer answered — drop it from DOCUMENT_CHORDS_NOT_ADVERTISED`,
 		);
 	}
-});
-
-test('every native menu accelerator is advertised, or consciously not', () => {
-	// The macOS menu is a third layer above the other two, and #392 was in part a
-	// chord it owned that nothing else knew about.
-	const rust = readRustBackend();
-	const accelerators = [...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]);
-	assert.ok(accelerators.length > 0, 'the native menu accelerators were found');
-
-	const advertised = new Set(SHORTCUTS.map((entry) => entry.nativeMenuAccelerator).filter(Boolean));
-	const unexplained = accelerators.filter(
-		(accelerator) => !advertised.has(accelerator) && !(accelerator in NATIVE_NOT_ADVERTISED),
-	);
-	assert.deepEqual(
-		unexplained.sort(),
-		[],
-		'the native menu claims these accelerators and the shortcuts panel never mentions them',
-	);
 });

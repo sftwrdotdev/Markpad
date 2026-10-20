@@ -144,6 +144,18 @@ export default {
         modShiftEnter: '表格：上方加一列 · 其他：上方加空行'
     },
     menu: {
+        about: '關於 Markpad',
+        services: '服務',
+        hideApp: '隱藏 Markpad',
+        quit: '結束 Markpad',
+        undo: '復原',
+        redo: '重做',
+        format: '格式',
+        tableOfContents: '目錄',
+        previewNarrower: '縮窄預覽',
+        previewWider: '加寬預覽',
+        zoomWindow: '縮放',
+        moveToNextWindow: '將分頁移至下一個視窗',
         file: '檔案',
         edit: '編輯',
         view: '檢視',

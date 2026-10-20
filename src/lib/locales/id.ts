@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabel: baris di atas · Selain itu: baris kosong di atas'
     },
     menu: {
+        about: 'Tentang Markpad',
+        services: 'Layanan',
+        hideApp: 'Sembunyikan Markpad',
+        quit: 'Keluar dari Markpad',
+        undo: 'Urungkan',
+        redo: 'Ulangi',
+        format: 'Format',
+        tableOfContents: 'Daftar Isi',
+        previewNarrower: 'Pratinjau Lebih Sempit',
+        previewWider: 'Pratinjau Lebih Lebar',
+        zoomWindow: 'Zoom',
+        moveToNextWindow: 'Pindahkan Tab ke Jendela Berikutnya',
         file: 'Berkas',
         edit: 'Edit',
         view: 'Lihat',

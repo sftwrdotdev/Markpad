@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabuľka: riadok nad · Inde: prázdny riadok nad'
     },
     menu: {
+        about: 'O aplikácii Markpad',
+        services: 'Služby',
+        hideApp: 'Skryť Markpad',
+        quit: 'Ukončiť Markpad',
+        undo: 'Odvolať',
+        redo: 'Znova',
+        format: 'Formát',
+        tableOfContents: 'Obsah',
+        previewNarrower: 'Užší náhľad',
+        previewWider: 'Širší náhľad',
+        zoomWindow: 'Zväčšiť/zmenšiť',
+        moveToNextWindow: 'Presunúť kartu do ďalšieho okna',
         file: 'Súbor',
         edit: 'Upraviť',
         view: 'Zobraziť',

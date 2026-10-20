@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Πίνακας: γραμμή πάνω · Αλλού: κενή γραμμή πάνω'
     },
     menu: {
+        about: 'Σχετικά με το Markpad',
+        services: 'Υπηρεσίες',
+        hideApp: 'Απόκρυψη Markpad',
+        quit: 'Έξοδος από Markpad',
+        undo: 'Αναίρεση',
+        redo: 'Επανάληψη',
+        format: 'Μορφή',
+        tableOfContents: 'Πίνακας περιεχομένων',
+        previewNarrower: 'Στενότερη προεπισκόπηση',
+        previewWider: 'Πλατύτερη προεπισκόπηση',
+        zoomWindow: 'Ζουμ',
+        moveToNextWindow: 'Μετακίνηση καρτέλας στο επόμενο παράθυρο',
         file: 'Αρχείο',
         edit: 'Επεξεργασία',
         view: 'Προβολή',

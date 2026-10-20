@@ -119,6 +119,18 @@ export default {
         modShiftEnter: 'Таблица: строка выше · Иначе: пустая строка выше'
     },
     menu: {
+        about: 'О программе Markpad',
+        services: 'Службы',
+        hideApp: 'Скрыть Markpad',
+        quit: 'Завершить Markpad',
+        undo: 'Отменить',
+        redo: 'Повторить',
+        format: 'Формат',
+        tableOfContents: 'Оглавление',
+        previewNarrower: 'Сузить просмотр',
+        previewWider: 'Расширить просмотр',
+        zoomWindow: 'Изменить масштаб',
+        moveToNextWindow: 'Переместить вкладку в следующее окно',
         file: 'Файл',
         edit: 'Редактирование',
         view: 'Вид',

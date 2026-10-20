@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tabelle: Zeile darüber · Sonst: Leerzeile darüber'
     },
     menu: {
+        about: 'Über Markpad',
+        services: 'Dienste',
+        hideApp: 'Markpad ausblenden',
+        quit: 'Markpad beenden',
+        undo: 'Widerrufen',
+        redo: 'Wiederholen',
+        format: 'Format',
+        tableOfContents: 'Inhaltsverzeichnis',
+        previewNarrower: 'Vorschau schmaler',
+        previewWider: 'Vorschau breiter',
+        zoomWindow: 'Zoomen',
+        moveToNextWindow: 'Tab ins nächste Fenster bewegen',
         file: 'Datei',
         edit: 'Bearbeiten',
         view: 'Ansicht',

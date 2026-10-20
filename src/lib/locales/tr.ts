@@ -118,6 +118,18 @@ export default {
         modShiftEnter: 'Tablo: üste satır · Başka yerde: üste boş satır'
     },
     menu: {
+        about: 'Markpad Hakkında',
+        services: 'Servisler',
+        hideApp: 'Markpad’i Gizle',
+        quit: 'Markpad’den Çık',
+        undo: 'Geri Al',
+        redo: 'Yinele',
+        format: 'Biçim',
+        tableOfContents: 'İçindekiler',
+        previewNarrower: 'Önizlemeyi Daralt',
+        previewWider: 'Önizlemeyi Genişlet',
+        zoomWindow: 'Büyüt/Küçült',
+        moveToNextWindow: 'Sekmeyi Sonraki Pencereye Taşı',
         file: 'Dosya',
         edit: 'Düzenle',
         view: 'Görünüm',

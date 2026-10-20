@@ -111,12 +111,10 @@ export type ShortcutEntry = {
 	readonly documentCommands?: readonly ViewerCommand[];
 	/**
 	 * Platforms where the document handler deliberately stays out of the way.
-	 * Only Quit uses this: on macOS the native Tauri menu owns `Cmd+Q` and the
+	 * Only Quit uses this: on macOS the native menu owns `Cmd+Q` and the
 	 * handler returns early, so the chord is real but answered somewhere else.
 	 */
 	readonly documentExempt?: readonly ShortcutPlatform[];
-	/** The accelerator the native macOS menu claims, for the same reason. */
-	readonly nativeMenuAccelerator?: string;
 };
 
 /**
@@ -205,6 +203,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+Shift+R'],
 		group: 'file',
 		editorAction: true,
+		documentCommands: ['reveal-file'],
 	},
 	{
 		id: 'app-exit',
@@ -213,9 +212,8 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		group: 'file',
 		documentCommands: ['app-exit'],
 		// On macOS the document handler returns before this branch; the native
-		// menu's CmdOrCtrl+Q is what answers, and #281 left exactly two entries.
+		// menu's Quit answers it.
 		documentExempt: ['macos'],
-		nativeMenuAccelerator: 'CmdOrCtrl+Q',
 	},
 
 	// ---------------------------------------------------------------- edit
@@ -406,7 +404,6 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+,'],
 		group: 'view',
 		documentCommands: ['open-settings'],
-		nativeMenuAccelerator: 'CmdOrCtrl+,',
 	},
 	{
 		id: 'app-home',

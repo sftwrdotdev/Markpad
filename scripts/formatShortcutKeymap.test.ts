@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { buildMenuModel, type MenuNode } from '../src/lib/utils/appMenu.js';
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
 import {
 	OperatingSystem,
@@ -12,7 +13,7 @@ import {
 	type Chord,
 } from './keymapHarness.js';
 import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
-import { readRustBackend, readSource } from './sourceTree.js';
+import { readSource } from './sourceTree.js';
 
 /*
  * Issues #121 (six formatting commands with no shortcut) and #392 (Ctrl+T means
@@ -174,13 +175,18 @@ test('no path anywhere still opens a Home tab from a keystroke', () => {
 	assert.deepEqual(routes.map(([command]) => command), [], 'a keyboard command still reaches addHomeTab');
 });
 
-test('the native macOS menu claims exactly two accelerators, and T is not one', () => {
-	// The third code path in #392. The menu was trimmed to Settings and Quit
-	// (#281); anything added back that takes Cmd+T would reintroduce a fourth
-	// meaning, above both layers above, and neither of them could see it.
-	const rust = readRustBackend();
-	const accelerators = [...rust.matchAll(/\.accelerator\("([^"]+)"\)/g)].map((m) => m[1]).sort();
-	assert.deepEqual(accelerators, ['CmdOrCtrl+,', 'CmdOrCtrl+Q']);
+test('the macOS menu gives Cmd+T and Cmd+N no meaning but New File', () => {
+	// The third code path in #392: a menu item on Cmd+T would be a meaning
+	// above both layers above, and neither of them could see it.
+	const flatten = (nodes: readonly MenuNode[]): MenuNode[] =>
+		nodes.flatMap((node) => (node.kind === 'submenu' ? flatten(node.items) : [node]));
+	const claims = flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true })).flatMap(
+		(node) =>
+			(node.kind === 'item' || node.kind === 'check') && /^CmdOrCtrl\+[TN]$/.test(node.accelerator ?? '')
+				? [[node.accelerator, node.action]]
+				: [],
+	);
+	assert.deepEqual(claims, [['CmdOrCtrl+N', { viewer: 'new-file' }]]);
 });
 
 // ---------------------------------------------------------- the whole keymap

@@ -119,6 +119,18 @@ export default {
         modShiftEnter: '表: 上に行を追加 · その他: 上に空行'
     },
     menu: {
+        about: 'Markpad について',
+        services: 'サービス',
+        hideApp: 'Markpad を隠す',
+        quit: 'Markpad を終了',
+        undo: '取り消す',
+        redo: 'やり直す',
+        format: 'フォーマット',
+        tableOfContents: '目次',
+        previewNarrower: 'プレビューを狭く',
+        previewWider: 'プレビューを広く',
+        zoomWindow: '拡大/縮小',
+        moveToNextWindow: 'タブを次のウインドウに移動',
         file: 'ファイル',
         edit: '編集',
         view: '表示',
