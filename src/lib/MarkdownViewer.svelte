@@ -194,7 +194,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		copyToClipboard: () => Promise<void>;
 		pasteFromClipboard: () => Promise<void>;
 	} | null>(null);
-	let liveMode = $state(false);
+	// On by default, as in VS Code: a clean tab follows the file on disk.
+	let liveMode = $state(true);
 
 	// One decision, asked by the four jumps below and handed to `FindBar` and
 	// `Editor` for theirs. See `utils/motion.ts`.
