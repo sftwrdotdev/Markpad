@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Παλέτα εντολών',
         changeAllOccurrences: 'Αλλαγή όλων των εμφανίσεων',
         toggleShowTabs: 'Εναλλαγή εμφάνισης καρτελών',
+        editMode: 'Λειτουργία επεξεργασίας',
+        tabBar: 'Γραμμή καρτελών',
         copyReference: 'Αντιγραφή αναφοράς',
         saveImageAs: 'Αποθήκευση εικόνας ως...',
         saveDiagramAsSvg: 'Αποθήκευση διαγράμματος ως SVG...',

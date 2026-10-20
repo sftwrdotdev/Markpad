@@ -314,6 +314,8 @@ const en: Translation = {
         commandPalette: 'Command Palette',
         changeAllOccurrences: 'Change All Occurrences',
         toggleShowTabs: 'Toggle Tab Bar',
+        editMode: 'Edit Mode',
+        tabBar: 'Tab Bar',
         copyReference: 'Copy Reference',
         saveImageAs: 'Save Image As...',
         saveDiagramAsSvg: 'Save Diagram As SVG...',

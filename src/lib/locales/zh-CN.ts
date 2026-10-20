@@ -246,6 +246,8 @@ export default {
         commandPalette: '命令面板',
         changeAllOccurrences: '更改所有匹配项',
         toggleShowTabs: '切换显示标签栏',
+        editMode: '编辑模式',
+        tabBar: '标签栏',
         copyReference: '复制引用',
         saveImageAs: '另存图片为...',
         saveDiagramAsSvg: '将图表保存为SVG...',

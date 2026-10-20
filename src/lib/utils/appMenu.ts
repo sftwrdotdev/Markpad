@@ -38,14 +38,13 @@ export type AppMenuCommand =
 export type MenuAction =
 	| { readonly viewer: ViewerCommand }
 	| { readonly editor: string }
-	| { readonly app: AppMenuCommand }
-	| { readonly viewMode: ViewMode };
+	| { readonly app: AppMenuCommand };
 
 type PredefinedItem = Exclude<PredefinedMenuItemOptions['item'], 'Separator'>;
 
 export type MenuNode =
 	| { readonly kind: 'item'; readonly text: string; readonly action: MenuAction; readonly accelerator?: string; readonly enabled?: boolean }
-	| { readonly kind: 'check'; readonly text: string; readonly action: MenuAction; readonly accelerator?: string; readonly checked: boolean }
+	| { readonly kind: 'check'; readonly text: string; readonly action: MenuAction; readonly accelerator?: string; readonly checked: boolean; readonly enabled?: boolean }
 	| { readonly kind: 'predefined'; readonly item: PredefinedItem; readonly text?: string }
 	| { readonly kind: 'separator' }
 	| { readonly kind: 'submenu'; readonly text: string; readonly items: readonly MenuNode[]; readonly windowsMenu?: true };
@@ -57,6 +56,10 @@ export type MenuState = {
 	readonly liveMode: boolean;
 	/** The editor is on screen, so the Format items have somewhere to act. */
 	readonly hasEditorPane: boolean;
+	readonly showToc: boolean;
+	readonly showTabs: boolean;
+	readonly showEditorToolbar: boolean;
+	readonly previewFullWidth: boolean;
 };
 
 /**
@@ -91,12 +94,16 @@ export function buildMenuModel(state: MenuState): MenuNode[] {
 		accelerator: acceleratorOf(actionId),
 		enabled: state.hasEditorPane,
 	});
-	const viewMode = (text: string, mode: ViewMode): MenuNode => ({
+	// Named after the state, checked while it is on (macOS convention).
+	const check = (text: string, action: MenuAction, checked: boolean, shortcutId?: string, enabled = true): MenuNode => ({
 		kind: 'check',
 		text,
-		action: { viewMode: mode },
-		checked: state.viewMode === mode,
+		action,
+		checked,
+		enabled,
+		...(shortcutId ? { accelerator: acceleratorOf(shortcutId) } : {}),
 	});
+	const split = state.viewMode === 'split';
 
 	return [
 		{
@@ -184,23 +191,15 @@ export function buildMenuModel(state: MenuState): MenuNode[] {
 			kind: 'submenu',
 			text: t('menu.view', lang),
 			items: [
-				// No accelerators: ⌘E and ⌘\ toggle rather than pick a mode, and the
-				// page answers both before the menu would.
-				viewMode(t('settings.preview', lang), 'preview'),
-				viewMode(t('menu.splitView', lang), 'split'),
-				viewMode(t('menu.editor', lang), 'edit'),
-				{
-					kind: 'check',
-					text: t('menu.autoReload', lang),
-					action: { viewer: 'toggle-live-mode' },
-					accelerator: acceleratorOf('view-toggle-live'),
-					checked: state.liveMode,
-				},
+				// ⌘E does nothing in split view (`toggleEditView`), so neither does this.
+				check(t('menu.editMode', lang), { viewer: 'toggle-edit-view' }, split || state.viewMode === 'edit', 'view-toggle-edit', !split),
+				check(t('menu.splitView', lang), { viewer: 'toggle-split-view' }, split, 'view-toggle-split'),
+				check(t('menu.autoReload', lang), { viewer: 'toggle-live-mode' }, state.liveMode, 'view-toggle-live'),
 				separator,
-				app(t('menu.tableOfContents', lang), 'toggle-toc'),
-				app(t('menu.toggleShowTabs', lang), 'toggle-tabs', 'toggle-tabs'),
-				app(t('tooltip.editorToolbar', lang), 'toggle-editor-toolbar'),
-				app(t('menu.fullWidth', lang), 'toggle-full-width'),
+				check(t('menu.tableOfContents', lang), { app: 'toggle-toc' }, state.showToc),
+				check(t('menu.tabBar', lang), { app: 'toggle-tabs' }, state.showTabs, 'toggle-tabs'),
+				check(t('tooltip.editorToolbar', lang), { app: 'toggle-editor-toolbar' }, state.showEditorToolbar),
+				check(t('menu.fullWidth', lang), { app: 'toggle-full-width' }, state.previewFullWidth),
 				// ⌘⌥[ and ⌘⌥] stay text-field keys inside a field, where the page
 				// lets them through; an accelerator here would catch them there.
 				viewer(t('menu.previewNarrower', lang), 'preview-width-narrower'),
@@ -261,7 +260,7 @@ async function toNative(node: MenuNode, run: (action: MenuAction) => void, built
 			return item;
 		}
 		case 'check': {
-			const item = await CheckMenuItem.new({ text: node.text, accelerator: node.accelerator, checked: node.checked, action: () => run(node.action) });
+			const item = await CheckMenuItem.new({ text: node.text, accelerator: node.accelerator, checked: node.checked, enabled: node.enabled ?? true, action: () => run(node.action) });
 			built.owned.push(item);
 			return item;
 		}

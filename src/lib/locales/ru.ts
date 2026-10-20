@@ -203,6 +203,8 @@ export default {
         commandPalette: 'Палитра команд',
         changeAllOccurrences: 'Изменить все вхождения',
         toggleShowTabs: 'Переключить показ вкладок',
+        editMode: 'Режим редактирования',
+        tabBar: 'Панель вкладок',
         copyReference: 'Копировать ссылку',
         saveImageAs: 'Сохранить изображение как...',
         saveDiagramAsSvg: 'Сохранить диаграмму как SVG...',

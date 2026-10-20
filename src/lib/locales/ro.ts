@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Paleta de comenzi',
         changeAllOccurrences: 'Modificați toate aparițiile',
         toggleShowTabs: 'Comutare afișare file',
+        editMode: 'Mod editare',
+        tabBar: 'Bara de file',
         copyReference: 'Copiere referință',
         saveImageAs: 'Salvare imagine ca...',
         saveDiagramAsSvg: 'Salvare diagramă ca SVG...',

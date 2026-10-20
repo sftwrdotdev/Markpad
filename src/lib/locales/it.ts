@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Tavolozza comandi',
         changeAllOccurrences: 'Cambia tutte le occorrenze',
         toggleShowTabs: 'Attiva/disattiva schede',
+        editMode: 'Modalità modifica',
+        tabBar: 'Barra delle schede',
         copyReference: 'Copia riferimento',
         saveImageAs: 'Salva immagine come...',
         saveDiagramAsSvg: 'Salva diagramma come SVG...',

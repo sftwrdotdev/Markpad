@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Palette de commandes',
         changeAllOccurrences: 'Modifier toutes les occurrences',
         toggleShowTabs: 'Basculer l\'affichage des onglets',
+        editMode: 'Mode d\'édition',
+        tabBar: 'Barre d’onglets',
         copyReference: 'Copier la référence',
         saveImageAs: 'Enregistrer l\'image sous...',
         saveDiagramAsSvg: 'Enregistrer le diagramme en SVG...',

@@ -3546,8 +3546,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	/*
 	 * The macOS menu bar. The focused window installs its own, so every click
 	 * lands here. Rebuilt whenever what it shows changes, and after every click:
-	 * AppKit flips a check item itself, and a click that changes nothing (the
-	 * mode already shown) would otherwise leave it unchecked.
+	 * AppKit flips a check item itself, and a click that changes nothing (one
+	 * the dialog guard below refuses) would otherwise leave its mark wrong.
 	 */
 	let menuRevision = $state(0);
 	// `isFocused` starts out true; the menu waits for the real answer.
@@ -3562,6 +3562,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			viewMode: activeTab ? viewModeOf(activeTab) : null,
 			liveMode,
 			hasEditorPane,
+			showToc: settings.showToc,
+			showTabs: settings.showTabs,
+			showEditorToolbar: settings.showEditorToolbar,
+			previewFullWidth: settings.previewFullWidth,
 		});
 		void installAppMenu(model, runMenuAction, () => isFocused);
 	});
@@ -3574,7 +3578,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (context.mode !== 'app' || context.dialogOpen) return;
 		if ('viewer' in action) return runViewerCommand(action.viewer);
 		if ('editor' in action) return editorPane?.runEditorAction(action.editor);
-		if ('viewMode' in action) return void setViewMode(action.viewMode);
 		switch (action.app) {
 			case 'check-updates':
 				return updateStore.openDialog();

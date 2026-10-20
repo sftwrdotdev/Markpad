@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Komut Paleti',
         changeAllOccurrences: 'Tüm Oluşumları Değiştir',
         toggleShowTabs: 'Sekmeleri Göstermeyi Değiştir',
+        editMode: 'Düzenleme Modu',
+        tabBar: 'Sekme Çubuğu',
         copyReference: 'Referansı Kopyala',
         saveImageAs: 'Görüntüyü Farklı Kaydet...',
         saveDiagramAsSvg: 'Diyagramı SVG Olarak Kaydet...',

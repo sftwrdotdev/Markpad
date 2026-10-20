@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Parancspaletta',
         changeAllOccurrences: 'Az összes előfordulás módosítása',
         toggleShowTabs: 'Lapok megjelenítésének váltása',
+        editMode: 'Szerkesztő mód',
+        tabBar: 'Lapsáv',
         copyReference: 'Hivatkozás másolása',
         saveImageAs: 'Kép mentése másként...',
         saveDiagramAsSvg: 'Diagram mentése SVG-ként...',

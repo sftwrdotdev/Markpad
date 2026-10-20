@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Kommandopalett',
         changeAllOccurrences: 'Ändra alla förekomster',
         toggleShowTabs: 'Växla flikar',
+        editMode: 'Redigeringsläge',
+        tabBar: 'Flikfält',
         copyReference: 'Kopiera referens',
         saveImageAs: 'Spara bild som...',
         saveDiagramAsSvg: 'Spara diagram som SVG...',

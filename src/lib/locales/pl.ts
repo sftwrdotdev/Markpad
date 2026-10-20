@@ -211,6 +211,8 @@ export default {
         commandPalette: 'Paleta poleceń',
         changeAllOccurrences: 'Zmień wszystkie wystąpienia',
         toggleShowTabs: 'Przełącz karty',
+        editMode: 'Tryb edycji',
+        tabBar: 'Pasek kart',
         copyReference: 'Kopiuj odniesienie',
         saveImageAs: 'Zapisz obraz jako...',
         saveDiagramAsSvg: 'Zapisz diagram jako SVG...',

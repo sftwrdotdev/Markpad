@@ -214,6 +214,8 @@ export default {
         commandPalette: '명령 팔레트',
         changeAllOccurrences: '일치하는 항목 모두 변경',
         toggleShowTabs: '탭 표시 전환',
+        editMode: '편집 모드',
+        tabBar: '탭 표시줄',
         copyReference: '참조 복사',
         saveImageAs: '이미지를 다른 이름으로 저장...',
         saveDiagramAsSvg: '다이어그램을 SVG로 저장...',

@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Paleta príkazov',
         changeAllOccurrences: 'Zmeniť všetky výskyty',
         toggleShowTabs: 'Prepnúť karty',
+        editMode: 'Režim úprav',
+        tabBar: 'Lišta kariet',
         copyReference: 'Kopírovať odkaz',
         saveImageAs: 'Uložiť obrázok ako...',
         saveDiagramAsSvg: 'Uložiť diagram ako SVG...',

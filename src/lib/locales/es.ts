@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Paleta de comandos',
         changeAllOccurrences: 'Cambiar todas las apariciones',
         toggleShowTabs: 'Alternar mostrar pestañas',
+        editMode: 'Modo de edición',
+        tabBar: 'Barra de pestañas',
         copyReference: 'Copiar referencia',
         saveImageAs: 'Guardar imagen como...',
         saveDiagramAsSvg: 'Guardar diagrama como SVG...',

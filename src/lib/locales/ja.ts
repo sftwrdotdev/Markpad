@@ -203,6 +203,8 @@ export default {
         commandPalette: 'コマンドパレット',
         changeAllOccurrences: 'すべての出現箇所を変更',
         toggleShowTabs: 'タブの表示を切り替え',
+        editMode: '編集モード',
+        tabBar: 'タブバー',
         copyReference: '参照をコピー',
         saveImageAs: '名前を付けて画像を保存...',
         saveDiagramAsSvg: '図をSVGとして保存...',

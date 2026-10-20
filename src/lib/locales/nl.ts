@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Commandopalet',
         changeAllOccurrences: 'Alle exemplaren wijzigen',
         toggleShowTabs: 'Wissel tabbladen',
+        editMode: 'Bewerkingsmodus',
+        tabBar: 'Tabbladbalk',
         copyReference: 'Kopieer referentie',
         saveImageAs: 'Afbeelding opslaan als...',
         saveDiagramAsSvg: 'Diagram opslaan als SVG...',

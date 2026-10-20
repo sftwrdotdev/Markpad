@@ -246,6 +246,8 @@ export default {
         commandPalette: '命令選擇區',
         changeAllOccurrences: '變更所有相符項',
         toggleShowTabs: '切換顯示分頁',
+        editMode: '編輯模式',
+        tabBar: '分頁列',
         copyReference: '複製參照',
         saveImageAs: '圖片另存新檔...',
         saveDiagramAsSvg: '圖表另存為 SVG...',

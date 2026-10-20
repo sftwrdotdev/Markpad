@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { buildMenuModel, type MenuNode, type MenuState } from '../src/lib/utils/appMenu.js';
 import type { ViewMode } from '../src/lib/utils/titlebarToolbar.js';
+import { SHORTCUTS } from '../src/lib/utils/shortcuts.js';
 import { translations } from './allTranslations.js';
 
 // The macOS menu bar as each window builds it. This replaced #281's minimal
@@ -10,7 +11,16 @@ import { translations } from './allTranslations.js';
 
 void translations; // every locale loaded, so `t` answers in each language
 
-const base: MenuState = { language: 'en', viewMode: 'preview', liveMode: true, hasEditorPane: false };
+const base: MenuState = {
+	language: 'en',
+	viewMode: 'preview',
+	liveMode: true,
+	hasEditorPane: false,
+	showToc: true,
+	showTabs: true,
+	showEditorToolbar: true,
+	previewFullWidth: false,
+};
 
 function flatten(nodes: readonly MenuNode[]): MenuNode[] {
 	return nodes.flatMap((node) => (node.kind === 'submenu' ? [node, ...flatten(node.items)] : [node]));
@@ -41,24 +51,71 @@ test('every label is a translation, in English and in Chinese', () => {
 	find(buildMenuModel({ ...base, language: 'zh-TW' }), '切換全螢幕');
 });
 
-test('the view modes are one exclusive choice that follows the active tab', () => {
-	const modes = (state: MenuState) =>
-		flatten(buildMenuModel(state)).flatMap((node) =>
-			node.kind === 'check' && 'viewMode' in node.action ? [[node.action.viewMode, node.checked] as const] : [],
-		);
-	for (const viewMode of ['preview', 'split', 'edit'] as ViewMode[]) {
-		const shown = modes({ ...base, viewMode });
-		assert.equal(shown.length, 3);
-		assert.deepEqual(shown.filter(([, checked]) => checked).map(([mode]) => mode), [viewMode]);
+function check(state: MenuState, text: string) {
+	const node = find(buildMenuModel(state), text);
+	assert.ok(node.kind === 'check', `${text} is not a check item`);
+	return node;
+}
+
+test('Edit Mode is checked while the editor shows, and disabled in split where ⌘E does nothing', () => {
+	for (const [viewMode, checked, enabled] of [
+		['preview', false, true],
+		['edit', true, true],
+		['split', true, false],
+		[null, false, true],
+	] as const) {
+		const item = check({ ...base, viewMode }, 'Edit Mode');
+		assert.equal(item.checked, checked, `${viewMode}: checked`);
+		assert.equal(item.enabled ?? true, enabled, `${viewMode}: enabled`);
+		assert.deepEqual(item.action, { viewer: 'toggle-edit-view' });
 	}
-	assert.ok(modes({ ...base, viewMode: null }).every(([, checked]) => !checked), 'no tab, no mode');
 });
 
-test('Auto-Reload is checked exactly when live mode is on', () => {
-	for (const liveMode of [true, false]) {
-		const item = find(buildMenuModel({ ...base, liveMode }), 'Auto-Reload');
-		assert.equal(item.kind === 'check' && item.checked, liveMode);
+test('Split View is checked exactly in split', () => {
+	for (const viewMode of ['preview', 'edit', 'split', null] as (ViewMode | null)[]) {
+		const item = check({ ...base, viewMode }, 'Split View');
+		assert.equal(item.checked, viewMode === 'split');
+		assert.deepEqual(item.action, { viewer: 'toggle-split-view' });
 	}
+});
+
+test('each View toggle is a check item that follows its own state', () => {
+	const toggles = [
+		['Auto-Reload', 'liveMode'],
+		['Table of Contents', 'showToc'],
+		['Tab Bar', 'showTabs'],
+		['Editor Toolbar', 'showEditorToolbar'],
+		['Full Width', 'previewFullWidth'],
+	] as const;
+	for (const [text, key] of toggles) {
+		for (const on of [true, false]) assert.equal(check({ ...base, [key]: on }, text).checked, on, `${text} with ${key}=${on}`);
+	}
+});
+
+test('Edit Mode, Split View and Tab Bar carry the registry chords', () => {
+	const model = buildMenuModel(base);
+	for (const [text, id] of [
+		['Edit Mode', 'view-toggle-edit'],
+		['Split View', 'view-toggle-split'],
+		['Tab Bar', 'toggle-tabs'],
+	] as const) {
+		const item = find(model, text);
+		const chord = SHORTCUTS.find((row) => row.id === id)!.chords[0];
+		assert.equal(item.kind === 'check' && item.accelerator, chord.replace(/^Mod\b/, 'CmdOrCtrl'), text);
+	}
+});
+
+test('the View toggles read as state names in Chinese', () => {
+	const zh = { ...base, language: 'zh-CN' } as const;
+	for (const text of ['编辑模式', '分屏视图', '自动重载', '目录', '标签栏', '编辑器工具栏', '全宽']) check(zh, text);
+});
+
+test('View has no radio group of modes left', () => {
+	const view = buildMenuModel(base)[3];
+	assert.ok(view.kind === 'submenu');
+	const checks = view.items.flatMap((node) => (node.kind === 'check' ? [node.text] : []));
+	assert.deepEqual(checks, ['Edit Mode', 'Split View', 'Auto-Reload', 'Table of Contents', 'Tab Bar', 'Editor Toolbar', 'Full Width']);
+	assert.ok(flatten(buildMenuModel(base)).every((node) => !('action' in node) || !('viewMode' in node.action)));
 });
 
 test('Format acts on the editor, so it is disabled without one', () => {

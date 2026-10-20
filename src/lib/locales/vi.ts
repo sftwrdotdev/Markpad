@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Bảng lệnh',
         changeAllOccurrences: 'Thay đổi tất cả các lần xuất hiện',
         toggleShowTabs: 'Chuyển hiển thị tab',
+        editMode: 'Chế độ chỉnh sửa',
+        tabBar: 'Thanh tab',
         copyReference: 'Sao chép tham chiếu',
         saveImageAs: 'Lưu hình ảnh dưới dạng...',
         saveDiagramAsSvg: 'Lưu sơ đồ dưới dạng SVG...',

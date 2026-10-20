@@ -180,7 +180,7 @@ test('the macOS menu gives Cmd+T and Cmd+N no meaning but New File', () => {
 	// above both layers above, and neither of them could see it.
 	const flatten = (nodes: readonly MenuNode[]): MenuNode[] =>
 		nodes.flatMap((node) => (node.kind === 'submenu' ? flatten(node.items) : [node]));
-	const claims = flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true })).flatMap(
+	const claims = flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true, showToc: true, showTabs: true, showEditorToolbar: true, previewFullWidth: false })).flatMap(
 		(node) =>
 			(node.kind === 'item' || node.kind === 'check') && /^CmdOrCtrl\+[TN]$/.test(node.accelerator ?? '')
 				? [[node.accelerator, node.action]]

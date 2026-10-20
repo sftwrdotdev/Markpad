@@ -236,7 +236,7 @@ test('every chord the registry advertises runs the command it names, outside the
 function menuAccelerators(): Array<{ text: string; accelerator: string; action: MenuNode & { kind: 'item' | 'check' } }> {
 	const flatten = (nodes: readonly MenuNode[]): MenuNode[] =>
 		nodes.flatMap((node) => (node.kind === 'submenu' ? flatten(node.items) : [node]));
-	return flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true })).flatMap((node) =>
+	return flatten(buildMenuModel({ language: 'en', viewMode: 'edit', liveMode: true, hasEditorPane: true, showToc: true, showTabs: true, showEditorToolbar: true, previewFullWidth: false })).flatMap((node) =>
 		(node.kind === 'item' || node.kind === 'check') && node.accelerator
 			? [{ text: node.text, accelerator: node.accelerator, action: node }]
 			: [],

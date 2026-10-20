@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Kommandopalett',
         changeAllOccurrences: 'Endre alle forekomster',
         toggleShowTabs: 'Bytt vis faner',
+        editMode: 'Redigeringsmodus',
+        tabBar: 'Fanelinje',
         copyReference: 'Kopier referanse',
         saveImageAs: 'Lagre bilde som...',
         saveDiagramAsSvg: 'Lagre diagram som SVG...',

@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Komentopaletti',
         changeAllOccurrences: 'Muuta kaikki esiintymät',
         toggleShowTabs: 'Vaihda välilehtien näyttöä',
+        editMode: 'Muokkaustila',
+        tabBar: 'Välilehtipalkki',
         copyReference: 'Kopioi viite',
         saveImageAs: 'Tallenna kuva nimellä...',
         saveDiagramAsSvg: 'Tallenna kaavio SVG-muodossa...',

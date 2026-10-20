@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Befehlspalette',
         changeAllOccurrences: 'Alle Vorkommen ändern',
         toggleShowTabs: 'Tabs anzeigen umschalten',
+        editMode: 'Bearbeitungsmodus',
+        tabBar: 'Tableiste',
         copyReference: 'Referenz kopieren',
         saveImageAs: 'Bild speichern unter...',
         saveDiagramAsSvg: 'Diagramm als SVG speichern...',

@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Paleta de comandos',
         changeAllOccurrences: 'Alterar todas as ocorrências',
         toggleShowTabs: 'Alternar separadores',
+        editMode: 'Modo de edição',
+        tabBar: 'Barra de separadores',
         copyReference: 'Copiar referência',
         saveImageAs: 'Guardar imagem como...',
         saveDiagramAsSvg: 'Guardar diagrama como SVG...',

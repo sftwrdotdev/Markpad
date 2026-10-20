@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Palet Perintah',
         changeAllOccurrences: 'Ubah Semua Kemunculan',
         toggleShowTabs: 'Alihkan Tampilan Tab',
+        editMode: 'Mode Edit',
+        tabBar: 'Bilah Tab',
         copyReference: 'Salin Referensi',
         saveImageAs: 'Simpan Gambar Sebagai...',
         saveDiagramAsSvg: 'Simpan Diagram sebagai SVG...',

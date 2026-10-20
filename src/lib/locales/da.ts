@@ -202,6 +202,8 @@ export default {
         commandPalette: 'Kommandopalette',
         changeAllOccurrences: 'Skift alle forekomster',
         toggleShowTabs: 'Skift vis faner',
+        editMode: 'Redigeringstilstand',
+        tabBar: 'Fanelinje',
         copyReference: 'Kopier reference',
         saveImageAs: 'Gem billede som...',
         saveDiagramAsSvg: 'Gem diagram som SVG...',
