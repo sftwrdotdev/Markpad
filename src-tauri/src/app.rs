@@ -55,15 +55,11 @@ pub fn run() {
                         | tauri_plugin_window_state::StateFlags::VISIBLE
                         | tauri_plugin_window_state::StateFlags::FULLSCREEN,
                 )
-                // Detached tab windows share one saved state instead of
-                // accumulating a state entry per generated label.
-                .map_label(|label| {
-                    if label.starts_with("window-") {
-                        "secondary"
-                    } else {
-                        label
-                    }
-                })
+                // No `map_label`: a secondary window keeps its label across
+                // relaunches, so each one gets its own size and position back.
+                // ponytail: entries of windows that never come back stay in
+                // the plugin's file (~200 bytes each, no removal API); prune it
+                // before the plugin loads if that ever matters.
                 .build(),
         )
         .setup(|app| {
@@ -275,6 +271,8 @@ pub fn run() {
             window_runtime::save_window_state,
             window_runtime::load_window_state,
             window_runtime::clear_window_state,
+            window_runtime::forget_window_state,
+            window_runtime::reopen_remembered_windows,
             window_runtime::save_unsaved_recovery,
             window_runtime::load_unsaved_recovery,
             window_runtime::clear_unsaved_recovery,

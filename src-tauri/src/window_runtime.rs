@@ -92,9 +92,7 @@ pub struct PinnedTag {
 
 /// `name` in the app config dir, which is created if missing.
 pub(crate) fn config_file(app: &AppHandle, name: &str) -> Result<PathBuf, crate::error::Error> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
-    fs::create_dir_all(&dir)?;
-    Ok(dir.join(name))
+    Ok(config_dir(app)?.join(name))
 }
 
 fn remove_if_exists(path: &Path) -> Result<(), String> {
@@ -458,11 +456,119 @@ pub async fn show_window(window: tauri::Window) {
     let _ = window.set_focus();
 }
 
-fn window_state_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
-    config_file(app, "window-state-v2.json")
+/// Main's snapshot keeps its pre-per-window name, so an existing session is
+/// main's entry without a migration and an older build still finds it.
+const MAIN_WINDOW_STATE: &str = "window-state-v2.json";
+/// Every other remembered window has a snapshot here, named by its label.
+/// One file per window: N windows closing at once never write the same file.
+const WINDOW_STATE_DIR: &str = "window-state";
+const MAIN_RESTORE_PROGRESS: &str = "restore-progress-v1.json";
+const RESTORE_PROGRESS_DIR: &str = "restore-progress";
+
+fn config_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    fs::create_dir_all(&dir)?;
+    Ok(dir)
 }
 
-/// Persists the session snapshot atomically.
+/// `label`'s file in a per-window directory. Only `window-*` windows have one:
+/// main has its own file, and anything else is not a window startup reopens.
+fn secondary_window_file(dir: &Path, label: &str) -> Result<PathBuf, String> {
+    if !label.starts_with("window-") {
+        return Err(format!("not a secondary window label: {label}"));
+    }
+    label_file(dir, label)
+}
+
+fn window_state_path_in(config: &Path, label: &str) -> Result<PathBuf, String> {
+    if label == "main" {
+        return Ok(config.join(MAIN_WINDOW_STATE));
+    }
+    secondary_window_file(&config.join(WINDOW_STATE_DIR), label)
+}
+
+fn restore_progress_path_in(config: &Path, label: &str) -> Result<PathBuf, String> {
+    if label == "main" {
+        return Ok(config.join(MAIN_RESTORE_PROGRESS));
+    }
+    secondary_window_file(&config.join(RESTORE_PROGRESS_DIR), label)
+}
+
+/// Writes a file Markpad owns in one of its per-window directories. Like
+/// `atomic_write`, but refuses to follow a symlink into a document.
+fn write_owned_file(path: &Path, json: &str) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir).map_err(|error| error.to_string())?;
+    }
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err("target is not a regular file".to_string());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.to_string()),
+    }
+    atomic_write(path, json.as_bytes()).map_err(|error| error.to_string())
+}
+
+fn save_window_state_in(config: &Path, label: &str, json: &str) -> Result<(), String> {
+    let path = window_state_path_in(config, label)?;
+    if label == "main" {
+        return atomic_write(&path, json.as_bytes()).map_err(|e| e.to_string());
+    }
+    write_owned_file(&path, json)
+}
+
+fn load_window_state_in(config: &Path, label: &str) -> Option<String> {
+    fs::read_to_string(window_state_path_in(config, label).ok()?).ok()
+}
+
+/// A window closed on its own is not reopened. Its crash-guard breadcrumb goes
+/// with it; main's stays, because main's deferrals outlive any one session.
+fn forget_window_state_in(config: &Path, label: &str) -> Result<(), String> {
+    remove_if_exists(&window_state_path_in(config, label)?)?;
+    if label != "main" {
+        remove_if_exists(&restore_progress_path_in(config, label)?)?;
+    }
+    Ok(())
+}
+
+fn remove_dir_if_exists(dir: &Path) -> Result<(), String> {
+    match fs::remove_dir_all(dir) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Every window's snapshot, for the setting that turns restore off.
+fn clear_window_state_in(config: &Path) -> Result<(), String> {
+    remove_if_exists(&config.join(MAIN_WINDOW_STATE))?;
+    remove_dir_if_exists(&config.join(WINDOW_STATE_DIR))?;
+    remove_dir_if_exists(&config.join(RESTORE_PROGRESS_DIR))
+}
+
+/// The secondary windows that were open when the last session ended.
+fn remembered_window_labels_in(config: &Path) -> Vec<String> {
+    let dir = config.join(WINDOW_STATE_DIR);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut labels: Vec<String> = entries
+        .flatten()
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_file()))
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let label = name.to_str()?.strip_suffix(".json")?.to_string();
+            secondary_window_file(&dir, &label).ok()?;
+            Some(label)
+        })
+        .collect();
+    labels.sort();
+    labels
+}
+
+/// Persists the calling window's restore snapshot atomically.
 ///
 /// This runs while the last window is closing — the moment the WebKit storage
 /// process is already tearing down — so a partial write is a realistic
@@ -475,35 +581,64 @@ fn window_state_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
 /// Off the main thread: the two fsyncs cost ~8 ms, and closing main freezes
 /// every other window for that long. The caller still awaits the write.
 #[tauri::command]
-pub async fn save_window_state(app: AppHandle, json: String) -> Result<(), String> {
-    let path = window_state_path(&app)?;
-    crate::commands::blocking(move || {
-        atomic_write(&path, json.as_bytes()).map_err(|e| e.to_string())
-    })
-    .await
+pub async fn save_window_state(
+    window: tauri::Window,
+    app: AppHandle,
+    json: String,
+) -> Result<(), String> {
+    let config = config_dir(&app)?;
+    let label = window.label().to_string();
+    crate::commands::blocking(move || save_window_state_in(&config, &label, &json)).await
 }
 
 #[tauri::command]
-pub fn load_window_state(app: AppHandle) -> Option<String> {
-    fs::read_to_string(window_state_path(&app).ok()?).ok()
+pub fn load_window_state(window: tauri::Window, app: AppHandle) -> Option<String> {
+    load_window_state_in(&config_dir(&app).ok()?, window.label())
+}
+
+#[tauri::command]
+pub fn forget_window_state(window: tauri::Window, app: AppHandle) -> Result<(), String> {
+    forget_window_state_in(&config_dir(&app)?, window.label())
 }
 
 #[tauri::command]
 pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
-    remove_if_exists(&window_state_path(&app)?)
+    clear_window_state_in(&config_dir(&app)?)
+}
+
+/// Rebuilds each remembered secondary window under its saved label, and
+/// returns the labels that now have a window. Each one restores its own
+/// snapshot and unsaved backup; a label missing from the answer could not be
+/// built, so its backup is left for main to take in.
+///
+/// Async for the reason `create_transfer_window` is.
+#[tauri::command]
+pub async fn reopen_remembered_windows(app: AppHandle) -> Result<Vec<String>, String> {
+    let config = config_dir(&app)?;
+    let mut open = Vec::new();
+    for label in remembered_window_labels_in(&config) {
+        if app.get_webview_window(&label).is_none() {
+            if let Err(error) = build_viewer_window(&app, &label) {
+                eprintln!("Failed to reopen window {label}: {error}");
+                continue;
+            }
+        }
+        open.push(label);
+    }
+    Ok(open)
 }
 
 fn unsaved_recovery_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
     config_file(app, "unsaved-recovery")
 }
 
-fn recovery_path(dir: &Path, label: &str) -> Result<PathBuf, String> {
+fn label_file(dir: &Path, label: &str) -> Result<PathBuf, String> {
     if label.is_empty()
         || !label
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
     {
-        return Err(format!("invalid recovery window label: {label}"));
+        return Err(format!("invalid window label: {label}"));
     }
     Ok(dir.join(format!("{label}.json")))
 }
@@ -518,21 +653,11 @@ fn remove_recovery_file(path: &Path) -> Result<(), String> {
 
 /// Each window replaces only its own snapshot, never a document on disk.
 fn save_unsaved_recovery_at(dir: &Path, label: &str, json: &str) -> Result<(), String> {
-    let path = recovery_path(dir, label)?;
+    let path = label_file(dir, label)?;
     if json.trim() == "[]" {
         return remove_recovery_file(&path);
     }
-    fs::create_dir_all(dir).map_err(|error| error.to_string())?;
-    // atomic_write follows symlinks for document saves; recovery must not.
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if !metadata.file_type().is_file() => {
-            return Err("recovery target is not a regular file".to_string());
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.to_string()),
-    }
-    atomic_write(&path, json.as_bytes()).map_err(|error| error.to_string())
+    write_owned_file(&path, json)
 }
 
 fn load_unsaved_recovery_at(dir: &Path) -> Result<Vec<(String, String)>, String> {
@@ -547,8 +672,7 @@ fn load_unsaved_recovery_at(dir: &Path) -> Result<Vec<(String, String)>, String>
         let Some(label) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
             continue;
         };
-        if recovery_path(dir, label).is_err() || !entry.file_type().is_ok_and(|kind| kind.is_file())
-        {
+        if label_file(dir, label).is_err() || !entry.file_type().is_ok_and(|kind| kind.is_file()) {
             continue;
         }
         // One unreadable file must not hide the others. It arrives empty, which
@@ -564,7 +688,7 @@ fn clear_unsaved_recovery_at(dir: &Path, labels: &[String]) -> Result<(), String
     // Validate the whole request before deleting any snapshot.
     let paths = labels
         .iter()
-        .map(|label| recovery_path(dir, label))
+        .map(|label| label_file(dir, label))
         .collect::<Result<Vec<_>, _>>()?;
     for path in paths {
         remove_recovery_file(&path)?;
@@ -595,10 +719,6 @@ pub async fn clear_unsaved_recovery(app: AppHandle, labels: Vec<String>) -> Resu
     crate::commands::blocking(move || clear_unsaved_recovery_at(&dir, &labels)).await
 }
 
-fn restore_progress_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
-    config_file(app, "restore-progress-v1.json")
-}
-
 /// Publishes the restore breadcrumb by rename, but without `atomic_write`'s
 /// fsyncs.
 ///
@@ -624,9 +744,17 @@ fn restore_progress_path(app: &AppHandle) -> Result<PathBuf, crate::error::Error
 /// measured on macOS/APFS with a 122-byte payload, `atomic_write`'s two fsyncs
 /// cost ~8 ms per call against ~0.2 ms for temp-file-plus-rename.
 fn write_restore_progress(path: &Path, json: &str) -> std::io::Result<()> {
-    // Two Markpad processes (Windows, Linux) would otherwise share a temp name
-    // and the loser would delete the winner's file out from under its rename.
-    let temp = path.with_file_name(format!(".restore-progress-{}.tmp", std::process::id()));
+    // Two Markpad processes (Windows, Linux), or two windows of one, would
+    // otherwise share a temp name and the loser would delete the winner's file
+    // out from under its rename.
+    let name = path
+        .file_name()
+        .and_then(OsStr::to_str)
+        .unwrap_or("restore-progress");
+    let temp = path.with_file_name(format!(".{name}-{}.tmp", std::process::id()));
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let write = (|| -> std::io::Result<()> {
         let mut file = fs::File::create(&temp)?;
         std::io::Write::write_all(&mut file, json.as_bytes())?;
@@ -643,19 +771,28 @@ fn write_restore_progress(path: &Path, json: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Each window guards its own restore: the breadcrumb is keyed by the caller's label.
 #[tauri::command]
-pub fn save_restore_progress(app: AppHandle, json: String) -> Result<(), String> {
-    write_restore_progress(&restore_progress_path(&app)?, &json).map_err(|e| e.to_string())
+pub fn save_restore_progress(
+    window: tauri::Window,
+    app: AppHandle,
+    json: String,
+) -> Result<(), String> {
+    let path = restore_progress_path_in(&config_dir(&app)?, window.label())?;
+    write_restore_progress(&path, &json).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn load_restore_progress(app: AppHandle) -> Option<String> {
-    fs::read_to_string(restore_progress_path(&app).ok()?).ok()
+pub fn load_restore_progress(window: tauri::Window, app: AppHandle) -> Option<String> {
+    fs::read_to_string(restore_progress_path_in(&config_dir(&app).ok()?, window.label()).ok()?).ok()
 }
 
 #[tauri::command]
-pub fn clear_restore_progress(app: AppHandle) -> Result<(), String> {
-    remove_if_exists(&restore_progress_path(&app)?)
+pub fn clear_restore_progress(window: tauri::Window, app: AppHandle) -> Result<(), String> {
+    remove_if_exists(&restore_progress_path_in(
+        &config_dir(&app)?,
+        window.label(),
+    )?)
 }
 
 /// A document window: the main one or a detached-tab one.
@@ -767,10 +904,14 @@ pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
 /// deadlocks building a window there (tauri-apps/tauri#12521).
 #[tauri::command]
 pub async fn create_transfer_window(app: AppHandle, token: String) -> Result<(), String> {
-    let label = crate::tab_transfer::destination_label(&token);
+    build_viewer_window(&app, &crate::tab_transfer::destination_label(&token))
+}
+
+/// The one factory for secondary windows: built hidden, the frontend shows it.
+fn build_viewer_window(app: &AppHandle, label: &str) -> Result<(), String> {
     #[allow(unused_mut)]
     let mut builder =
-        tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+        tauri::WebviewWindowBuilder::new(app, label, tauri::WebviewUrl::App("index.html".into()))
             .title("Markpad")
             .inner_size(1000.0, 800.0)
             .min_inner_size(400.0, 300.0)
@@ -1004,14 +1145,14 @@ mod tests {
         let dir = Path::new("unsaved-recovery");
         for label in ["main", "window-123", "A_b-09"] {
             assert_eq!(
-                recovery_path(dir, label).unwrap(),
+                label_file(dir, label).unwrap(),
                 dir.join(format!("{label}.json"))
             );
         }
         for label in [
             "", ".", "..", "../main", "a/b", "a\\b", "/main", "a.json", "a b", "é",
         ] {
-            assert!(recovery_path(dir, label).is_err(), "accepted {label:?}");
+            assert!(label_file(dir, label).is_err(), "accepted {label:?}");
         }
     }
 
@@ -1085,6 +1226,106 @@ mod tests {
         clear_unsaved_recovery_at(&dir, &["main".into()]).unwrap();
         assert_eq!(fs::read_to_string(document).unwrap(), "original");
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn main_keeps_its_old_files_and_other_windows_get_one_each() {
+        let config = Path::new("config");
+        assert_eq!(
+            window_state_path_in(config, "main").unwrap(),
+            config.join("window-state-v2.json")
+        );
+        assert_eq!(
+            restore_progress_path_in(config, "main").unwrap(),
+            config.join("restore-progress-v1.json")
+        );
+        assert_eq!(
+            window_state_path_in(config, "window-ab12").unwrap(),
+            config.join("window-state").join("window-ab12.json")
+        );
+        assert_eq!(
+            restore_progress_path_in(config, "window-ab12").unwrap(),
+            config.join("restore-progress").join("window-ab12.json")
+        );
+        for label in ["settings", "", "window-../main", "window-a/b", "window-a.b"] {
+            assert!(
+                window_state_path_in(config, label).is_err(),
+                "accepted {label:?}"
+            );
+            assert!(
+                restore_progress_path_in(config, label).is_err(),
+                "accepted {label:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn each_window_reads_and_forgets_only_its_own_snapshot() {
+        let config = temp_dir("window-state");
+        // A session written before snapshots were per window is main's entry.
+        fs::write(config.join("window-state-v2.json"), "legacy").unwrap();
+        assert_eq!(
+            load_window_state_in(&config, "main").as_deref(),
+            Some("legacy")
+        );
+        assert!(remembered_window_labels_in(&config).is_empty());
+
+        save_window_state_in(&config, "main", "m").unwrap();
+        save_window_state_in(&config, "window-b", "b").unwrap();
+        save_window_state_in(&config, "window-a", "a").unwrap();
+        write_restore_progress(
+            &restore_progress_path_in(&config, "window-a").unwrap(),
+            "{}",
+        )
+        .unwrap();
+        assert!(save_window_state_in(&config, "settings", "x").is_err());
+        fs::write(config.join("window-state").join("notes.json"), "x").unwrap();
+        assert_eq!(load_window_state_in(&config, "main").as_deref(), Some("m"));
+        assert_eq!(
+            load_window_state_in(&config, "window-a").as_deref(),
+            Some("a")
+        );
+        assert_eq!(load_window_state_in(&config, "window-c"), None);
+        assert_eq!(
+            remembered_window_labels_in(&config),
+            ["window-a", "window-b"]
+        );
+
+        forget_window_state_in(&config, "window-a").unwrap();
+        assert_eq!(remembered_window_labels_in(&config), ["window-b"]);
+        assert!(!config
+            .join("restore-progress")
+            .join("window-a.json")
+            .exists());
+        assert_eq!(load_window_state_in(&config, "main").as_deref(), Some("m"));
+        forget_window_state_in(&config, "main").unwrap();
+        assert_eq!(load_window_state_in(&config, "main"), None);
+        assert_eq!(
+            load_window_state_in(&config, "window-b").as_deref(),
+            Some("b")
+        );
+
+        save_window_state_in(&config, "main", "m").unwrap();
+        clear_window_state_in(&config).unwrap();
+        assert_eq!(load_window_state_in(&config, "main"), None);
+        assert!(remembered_window_labels_in(&config).is_empty());
+        clear_window_state_in(&config).unwrap();
+        fs::remove_dir_all(config).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_window_snapshot_does_not_follow_a_symlink_into_a_document() {
+        let config = temp_dir("window-state-symlink");
+        let document = config.join("original.md");
+        fs::write(&document, "original").unwrap();
+        fs::create_dir(config.join("window-state")).unwrap();
+        std::os::unix::fs::symlink(&document, config.join("window-state").join("window-a.json"))
+            .unwrap();
+        assert!(save_window_state_in(&config, "window-a", "x").is_err());
+        assert!(remembered_window_labels_in(&config).is_empty());
+        assert_eq!(fs::read_to_string(document).unwrap(), "original");
+        fs::remove_dir_all(config).unwrap();
     }
 
     /// argv, as the shell would hand it over: `argv[0]` and then the arguments.
