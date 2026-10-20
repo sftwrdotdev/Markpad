@@ -48,6 +48,19 @@ test('whitespace collapses outside pre and is literal inside it', () => {
 	assert.equal(search('<pre><code><span>iota</span>  kappa</code></pre>', 'iota  kappa').count, 1);
 });
 
+test('a mark covers the characters that matched, wherever whitespace collapsed', () => {
+	// The drawn text and the offsets back into each node are worked out by two
+	// separate passes; if they ever disagree, the highlight lands on the wrong
+	// characters while the count stays right.
+	assert.deepEqual(search('<p>one  two   three</p>', 'three').marks, [['0', 'three']]);
+	assert.deepEqual(search('<p>a\n   b</p>', 'b').marks, [['0', 'b']]);
+	assert.deepEqual(search('<p>a\n   b</p>', 'a b').marks, [['0', 'a\n   b']]);
+	// The leading space of ` y` is dropped, the line already ending in one.
+	assert.deepEqual(search('<p>x <em> y</em></p>', 'y').marks, [['0', 'y']]);
+	assert.deepEqual(search('<p>x <em> y</em></p>', 'x y').marks, [['0', 'x '], ['0', 'y']]);
+	assert.deepEqual(search('<p>a<br>\n  b c</p>', 'b c').marks, [['0', 'b c']]);
+});
+
 test('several matches in one node are all marked, the text intact', () => {
 	const run = search('<p>one one <em>one</em></p>', 'one');
 	assert.equal(run.count, 3);
