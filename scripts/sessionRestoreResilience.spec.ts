@@ -102,7 +102,6 @@ let restoreEnabled = true;
 
 function makeSession() {
 	return createWindowSession({
-		isMainWindow: true,
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,

@@ -1,6 +1,6 @@
 use crate::fs_safety::atomic_write;
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,8 +23,16 @@ impl WatcherState {
     }
 }
 
+/// The window Tauri builds at launch. Only startup tells it apart: it adopts a
+/// remembered window when it has no snapshot of its own, takes the files the
+/// launch was started with, and shows itself without taking focus. Its files
+/// keep their pre-per-window names, so an older build still finds them.
+pub const LAUNCH_LABEL: &str = "main";
+
 pub struct AppState {
-    pub(crate) startup_files: Mutex<Vec<String>>,
+    /// Paths the launch was asked to open. `Some` until the launch window takes
+    /// them; after that a path opened goes straight to a window.
+    startup_files: Mutex<Option<Vec<String>>>,
     pub(crate) last_focused_viewer: Mutex<Option<String>>,
     window_registry: Mutex<HashMap<String, WindowMeta>>,
     window_counter: AtomicU64,
@@ -32,8 +40,13 @@ pub struct AppState {
     /// a critical section rather than a value, so the payload is `()` — see
     /// `update_pinned_tags` for why the whole cycle has to be inside it.
     pinned_tags: Mutex<()>,
-    /// Set by Quit before it closes the windows; cleared when a close is cancelled.
-    quitting: AtomicBool,
+    /// `Some` while a quit is in progress, holding the windows it has closed so
+    /// far: a cancelled quit forgets them, since the user carries on without.
+    quit: Mutex<Option<Vec<String>>>,
+    /// Remembered windows are reopened once per launch, by the first caller.
+    reopened: AtomicBool,
+    /// Orphan backups already handed to a window this launch.
+    claimed_recovery: Mutex<HashSet<String>>,
 }
 
 /// Locks `mutex`, recovering the guarded value if a previous holder panicked.
@@ -57,12 +70,14 @@ pub(crate) fn lock_recover<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> 
 impl AppState {
     pub fn new() -> Self {
         Self {
-            startup_files: Mutex::new(Vec::new()),
+            startup_files: Mutex::new(Some(Vec::new())),
             last_focused_viewer: Mutex::new(None),
             window_registry: Mutex::new(HashMap::new()),
             window_counter: AtomicU64::new(0),
             pinned_tags: Mutex::new(()),
-            quitting: AtomicBool::new(false),
+            quit: Mutex::new(None),
+            reopened: AtomicBool::new(false),
+            claimed_recovery: Mutex::new(HashSet::new()),
         }
     }
 }
@@ -362,9 +377,38 @@ pub fn list_viewer_windows(state: State<'_, AppState>) -> Vec<WindowListEntry> {
     list
 }
 
+/// Starts a quit (`true`) or ends one a close cancelled (`false`), returning
+/// the windows a cancelled quit had already closed.
+fn update_quit(quit: &Mutex<Option<Vec<String>>>, quitting: bool) -> Vec<String> {
+    let mut quit = lock_recover(quit);
+    if quitting {
+        quit.get_or_insert_with(Vec::new);
+        return Vec::new();
+    }
+    quit.take().unwrap_or_default()
+}
+
+/// A window closed during a quit keeps its snapshot, since the session ends
+/// with it. If the quit is then cancelled the user carries on without those
+/// windows, so they are forgotten as if each had been closed on its own. Their
+/// unsaved backups stay: with no snapshot they are orphans the next launch adopts.
+/// ponytail: a window whose close was already under way when the quit was
+/// cancelled, and is destroyed after, is still remembered.
 #[tauri::command]
-pub fn set_quitting(state: State<'_, AppState>, quitting: bool) {
-    state.quitting.store(quitting, Ordering::SeqCst);
+pub fn set_quitting(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    quitting: bool,
+) -> Result<(), String> {
+    let closed = update_quit(&state.quit, quitting);
+    if closed.is_empty() {
+        return Ok(());
+    }
+    let config = config_dir(&app)?;
+    for label in closed {
+        forget_window_state_in(&config, &label)?;
+    }
+    Ok(())
 }
 
 /// Hot exit applies when the app is quitting or no other viewer window is open,
@@ -391,7 +435,7 @@ pub fn keeps_unsaved_on_close(
     // its frontend has registered.
     let open = app.webview_windows();
     keeps_unsaved_on_close_for(
-        state.quitting.load(Ordering::SeqCst),
+        lock_recover(&state.quit).is_some(),
         window.label(),
         open.keys().map(String::as_str),
     )
@@ -421,12 +465,12 @@ pub fn focus_window(app: AppHandle, label: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Consumed by the main window's first show. See `show_window`.
+/// Consumed by the launch window's first show. See `show_window`.
 static MAIN_WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 
 /// Reveals a window that was built hidden.
 ///
-/// The main window is built hidden so no empty frame is on screen while the
+/// The launch window is built hidden so no empty frame is on screen while the
 /// webview boots, and the frontend calls this once it has mounted — seconds
 /// after launch, by which time the user has usually gone back to whatever they
 /// were doing. Activating then is wrong, and `set_focus` is not a polite
@@ -444,7 +488,7 @@ static MAIN_WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 #[tauri::command]
 pub async fn show_window(window: tauri::Window) {
     let is_cold_start =
-        window.label() == "main" && !MAIN_WINDOW_SHOWN.swap(true, Ordering::Relaxed);
+        window.label() == LAUNCH_LABEL && !MAIN_WINDOW_SHOWN.swap(true, Ordering::Relaxed);
 
     let _ = window.show();
 
@@ -456,8 +500,8 @@ pub async fn show_window(window: tauri::Window) {
     let _ = window.set_focus();
 }
 
-/// Main's snapshot keeps its pre-per-window name, so an existing session is
-/// main's entry without a migration and an older build still finds it.
+/// The launch window's snapshot keeps its pre-per-window name, so an existing
+/// session needs no migration and an older build still finds it.
 const MAIN_WINDOW_STATE: &str = "window-state-v2.json";
 /// Every other remembered window has a snapshot here, named by its label.
 /// One file per window: N windows closing at once never write the same file.
@@ -472,7 +516,8 @@ fn config_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
 }
 
 /// `label`'s file in a per-window directory. Only `window-*` windows have one:
-/// main has its own file, and anything else is not a window startup reopens.
+/// the launch window has its own file, and anything else is not a window
+/// startup reopens.
 fn secondary_window_file(dir: &Path, label: &str) -> Result<PathBuf, String> {
     if !label.starts_with("window-") {
         return Err(format!("not a secondary window label: {label}"));
@@ -481,14 +526,14 @@ fn secondary_window_file(dir: &Path, label: &str) -> Result<PathBuf, String> {
 }
 
 fn window_state_path_in(config: &Path, label: &str) -> Result<PathBuf, String> {
-    if label == "main" {
+    if label == LAUNCH_LABEL {
         return Ok(config.join(MAIN_WINDOW_STATE));
     }
     secondary_window_file(&config.join(WINDOW_STATE_DIR), label)
 }
 
 fn restore_progress_path_in(config: &Path, label: &str) -> Result<PathBuf, String> {
-    if label == "main" {
+    if label == LAUNCH_LABEL {
         return Ok(config.join(MAIN_RESTORE_PROGRESS));
     }
     secondary_window_file(&config.join(RESTORE_PROGRESS_DIR), label)
@@ -513,9 +558,6 @@ fn write_owned_file(path: &Path, json: &str) -> Result<(), String> {
 
 fn save_window_state_in(config: &Path, label: &str, json: &str) -> Result<(), String> {
     let path = window_state_path_in(config, label)?;
-    if label == "main" {
-        return atomic_write(&path, json.as_bytes()).map_err(|e| e.to_string());
-    }
     write_owned_file(&path, json)
 }
 
@@ -523,14 +565,10 @@ fn load_window_state_in(config: &Path, label: &str) -> Option<String> {
     fs::read_to_string(window_state_path_in(config, label).ok()?).ok()
 }
 
-/// A window closed on its own is not reopened. Its crash-guard breadcrumb goes
-/// with it; main's stays, because main's deferrals outlive any one session.
+/// A window closed on its own is not reopened. Its crash-guard breadcrumb goes with it.
 fn forget_window_state_in(config: &Path, label: &str) -> Result<(), String> {
     remove_if_exists(&window_state_path_in(config, label)?)?;
-    if label != "main" {
-        remove_if_exists(&restore_progress_path_in(config, label)?)?;
-    }
-    Ok(())
+    remove_if_exists(&restore_progress_path_in(config, label)?)
 }
 
 fn remove_dir_if_exists(dir: &Path) -> Result<(), String> {
@@ -606,30 +644,109 @@ pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
     clear_window_state_in(&config_dir(&app)?)
 }
 
-/// Rebuilds each remembered secondary window under its saved label, and
-/// returns the labels that now have a window. Each one restores its own
-/// snapshot and unsaved backup; a label missing from the answer could not be
-/// built, so its backup is left for main to take in.
+/// Rebuilds each remembered secondary window under its saved label. Each one
+/// restores its own snapshot and unsaved backup. Every window asks after its
+/// own restore; only the first call of a launch does anything, so a window
+/// opened later cannot resurrect one that is closing.
 ///
 /// Async for the reason `create_transfer_window` is.
 #[tauri::command]
-pub async fn reopen_remembered_windows(app: AppHandle) -> Result<Vec<String>, String> {
+pub async fn reopen_remembered_windows(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if state.reopened.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
     let config = config_dir(&app)?;
-    let mut open = Vec::new();
     for label in remembered_window_labels_in(&config) {
         if app.get_webview_window(&label).is_none() {
             if let Err(error) = build_viewer_window(&app, &label) {
                 eprintln!("Failed to reopen window {label}: {error}");
-                continue;
             }
         }
-        open.push(label);
     }
-    Ok(open)
+    Ok(())
 }
 
+/// The remembered window the launch window takes over when it has no
+/// snapshot of its own, so a launch never shows an extra empty window.
+fn adoption_source(launch_has_snapshot: bool, remembered: &[String]) -> Option<&str> {
+    if launch_has_snapshot {
+        return None;
+    }
+    remembered.first().map(String::as_str)
+}
+
+fn rename_if_exists(from: &Path, to: &Path) -> Result<(), String> {
+    match fs::rename(from, to) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.to_string()),
+        _ => Ok(()),
+    }
+}
+
+/// Moves `from`'s entry in the window-state plugin's file to the launch
+/// window. Geometry is cosmetic, so a file that cannot be read is left alone.
+fn adopt_geometry(path: &Path, from: &str) {
+    let Some(mut entries) = fs::read_to_string(path).ok().and_then(|json| {
+        serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&json).ok()
+    }) else {
+        return;
+    };
+    let Some(entry) = entries.remove(from) else {
+        return;
+    };
+    entries.insert(LAUNCH_LABEL.to_string(), entry);
+    if let Ok(json) = serde_json::to_string(&entries) {
+        let _ = atomic_write(path, json.as_bytes());
+    }
+}
+
+/// Hands `from`'s snapshot, breadcrumb, unsaved backup and geometry to the
+/// launch window. The snapshot moves last: it is what makes `from` a
+/// remembered window, so a launch killed partway adopts it again next time.
+/// A backup the launch window already has is never overwritten; `from`'s then
+/// stays an orphan and is claimed at startup like any other.
+fn adopt_window_in(config: &Path, from: &str) -> Result<(), String> {
+    let recovery = config.join(UNSAVED_RECOVERY_DIR);
+    let own_backup = label_file(&recovery, LAUNCH_LABEL)?;
+    if !own_backup.exists() {
+        rename_if_exists(&label_file(&recovery, from)?, &own_backup)?;
+    }
+    adopt_geometry(
+        &config.join(tauri_plugin_window_state::DEFAULT_FILENAME),
+        from,
+    );
+    rename_if_exists(
+        &restore_progress_path_in(config, from)?,
+        &restore_progress_path_in(config, LAUNCH_LABEL)?,
+    )?;
+    fs::rename(
+        window_state_path_in(config, from)?,
+        window_state_path_in(config, LAUNCH_LABEL)?,
+    )
+    .map_err(|error| error.to_string())
+}
+
+/// Runs before the window-state plugin reads its file and before the launch
+/// window is built, so the window comes up with the adopted geometry.
+pub fn adopt_remembered_window(app: &AppHandle) {
+    let Ok(config) = config_dir(app) else {
+        return;
+    };
+    let has_snapshot = config.join(MAIN_WINDOW_STATE).exists();
+    let remembered = remembered_window_labels_in(&config);
+    if let Some(from) = adoption_source(has_snapshot, &remembered) {
+        if let Err(error) = adopt_window_in(&config, from) {
+            eprintln!("Failed to adopt window {from}: {error}");
+        }
+    }
+}
+
+const UNSAVED_RECOVERY_DIR: &str = "unsaved-recovery";
+
 fn unsaved_recovery_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
-    config_file(app, "unsaved-recovery")
+    config_file(app, UNSAVED_RECOVERY_DIR)
 }
 
 fn label_file(dir: &Path, label: &str) -> Result<PathBuf, String> {
@@ -707,10 +824,44 @@ pub async fn save_unsaved_recovery(
     crate::commands::blocking(move || save_unsaved_recovery_at(&dir, &label, &json)).await
 }
 
+/// The backups a window takes in at startup: its own, and each orphan no other
+/// window has taken yet. An orphan is a backup whose window is not open and
+/// has no snapshot, so nothing will reopen it — after a crash before the
+/// window's first snapshot, say, or with restore off.
+fn claim_recovery_records(
+    records: Vec<(String, String)>,
+    own: &str,
+    is_orphan: impl Fn(&str) -> bool,
+    claimed: &mut HashSet<String>,
+) -> Vec<(String, String)> {
+    records
+        .into_iter()
+        .filter(|(label, _)| label == own || (is_orphan(label) && claimed.insert(label.clone())))
+        .collect()
+}
+
+/// Whichever window asks first gets the orphans, once: two windows starting
+/// together must not both restore the same unsaved buffer.
 #[tauri::command]
-pub async fn load_unsaved_recovery(app: AppHandle) -> Result<Vec<(String, String)>, String> {
+pub async fn claim_unsaved_recovery(
+    window: tauri::WebviewWindow,
+    app: AppHandle,
+) -> Result<Vec<(String, String)>, String> {
     let dir = unsaved_recovery_dir(&app)?;
-    crate::commands::blocking(move || load_unsaved_recovery_at(&dir)).await
+    let config = config_dir(&app)?;
+    let records = crate::commands::blocking(move || load_unsaved_recovery_at(&dir)).await?;
+    let open = app.webview_windows();
+    let state = app.state::<AppState>();
+    let mut claimed = lock_recover(&state.claimed_recovery);
+    Ok(claim_recovery_records(
+        records,
+        window.label(),
+        |label| {
+            !open.contains_key(label)
+                && !window_state_path_in(&config, label).is_ok_and(|path| path.exists())
+        },
+        &mut claimed,
+    ))
 }
 
 #[tauri::command]
@@ -795,9 +946,9 @@ pub fn clear_restore_progress(window: tauri::Window, app: AppHandle) -> Result<(
     )?)
 }
 
-/// A document window: the main one or a detached-tab one.
+/// A document window: the launch one or any other.
 fn is_viewer_label(label: &str) -> bool {
-    label == "main" || label.starts_with("window-")
+    label == LAUNCH_LABEL || label.starts_with("window-")
 }
 
 pub fn bring_to_front(window: &tauri::WebviewWindow) {
@@ -806,30 +957,56 @@ pub fn bring_to_front(window: &tauri::WebviewWindow) {
     let _ = window.set_focus();
 }
 
+/// Where a file opened while the app runs goes: the focused window, else the
+/// one focused last, else the launch window, else any open one.
+fn delivery_label<'a>(
+    focused: Option<&'a str>,
+    last_focused: Option<&'a str>,
+    open: &[&'a str],
+) -> Option<&'a str> {
+    focused
+        .or(last_focused.filter(|label| open.contains(label)))
+        .or_else(|| open.iter().copied().find(|label| *label == LAUNCH_LABEL))
+        .or_else(|| open.first().copied())
+}
+
 pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
-    let viewers: Vec<tauri::WebviewWindow> = app
-        .webview_windows()
-        .into_iter()
-        .filter(|(label, _)| is_viewer_label(label))
-        .map(|(_, window)| window)
+    let windows = app.webview_windows();
+    let mut open: Vec<&str> = windows
+        .keys()
+        .map(String::as_str)
+        .filter(|label| is_viewer_label(label))
         .collect();
-
-    if let Some(focused) = viewers
+    open.sort();
+    let focused = open
         .iter()
-        .find(|window| window.is_focused().unwrap_or(false))
-    {
-        return Some(focused.clone());
-    }
-
+        .copied()
+        .find(|label| windows[*label].is_focused().unwrap_or(false));
     let state = app.state::<AppState>();
     let last = lock_recover(&state.last_focused_viewer).clone();
-    if let Some(label) = last {
-        if let Some(window) = viewers.iter().find(|window| window.label() == label) {
-            return Some(window.clone());
-        }
-    }
+    let label = delivery_label(focused, last.as_deref(), &open)?;
+    windows.get(label).cloned()
+}
 
-    viewers.into_iter().next()
+/// A file macOS opened. Until the launch window has taken the launch's files it
+/// joins them, so it lands there and in no other window; after that it goes
+/// where `pick_delivery_window` says.
+pub fn deliver_opened_path(app: &AppHandle, path: String) {
+    let state = app.state::<AppState>();
+    let target = {
+        let mut pending = lock_recover(&state.startup_files);
+        match pending.as_mut() {
+            Some(paths) => {
+                paths.push(path.clone());
+                app.get_webview_window(LAUNCH_LABEL)
+            }
+            None => pick_delivery_window(app),
+        }
+    };
+    if let Some(window) = target {
+        let _ = app.emit_to(window.label(), "file-path", path);
+        bring_to_front(&window);
+    }
 }
 
 /// The openable paths named on a command line, in order, resolved against the
@@ -1062,12 +1239,20 @@ pub fn unwatch_file(window: tauri::Window, state: State<'_, WatcherState>) -> Re
     Ok(())
 }
 
+/// The launch's files, handed once to the launch window. Every window asks;
+/// the others, and any later ask, get nothing, so a new window never reopens
+/// the files the app was started with.
 #[tauri::command]
-pub fn send_markdown_path(state: State<'_, AppState>) -> Vec<String> {
+pub fn send_markdown_path(window: tauri::Window, state: State<'_, AppState>) -> Vec<String> {
+    if window.label() != LAUNCH_LABEL {
+        return Vec::new();
+    }
+    let Some(opened) = lock_recover(&state.startup_files).take() else {
+        return Vec::new();
+    };
     let args: Vec<String> = std::env::args().collect();
     let mut files = startup_paths(&args, &std::env::current_dir().unwrap_or_default());
-    let startup_files: Vec<String> = lock_recover(&state.startup_files).drain(..).collect();
-    for path in startup_files.into_iter().rev() {
+    for path in opened.into_iter().rev() {
         if !files.contains(&path) {
             files.insert(0, path);
         }
@@ -1092,6 +1277,9 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
                 .forget_window(window.label());
             let app_state = window.state::<AppState>();
             lock_recover(&app_state.window_registry).remove(window.label());
+            if let Some(closed) = lock_recover(&app_state.quit).as_mut() {
+                closed.push(window.label().to_string());
+            };
         }
         _ => {}
     }
@@ -1326,6 +1514,151 @@ mod tests {
         assert!(remembered_window_labels_in(&config).is_empty());
         assert_eq!(fs::read_to_string(document).unwrap(), "original");
         fs::remove_dir_all(config).unwrap();
+    }
+
+    #[test]
+    fn a_cancelled_quit_forgets_the_windows_it_closed() {
+        let config = temp_dir("quit");
+        let quit = Mutex::new(None);
+        save_window_state_in(&config, "window-a", "a").unwrap();
+        save_window_state_in(&config, "window-b", "b").unwrap();
+        // A close cancelled with no quit under way forgets nothing.
+        assert!(update_quit(&quit, false).is_empty());
+
+        update_quit(&quit, true);
+        lock_recover(&quit)
+            .as_mut()
+            .unwrap()
+            .push("window-a".to_string());
+        // A second Quit while the first is still closing keeps the record.
+        update_quit(&quit, true);
+        let closed = update_quit(&quit, false);
+        assert_eq!(closed, ["window-a"]);
+        for label in &closed {
+            forget_window_state_in(&config, label).unwrap();
+        }
+        assert_eq!(remembered_window_labels_in(&config), ["window-b"]);
+        assert!(lock_recover(&quit).is_none());
+        fs::remove_dir_all(config).unwrap();
+    }
+
+    #[test]
+    fn an_orphan_backup_is_handed_out_once() {
+        let records = || {
+            vec![
+                ("main".to_string(), "m".to_string()),
+                ("window-crashed".to_string(), "c".to_string()),
+                ("window-open".to_string(), "o".to_string()),
+            ]
+        };
+        let orphan = |label: &str| label == "window-crashed";
+        let labels = |taken: Vec<(String, String)>| -> Vec<String> {
+            taken.into_iter().map(|(label, _)| label).collect()
+        };
+        let mut claimed = HashSet::new();
+        assert_eq!(
+            labels(claim_recovery_records(
+                records(),
+                "window-open",
+                orphan,
+                &mut claimed
+            )),
+            ["window-crashed", "window-open"]
+        );
+        assert_eq!(
+            labels(claim_recovery_records(
+                records(),
+                "main",
+                orphan,
+                &mut claimed
+            )),
+            ["main"]
+        );
+    }
+
+    #[test]
+    fn the_launch_window_adopts_a_remembered_window_only_without_a_snapshot() {
+        let remembered = ["window-a".to_string(), "window-b".to_string()];
+        assert_eq!(adoption_source(true, &remembered), None);
+        assert_eq!(adoption_source(false, &remembered), Some("window-a"));
+        assert_eq!(adoption_source(false, &[]), None);
+    }
+
+    #[test]
+    fn adoption_moves_every_file_of_the_window_to_the_launch_window() {
+        let config = temp_dir("adopt");
+        let recovery = config.join(UNSAVED_RECOVERY_DIR);
+        save_window_state_in(&config, "window-a", "a").unwrap();
+        write_restore_progress(&restore_progress_path_in(&config, "window-a").unwrap(), "p")
+            .unwrap();
+        save_unsaved_recovery_at(&recovery, "window-a", "[1]").unwrap();
+        let geometry = config.join(tauri_plugin_window_state::DEFAULT_FILENAME);
+        fs::write(&geometry, r#"{"main":{"x":1},"window-a":{"x":2}}"#).unwrap();
+
+        adopt_window_in(&config, "window-a").unwrap();
+
+        assert_eq!(
+            load_window_state_in(&config, LAUNCH_LABEL).as_deref(),
+            Some("a")
+        );
+        assert!(remembered_window_labels_in(&config).is_empty());
+        assert_eq!(
+            fs::read_to_string(restore_progress_path_in(&config, LAUNCH_LABEL).unwrap()).unwrap(),
+            "p"
+        );
+        assert_eq!(
+            load_unsaved_recovery_at(&recovery).unwrap(),
+            [("main".to_string(), "[1]".to_string())]
+        );
+        let entries: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&geometry).unwrap()).unwrap();
+        assert_eq!(entries, serde_json::json!({"main": {"x": 2}}));
+        fs::remove_dir_all(config).unwrap();
+    }
+
+    #[test]
+    fn adoption_never_overwrites_the_launch_windows_own_backup() {
+        let config = temp_dir("adopt-backup");
+        let recovery = config.join(UNSAVED_RECOVERY_DIR);
+        save_window_state_in(&config, "window-a", "a").unwrap();
+        save_unsaved_recovery_at(&recovery, "main", "[0]").unwrap();
+        save_unsaved_recovery_at(&recovery, "window-a", "[1]").unwrap();
+
+        adopt_window_in(&config, "window-a").unwrap();
+
+        // window-a's backup now has no snapshot: an orphan, claimed at startup.
+        assert_eq!(
+            load_unsaved_recovery_at(&recovery).unwrap(),
+            [
+                ("main".to_string(), "[0]".to_string()),
+                ("window-a".to_string(), "[1]".to_string()),
+            ]
+        );
+        assert_eq!(
+            load_window_state_in(&config, LAUNCH_LABEL).as_deref(),
+            Some("a")
+        );
+        fs::remove_dir_all(config).unwrap();
+    }
+
+    #[test]
+    fn a_file_opened_while_running_goes_to_the_last_focused_window() {
+        let open = ["main", "window-a", "window-b"];
+        assert_eq!(
+            delivery_label(Some("window-b"), Some("window-a"), &open),
+            Some("window-b")
+        );
+        assert_eq!(
+            delivery_label(None, Some("window-a"), &open),
+            Some("window-a")
+        );
+        // The last focused window has closed since.
+        assert_eq!(delivery_label(None, Some("window-c"), &open), Some("main"));
+        assert_eq!(
+            delivery_label(None, None, &["window-b", "window-a"]),
+            Some("window-b")
+        );
+        assert_eq!(delivery_label(None, None, &[]), None);
     }
 
     /// argv, as the shell would hand it over: `argv[0]` and then the arguments.

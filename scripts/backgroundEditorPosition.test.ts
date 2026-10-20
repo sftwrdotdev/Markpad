@@ -110,7 +110,7 @@ test('both gates that drop the view state ask for the anchor first', () => {
 	// `editorViewState`: `serializeState` omits it and `restoreState` seeds
 	// null, and `tabTransfer.ts` excludes it as a live Monaco object.
 	const store = readSource('src/lib/stores/tabs.svelte.ts');
-	const serialize = sliceFrom(store, 'serializeState(): string {');
+	const serialize = sliceFrom(store, 'serializeState(extra: Record<string, unknown> = {}): string {');
 	assert.match(serialize, /anchorLine: outgoingTabAnchorLine\(t, this\.activeTabId\)/);
 
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');

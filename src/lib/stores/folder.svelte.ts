@@ -10,8 +10,19 @@ export interface FolderEntry {
 	isDir: boolean;
 }
 
-/** The last folder this install had open, so a restart comes back to it. */
+/** Where builds that kept one folder for the whole install saved it. Each
+ * window keeps its folder in its restore snapshot now; this is read once. */
 export const LAST_FOLDER_KEY = 'folder.lastRoot';
+
+/** The folder a window's restore snapshot names, if any. */
+export function snapshotFolder(json: string): string | null {
+	try {
+		const root: unknown = JSON.parse(json)?.folderRoot;
+		return typeof root === 'string' && root !== '' ? root : null;
+	} catch {
+		return null;
+	}
+}
 
 /**
  * The folder open in this window's sidebar.
@@ -36,8 +47,6 @@ export class FolderManager {
 		await this.close();
 		this.root = path;
 		this.error = null;
-		// Storage can be unavailable; the folder still opens for this session.
-		writeStoredSetting(LAST_FOLDER_KEY, path);
 		this.#unlisten ??= await getCurrentWindow().listen<string>('folder-changed', (event) => {
 			if (this.isLoaded(event.payload)) void this.#read(event.payload);
 		});
@@ -50,20 +59,25 @@ export class FolderManager {
 		this.expanded = [];
 		this.entries = {};
 		this.error = null;
-		writeStoredSetting(LAST_FOLDER_KEY, null);
 		await invoke('unwatch_all_folders').catch(console.error);
 	}
 
-	/** Reopens the folder from the last session, if it is still there. */
-	async restore() {
-		let saved: string | null = null;
+	/**
+	 * Reopens this window's folder from its snapshot, if it is still there.
+	 * The install-wide folder of older builds goes to the first window to
+	 * start, the launch window, which removes it before any other window exists.
+	 */
+	async restore(saved: string | null) {
+		let legacy: string | null = null;
 		try {
-			saved = localStorage.getItem(LAST_FOLDER_KEY);
+			legacy = localStorage.getItem(LAST_FOLDER_KEY);
+			writeStoredSetting(LAST_FOLDER_KEY, null);
 		} catch {
-			return;
+			// Storage unavailable: there is nothing to migrate.
 		}
-		if (!saved) return;
-		await this.open(saved);
+		const path = saved ?? legacy;
+		if (!path) return;
+		await this.open(path);
 		// A folder deleted or unmounted since: drop it rather than show an error on launch.
 		if (this.error) await this.close();
 	}

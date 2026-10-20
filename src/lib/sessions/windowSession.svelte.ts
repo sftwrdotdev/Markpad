@@ -57,7 +57,6 @@ const MAX_DEFERRED = 8;
 const MAX_INTERRUPTIONS = 3;
 
 type WindowSessionOptions = {
-	isMainWindow: boolean;
 	windowStateKey: string;
 	legacyStateKey: string;
 	restoreInProgressKey: string;
@@ -90,7 +89,6 @@ export function createWindowSession(options: WindowSessionOptions) {
 	async function discardPersistedState() {
 		localStorage.removeItem(options.windowStateKey);
 		localStorage.removeItem(options.legacyStateKey);
-		if (!options.isMainWindow) return;
 		try {
 			await invoke('clear_window_state');
 		} catch (error) {
@@ -109,13 +107,14 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 * `restoreInProgressKey` stays as a read-once migration path: a breadcrumb
 	 * an older build left behind is still honoured, and dropped as soon as a
 	 * Rust write succeeds. The Rust file wins when both exist, so a downgrade
-	 * and re-upgrade cannot resurrect a stale localStorage record. Only main
-	 * reads it: localStorage is shared by every window, and the record is main's.
+	 * and re-upgrade cannot resurrect a stale localStorage record. localStorage
+	 * is shared by every window: the first window to start, the launch window,
+	 * reads it and removes it before any other window exists.
 	 */
 	async function readProgress(): Promise<RestoreProgress | null> {
 		const raw =
 			((await invoke('load_restore_progress').catch(() => null)) as string | null) ??
-			(options.isMainWindow ? localStorage.getItem(options.restoreInProgressKey) : null);
+			localStorage.getItem(options.restoreInProgressKey);
 		if (!raw) return null;
 		try {
 			const data = JSON.parse(raw) as Partial<RestoreProgress> | null;
@@ -259,11 +258,13 @@ export function createWindowSession(options: WindowSessionOptions) {
 		const progress: RestoreProgress = { running: true, pending: null, deferred, interruptions };
 		await writeProgress(progress);
 
-		// The localStorage copies are main's, from builds that kept one snapshot.
+		// The localStorage copies are from builds that kept one snapshot. The
+		// launch window starts first and removes them below, before it reopens
+		// any other window, so only it can read them.
 		const savedData =
-			(options.isMainWindow
-				? (localStorage.getItem(options.windowStateKey) ?? localStorage.getItem(options.legacyStateKey))
-				: null) ?? ((await invoke('load_window_state').catch(() => null)) as string | null);
+			localStorage.getItem(options.windowStateKey) ??
+			localStorage.getItem(options.legacyStateKey) ??
+			((await invoke('load_window_state').catch(() => null)) as string | null);
 		if (savedData) {
 			try {
 				options.restoreState(savedData);
@@ -326,10 +327,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 		}
 		if (options.isDisposed()) return Boolean(savedData);
 		if (options.restoredTabs().length > 0) await persistState(true);
-		if (options.isMainWindow) {
-			localStorage.removeItem(options.windowStateKey);
-			localStorage.removeItem(options.legacyStateKey);
-		}
+		localStorage.removeItem(options.windowStateKey);
+		localStorage.removeItem(options.legacyStateKey);
 		return Boolean(savedData);
 	}
 

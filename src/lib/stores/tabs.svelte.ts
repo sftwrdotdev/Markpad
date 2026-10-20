@@ -424,9 +424,11 @@ class TabManager {
 	 * come back a different size. Restoring them would arm the back button with
 	 * offsets nobody in this session created.
 	 */
-	serializeState(): string {
+	serializeState(extra: Record<string, unknown> = {}): string {
 		const stateData = {
 			version: 2,
+			// What the window keeps besides its tabs, such as its folder.
+			...extra,
 			windowTag: this.windowTag,
 			activeTabId: this.activeTabId,
 			tabs: this.tabs

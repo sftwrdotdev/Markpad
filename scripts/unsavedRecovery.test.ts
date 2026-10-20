@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { claimableRecords, createUnsavedRecovery, parseRecovery, recoverySnapshot, restoreRecords } from '../src/lib/sessions/unsavedRecovery.js';
+import { createUnsavedRecovery, parseRecovery, recoverySnapshot, restoreRecords } from '../src/lib/sessions/unsavedRecovery.js';
 import { buildTransferredTab, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
@@ -55,17 +55,16 @@ function manager(tabs: TransferableTab[] = []) {
 	};
 }
 
-test('restore replaces clean session copies, keeps baselines, and skips live windows', () => {
+test('restore replaces clean session copies and keeps baselines', () => {
 	const target = manager([
 		{ ...document, path: '/notes.md', rawContent: 'disk', originalContent: 'disk', isDirty: false },
 		{ ...document, path: '/other.md' },
 	]);
 	const dirtyId = target.tabs[1].id;
-	const consumed = restoreRecords(target, claimableRecords([
+	const consumed = restoreRecords(target, [
 		['main', JSON.stringify([{ ...document, path: '/notes.md', originalContent: 'saved', isEditing: false, isSplit: true }])],
 		['window-2', JSON.stringify([{ ...document, path: '/other.md', rawContent: 'another unsaved copy' }, document])],
-		['window-3', JSON.stringify([{ ...document, rawContent: 'still open elsewhere' }])],
-	], 'main', true, new Set(['window-3'])), 'main', (error) => { throw error; });
+	], 'main', (error) => { throw error; });
 	assert.deepEqual(consumed, ['window-2']);
 	assert.deepEqual(target.tabs.map((tab) => tab.path), ['/other.md', '/notes.md', '/other.md', '']);
 	assert.equal(target.tabs[0].id, dirtyId);
@@ -93,16 +92,6 @@ test('a corrupt record of this window throws, so the caller never overwrites it'
 	const target = manager();
 	assert.throws(() => restoreRecords(target, [['main', '{']], 'main', () => {}));
 	assert.equal(target.tabs.length, 0);
-});
-
-test('a backup follows its window: main takes its own and the orphans, a reopened window only its own', () => {
-	const records: [string, string][] = [['main', ''], ['window-crashed', ''], ['window-open', ''], ['window-reopened', '']];
-	const owned = new Set(['window-open', 'window-reopened']);
-	const labels = (taken: [string, string][]) => taken.map(([label]) => label);
-	assert.deepEqual(labels(claimableRecords(records, 'main', true, owned)), ['main', 'window-crashed']);
-	assert.deepEqual(labels(claimableRecords(records, 'window-reopened', false, owned)), ['window-reopened']);
-	// Restore off: no window is reopened, so every backup lands in main as before.
-	assert.deepEqual(labels(claimableRecords(records, 'main', true, new Set())), labels(records));
 });
 
 test('continuous changes reach disk within the bounded background delay', async (context) => {

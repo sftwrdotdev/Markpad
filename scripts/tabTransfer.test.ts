@@ -227,7 +227,7 @@ test('insertTransferredTab is a thin wrapper: build, push, activate, return the 
 
 test('serializeState still persists window shape only (untouched by transfer)', () => {
 	const tabs = readSource('src/lib/stores/tabs.svelte.ts');
-	const fn = sliceBetween(tabs, 'serializeState()', 'restoreState(');
+	const fn = sliceBetween(tabs, 'serializeState(extra', 'restoreState(');
 	assert.doesNotMatch(fn, /rawContent/);
 	assert.doesNotMatch(fn, /TransferableTab/);
 });

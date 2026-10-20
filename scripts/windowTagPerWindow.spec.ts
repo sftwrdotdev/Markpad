@@ -97,9 +97,8 @@ const { snapshotTab, validateTransferPayload } = await import('../src/lib/utils/
 // with rather than one a neighbouring test happened to leave behind.
 const INITIAL_WINDOW_TAG = tabManager.windowTag;
 
-function makeSession(isMainWindow: boolean) {
+function makeSession() {
 	return createWindowSession({
-		isMainWindow,
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
@@ -142,12 +141,9 @@ test('a freshly constructed TabManager holds no window tag', () => {
 });
 
 test('a new window has no snapshot of its own, so it cannot pick up another window’s tag', async () => {
-	// Main's snapshot from a build that kept it in localStorage, which every
-	// window shares. Only main may read it.
 	reset();
-	localStorage.setItem(WINDOW_STATE_KEY, TAGGED_SNAPSHOT);
 
-	const restored = await makeSession(false).restore();
+	const restored = await makeSession().restore();
 
 	assert.equal(restored, false, 'a new window reported a snapshot of its own');
 	assert.equal(tabManager.windowTag, null, 'a new window came up wearing the saved window tag');
@@ -156,31 +152,32 @@ test('a new window has no snapshot of its own, so it cannot pick up another wind
 
 test('a reopened window gets its own tag back', async () => {
 	// The window was open when the app quit, and comes back under its label.
+	// Also the fence: without it the test above passes for a build that never
+	// restores anything.
 	reset();
 	ownSnapshot = TAGGED_SNAPSHOT;
 
-	const restored = await makeSession(false).restore();
+	const restored = await makeSession().restore();
 
 	assert.equal(restored, true);
 	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: '#188038', pinned: true });
 	assert.equal(tabManager.tabs.length, 1);
 });
 
-test('the main window does restore its own tag — this is not a test that restore is broken', async () => {
-	// The fence. Without it the first restore test passes for a build that
-	// simply never restores anything, which is a much worse defect than the
-	// one it guards.
+test('the single localStorage snapshot of older builds is taken once, by the first window to restore', async () => {
+	// localStorage is shared by every window. The launch window restores first
+	// and removes it before any other window exists, so no later window reads it.
 	reset();
-	ownSnapshot = TAGGED_SNAPSHOT;
+	localStorage.setItem(WINDOW_STATE_KEY, TAGGED_SNAPSHOT);
 
-	await makeSession(true).restore();
+	await makeSession().restore();
+	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: '#188038', pinned: true });
+	assert.equal(localStorage.getItem(WINDOW_STATE_KEY), null, 'the old snapshot was left for another window');
 
-	assert.deepEqual(
-		tabManager.windowTag,
-		{ name: 'Research', color: '#188038', pinned: true },
-		'the window that wrote the snapshot did not get its own tag back',
-	);
-	assert.equal(tabManager.tabs.length, 1, 'the snapshot’s tabs were not restored');
+	tabManager.closeAll();
+	tabManager.setWindowTag(null);
+	assert.equal(await makeSession().restore(), false);
+	assert.equal(tabManager.windowTag, null);
 });
 
 test('a claimed tab brings no tag with it', async () => {
@@ -190,7 +187,7 @@ test('a claimed tab brings no tag with it', async () => {
 	// job is to hand on only what it knows about.
 	reset();
 
-	const claimed = await makeSession(false).acceptOfferedTransfer('abc');
+	const claimed = await makeSession().acceptOfferedTransfer('abc');
 
 	assert.equal(claimed, true, 'precondition: the transfer was claimed');
 	assert.equal(tabManager.tabs.length, 1, 'precondition: the tab arrived');

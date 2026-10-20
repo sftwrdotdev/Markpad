@@ -28,7 +28,6 @@ async function persistFromDetachedWindow(remember: boolean) {
 	tabManager.addTab('/notes/a.md', '# a');
 	calls = [];
 	await createWindowSession({
-		isMainWindow: false,
 		windowStateKey: 'savedTabsDataV2',
 		legacyStateKey: 'savedTabsData',
 		restoreInProgressKey: 'markpad-window-restore-in-progress',

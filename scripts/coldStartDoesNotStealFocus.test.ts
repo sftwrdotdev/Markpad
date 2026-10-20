@@ -19,7 +19,7 @@ test('the main window is shown without being activated on a cold start', () => {
 	// unconditionally — pulling the user out of whatever they had switched to.
 	// The label and the one-shot flag together are what make it the FIRST show
 	// of the MAIN window that stays quiet.
-	assert.match(showWindow, /window\.label\(\)\s*==\s*"main"/);
+	assert.match(showWindow, /window\.label\(\)\s*==\s*LAUNCH_LABEL/);
 	assert.match(showWindow, /MAIN_WINDOW_SHOWN\.swap\(true,/);
 
 	// Not vacuous: the other callers — a detached tab window, the close walk
