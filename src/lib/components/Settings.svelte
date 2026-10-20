@@ -1654,6 +1654,14 @@
 						</div>
 
 						<div class="setting-item">
+							<label for="files-restore-state" title={t('settings.restoreStateOnReopenHint', settings.language)}>{t('settings.restoreStateOnReopen', settings.language)}</label>
+							<label class="toggle">
+								<input id="files-restore-state" type="checkbox" bind:checked={settings.restoreStateOnReopen} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						<div class="setting-item">
 							<label for="files-recovery" title={t('settings.persistOpenEditorsHint', settings.language)}>{t('settings.persistOpenEditors', settings.language)}</label>
 							<label class="toggle">
 								<input id="files-recovery" type="checkbox" bind:checked={settings.persistOpenEditors} />
@@ -1684,14 +1692,6 @@
 								<span class="slider-value">{t('settings.reduceSizeBy50', settings.language)}</span>
 							</div>
 						{/if}
-
-						<div class="setting-item">
-							<label for="files-restore-state">{t('settings.restoreStateOnReopen', settings.language)}</label>
-							<label class="toggle">
-								<input id="files-restore-state" type="checkbox" bind:checked={settings.restoreStateOnReopen} />
-								<span class="toggle-slider"></span>
-							</label>
-						</div>
 
 						<div class="setting-item">
 							<label for="files-close-window-last-tab">{t('settings.closeWindowWithLastTab', settings.language)}</label>

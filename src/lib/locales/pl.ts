@@ -44,7 +44,8 @@ export default {
         sidebarStackFolderTop: 'Folder na górze',
         folderShowAllFiles: 'Pokaż wszystkie pliki w folderze',
         folderShowAllFilesHint: 'Pozostałe pliki otwierają się w domyślnej aplikacji',
-        restoreStateOnReopen: 'Przywróć stan przy ponownym otwarciu',
+        restoreStateOnReopen: 'Przywracaj okna przy uruchomieniu',
+        restoreStateOnReopenHint: 'Ponownie otwiera ostatnie okna i karty. Zawartość plików jest wczytywana z dysku.',
         closeWindowWithLastTab: 'Zamknij okno razem z ostatnią kartą',
         newFileDefaultMode: 'Nowy plik otwiera się w edytorze',
         showRecentFiles: 'Pokaż ostatnie pliki',
@@ -98,8 +99,8 @@ export default {
         files: 'Pliki',
         fileSettings: 'Ustawienia plików',
         autoSave: 'Autozapis zmian',
-        persistOpenEditors: 'Zachowuj niezapisane zmiany przy zamykaniu',
-        persistOpenEditorsHint: 'Zamknięcie aplikacji lub ostatniego okna zachowuje niezapisane zmiany i dokumenty bez tytułu zamiast pytać o zapisanie. Wracają przy następnym otwarciu Markpad. Zamknięcie jednego z kilku okien nadal pyta.',
+        persistOpenEditors: 'Przywracaj niezapisane zmiany przy uruchomieniu',
+        persistOpenEditorsHint: 'Zamknięcie aplikacji nie pyta o zapisanie. Karty z niezapisanymi zmianami wrócą następnym razem.',
         resizeWindow: 'Zmień rozmiar okna ustawień'
     },
     colors: {

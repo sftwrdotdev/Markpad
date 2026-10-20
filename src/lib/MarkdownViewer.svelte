@@ -1012,7 +1012,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	/**
-	 * The save/discard close, used when "Keep unsaved changes on close" is off, when
+	 * The save/discard close, used when "Restore unsaved changes on launch" is off, when
 	 * closing one of several windows, or when the backup cannot be written
 	 * (`keepUnsavedForExit` runs first otherwise).
 	 * Resolve this window's unsaved tabs, then write the restore snapshot: the

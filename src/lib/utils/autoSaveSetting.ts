@@ -19,7 +19,7 @@
  * One switch now, with the two states the code always had: on, edits are saved
  * silently; off, they are not written to the file until you save. Quitting or
  * closing the last window then keeps them as a backup that comes back on the
- * next launch while "Keep unsaved changes on close" is on (the default); closing
+ * next launch while "Restore unsaved changes on launch" is on (the default); closing
  * one of several windows, or any close with it off, asks.
  */
 export const DEFAULT_AUTO_SAVE = true;
