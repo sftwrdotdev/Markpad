@@ -119,6 +119,7 @@ export default {
         modShiftEnter: 'Таблица: строка выше · Иначе: пустая строка выше'
     },
     menu: {
+        toggleFullScreen: 'Переключить полноэкранный режим',
         about: 'О программе Markpad',
         services: 'Службы',
         hideApp: 'Скрыть Markpad',

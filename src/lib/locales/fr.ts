@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tableau : ligne au-dessus · Sinon : ligne vide au-dessus'
     },
     menu: {
+        toggleFullScreen: 'Activer/désactiver le mode plein écran',
         about: 'À propos de Markpad',
         services: 'Services',
         hideApp: 'Masquer Markpad',

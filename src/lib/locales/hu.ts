@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Táblázat: sor fölé · Egyébként: üres sor fölé'
     },
     menu: {
+        toggleFullScreen: 'Teljes képernyő be/ki',
         about: 'A Markpad névjegye',
         services: 'Szolgáltatások',
         hideApp: 'Markpad elrejtése',

@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Πίνακας: γραμμή πάνω · Αλλού: κενή γραμμή πάνω'
     },
     menu: {
+        toggleFullScreen: 'Εναλλαγή πλήρους οθόνης',
         about: 'Σχετικά με το Markpad',
         services: 'Υπηρεσίες',
         hideApp: 'Απόκρυψη Markpad',

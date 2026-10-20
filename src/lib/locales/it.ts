@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabella: riga sopra · Altrimenti: riga vuota sopra'
     },
     menu: {
+        toggleFullScreen: 'Attiva/disattiva modalità a tutto schermo',
         about: 'Informazioni su Markpad',
         services: 'Servizi',
         hideApp: 'Nascondi Markpad',

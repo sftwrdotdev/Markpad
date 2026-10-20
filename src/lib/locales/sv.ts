@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabell: rad över · Annars: tom rad över'
     },
     menu: {
+        toggleFullScreen: 'Växla helskärm',
         about: 'Om Markpad',
         services: 'Tjänster',
         hideApp: 'Göm Markpad',

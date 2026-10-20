@@ -123,6 +123,7 @@ export default {
         modShiftEnter: '표: 위에 행 추가 · 그 외: 위에 빈 줄'
     },
     menu: {
+        toggleFullScreen: '전체 화면 전환',
         about: 'Markpad에 관하여',
         services: '서비스',
         hideApp: 'Markpad 가리기',

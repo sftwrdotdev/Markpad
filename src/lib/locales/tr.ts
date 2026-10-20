@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tablo: üste satır · Başka yerde: üste boş satır'
     },
     menu: {
+        toggleFullScreen: 'Tam Ekranı Aç/Kapat',
         about: 'Markpad Hakkında',
         services: 'Servisler',
         hideApp: 'Markpad’i Gizle',

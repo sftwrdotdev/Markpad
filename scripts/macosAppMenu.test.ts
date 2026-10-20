@@ -25,7 +25,9 @@ function find(nodes: readonly MenuNode[], text: string): MenuNode {
 test('every label is a translation, in English and in Chinese', () => {
 	for (const language of ['en', 'zh-CN', 'zh-TW'] as const) {
 		for (const node of flatten(buildMenuModel({ ...base, language }))) {
-			if (!('text' in node) || node.text === undefined) continue;
+			if (!('text' in node)) continue;
+			// A predefined item without text shows AppKit's English default.
+			assert.ok(node.text, `${language}: a ${node.kind} item has no text`);
 			assert.doesNotMatch(node.text, /^[a-z]+\.[A-Za-z0-9.]+$/, `${language}: ${node.text} is an untranslated key`);
 		}
 	}
@@ -35,6 +37,8 @@ test('every label is a translation, in English and in Chinese', () => {
 		['Markpad', '文件', '编辑', '视图', '窗口'],
 	);
 	find(zh, '退出 Markpad');
+	find(zh, '切换全屏');
+	find(buildMenuModel({ ...base, language: 'zh-TW' }), '切換全螢幕');
 });
 
 test('the view modes are one exclusive choice that follows the active tab', () => {

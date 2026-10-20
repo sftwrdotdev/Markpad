@@ -122,6 +122,7 @@ export default {
         modShiftEnter: 'Tabela: wiersz powyżej · Poza nią: pusty wiersz powyżej'
     },
     menu: {
+        toggleFullScreen: 'Przełącz pełny ekran',
         about: 'Markpad – informacje',
         services: 'Usługi',
         hideApp: 'Ukryj Markpad',

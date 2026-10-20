@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabelle: Zeile darüber · Sonst: Leerzeile darüber'
     },
     menu: {
+        toggleFullScreen: 'Vollbildmodus ein/aus',
         about: 'Über Markpad',
         services: 'Dienste',
         hideApp: 'Markpad ausblenden',

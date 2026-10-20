@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabela: linha acima · Senão: linha vazia acima'
     },
     menu: {
+        toggleFullScreen: 'Alternar ecrã completo',
         about: 'Acerca do Markpad',
         services: 'Serviços',
         hideApp: 'Ocultar Markpad',

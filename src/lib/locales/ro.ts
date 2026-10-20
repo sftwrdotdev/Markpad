@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabel: rând deasupra · În rest: rând gol deasupra'
     },
     menu: {
+        toggleFullScreen: 'Comută ecranul complet',
         about: 'Despre Markpad',
         services: 'Servicii',
         hideApp: 'Ascunde Markpad',

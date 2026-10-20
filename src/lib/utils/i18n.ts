@@ -212,6 +212,7 @@ const en: Translation = {
         modShiftEnter: 'Table: row above · Else: line above'
     },
     menu: {
+        toggleFullScreen: 'Toggle Full Screen',
         about: 'About Markpad',
         services: 'Services',
         hideApp: 'Hide Markpad',

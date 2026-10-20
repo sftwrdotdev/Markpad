@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabel: rij erboven · Anders: lege regel erboven'
     },
     menu: {
+        toggleFullScreen: 'Schakel schermvullende weergave in/uit',
         about: 'Over Markpad',
         services: 'Voorzieningen',
         hideApp: 'Verberg Markpad',

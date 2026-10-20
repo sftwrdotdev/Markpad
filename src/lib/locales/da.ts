@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabel: række over · Ellers: tom linje over'
     },
     menu: {
+        toggleFullScreen: 'Slå fuld skærm til/fra',
         about: 'Om Markpad',
         services: 'Tjenester',
         hideApp: 'Skjul Markpad',

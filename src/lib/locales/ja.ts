@@ -119,6 +119,7 @@ export default {
         modShiftEnter: '表: 上に行を追加 · その他: 上に空行'
     },
     menu: {
+        toggleFullScreen: 'フルスクリーンにする/解除',
         about: 'Markpad について',
         services: 'サービス',
         hideApp: 'Markpad を隠す',

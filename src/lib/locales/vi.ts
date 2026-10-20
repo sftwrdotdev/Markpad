@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Bảng: thêm hàng trên · Nơi khác: dòng trống trên'
     },
     menu: {
+        toggleFullScreen: 'Bật/tắt toàn màn hình',
         about: 'Giới thiệu về Markpad',
         services: 'Dịch vụ',
         hideApp: 'Ẩn Markpad',

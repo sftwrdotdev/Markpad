@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Taulukko: rivi ylle · Muualla: tyhjä rivi ylle'
     },
     menu: {
+        toggleFullScreen: 'Koko näyttö päälle/pois',
         about: 'Tietoja Markpadista',
         services: 'Palvelut',
         hideApp: 'Kätke Markpad',

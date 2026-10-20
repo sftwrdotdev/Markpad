@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabulka: řádek nad · Jinde: prázdný řádek nad'
     },
     menu: {
+        toggleFullScreen: 'Přepnout na celou obrazovku',
         about: 'O aplikaci Markpad',
         services: 'Služby',
         hideApp: 'Skrýt Markpad',

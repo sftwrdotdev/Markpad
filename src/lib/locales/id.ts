@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabel: baris di atas · Selain itu: baris kosong di atas'
     },
     menu: {
+        toggleFullScreen: 'Alihkan Layar Penuh',
         about: 'Tentang Markpad',
         services: 'Layanan',
         hideApp: 'Sembunyikan Markpad',

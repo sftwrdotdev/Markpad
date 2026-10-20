@@ -118,6 +118,7 @@ export default {
         modShiftEnter: 'Tabla: fila encima · Si no: línea encima'
     },
     menu: {
+        toggleFullScreen: 'Activar/desactivar pantalla completa',
         about: 'Acerca de Markpad',
         services: 'Servicios',
         hideApp: 'Ocultar Markpad',

@@ -210,7 +210,7 @@ export function buildMenuModel(state: MenuState): MenuNode[] {
 				viewer(t('menu.zoomOut', lang), 'zoom-out', 'view-zoom-out'),
 				viewer(t('menu.resetZoom', lang), 'zoom-reset', 'view-zoom-reset'),
 				viewer(t('menu.zenMode', lang), 'toggle-zen-mode', 'toggle-zen-mode'),
-				{ kind: 'predefined', item: 'Fullscreen' },
+				{ kind: 'predefined', item: 'Fullscreen', text: t('menu.toggleFullScreen', lang) },
 			],
 		},
 		{

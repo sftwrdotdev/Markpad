@@ -144,6 +144,7 @@ export default {
         modShiftEnter: '表格：上方加一列 · 其他：上方加空行'
     },
     menu: {
+        toggleFullScreen: '切換全螢幕',
         about: '關於 Markpad',
         services: '服務',
         hideApp: '隱藏 Markpad',
