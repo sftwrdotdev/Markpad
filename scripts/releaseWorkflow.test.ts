@@ -548,7 +548,9 @@ test('one release build runs at a time, and none of its runners drift', () => {
 });
 
 
-test('official macOS signing refuses partial credentials before touching the keychain', () => {
+const posixOnly = process.platform === 'win32' ? 'spawns /bin/bash with a POSIX PATH' : false;
+
+test('official macOS signing refuses partial credentials before touching the keychain', { skip: posixOnly }, () => {
 	const step = parse(workflow).jobs.build.steps.find((step: { name: string }) => step.name === 'Import macOS signing certificate');
 	const names = ['APPLE_DEVELOPER_ID_P12', 'APPLE_DEVELOPER_ID_PASSWORD', 'APPLE_DEVELOPER_ID_SHA1', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
 	const complete: Record<string, string> = Object.fromEntries(names.map(name => [name, 'fixture']));

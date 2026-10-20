@@ -8,7 +8,7 @@
 		"dev:installer": "tauri dev -- -- --install",
 		"build": "vite build",
 		"preview": "vite preview",
-		"test": "node --test --import tsx 'scripts/*.test.ts'",
+		"test": "node --test --import tsx \"scripts/*.test.ts\"",
 		"test:vitest": "vitest run",
 		"test:frontmatter": "node --test --import tsx scripts/frontMatter.test.ts scripts/frontMatterProseBlock.test.ts",
 		"test:workflows": "node --test --import tsx scripts/exportHtml.test.ts scripts/exportOpenPrompt.test.ts scripts/editorToolbar.test.ts scripts/titlebarToolbar.test.ts",

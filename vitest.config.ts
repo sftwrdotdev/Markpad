@@ -19,6 +19,10 @@ export default mergeConfig(
 			// across is a rename.
 			include: ['scripts/**/*.spec.ts'],
 			environment: 'jsdom',
+			// Node 25 and 26 ship an experimental Web Storage global of their own;
+			// it shadows the one jsdom installs, and the tests' `localStorage.clear()`
+			// then fails with "not a function". The workers are spawned without it.
+			execArgv: ['--no-experimental-webstorage'],
 		},
 		resolve: {
 			// Without this Svelte resolves to its SSR build, where `$effect` never
