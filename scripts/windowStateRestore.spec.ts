@@ -151,7 +151,9 @@ test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys 
 	// process); both localStorage keys are removed on write, so a downgraded
 	// build starts a fresh session instead of misreading anything.
 	const scope = sliceBetween(session, 'async function persistState', 'async function restore');
-	assert.match(scope, /invoke\('save_window_state'/);
+	// Through the session's one snapshot writer, which calls the Rust command.
+	assert.match(scope, /snapshots\.flush\(/);
+	assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
 	assert.doesNotMatch(scope, /setItem\(/);
 	assert.match(scope, /removeItem\(options\.windowStateKey\)/);
 	assert.match(scope, /removeItem\(options\.legacyStateKey\)/);

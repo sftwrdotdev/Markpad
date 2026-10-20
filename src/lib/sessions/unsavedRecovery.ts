@@ -71,14 +71,17 @@ export function restoreRecords(
 	return consumed;
 }
 
-/** One writer per window. A bounded delay, not a resetting debounce: continuous
- * typing must still reach disk. Serialized writes prevent an older IPC from
- * resurrecting content after a save, discard, or setting change. */
-export function createUnsavedRecovery(options: {
+/** One writer per file: a window's unsaved backup, or its restore snapshot. A
+ * bounded delay, not a resetting debounce: continuous typing must still reach
+ * disk. Serialized writes prevent an older IPC from resurrecting content after
+ * a save, discard, or setting change. `initial` is what is on disk already, so
+ * it is not written again. */
+export function createBoundedWriter(options: {
 	write: (json: string) => Promise<void>;
 	onError: (error: unknown) => void;
+	initial?: string;
 }) {
-	let latest = '[]';
+	let latest = options.initial ?? '';
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let writes = Promise.resolve(true);
 	let disposed = false;
@@ -119,9 +122,12 @@ export function createUnsavedRecovery(options: {
 		return enqueue(json);
 	}
 
-	function dispose() {
+	/** Stops writing. Resolves once a write already under way has landed, so
+	 * the caller can remove the file without it coming back. */
+	function dispose(): Promise<boolean> {
 		disposed = true;
 		if (timer) clearTimeout(timer);
+		return writes;
 	}
 
 	return { update, flush, dispose };

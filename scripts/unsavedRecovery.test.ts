@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createUnsavedRecovery, parseRecovery, recoverySnapshot, restoreRecords } from '../src/lib/sessions/unsavedRecovery.js';
+import { createBoundedWriter, parseRecovery, recoverySnapshot, restoreRecords } from '../src/lib/sessions/unsavedRecovery.js';
 import { buildTransferredTab, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
@@ -97,7 +97,7 @@ test('a corrupt record of this window throws, so the caller never overwrites it'
 test('continuous changes reach disk within the bounded background delay', async (context) => {
 	context.mock.timers.enable({ apis: ['setTimeout'] });
 	const writes: string[] = [];
-	const recovery = createUnsavedRecovery({ write: async (json) => { writes.push(json); }, onError: (error) => { throw error; } });
+	const recovery = createBoundedWriter({ initial: '[]', write: async (json) => { writes.push(json); }, onError: (error) => { throw error; } });
 	recovery.update('first');
 	context.mock.timers.tick(400);
 	recovery.update('latest');
@@ -115,7 +115,8 @@ test('flush cancels delayed writes and serializes cleanup behind in-flight write
 	const writes: string[] = [];
 	let release!: () => void;
 	const gate = new Promise<void>((resolve) => { release = resolve; });
-	const recovery = createUnsavedRecovery({
+	const recovery = createBoundedWriter({
+		initial: '[]',
 		write: async (json) => { writes.push(json); if (writes.length === 1) await gate; },
 		onError: (error) => { throw error; },
 	});
@@ -133,7 +134,8 @@ test('flush cancels delayed writes and serializes cleanup behind in-flight write
 test('failed writes retry without another edit and flush reports failure', async (context) => {
 	context.mock.timers.enable({ apis: ['setTimeout'] });
 	let attempts = 0;
-	const recovery = createUnsavedRecovery({
+	const recovery = createBoundedWriter({
+		initial: '[]',
 		write: async () => { if (++attempts === 1) throw new Error('temporarily unavailable'); },
 		onError: () => {},
 	});
@@ -150,7 +152,8 @@ test('failed writes retry without another edit and flush reports failure', async
 test('write failures are reported without blocking later snapshots', async () => {
 	const errors: unknown[] = [];
 	const writes: string[] = [];
-	const recovery = createUnsavedRecovery({
+	const recovery = createBoundedWriter({
+		initial: '[]',
 		write: async (json) => { writes.push(json); if (json === 'bad') throw new Error('disk full'); },
 		onError: (error) => { errors.push(error); },
 	});
@@ -159,6 +162,29 @@ test('write failures are reported without blocking later snapshots', async () =>
 	assert.equal(errors.length, 1);
 	assert.deepEqual(writes, ['bad', '[]']);
 	recovery.dispose();
+});
+
+test('dispose drops a pending write and waits for the one in flight, so a forgotten file stays gone', async (context) => {
+	context.mock.timers.enable({ apis: ['setTimeout'] });
+	const writes: string[] = [];
+	let release!: () => void;
+	const gate = new Promise<void>((resolve) => { release = resolve; });
+	const writer = createBoundedWriter({
+		write: async (json) => { writes.push(json); await gate; },
+		onError: (error) => { throw error; },
+	});
+	writer.update('in flight');
+	context.mock.timers.tick(500);
+	writer.update('pending');
+	let settled = false;
+	const disposed = writer.dispose().then(() => { settled = true; });
+	await Promise.resolve();
+	assert.equal(settled, false, 'dispose resolved while a write was still in flight');
+	release();
+	await disposed;
+	context.mock.timers.tick(5000);
+	writer.update('after dispose');
+	assert.deepEqual(writes, ['in flight']);
 });
 
 test('the close decision commands are spelled the same in the viewer and in Rust', () => {

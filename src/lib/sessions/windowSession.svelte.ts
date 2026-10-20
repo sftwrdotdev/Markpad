@@ -4,6 +4,7 @@ import { tabManager } from '../stores/tabs.svelte.js';
 import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
 import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { validateTransferPayload, type TransferableTab } from '../utils/tabTransfer.js';
+import { createBoundedWriter } from './unsavedRecovery.js';
 
 type RestoredTab = {
 	id: string;
@@ -85,6 +86,33 @@ type WindowSessionOptions = {
 
 export function createWindowSession(options: WindowSessionOptions) {
 	const appWindow = getCurrentWindow();
+
+	/**
+	 * The snapshot is written as the window changes, not only at close, so a
+	 * crash or kill brings every window back. Through the same bounded,
+	 * serialized writer as the unsaved backup: the last state wins, and a write
+	 * still in flight cannot land after the window is forgotten.
+	 */
+	const snapshots = createBoundedWriter({
+		write: (json) => invoke('save_window_state', { json }),
+		// A background write that fails retries on its own; only the one a
+		// close waits for is put in front of the user, by `persistState`.
+		onError: (error) => options.onWarning('Failed to save window state', error),
+	});
+	// Off until this window's own restore has run, so its empty starting state
+	// never replaces the snapshot it is about to read.
+	let recording = false;
+
+	/** Record the window's state within the writer's bounded delay. */
+	function record(json: string) {
+		if (recording && options.shouldRestoreState()) snapshots.update(json);
+	}
+
+	/** Record the full state, editor position included, at a moment no tab
+	 * switch is under way: focus loss or hide. */
+	function checkpoint() {
+		if (recording && options.shouldRestoreState()) snapshots.update(options.serializeState());
+	}
 
 	async function discardPersistedState() {
 		localStorage.removeItem(options.windowStateKey);
@@ -181,6 +209,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 */
 	async function persistState(remember: boolean) {
 		if (!remember) {
+			await snapshots.dispose();
 			try {
 				await invoke('forget_window_state');
 			} catch (error) {
@@ -189,13 +218,12 @@ export function createWindowSession(options: WindowSessionOptions) {
 			return;
 		}
 		await releaseReadableDeferrals();
-		try {
-			await invoke('save_window_state', { json: options.serializeState() });
-			localStorage.removeItem(options.windowStateKey);
-			localStorage.removeItem(options.legacyStateKey);
-		} catch (error) {
-			options.onError('Failed to save window state on close', error);
+		if (!(await snapshots.flush(options.serializeState()))) {
+			options.onError('Failed to save window state on close', 'the write was refused');
+			return;
 		}
+		localStorage.removeItem(options.windowStateKey);
+		localStorage.removeItem(options.legacyStateKey);
 	}
 
 	/**
@@ -216,6 +244,9 @@ export function createWindowSession(options: WindowSessionOptions) {
 			// Nothing will be restored, so there is nothing for a breadcrumb to
 			// say about the next launch.
 			await writeProgress({ running: false, pending: null, deferred: [], interruptions: 0 });
+			// Writes nothing while the setting is off; turned on later, the
+			// window starts recording with its next change.
+			recording = true;
 			return false;
 		}
 		const previous = await readProgress();
@@ -326,7 +357,10 @@ export function createWindowSession(options: WindowSessionOptions) {
 			await writeProgress({ running: false, pending: null, deferred, interruptions: 0 });
 		}
 		if (options.isDisposed()) return Boolean(savedData);
-		if (options.restoredTabs().length > 0) await persistState(true);
+		// Every window has a snapshot from here on, an empty one included: the
+		// set of snapshots is the list of windows the next launch reopens.
+		recording = true;
+		await persistState(true);
 		localStorage.removeItem(options.windowStateKey);
 		localStorage.removeItem(options.legacyStateKey);
 		return Boolean(savedData);
@@ -454,5 +488,5 @@ export function createWindowSession(options: WindowSessionOptions) {
 		return transfer(tabId, (token) => invoke('create_transfer_window', { token }));
 	}
 
-	return { discardPersistedState, persistState, restore, claimTransferredTab, acceptOfferedTransfer, detach, transfer };
+	return { discardPersistedState, persistState, record, checkpoint, restore, claimTransferredTab, acceptOfferedTransfer, detach, transfer };
 }

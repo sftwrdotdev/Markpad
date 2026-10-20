@@ -128,7 +128,7 @@ import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
-import { createUnsavedRecovery, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
+import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
 import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
@@ -662,9 +662,10 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			addToast(t('toast.recoveryFailed', settings.language), 'error');
 		}
 	}
-	const unsavedRecovery = createUnsavedRecovery({
+	const unsavedRecovery = createBoundedWriter({
 		write: (json) => invoke('save_unsaved_recovery', { json }),
 		onError: reportRecoveryError,
+		initial: '[]',
 	});
 	$effect(() => {
 		if (!recoveryReady) return;
@@ -850,6 +851,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					: t('toast.restoreInterrupted', settings.language),
 				'warning',
 			),
+	});
+
+	// The session is recorded as it changes, so a crash or kill brings this
+	// window back as it was. Tracks the window's shape only: which tabs, in
+	// what order, which is active, how each is viewed, the tag and the folder.
+	// Scroll and editor position are not tracked, so scrolling writes nothing;
+	// they are written with the next tracked change and at every checkpoint
+	// (focus loss, hide, close, quit).
+	$effect(() => {
+		for (const tab of tabManager.tabs) {
+			void [tab.id, tab.path, tab.title, tab.isEditing, tab.isSplit, tab.splitRatio, tab.isScrollSynced];
+		}
+		const tag = tabManager.windowTag;
+		void [tabManager.activeTabId, tag?.name, tag?.color, tag?.pinned, folderManager.root];
+		// Not `serializeState`: its editor flush is only sound when no tab
+		// switch is under way, and this runs on one.
+		windowSession.record(untrack(windowStateJson));
 	});
 
 	$effect(() => {
@@ -3822,6 +3840,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				unlisteners.push(
 					await appWindow.onFocusChanged(({ payload: focused }) => {
 						isFocused = focused;
+						if (!focused) windowSession.checkpoint();
 					}),
 				);
 				isFocused = await appWindow.isFocused();
@@ -3860,6 +3879,11 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				if (isDisposed) return;
 			}
 
+			const checkpointWhenHidden = () => {
+				if (document.visibilityState === 'hidden') windowSession.checkpoint();
+			};
+			document.addEventListener('visibilitychange', checkpointWhenHidden);
+			unlisteners.push(() => document.removeEventListener('visibilitychange', checkpointWhenHidden));
 			unlisteners.push(
 				await appWindow.listen('file-changed', async (event) => {
 					const changedPath = event.payload as string;
