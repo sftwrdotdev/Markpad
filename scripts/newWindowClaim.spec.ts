@@ -27,7 +27,6 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 test('a new window claims nothing and opens with no tabs', async () => {
 	const errors: unknown[] = [];
 	const session = createWindowSession({
-		isMainWindow: false,
 		windowStateKey: 'savedTabsDataV2',
 		legacyStateKey: 'savedTabsData',
 		restoreInProgressKey: 'markpad-window-restore-in-progress',
