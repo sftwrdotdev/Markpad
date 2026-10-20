@@ -3910,9 +3910,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					const filePath = event.payload as string;
 					if (filePath) loadMarkdown(filePath);
 				}],
-				['menu-close-file', () => {
-					closeFile();
-				}],
 				['menu-tab-rename', async (event) => {
 					const tabId = event.payload as string;
 					const tab = tabManager.tabs.find((t) => t.id === tabId);
