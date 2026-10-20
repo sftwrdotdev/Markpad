@@ -1260,8 +1260,46 @@ pub fn send_markdown_path(window: tauri::Window, state: State<'_, AppState>) -> 
     files
 }
 
+/// What the window-state plugin keeps for every window.
+pub fn geometry_flags() -> tauri_plugin_window_state::StateFlags {
+    use tauri_plugin_window_state::StateFlags;
+    StateFlags::SIZE
+        | StateFlags::POSITION
+        | StateFlags::MAXIMIZED
+        | StateFlags::VISIBLE
+        | StateFlags::FULLSCREEN
+}
+
+/// Writes window geometry while the app runs. The plugin only saves on a
+/// clean exit, so a crash or kill brought every window back at its default
+/// size. A move or resize schedules one save of all windows 500 ms later,
+/// the bound the session snapshots use.
+/// ponytail: the plugin writes its file with `fs::write`, not by rename, so a
+/// kill mid-write can lose every window's geometry once; the session itself
+/// is unaffected.
+pub struct GeometrySaver(Mutex<Box<dyn Fn() + Send>>);
+
+impl GeometrySaver {
+    pub fn new(app: AppHandle) -> Self {
+        Self(Mutex::new(Box::new(coalesced(
+            Duration::from_millis(500),
+            move || {
+                use tauri_plugin_window_state::AppHandleExt;
+                if let Err(error) = app.save_window_state(geometry_flags()) {
+                    eprintln!("Failed to save window geometry: {error}");
+                }
+            },
+        ))))
+    }
+}
+
 pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
     match event {
+        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+            if let Some(saver) = window.try_state::<GeometrySaver>() {
+                (lock_recover(&saver.0))();
+            }
+        }
         tauri::WindowEvent::Focused(true) => {
             let label = window.label();
             if is_viewer_label(label) {

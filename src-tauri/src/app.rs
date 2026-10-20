@@ -62,13 +62,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_state_flags(
-                    tauri_plugin_window_state::StateFlags::SIZE
-                        | tauri_plugin_window_state::StateFlags::POSITION
-                        | tauri_plugin_window_state::StateFlags::MAXIMIZED
-                        | tauri_plugin_window_state::StateFlags::VISIBLE
-                        | tauri_plugin_window_state::StateFlags::FULLSCREEN,
-                )
+                .with_state_flags(window_runtime::geometry_flags())
                 // No `map_label`: a secondary window keeps its label across
                 // relaunches, so each one gets its own size and position back.
                 // ponytail: entries of windows that never come back stay in
@@ -77,6 +71,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            app.manage(window_runtime::GeometrySaver::new(app.handle().clone()));
             let args: Vec<String> = std::env::args().collect();
 
             let mut window_builder = tauri::WebviewWindowBuilder::new(
