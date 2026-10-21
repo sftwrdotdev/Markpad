@@ -2601,6 +2601,11 @@
 		editor?.trigger("keyboard", "undo", null);
 	}
 
+	export const redo = () => {
+		editor?.focus();
+		editor?.trigger("keyboard", "redo", null);
+	}
+
 	export const triggerFind = () => {
 		if (!editor) return;
 		editor.focus();

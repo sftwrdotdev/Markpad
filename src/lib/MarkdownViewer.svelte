@@ -188,6 +188,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		hideDragCaret: () => void;
 		runEditorAction: (actionId: string, payload?: any) => void;
 		undo: () => void;
+		redo: () => void;
 		revealHeader: (sourceLine: BufferLine | null, text: string) => void;
 		revealSourceRange: (startLine: number, endLine: number) => void;
 		triggerFind: () => void;
@@ -3103,14 +3104,23 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!editorPane) return;
 		e.preventDefault();
 
-		// Chords only for the two items people learn the shortcut from.
-		const chord = (c: string) => formatChord(c, modifierFor(settings.osType));
+		// Chords only for the items people learn the shortcut from. Undo is
+		// listed because Windows has no menu bar to find it in (#997).
+		const modifier = modifierFor(settings.osType);
+		const chord = (c: string) => formatChord(c, modifier);
 
 		docContextMenu = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
 			items: [
+				{ label: t('menu.undo', settings.language), shortcut: chord('Mod+Z'), onClick: () => editorPane?.undo() },
+				{
+					label: t('menu.redo', settings.language),
+					shortcut: chord(modifier === 'Cmd' ? 'Mod+Shift+Z' : 'Mod+Y'),
+					onClick: () => editorPane?.redo(),
+				},
+				{ separator: true },
 				{ label: t('menu.cut', settings.language), onClick: () => editorPane?.cutToClipboard() },
 				{ label: t('menu.copy', settings.language), onClick: () => editorPane?.copyToClipboard() },
 				{ label: t('menu.paste', settings.language), onClick: () => editorPane?.pasteFromClipboard() },
