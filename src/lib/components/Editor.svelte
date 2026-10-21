@@ -2606,6 +2606,11 @@
 		editor?.trigger("keyboard", "redo", null);
 	}
 
+	export const selectAll = () => {
+		editor?.focus();
+		editor?.trigger("keyboard", "editor.action.selectAll", null);
+	}
+
 	export const triggerFind = () => {
 		if (!editor) return;
 		editor.focus();

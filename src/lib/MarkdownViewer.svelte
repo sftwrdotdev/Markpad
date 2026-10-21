@@ -189,6 +189,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		runEditorAction: (actionId: string, payload?: any) => void;
 		undo: () => void;
 		redo: () => void;
+		selectAll: () => void;
 		revealHeader: (sourceLine: BufferLine | null, text: string) => void;
 		revealSourceRange: (startLine: number, endLine: number) => void;
 		triggerFind: () => void;
@@ -3124,6 +3125,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				{ label: t('menu.cut', settings.language), onClick: () => editorPane?.cutToClipboard() },
 				{ label: t('menu.copy', settings.language), onClick: () => editorPane?.copyToClipboard() },
 				{ label: t('menu.paste', settings.language), onClick: () => editorPane?.pasteFromClipboard() },
+				{ label: t('menu.selectAll', settings.language), onClick: () => editorPane?.selectAll() },
 				{ separator: true },
 				// Monaco's other items need a language provider Markdown lacks.
 				{
