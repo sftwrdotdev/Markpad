@@ -51,6 +51,26 @@ apps:
       # `sudo snap connect markpad:removable-media` -- but without the plug
       # declared here there is nothing to connect. #562.
       - removable-media
+    slots:
+      - single-instance
+
+slots:
+  # On Linux, tauri-plugin-single-instance makes a second launch hand its
+  # arguments to the first by owning this name on the session bus: the
+  # identifier from tauri.conf.json plus ".SingleInstance". Strict confinement
+  # lets a snap own only the names it declares, and the gnome extension's plugs
+  # declare none of this kind, so the request is refused. The plugin treats any
+  # refusal other than "name taken" as "no other instance", and every launch
+  # becomes its own window -- opening five files from the file manager gives
+  # five windows instead of five tabs.
+  #
+  # No matching plug is needed: the second launch talks to the first one as the
+  # same snap, which confinement already allows. If the identifier changes,
+  # this name has to change with it.
+  single-instance:
+    interface: dbus
+    bus: session
+    name: com.alecdotdev.markpad.SingleInstance
 
 parts:
   # The snap packages the .deb the release already shipped. It does not build
