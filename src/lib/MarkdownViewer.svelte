@@ -2289,8 +2289,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 	function removeRecentFile(path: string, event: MouseEvent) {
 		event.stopPropagation();
+		// Forgets the entry, not the document: an open tab stays open, the way
+		// "Remove from Recently Opened" works in VS Code.
 		deleteRecentFile(path);
-		if (currentFile === path) tabManager.closeTab(tabManager.activeTabId!);
 	}
 
 	async function canCloseTab(tabId: string): Promise<boolean> {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readSource } from './sourceTree.js';
+import { functionSource, readSource } from './sourceTree.js';
 
 /*
  * The recent-file list was written back as `JSON.stringify(recentFiles)` from
@@ -252,6 +252,12 @@ test('nothing writes the key directly any more', () => {
 	// own snapshot again, which is the whole defect.
 	assert.doesNotMatch(viewer, /setItem\('recent-files'/);
 	assert.doesNotMatch(viewer, /getItem\('recent-files'/);
+});
+
+test('removing a recent entry leaves its open tab alone', () => {
+	// The × on the active document's entry closed the tab through the bare
+	// `tabManager.closeTab`, with no unsaved-changes prompt.
+	assert.doesNotMatch(functionSource(viewer, 'removeRecentFile'), /closeTab/);
 });
 
 test('a window folds in what its siblings did', () => {
