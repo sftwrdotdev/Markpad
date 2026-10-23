@@ -508,7 +508,7 @@ test('the startup background is told the appearance, not the theme name', () => 
 	// appearance becomes knowable.
 	assert.match(
 		viewerSource,
-		/await parseAndApplyVscodeTheme\(json, name\);[\s\S]{0,300}?saveStartupAppearance\(document\.documentElement\.dataset\.themeType === 'dark' \? 'dark' : 'light'\)/,
+		/loadVscodeTheme\(name, [\s\S]{0,400}?saveStartupAppearance\(document\.documentElement\.dataset\.themeType === 'dark' \? 'dark' : 'light'\)/,
 	);
 	// The viewer keeps no theme of its own beside the store's.
 	assert.doesNotMatch(viewerSource, /let theme = \$state/);

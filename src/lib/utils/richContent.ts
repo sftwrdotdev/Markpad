@@ -287,6 +287,59 @@ function selfAndDescendants(root: HTMLElement, selector: string): Element[] {
 	return matches;
 }
 
+/** A copy label's own content while it reads "Copied!". */
+const copiedLabels = new WeakMap<HTMLElement, string>();
+
+/**
+ * Shows "Copied!" on a code block's label for 1.5 s.
+ *
+ * The content to restore is taken once per showing: a second click inside the
+ * 1.5 s used to take "Copied!" itself as the original and put it back for good.
+ */
+export function flashCopiedLabel(label: HTMLElement) {
+	const original = copiedLabels.get(label) ?? label.innerHTML;
+	copiedLabels.set(label, original);
+	label.innerHTML = 'Copied!';
+	label.classList.add('copied');
+	setTimeout(() => {
+		copiedLabels.delete(label);
+		label.innerHTML = original;
+		label.classList.remove('copied');
+	}, 1500);
+}
+
+/** The tail of the chain `drawInTurn` appends to. */
+let mermaidTurn: Promise<unknown> = Promise.resolve();
+
+/**
+ * Configures Mermaid and draws one diagram, as one turn no other pass can split.
+ *
+ * Mermaid's config is a single global. `initialize` writes it at once, while
+ * `render` joins Mermaid's own queue and reads the config when its turn comes
+ * (mermaid 11.16.1, `render2` → `mermaidAPI.render` → `getConfig()`). So a pass
+ * that configured and then awaited a draw could have its next draw made in the
+ * palette another pass configured meanwhile — a theme change over a pass still
+ * drawing, or a PDF export over a preview render — and cached under its own
+ * theme for the life of the window.
+ *
+ * The config itself lives in `mermaidPrint.ts`: `initialize` replaces the site
+ * config rather than merging into it, so every draw sends the full set of keys.
+ * See `mermaidConfig` for what `htmlLabels: false` is buying.
+ */
+function drawInTurn(
+	mermaid: RichContentLibraries['mermaid'],
+	theme: string,
+	id: string,
+	source: string,
+): Promise<{ svg: string }> {
+	const turn = mermaidTurn.then(() => {
+		mermaid.initialize(mermaidConfig(theme));
+		return mermaid.render(id, source);
+	});
+	mermaidTurn = turn.catch(() => {});
+	return turn;
+}
+
 export async function renderRichContent(options: RenderRichContentOptions): Promise<void> {
 	const { roots, libraries } = options;
 	if (roots.length === 0) return;
@@ -476,19 +529,10 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		}
 	}
 
-	// The config itself lives in `mermaidPrint.ts` — `initialize` replaces the
-	// site config rather than merging into it, so the two callers that write to
-	// this singleton have to send the same keys or the last one wins. See
-	// `mermaidConfig` for what `htmlLabels: false` is buying.
-	//
 	// Only when there is something to draw: `initialize` builds and installs
 	// a site config, which measures at ~2.5ms in Chromium, and this function runs
 	// once per keystroke. A document with no diagram in it was paying that on
 	// every character. Asking first is one selector over a list already in hand.
-	// Configuring per pass, rather than remembering the last theme, is
-	// deliberate — `mermaidPrint.ts` reconfigures the same singleton to print a
-	// diagram on paper and configures it back, so a remembered theme here would
-	// be a claim about a global another module also writes to.
 	const diagramBlocks = codeBlocks.filter(isDiagram);
 	if (diagramBlocks.length === 0 && staleDiagrams.length === 0) return;
 	let mermaid = libraries ? libraries.mermaid : diagrams.loaded;
@@ -500,8 +544,6 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		console.error('Failed to load Mermaid:', error);
 		return;
 	}
-	mermaid.initialize(mermaidConfig(options.mermaidTheme));
-
 	let diagramIndex = 0;
 
 	/**
@@ -515,7 +557,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	const drawDiagram = async (source: string, svgId: string): Promise<string> => {
 		const cached = lookupDiagramTemplate(source, options.mermaidTheme);
 		if (cached !== null) return fillDiagramTemplate(cached, svgId);
-		const { svg } = await mermaid.render(svgId, source);
+		const { svg } = await drawInTurn(mermaid, options.mermaidTheme, svgId, source);
 		// A source that contains the render id would have its own text rewritten
 		// by the substitution, so that one is left uncached.
 		if (!source.includes(svgId)) {

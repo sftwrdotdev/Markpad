@@ -144,6 +144,48 @@ describe('a pass that is not a theme change', () => {
 });
 
 /**
+ * Mermaid's config is one global: `initialize` writes it at once, and `render`
+ * reads it only when its turn in Mermaid's own queue comes. The stand-in keeps
+ * that shape: one global theme, read after the draw has yielded.
+ */
+function queuedLibraries(): RichContentLibraries {
+	let theme = 'unset';
+	return {
+		hljs: { getLanguage: () => undefined, highlight: () => ({ value: '' }) },
+		katex: { renderToString: (source: string) => source },
+		renderMathInElement: () => {},
+		mermaid: {
+			initialize: (config: { theme: string }) => {
+				theme = config.theme;
+			},
+			render: async (id: string) => {
+				await new Promise((resolve) => setTimeout(resolve, 0));
+				return { svg: `<svg id="${id}" data-drawn-for="${theme}"></svg>` };
+			},
+		},
+	} as any;
+}
+
+test('two passes in different themes each draw in their own', async () => {
+	resetDiagramCache();
+	const mermaid = queuedLibraries();
+	// A preview pass and a PDF export's pass over another copy, overlapping.
+	const preview = article(`${PRE}<pre><code class="language-mermaid">graph LR;C-->D;</code></pre>`);
+	const print = document.createElement('div');
+	print.innerHTML = PRE;
+
+	await Promise.all([
+		renderRichContent({ roots: [preview], libraries: mermaid, mermaidTheme: 'dark', idFactory: (i) => `p${i}` }),
+		renderRichContent({ roots: [print], libraries: mermaid, mermaidTheme: 'neutral', idFactory: (i) => `x${i}` }),
+	]);
+
+	const themes = (root: ParentNode) =>
+		[...root.querySelectorAll('.mermaid-diagram svg')].map((svg) => svg.getAttribute('data-drawn-for'));
+	expect(themes(preview)).toEqual(['dark', 'dark']);
+	expect(themes(print)).toEqual(['neutral']);
+});
+
+/**
  * The wiring, which the tests above cannot reach: `renderRichContent` now knows
  * how to re-draw a stale diagram, but the theme effect still has to call it, in
  * every mode and once per theme change.
@@ -178,5 +220,5 @@ test('the theme effect re-colours in every mode, and does not re-run on a mode c
 	// until `parseAndApplyVscodeTheme` has published `dataset.themeType`, which
 	// is what `currentMermaidTheme` reads.
 	expect(effect!.match(/recolourDiagrams\(\);/g)).toHaveLength(2);
-	expect(effect).toMatch(/await parseAndApplyVscodeTheme[\s\S]*?recolourDiagrams\(\);/);
+	expect(effect).toMatch(/loadVscodeTheme\([\s\S]*?recolourDiagrams\(\);/);
 });

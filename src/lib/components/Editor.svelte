@@ -1960,6 +1960,9 @@
 		// A no-op on the ⌘V path, where the editor is focused by definition.
 		editor?.focus();
 			try {
+				// The image is written before it is linked, and the reader can
+				// switch tabs while it is: the link then belongs to no other model.
+				const pasteModel = editor.getModel();
 				const tabPath = tabManager.activeTab?.path;
 				const parentDir = tabPath ? documentParentDir(tabPath) : null;
 				if (tabPath && parentDir !== null) {
@@ -1999,6 +2002,9 @@
 						}
 					}
 
+					// The written file stays: it is in the first tab's folder, where
+					// the reader can see it, and deleting on a guess is what #368 removed.
+					if (editor.getModel() !== pasteModel) return;
 					const position = editor.getPosition();
 					if (embeds.length > 0 && position) {
 						const selection = editor.getSelection();
@@ -2135,7 +2141,11 @@
 		editor?.focus();
 		const { text, range } = clipboardTextForSelection();
 		if (!text || !range || !editor) return;
+		const model = editor.getModel();
 		await invoke('clipboard_write_text', { text }).catch(console.error);
+		// `range` is in this model's coordinates; after a tab switch it would
+		// delete text from the other document.
+		if (editor.getModel() !== model) return;
 		editor.pushUndoStop();
 		editor.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
 	}
@@ -2411,6 +2421,7 @@
 		const tabPath = tabManager.activeTab.path;
 		const parentDir = documentParentDir(tabPath);
 		if (parentDir === null) return;
+		const dropModel = editor.getModel();
 
 		try {
 			const imgDirName = resolveImageDirectory(
@@ -2422,6 +2433,9 @@
 				parentDir,
 				imageDirectory: imgDirName,
 			})) as string;
+			// As in `pasteFromClipboard`: a tab switch during the copy leaves the
+			// file where it was copied and the link out of the other document.
+			if (editor.getModel() !== dropModel) return;
 			const embed = imageEmbed(relPath);
 
 			editor.pushUndoStop();

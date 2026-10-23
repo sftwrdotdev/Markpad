@@ -137,6 +137,21 @@ function createDocument(initial: string) {
 		for (const listener of listeners) listener(e);
 	};
 
+	// One object per model, as Monaco's `getModel()` is: the editor compares
+	// identities to tell a tab switch happened.
+	const modelFor = () => ({
+		getValue: () => buffer,
+		getValueInRange: (range: FakeRange) => buffer.slice(range.startColumn - 1, range.endColumn - 1),
+		getLineContent: () => buffer,
+		getLanguageId: () => 'markdown',
+		// Read by the status-bar refresh below; line endings are not this
+		// file's subject and are tested against real Monaco buffers in
+		// editorLineEnding.test.ts.
+		getEOL: () => '\n',
+	});
+	let model = modelFor();
+	let selection: FakeRange | null = null;
+
 	const editor = {
 		// Every clipboard entry point focuses the editor first, because two of
 		// the three now run from a context menu that would otherwise keep the
@@ -144,18 +159,9 @@ function createDocument(initial: string) {
 		focus: () => {},
 		getValue: () => buffer,
 		setValue: (text: string) => void (buffer = text),
-		getModel: () => ({
-			getValue: () => buffer,
-			getValueInRange: (range: FakeRange) => buffer.slice(range.startColumn - 1, range.endColumn - 1),
-			getLineContent: () => buffer,
-			getLanguageId: () => 'markdown',
-			// Read by the status-bar refresh below; line endings are not this
-			// file's subject and are tested against real Monaco buffers in
-			// editorLineEnding.test.ts.
-			getEOL: () => '\n',
-		}),
+		getModel: () => model,
 		getPosition: () => ({ lineNumber: 1, column: buffer.length + 1 }),
-		getSelection: () => null,
+		getSelection: () => selection,
 		getSelections: () => [new FakeRange(1, buffer.length + 1, 1, buffer.length + 1)],
 		setSelections: () => {},
 		getTargetAtClientPoint: () => null,
@@ -166,7 +172,8 @@ function createDocument(initial: string) {
 			undoStack.push(buffer);
 			for (const edit of edits) {
 				const at = Math.max(0, Math.min(buffer.length, edit.range.startColumn - 1));
-				buffer = buffer.slice(0, at) + edit.text + buffer.slice(at);
+				const end = Math.max(at, Math.min(buffer.length, edit.range.endColumn - 1));
+				buffer = buffer.slice(0, at) + edit.text + buffer.slice(end);
 			}
 			dispatch({ isUndoing: false, isRedoing: false });
 			return true;
@@ -189,7 +196,13 @@ function createDocument(initial: string) {
 			dispatch({ isUndoing: true, isRedoing: false });
 		},
 		/** Switching tabs swaps Monaco's model: new text, that model's own history. */
+		/** Columns on the one line, end exclusive, as Monaco counts them. */
+		select: (startColumn: number, endColumn: number) => {
+			selection = new FakeRange(1, startColumn, 1, endColumn);
+		},
 		loadModel: (text: string) => {
+			model = modelFor();
+			selection = null;
 			buffer = text;
 			undoStack = [];
 		},
@@ -198,16 +211,20 @@ function createDocument(initial: string) {
 
 type Backend = {
 	calls: { cmd: string; args: Record<string, any> }[];
+	/** Runs inside a command, before it answers: what the reader does meanwhile. */
+	during?: (cmd: string) => void;
 	invoke: (cmd: string, args?: Record<string, any>) => Promise<unknown>;
 	commandsSince: (mark: number) => string[];
 };
 
 function createBackend(clipboardImage: string | null, clipboardFiles: string[] | null): Backend {
 	const calls: { cmd: string; args: Record<string, any> }[] = [];
-	return {
+	const backend: Backend = {
 		calls,
 		invoke: async (cmd: string, args: Record<string, any> = {}) => {
 			calls.push({ cmd, args });
+			await Promise.resolve();
+			backend.during?.(cmd);
 			switch (cmd) {
 				case 'clipboard_read_file_list':
 					return clipboardFiles;
@@ -226,6 +243,7 @@ function createBackend(clipboardImage: string | null, clipboardFiles: string[] |
 		},
 		commandsSince: (mark: number) => calls.slice(mark).map((call) => call.cmd),
 	};
+	return backend;
 }
 
 // ----------------------------------------------------------------- the harness
@@ -233,6 +251,7 @@ function createBackend(clipboardImage: string | null, clipboardFiles: string[] |
 type Component = {
 	paste: () => Promise<void>;
 	drop: (path: string, x: number, y: number) => Promise<void>;
+	cut: () => Promise<void>;
 	contentChange: ((e: ChangeEvent) => void)[];
 };
 
@@ -263,10 +282,13 @@ const factorySource = ts.transpileModule(
 
 		${functionSource(source, 'handleDroppedFile')}
 		${pasteCommandBody}
+		${functionSource(source, 'clipboardTextForSelection')}
+		${functionSource(source, 'cutToClipboard')}
 
 		return {
 			paste: pasteFromClipboard,
 			drop: handleDroppedFile,
+			cut: cutToClipboard,
 			contentChange: [${contentChangeBodies.map((body) => `(e) => ${body}`).join(', ')}],
 		};
 	};`,
@@ -494,6 +516,67 @@ test('dropping a file still copies it and inserts the embed', async () => {
 		{ srcPath: '/Users/me/pictures/logo.png', parentDir: '/Users/me/notes', imageDirectory: 'img' },
 	);
 	assert.equal(doc.text(), '![alt](img/logo.png)');
+});
+
+// ------------------------------------------------- a tab switch during the write
+
+test('an image pasted in one tab is not linked into the tab switched to meanwhile', async () => {
+	const { backend, doc, component } = setup({ clipboardImage: PASTED_IMAGE });
+	const tabA = openTab('/Users/me/notes/a.md');
+	let tabB = '';
+	backend.during = (cmd) => {
+		if (cmd !== 'save_image') return;
+		tabB = openTab('/Users/me/other/b.md', 'notes in B');
+		doc.loadModel('notes in B');
+	};
+
+	await component.paste();
+
+	assert.ok(backend.calls.some((call) => call.cmd === 'save_image'), 'precondition: the image was written');
+	assert.equal(doc.text(), 'notes in B', "the link to a.md's image landed in b.md, where it resolves to nothing");
+	assert.equal(rawContentOf(tabB), 'notes in B');
+	assert.equal(rawContentOf(tabA), '');
+});
+
+test('an image dropped in one tab is not linked into the tab switched to meanwhile', async () => {
+	const { backend, doc, component } = setup();
+	openTab('/Users/me/notes/a.md');
+	backend.during = (cmd) => {
+		if (cmd !== 'copy_file_to_img') return;
+		openTab('/Users/me/other/b.md', 'notes in B');
+		doc.loadModel('notes in B');
+	};
+
+	await component.drop('/Users/me/pictures/logo.png', 10, 10);
+
+	assert.equal(doc.text(), 'notes in B', "the link to a.md's image landed in b.md, where it resolves to nothing");
+});
+
+test('a cut does not delete its range from the tab switched to during the clipboard write', async () => {
+	const { backend, doc, component } = setup();
+	openTab('/Users/me/notes/a.md', 'keep this');
+	doc.loadModel('keep this');
+	doc.select(1, 5);
+	backend.during = (cmd) => {
+		if (cmd !== 'clipboard_write_text') return;
+		openTab('/Users/me/other/b.md', 'notes in B');
+		doc.loadModel('notes in B');
+	};
+
+	await component.cut();
+
+	assert.equal(doc.text(), 'notes in B', "a's selection range was cut out of b.md");
+});
+
+test('a cut with no tab switch still removes the selection', async () => {
+	const { doc, component } = setup();
+	openTab('/Users/me/notes/a.md', 'keep this');
+	doc.loadModel('keep this');
+	doc.select(1, 6);
+
+	await component.cut();
+
+	assert.equal(doc.text(), 'this');
 });
 
 test('an ordinary edit still propagates to the active tab', () => {

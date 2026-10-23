@@ -37,6 +37,7 @@ import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
 import {
+	flashCopiedLabel,
 	renderRichContent as renderRichContentInto,
 } from './utils/richContent.js';
 import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
@@ -440,7 +441,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		return () => window.removeEventListener('pointerdown', dismiss, { capture: true });
 	});
 
-	import { parseAndApplyVscodeTheme, clearVscodeTheme } from './utils/theme';
+	import { loadVscodeTheme, clearVscodeTheme } from './utils/theme';
 
 	onMount(() => {
 		// Clear the forced background color from app.html
@@ -506,8 +507,10 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			// paint, and a later mount reads the theme from the same seam.
 		} else {
 			const name = theme.replace('vscode:', '');
-			invoke('read_vscode_theme', { name }).then(async (json: any) => {
-				await parseAndApplyVscodeTheme(json, name);
+			loadVscodeTheme(name, (name) => invoke<string>('read_vscode_theme', { name })).then((applied) => {
+				// A later choice replaced this one while it loaded; that choice
+				// owns the window now.
+				if (!applied) return;
 				// `parseAndApplyVscodeTheme` decides dark vs. light from the theme's
 				// own `type` field and publishes it here.
 				saveStartupAppearance(document.documentElement.dataset.themeType === 'dark' ? 'dark' : 'light');
@@ -1462,15 +1465,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			mermaidTheme: currentMermaidTheme(),
 			onCopyCode: (code, label) => {
 				invoke('clipboard_write_text', { text: code.replace(/\n$/, '') })
-					.then(() => {
-						const originalContent = label.innerHTML;
-						label.innerHTML = 'Copied!';
-						label.classList.add('copied');
-						setTimeout(() => {
-							label.innerHTML = originalContent;
-							label.classList.remove('copied');
-						}, 1500);
-					})
+					.then(() => flashCopiedLabel(label))
 					.catch((err) => {
 						console.error('Failed to copy code:', err);
 					});

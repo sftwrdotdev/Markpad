@@ -266,7 +266,7 @@ export function monacoTokenRules(tokenColors: unknown): MonacoTokenRule[] {
 	return rules;
 }
 
-export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: string) {
+export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: string, isCurrent: () => boolean = () => true) {
 	const cleanJson = themeJsonStr.replace(/\\"|"(?:\\"|[^"])*"|(\/\/.*|\/\*[\s\S]*?\*\/)/g, (m, g) => (g ? '' : m));
 	let theme;
 	try {
@@ -358,7 +358,10 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 		// this module unloadable outside a browser (and it is already bundled by the
 		// editor, so the dynamic import resolves from cache).
 		const monaco = await import('monaco-editor');
-		if (monaco) {
+		// The first import loads Monaco, which is slow enough for the reader to
+		// have picked another theme meanwhile; `setTheme` is global and would
+		// repaint the editor with this one.
+		if (monaco && isCurrent()) {
 			const rules = importedThemeRules(theme.tokenColors, isDark);
 
 			// Monaco only understands hex colours here; anything else makes
@@ -382,7 +385,31 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 	}
 }
 
+/** Bumped by every theme application, so a load still in flight can tell it lost. */
+let latestThemeLoad = 0;
+
+/**
+ * Reads and applies a VS Code theme, unless another theme is applied first.
+ *
+ * Both awaits (the read, and Monaco's first import inside the parse) leave room
+ * for the reader to choose again; a load that finishes after that must not paint
+ * over the newer choice, nor report a failure that would reset it. Resolves to
+ * whether this load is still the one on screen; rejects only if it is.
+ */
+export async function loadVscodeTheme(name: string, read: (name: string) => Promise<string>): Promise<boolean> {
+	const load = ++latestThemeLoad;
+	const isCurrent = () => load === latestThemeLoad;
+	try {
+		const json = await read(name);
+		if (isCurrent()) await parseAndApplyVscodeTheme(json, name, isCurrent);
+	} catch (e) {
+		if (isCurrent()) throw e;
+	}
+	return isCurrent();
+}
+
 export function clearVscodeTheme() {
+	latestThemeLoad++;
 	const styleTag = document.getElementById('vscode-theme-style');
 	if (styleTag) styleTag.remove();
 	document.documentElement.style.removeProperty('--color-whitespace');
