@@ -232,6 +232,25 @@ test('every chord the registry advertises runs the command it names, outside the
 	assert.ok(checked > 40, `only ${checked} document chords were checked`);
 });
 
+test('a chord with both halves runs the same command in the editor as outside it', () => {
+	// Mod+S inside Monaco called `saveContent` straight, past the clean-file
+	// check `runViewerCommand('save')` makes, so it rewrote a saved file the
+	// menu and the preview left alone. The editor half now hands the command
+	// name to the same switch, so it cannot carry its own copy of a guard.
+	const { actions, calls } = registeredActions(false);
+	let checked = 0;
+	for (const entry of SHORTCUTS) {
+		if (!entry.editorAction || !entry.documentCommands) continue;
+		const action = actions.find((candidate) => candidate.id === entry.id);
+		assert.ok(action, `${entry.id} is registered in the editor`);
+		const before = calls.length;
+		action.run();
+		assert.deepEqual(calls.slice(before), [`oncommand(${JSON.stringify(entry.documentCommands[0])})`], entry.id);
+		checked++;
+	}
+	assert.ok(checked > 10, `only ${checked} editor commands were checked`);
+});
+
 /** Every macOS menu item that carries an accelerator, in every state that changes which. */
 function menuAccelerators(): Array<{ text: string; accelerator: string; action: MenuNode & { kind: 'item' | 'check' } }> {
 	const flatten = (nodes: readonly MenuNode[]): MenuNode[] =>

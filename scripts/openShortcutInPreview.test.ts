@@ -44,8 +44,9 @@ test('the editor claims it too, and both layers do the same thing', () => {
 	// Monaco calls `stopPropagation()` on a keystroke it consumes, so inside
 	// the editor its own `file-open` answers and the document handler never
 	// runs. That is fine — and is the shape #392 got WRONG — only because the
-	// two answers are the same function: `file-open` runs `onopen`, and the
-	// viewer passes `selectFile` to it, which is what the document branch calls.
+	// two answers are the same command: `file-open` hands `open-file` to
+	// `oncommand`, and the viewer passes `runViewerCommand` to it, which is
+	// what the document branch calls.
 	for (const platform of PLATFORMS) {
 		const chord = platform.mac ? 'Meta+O' : 'Ctrl+O';
 		const claimed = [...editorKeymap(platform.mac, platform.os)]
@@ -55,8 +56,8 @@ test('the editor claims it too, and both layers do the same thing', () => {
 		assert.deepEqual(claimed, ['file-open'], `${platform.name}: ${chord}`);
 	}
 
-	assert.match(editorSource, /id: "file-open",[\s\S]{0,200}?run: \(\) => onopen\?\.\(\)/);
-	assert.match(viewerSource, /onopen=\{selectFile\}/);
+	assert.match(editorSource, /id: "file-open",[\s\S]{0,200}?run: \(\) => oncommand\?\.\("open-file"\)/);
+	assert.match(viewerSource, /oncommand=\{runViewerCommand\}/);
 });
 
 test('Shift and Alt do not reach it', () => {

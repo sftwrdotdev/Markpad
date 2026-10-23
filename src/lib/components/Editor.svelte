@@ -14,7 +14,7 @@
 	} from '../utils/editorToolbar.js';
 	import { isInFencedCode } from '../utils/codeFence.js';
 	import { frontMatterFenceLines, frontMatterLineOffset } from '../utils/frontMatter.js';
-	import { isAltGraphChord } from '../utils/viewerKeymap.js';
+	import { isAltGraphChord, type ViewerCommand } from '../utils/viewerKeymap.js';
 	import { platformOf } from '../utils/platform.js';
 	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
 	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
@@ -78,19 +78,7 @@
 	let {
 		value,
 		language = "markdown",
-		onsave,
-		onnew,
-		onopen,
-		onclose,
-		onreveal,
-		onexportPdf,
-		ontoggleEdit,
-		ontoggleLive,
-		ontoggleSplit,
-		onhome,
-		onnextTab,
-		onprevTab,
-		onundoClose,
+		oncommand,
 		onscrollsync,
 		oncursor,
 		sharedCursor = null,
@@ -102,19 +90,12 @@
 	} = $props<{
 		value: string;
 		language?: string;
-		onsave?: () => void;
-		onnew?: () => void;
-		onopen?: () => void;
-		onclose?: () => void;
-		onreveal?: () => void;
-		onexportPdf?: () => void;
-		ontoggleEdit?: () => void;
-		ontoggleLive?: () => void;
-		ontoggleSplit?: () => void;
-		onhome?: () => void;
-		onnextTab?: () => void;
-		onprevTab?: () => void;
-		onundoClose?: () => void;
+		/**
+		 * The app commands the editor binds a chord to (save, close, new file, …),
+		 * run through the same `runViewerCommand` the document keyboard and the
+		 * menu use, so a chord means the same thing with the caret in here.
+		 */
+		oncommand?: (command: ViewerCommand) => void;
 		onscrollsync?: (position: ScrollSyncPosition) => void;
 		/** Where the cursor is, whenever it moves and once on mount. `column` is Monaco's, 1-based. */
 		oncursor?: (line: BufferLine, column: number) => void;
@@ -1440,9 +1421,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyB,
 				],
-				run: () => {
-					settings.showTabs = !settings.showTabs;
-				},
+				run: () => oncommand?.("toggle-tabs"),
 			}),
 
 			editor.addAction({
@@ -1467,9 +1446,7 @@
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyZ,
 				],
 				keybindingContext: "!altGraphChord",
-				run: () => {
-					settings.toggleZenMode();
-				},
+				run: () => oncommand?.("toggle-zen-mode"),
 			}),
 
 			editor.addAction({
@@ -1738,28 +1715,28 @@
 					monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyN,
 					monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyT,
 				],
-				run: () => onnew?.(),
+				run: () => oncommand?.("new-file"),
 			}),
 
 			editor.addAction({
 				id: "file-open",
 				label: t('menu.openFile', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyO],
-				run: () => onopen?.(),
+				run: () => oncommand?.("open-file"),
 			}),
 
 			editor.addAction({
 				id: "file-save",
 				label: t('menu.save', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS],
-				run: () => onsave?.(),
+				run: () => oncommand?.("save"),
 			}),
 
 			editor.addAction({
 				id: "file-close",
 				label: t('menu.closeFile', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyW],
-				run: () => onclose?.(),
+				run: () => oncommand?.("close-file"),
 			}),
 
 			editor.addAction({
@@ -1768,7 +1745,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyH,
 				],
-				run: () => onhome?.(),
+				run: () => oncommand?.("toggle-home"),
 			}),
 
 			editor.addAction({
@@ -1777,7 +1754,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyR,
 				],
-				run: () => onreveal?.(),
+				run: () => oncommand?.("reveal-file"),
 			}),
 
 			editor.addAction({
@@ -1786,21 +1763,21 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyP,
 				],
-				run: () => onexportPdf?.(),
+				run: () => oncommand?.("export-pdf"),
 			}),
 
 			editor.addAction({
 				id: "view-toggle-edit",
 				label: t('menu.toggleEditMode', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE],
-				run: () => ontoggleEdit?.(),
+				run: () => oncommand?.("toggle-edit-view"),
 			}),
 
 			editor.addAction({
 				id: "view-toggle-live",
 				label: t('menu.toggleLiveMode', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL],
-				run: () => ontoggleLive?.(),
+				run: () => oncommand?.("toggle-live-mode"),
 			}),
 
 			editor.addAction({
@@ -1810,14 +1787,14 @@
 					monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash,
 					monaco.KeyMod.CtrlCmd | monaco.KeyCode.IntlBackslash,
 				],
-				run: () => ontoggleSplit?.(),
+				run: () => oncommand?.("toggle-split-view"),
 			}),
 
 			editor.addAction({
 				id: "tab-next",
 				label: t('menu.nextTab', lang),
 				keybindings: [tabCycleModifier | monaco.KeyCode.Tab],
-				run: () => onnextTab?.(),
+				run: () => oncommand?.("next-tab"),
 			}),
 
 			editor.addAction({
@@ -1826,7 +1803,7 @@
 				keybindings: [
 					tabCycleModifier | monaco.KeyMod.Shift | monaco.KeyCode.Tab,
 				],
-				run: () => onprevTab?.(),
+				run: () => oncommand?.("previous-tab"),
 			}),
 
 			editor.addAction({
@@ -1835,7 +1812,7 @@
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyT,
 				],
-				run: () => onundoClose?.(),
+				run: () => oncommand?.("undo-close-tab"),
 			}),
 
 			editor.addAction({

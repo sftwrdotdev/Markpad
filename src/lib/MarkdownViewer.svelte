@@ -3536,6 +3536,9 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return void toggleLiveMode();
 			case 'toggle-zen-mode':
 				return settings.toggleZenMode();
+			case 'toggle-tabs':
+				settings.showTabs = !settings.showTabs;
+				return;
 			case 'toggle-edit-view':
 				return void toggleEditView();
 			case 'save-as':
@@ -3623,9 +3626,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				return void exportAsHtml();
 			case 'toggle-toc':
 				settings.showToc = !settings.showToc;
-				return;
-			case 'toggle-tabs':
-				settings.showTabs = !settings.showTabs;
 				return;
 			case 'toggle-editor-toolbar':
 				settings.showEditorToolbar = !settings.showEditorToolbar;
@@ -4318,20 +4318,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 								value={tabManager.activeTab.rawContent}
 								language={editorLanguage}
 								theme={settings.theme}
-								onsave={saveContent}
 								zoomLevel={settings.zoomLevel}
-								onnew={handleNewFile}
-								onopen={selectFile}
-								onclose={closeFile}
-								onreveal={openFileLocation}
-								onexportPdf={exportAsPdf}
-								ontoggleEdit={() => toggleEditView()}
-								ontoggleLive={toggleLiveMode}
-								ontoggleSplit={() => tabManager.activeTabId && toggleSplitView(tabManager.activeTabId)}
-								onhome={toggleHome}
-								onnextTab={() => tabManager.cycleTab('next')}
-								onprevTab={() => tabManager.cycleTab('prev')}
-								onundoClose={handleUndoCloseTab}
+								oncommand={runViewerCommand}
 								onscrollsync={handleEditorScrollSync}
 								oncursor={handleEditorCursor}
 								sharedCursor={settings.previewCursor ? activeCursor : null} />

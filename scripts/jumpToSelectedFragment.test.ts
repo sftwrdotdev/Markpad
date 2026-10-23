@@ -453,14 +453,10 @@ test('one function owns what ⌘E means, and every entry point uses it', () => {
 		'toggle-edit-view',
 	);
 	assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
-	assert.equal(
-		(viewerSource.match(/ontoggleEdit=\{\(\) => toggleEditView\(\)\}/g) ?? []).length,
-		1,
-		'the editor entry point',
-	);
+	// The editor entry point hands Monaco's ⌘E to the same switch.
+	assert.match(viewerSource, /oncommand=\{runViewerCommand\}/, 'the editor entry point');
 	// The title bar's Edit button, now one of three mode buttons (#806).
 	assert.match(functionSource(viewerSource, 'setViewMode'), /target === 'edit' \? toggleEditView\(\)/);
-	assert.doesNotMatch(viewerSource, /ontoggleEdit=\{\(\) => toggleEdit\(\)\}/, 'none left on the raw toggle');
 });
 
 test('split view with nothing selected is deliberately inert', () => {

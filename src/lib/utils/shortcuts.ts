@@ -390,6 +390,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		chords: ['Mod+Shift+B'],
 		group: 'view',
 		editorAction: true,
+		documentCommands: ['toggle-tabs'],
 	},
 	{
 		id: 'app-find',

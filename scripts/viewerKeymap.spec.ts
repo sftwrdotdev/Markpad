@@ -275,6 +275,16 @@ test('AltGr typing a character is not a Mod+Alt chord', () => {
 	assert.equal(viewerCommandFor(zen, READING), 'toggle-zen-mode');
 });
 
+test('Mod+Shift+B reaches the tab bar from the preview', () => {
+	// Off macOS there is no menu accelerator behind the page, so without this
+	// branch the chord the panel lists did nothing outside the editor.
+	for (const osType of ['windows', 'linux'] as const) {
+		assert.equal(viewerCommandFor(chord('B', 'KeyB', { ctrlKey: true, shiftKey: true }), { ...READING, osType }), 'toggle-tabs', osType);
+	}
+	// Mod+B is Bold.
+	assert.equal(viewerCommandFor(chord('b', 'KeyB', { ctrlKey: true }), READING), null);
+});
+
 test('Mod+Shift+N opens a new window and Mod+N stays New File', () => {
 	for (const [osType, mods] of [['macos', { metaKey: true }], ['windows', { ctrlKey: true }], ['linux', { ctrlKey: true }]] as const) {
 		const context = { ...READING, osType, isEditing: true, editorHasFocus: true };

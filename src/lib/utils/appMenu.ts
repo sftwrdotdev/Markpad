@@ -29,7 +29,6 @@ export type AppMenuCommand =
 	| 'close-folder'
 	| 'export-html'
 	| 'toggle-toc'
-	| 'toggle-tabs'
 	| 'toggle-editor-toolbar'
 	| 'toggle-full-width'
 	| 'merge-windows'
@@ -197,7 +196,7 @@ export function buildMenuModel(state: MenuState): MenuNode[] {
 				check(t('menu.autoReload', lang), { viewer: 'toggle-live-mode' }, state.liveMode, 'view-toggle-live'),
 				separator,
 				check(t('menu.tableOfContents', lang), { app: 'toggle-toc' }, state.showToc),
-				check(t('menu.tabBar', lang), { app: 'toggle-tabs' }, state.showTabs, 'toggle-tabs'),
+				check(t('menu.tabBar', lang), { viewer: 'toggle-tabs' }, state.showTabs, 'toggle-tabs'),
 				check(t('tooltip.editorToolbar', lang), { app: 'toggle-editor-toolbar' }, state.showEditorToolbar),
 				check(t('menu.fullWidth', lang), { app: 'toggle-full-width' }, state.previewFullWidth),
 				// ⌘⌥[ and ⌘⌥] stay text-field keys inside a field, where the page

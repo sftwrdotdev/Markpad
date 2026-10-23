@@ -132,19 +132,19 @@ test('Ctrl/Cmd+T means new file in the editor, on every platform', () => {
 		);
 	}
 
-	// `onnew` is the prop MarkdownViewer.svelte binds to `handleNewFile`, which
-	// is the same function the document-level branch calls after this change.
+	// `oncommand` is bound to `runViewerCommand`, the switch the document-level
+	// branch reaches too, so both halves run the same `new-file`.
 	const probe = registeredActions(false);
 	const fileNew = probe.actions.find((action) => action.id === 'file-new');
 	assert.ok(fileNew, 'file-new is registered');
 	const before = probe.calls.length;
 	fileNew.run();
-	assert.deepEqual(probe.calls.slice(before), ['onnew'], 'file-new calls the onnew prop');
+	assert.deepEqual(probe.calls.slice(before), ['oncommand("new-file")'], 'file-new runs the new-file command');
 
 	assert.match(
 		readSource('src/lib/MarkdownViewer.svelte'),
-		/onnew=\{handleNewFile\}/,
-		'the editor prop is wired to handleNewFile',
+		/oncommand=\{runViewerCommand\}/,
+		'the editor prop is wired to runViewerCommand',
 	);
 });
 
