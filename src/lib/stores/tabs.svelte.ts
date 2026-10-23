@@ -24,7 +24,7 @@ export interface Tab {
 	/**
 	 * What the tab strip, the window title and the per-tab close dialog call
 	 * this tab. Derived from `path` at every site that points a tab at a
-	 * document — `addTab`, `restoreState`, `updateTabPath`, `renameTab`,
+	 * document — `addTab`, `restoreState`, `updateTabPath`,
 	 * `navigate`, `goBack`, `goForward` — as the last segment of the path, and
 	 * chosen by `nextUntitledTitle` when there is no path to take a segment
 	 * from.
@@ -41,12 +41,12 @@ export interface Tab {
 	 * - `goBack`/`goForward` return on `!result.path` before the title is
 	 *   touched, so an empty entry cannot reach it — and every non-empty entry
 	 *   in `history` was put there by one of the other sites.
-	 * - `renameTab` replaces the last segment of a non-empty `tab.path` with a
-	 *   non-empty typed name, and only runs once `fs::rename` has SUCCEEDED on
-	 *   the result, which a destination ending in a separator cannot do.
 	 * - `updateTabPath` is reached from the Save/Save As dialog, which returns
-	 *   a file the user named, and from `loadMarkdown` — and there only when
-	 *   the active tab is an empty untitled one. The app's one unvalidated path
+	 *   a file the user named; from Rename (`renameFile`), which replaces the
+	 *   last segment of a non-empty `tab.path` with a non-empty typed name and
+	 *   runs only once `rename_file` has SUCCEEDED on the result, which a
+	 *   destination ending in a separator cannot do; and from `loadMarkdown` —
+	 *   and there only when the active tab is an empty untitled one. The app's one unvalidated path
 	 *   source, `send_markdown_path`, hands back raw argv filtered only on a
 	 *   leading `-`, so `markpad ~/notes/` really does reach `loadMarkdown`
 	 *   with a trailing separator; it cannot reach THIS branch, because
@@ -1051,13 +1051,12 @@ class TabManager {
 			// resolves the new path.
 			tab.pathKey = pathKey;
 			tab.title = basename(path) || 'Untitled';
-			// The buffer is not touched here, so nothing about "changed?" changed
-			// either. This used to clear a dirty flag by hand, which was only ever
-			// right because both callers reach here mid-save and set
-			// `originalContent` to the text they just wrote a line later — and
-			// wrong in the window between, where a keystroke landing during the
-			// write would have been marked saved. The other caller repoints an
-			// untitled, empty, already-clean tab at the file it is about to load.
+			// The buffer is not touched here, so nothing about "changed?" changes
+			// either. Clearing the dirty flag here would mark as saved a keystroke
+			// that lands during a save's write: the saving callers set
+			// `originalContent` to the text they wrote themselves, a rename leaves
+			// the buffer as it was, and `loadMarkdown` repoints an untitled, empty,
+			// already-clean tab at the file it is about to load.
 			const fileHistory = replaceCurrentHistoryEntry({
 				targetPath: path,
 				history: tab.history,
@@ -1066,11 +1065,6 @@ class TabManager {
 			tab.history = fileHistory.history;
 			tab.historyIndex = fileHistory.historyIndex;
 		}
-	}
-
-	/** Rename on disk is the same repoint as Save As; kept for its callers. */
-	renameTab(id: string, newPath: string, pathKey?: string) {
-		this.updateTabPath(id, newPath, pathKey);
 	}
 
 	/**
@@ -1090,8 +1084,8 @@ class TabManager {
 	 * baseline moves, and only so the tab stops reading dirty — see
 	 * `clearUnsavedEdits` below.
 	 *
-	 * Only a change of DOCUMENT gets here. Save As and rename (`updateTabPath`,
-	 * `renameTab`) change the tab's path while the text on screen stays put: the
+	 * Only a change of DOCUMENT gets here. Save As and rename (`updateTabPath`)
+	 * change the tab's path while the text on screen stays put: the
 	 * reader has not moved, and the folds they put in that text still describe
 	 * it. Tests guard both directions.
 	 */

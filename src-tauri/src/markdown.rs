@@ -1795,8 +1795,8 @@ fn heading_anchors<'a>(
 
         // comrak's own text collection, untrimmed, because that is exactly
         // what its renderer anchorizes: a soft break in a multi-line setext
-        // heading is a space there (`foo-bar`), and a copy of the rule that
-        // dropped it offered `foobar`.
+        // heading is a space there (`foo-bar`), and a rule that dropped it
+        // would offer `foobar`.
         let text = unmask_math_text(&node.collect_text(), masked);
         if text.trim().is_empty() {
             continue;

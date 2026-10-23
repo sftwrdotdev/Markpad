@@ -578,7 +578,8 @@ test('renaming a tab keeps the undo history, because the document did not change
 	h.show(a);
 	h.type('1');
 
-	tabManager.renameTab(a, '/docs/renamed.md');
+	// What `renameFile` and Save As both call once the file is in place.
+	tabManager.updateTabPath(a, '/docs/renamed.md');
 	h.component.activate();
 
 	h.component.undo();

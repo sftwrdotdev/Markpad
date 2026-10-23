@@ -62,11 +62,8 @@
 		hasChildren?: boolean;
 		/**
 		 * How the fold state names this heading — read off the rendered heading,
-		 * never recomputed. The outline used to build its own `id || text`, which
-		 * is not the renderer's answer for a heading whose text carries a block
-		 * id: the outline strips the `^id` suffix and the renderer does not, so
-		 * the two disagreed for exactly the headings nobody tests. `''` for a
-		 * block anchor, which is not a fold.
+		 * never recomputed, so the outline and the renderer cannot disagree about
+		 * it. `''` for a block anchor, which is not a fold.
 		 */
 		foldKey: string;
 		/** Where this entry starts in the source, for following the editor. */

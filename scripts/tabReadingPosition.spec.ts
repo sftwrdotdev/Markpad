@@ -170,17 +170,6 @@ test('Save As renames the tab without moving the reader', () => {
 	assert.deepEqual(readingPosition(tab), before);
 });
 
-test('renaming the file on disk does not move the reader', () => {
-	reset();
-	const tab = openScrolledTab('/notes/a.md');
-	const before = readingPosition(tab);
-
-	tabManager.renameTab(tab.id, '/notes/renamed.md');
-
-	assert.equal(tab.path, '/notes/renamed.md');
-	assert.deepEqual(readingPosition(tab), before);
-});
-
 test('a link that resolves to the file already open is not a navigation', () => {
 	reset();
 	const tab = openScrolledTab('/notes/a.md');

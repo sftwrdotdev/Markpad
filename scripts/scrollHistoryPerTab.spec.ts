@@ -245,17 +245,6 @@ test('Save As keeps them, because the document on screen has not changed', () =>
 	assert.deepEqual(mouseButton('back', 4200), { scrolledTo: 4000 });
 });
 
-test('renaming the file on disk keeps them', () => {
-	reset();
-	tabManager.addTab('/notes/a.md', '# A\n');
-	const a = tabManager.activeTabId!;
-	jumpFrom(4000);
-
-	tabManager.renameTab(a, '/notes/renamed.md');
-
-	assert.deepEqual(mouseButton('back', 4200), { scrolledTo: 4000 });
-});
-
 test('a reload in place drops them, because the text they were measured in is gone', () => {
 	reset();
 	tabManager.addTab('/notes/a.md', '# A\n');

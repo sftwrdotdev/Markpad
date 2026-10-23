@@ -114,16 +114,16 @@ test('Save As onto a file that is already open does not leave two tabs on it', (
 	assert.equal(tabsFor('/notes/target.md')[0].id, untitled);
 });
 
-test('an external rename onto an open file does not leave two tabs on it', () => {
+test('Save As from a saved file onto an open one does not leave two tabs on it', () => {
 	reset();
 	tabManager.addTab('/notes/target.md', 'target text');
 	tabManager.addTab('/notes/other.md', 'other text');
-	const renamed = tabManager.activeTabId!;
+	const moved = tabManager.activeTabId!;
 
-	tabManager.renameTab(renamed, '/notes/target.md');
+	tabManager.updateTabPath(moved, '/notes/target.md');
 
 	assert.equal(tabsFor('/notes/target.md').length, 1);
-	assert.equal(tabsFor('/notes/target.md')[0].id, renamed);
+	assert.equal(tabsFor('/notes/target.md')[0].id, moved);
 });
 
 test('going back to a file another tab has since opened does not duplicate it', () => {

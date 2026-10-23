@@ -1287,7 +1287,7 @@ pub(crate) mod tests {
     #[test]
     fn a_rename_never_leaves_the_files_folder() {
         // The new name is typed into the tab's Rename prompt and joined onto
-        // the old folder, so a separator in it used to move the file.
+        // the old folder, so a separator in it would move the file.
         let root = temp_path("rename-separator");
         fs::create_dir_all(root.join("sub")).unwrap();
         let a = root.join("a.md");

@@ -500,20 +500,6 @@ test('Save As keeps the folds, because the document on screen has not changed', 
 	assert.equal(isSectionCollapsed(render(DOC_A, '/notes/copy.md', foldsForTab(id))), true);
 });
 
-test('renaming the file on disk keeps the folds', () => {
-	reset();
-	const app = buildViewer();
-	tabManager.addTab('/notes/a.md', DOC_A);
-	const id = tabManager.activeTabId!;
-	app.showDocument(render(DOC_A, '/notes/a.md', app.foldsOnScreen()));
-	app.toggleFold(FOLD_KEY);
-
-	tabManager.renameTab(id, '/notes/renamed.md');
-
-	assert.equal(tabManager.tabs.find((tab) => tab.id === id)!.path, '/notes/renamed.md');
-	assert.equal(isSectionCollapsed(render(DOC_A, '/notes/renamed.md', foldsForTab(id))), true);
-});
-
 test('a link that resolves to the file already open is not a navigation', () => {
 	reset();
 	const app = buildViewer();

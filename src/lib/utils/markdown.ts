@@ -402,8 +402,8 @@ function processBlockIds(root: Element, doc: Document) {
 		el.replaceWith(anchor);
 	}
 	// A trailing ` ^id` in text is the renderer's to rewrite (BLOCK_ID_RE in
-	// markdown.rs), and it already has. A second, looser copy of that rule
-	// here used to match ids it had deliberately left alone.
+	// markdown.rs), and it already has: one still in the text was left alone
+	// on purpose, so nothing here matches it again.
 }
 
 const taskTextBoundaryTags = new Set([

@@ -1996,7 +1996,7 @@ mod tests {
     }
 
     /// Pinning a window under a name a closed group still holds refuses, and
-    /// the group keeps its colour and files. It used to replace them.
+    /// the group keeps its colour and files.
     #[test]
     fn pinning_a_taken_name_leaves_the_existing_group_alone() {
         let dir = temp_dir("pinned-tags-update");
