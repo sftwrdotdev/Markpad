@@ -23,6 +23,7 @@ const disk = new Map<string, string>();
 	invoke: (cmd: string, args: any) => {
 		if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
 		if (cmd === 'read_file_content_checked') return Promise.resolve([disk.get(args.path) ?? '', false, 'UTF-8']);
+		if (cmd === 'open_markdown_preview') return Promise.resolve([disk.get(args.path) ?? '', true, false, 'UTF-8']);
 		if (cmd === 'save_file_content') {
 			disk.set(args.path, args.content);
 			return Promise.resolve(null);
@@ -36,8 +37,10 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
 const LIFTED = [
+	'hasExternalChangeConflict',
 	'noteExternalChangeConflict',
 	'clearExternalChangeConflict',
+	'resolveExternalChangeByKeepingBuffer',
 	'saveContent',
 	'saveSilently',
 	'flushBeforeLeavingEditableMode',
@@ -50,6 +53,7 @@ function makeViewer() {
 	const scope: Record<string, unknown> = {
 		tabManager,
 		externalChangeConflicts: {},
+		comparison: null,
 		settings: { autoSave: true, language: 'en', restoreStateOnReopen: false },
 		t: (key: string) => key,
 		addToast: (message: string) => void toasts.push(message),
@@ -122,7 +126,7 @@ test('leaving the editor keeps the edit in the buffer and the bar up', async () 
 
 	assert.equal(disk.get('/notes/a.md'), 'theirs', 'the other program\'s change was overwritten');
 	assert.equal(tab.rawContent, 'saved!');
-	assert.equal((viewer.scope.externalChangeConflicts as Record<string, true>)[tab.id], true, 'the bar came down');
+	assert.equal(viewer.fns.hasExternalChangeConflict(tab.id), true, 'the bar came down');
 	assert.deepEqual(viewer.toasts, [], 'the bar already says why nothing was written');
 });
 
@@ -159,5 +163,44 @@ test('Cmd+S on a conflicted tab is still the answer "keep mine"', async () => {
 	assert.equal(await viewer.fns.saveContent(tab.id), true);
 
 	assert.equal(disk.get('/notes/a.md'), 'saved!');
-	assert.equal((viewer.scope.externalChangeConflicts as Record<string, true>)[tab.id], undefined);
+	assert.equal(viewer.fns.hasExternalChangeConflict(tab.id), false);
+});
+
+test('"Keep mine" from the comparison answers for the tab it was opened on', async () => {
+	const viewer = makeViewer();
+	const a = conflicted(viewer);
+	// The user switched tabs with the comparison open: b.md is in front, edited,
+	// and another program has just written it too.
+	disk.set('/notes/b.md', 'b');
+	tabManager.addTab('/notes/b.md', 'b');
+	const b = tabManager.activeTab!;
+	b.originalContent = 'b';
+	tabManager.updateTabRawContent(b.id, 'b edited');
+	disk.set('/notes/b.md', 'b theirs');
+
+	// What the overlay's button passes: the tab the comparison was opened on.
+	await viewer.fns.resolveExternalChangeByKeepingBuffer(a.id);
+	await viewer.fns.saveSilently(b.id);
+
+	assert.equal(disk.get('/notes/b.md'), 'b theirs', 'b.md was overwritten on an answer given about a.md');
+	assert.equal(await viewer.fns.saveSilently(a.id), true, 'a.md did not get the answer');
+});
+
+test('a conflict does not follow its tab onto another file', async () => {
+	const viewer = makeViewer();
+	const tab = conflicted(viewer);
+	// A link in a.md: the close dialog is answered Don't Save, and b.md loads
+	// into the same tab.
+	disk.set('/notes/b.md', 'b');
+	tab.rawContent = tab.originalContent;
+	await (viewer.scope.documentSession as { loadMarkdown: (path: string, options: object) => Promise<void> })
+		.loadMarkdown('/notes/b.md', { navigate: true });
+	assert.equal(tab.path, '/notes/b.md');
+
+	// b.md is edited, and changed by another program before the watcher says so.
+	tabManager.updateTabRawContent(tab.id, 'b edited');
+	disk.set('/notes/b.md', 'b theirs');
+
+	assert.equal(await viewer.fns.saveContent(tab.id), false);
+	assert.equal(disk.get('/notes/b.md'), 'b theirs', 'Cmd+S used the answer about a.md to overwrite b.md');
 });

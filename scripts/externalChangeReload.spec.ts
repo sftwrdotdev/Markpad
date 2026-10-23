@@ -353,7 +353,7 @@ test('the debounced auto-save is held back while a conflict is unanswered', () =
 	// keep mine": the user's edits survive, but the external change is gone
 	// from disk before either answer can be given.
 	const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-	assert.match(body, /hasPendingConflict: externalChangeConflicts\[tab\.id\] === true/);
+	assert.match(body, /hasPendingConflict: hasExternalChangeConflict\(tab\.id\)/);
 	assert.match(body, /const eligible = [^;]*!s\.hasPendingConflict/);
 });
 

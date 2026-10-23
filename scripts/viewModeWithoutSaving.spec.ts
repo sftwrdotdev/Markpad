@@ -128,7 +128,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 		'deps',
 		`"use strict";
 		const {
-			tabManager, settings, t, addToast, askCustom, saveSilently, externalChangeConflicts,
+			tabManager, settings, t, addToast, askCustom, saveSilently, hasExternalChangeConflict,
 			cancelPendingAutoSave, renderMarkdownPreview, loadMarkdown,
 			documentSession, invoke, isEditing, liveMode, toggleLiveMode,
 			tick, renderRichContent, editorPane, markdownBody,
@@ -143,7 +143,7 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 		tabManager,
 		settings,
 		isEditing,
-		externalChangeConflicts: {},
+		hasExternalChangeConflict: () => false,
 		t: (key: string) => key,
 		addToast: (message: string) => fakes.toasts.push(message),
 		askCustom: async (message: string) => {
