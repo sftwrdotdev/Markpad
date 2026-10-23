@@ -61,6 +61,9 @@ const edits: Record<string, (split: string) => string> = {
 	'a new paragraph': (split) => at(split, middleParagraph, (b) => `${b}\0\n<p data-sourcepos="900:1-900:3">new</p>\n`),
 	'a new section': (split) => at(split, middleParagraph, (b) => `${b}\0\n<h2 id="added" data-sourcepos="900:1-900:8">Added</h2>\n`),
 	'a deleted heading': (split) => at(split, firstH2, () => ''),
+	'a new subsection': (split) => at(split, middleParagraph, (b) => `${b}\0\n<h3 id="sub" data-sourcepos="900:1-900:7">Sub</h3>\n`),
+	'a new top-level heading': (split) => at(split, firstH2, (b) => `<h1 id="top" data-sourcepos="900:1-900:5">Top</h1>\n\0${b}`),
+	'a heading changed level': (split) => at(split, firstH2, (b) => b.replace(/^(\n?)<h2 /, '$1<h3 ').replace(/<\/h2>/, '</h3>')),
 	'an edited diagram': (split) => at(split, mermaid, (b) => b.replace('</code>', 'C --&gt; D\n</code>')),
 	'an edited raw HTML block': (split) => at(split, details, (b) => b.replace('</summary>', ' edited</summary>')),
 };

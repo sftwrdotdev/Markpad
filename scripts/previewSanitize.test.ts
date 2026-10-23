@@ -100,11 +100,20 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 	const parses = [...previewPatchSource.matchAll(/(\w+)\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
 		(m) => `${m[1]} = ${m[2].trim()}`,
 	);
-	assert.deepEqual(parses, ['box = raw'], 'previewPatch.ts parses only a raw block, before the filter');
+	assert.deepEqual(parses, ['box = markup'], 'previewPatch.ts parses only the renderer output, before the filter');
 	assert.match(previewPatchSource, /const box = scratch\.createElement\('div'\);/, 'into the detached scratch document');
-	const renderBlock = sliceBetween(previewPatchSource, 'function renderBlock(', '\n}\n');
-	assert.match(renderBlock, /const clean = sanitizeMarkdownFragment\(box\.innerHTML\);\n\tconst top = Array\.from\(clean\.children\)/);
-	assert.match(renderBlock, /return top;$/, 'a block is inserted as the filter returned it');
+	const processAndSanitize = sliceBetween(previewPatchSource, 'function processAndSanitize(', '\n}\n');
+	assert.match(processAndSanitize, /return sanitizeMarkdownFragment\(box\.innerHTML\);$/, 'and the filter has the last word');
+	// What a block is inserted as is always the filter's own nodes.
+	const renderBlocks = sliceBetween(previewPatchSource, 'function renderBlocks(', '\n}\n');
+	assert.deepEqual(
+		[...renderBlocks.matchAll(/Array\.from\((\w+)\.children\)/g)].map((m) => m[1]),
+		['clean', 'lone', 'mark'],
+	);
+	assert.match(renderBlocks, /const clean = processAndSanitize\(/);
+	assert.match(renderBlocks, /const lone = processAndSanitize\(/);
+	assert.match(renderBlocks, /const marks = Array\.from\(clean\.children\);/);
+	assert.match(renderBlocks, /return marks\.map\(\(mark\) =>/);
 	assert.doesNotMatch(previewPatchSource, /insertAdjacentHTML|outerHTML|createContextualFragment/);
 
 	// Why the footnote sink is allowed, pinned as a direction rather than as a
@@ -218,17 +227,17 @@ test('the two paths keep their opposite orders on purpose', () => {
 	// argument list `(html, filePath, collapsedHeaders)` and the trailing
 	// semicolon — which pinned three private parameter names and a formatting
 	// choice as the price of checking which call happens where.
-	// The preview processes each block it inserts in `renderBlock`, and
+	// The preview processes the blocks it inserts in `processAndSanitize`, and
 	// nowhere else; the viewer hands the renderer's output straight to the patch.
 	assert.deepEqual(callSiteOffsets(viewerSource, 'processMarkdownHtml'), [], 'the viewer processes nothing itself');
 	assert.deepEqual(
 		callSiteOffsets(previewPatchSource, 'processBlockMarkup').map((offset) => enclosingFunctionName(previewPatchSource, offset)),
-		['renderBlock'],
-		'renderBlock must be the one place that processes the renderer output',
+		['processAndSanitize'],
+		'processAndSanitize must be the one place that processes the renderer output',
 	);
-	const renderBlock = sliceBetween(previewPatchSource, 'function renderBlock(', '\n}\n');
+	const processAndSanitize = sliceBetween(previewPatchSource, 'function processAndSanitize(', '\n}\n');
 	assert.ok(
-		renderBlock.indexOf('processBlockMarkup(') < renderBlock.indexOf('sanitizeMarkdownFragment('),
+		processAndSanitize.indexOf('processBlockMarkup(') < processAndSanitize.indexOf('sanitizeMarkdownFragment('),
 		'the preview must not move the filter ahead of processing without revisiting the note above',
 	);
 	// The sink half — that what `{@html}` injects is the sanitizer's output — is

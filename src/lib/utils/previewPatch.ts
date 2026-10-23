@@ -42,7 +42,7 @@ import { sanitizeMarkdownFragment } from './sanitize.js';
  * has seen it. A block is inserted after the one before it, or at the top of
  * that heading's wrapper; only an edit that adds, removes or re-levels a
  * top-level heading changes which wrapper a block belongs to, and that one
- * regroups.
+ * regroups the sections it touched (`regroupSections`).
  */
 
 const SEPARATOR = '\0';
@@ -79,21 +79,60 @@ export interface PreviewPatch {
 
 let scratch: Document | null = null;
 
-function renderBlock(raw: string, filePath: string, ids: FoldIds): HTMLElement[] {
+/** Processes and sanitizes `markup` in one pass, answering with the filter's own nodes. */
+function processAndSanitize(markup: string, filePath: string): DocumentFragment {
 	// An inert document: nothing in it runs or loads.
 	scratch ??= document.implementation.createHTMLDocument('');
 	const box = scratch.createElement('div');
-	box.innerHTML = raw;
+	box.innerHTML = markup;
 	processBlockMarkup(box, filePath);
-	const clean = sanitizeMarkdownFragment(box.innerHTML);
-	const top = Array.from(clean.children) as HTMLElement[];
-	// Headings inside a block (a callout, a list item) fold among their own
-	// siblings. The block's top-level heading is the patch's to wrap.
+	return sanitizeMarkdownFragment(box.innerHTML);
+}
+
+/** Headings inside a block (a callout, a list item) fold among their own siblings. */
+function wrapNestedHeadings(block: ParentNode, ids: FoldIds): void {
 	wrapHeadings(
-		Array.from(clean.querySelectorAll('.foldable-header')).filter((h) => h.parentNode !== clean),
+		Array.from(block.querySelectorAll('.foldable-header')).filter((h) => h.parentNode !== block),
 		ids,
 	);
-	return top;
+}
+
+const BLOCK_MARK = 'data-preview-block';
+
+/**
+ * The elements each of `raws` becomes, in one parse and one DOMPurify pass
+ * however many blocks there are: a call per block costs a document of
+ * DOMPurify's own each time, which made a first render of 50,000 blocks a
+ * second slower than the whole-document pipeline.
+ *
+ * Each block goes in inside a `<section>` carrying a nonce, and comes back
+ * out of it. Markup that closed one early or forged one cannot know the
+ * nonce, so the count or a nonce is wrong and the blocks are done one at a
+ * time instead.
+ */
+function renderBlocks(raws: string[], filePath: string, ids: FoldIds): HTMLElement[][] {
+	if (raws.length === 0) return [];
+	const nonce = Math.random().toString(36).slice(2);
+	const clean = processAndSanitize(
+		raws.map((raw) => `<section ${BLOCK_MARK}="${nonce}">${raw}</section>`).join(''),
+		filePath,
+	);
+	const marks = Array.from(clean.children);
+	const intact =
+		marks.length === raws.length &&
+		marks.every((mark) => mark.tagName === 'SECTION' && mark.getAttribute(BLOCK_MARK) === nonce);
+	if (!intact) {
+		if (raws.length > 1) return raws.map((raw) => renderBlocks([raw], filePath, ids)[0]);
+		const lone = processAndSanitize(raws[0], filePath);
+		wrapNestedHeadings(lone, ids);
+		return [Array.from(lone.children) as HTMLElement[]];
+	}
+	// One query for the whole batch, not one per block.
+	wrapHeadings(
+		Array.from(clean.querySelectorAll('.foldable-header')).filter((h) => h.parentNode?.parentNode !== clean),
+		ids,
+	);
+	return marks.map((mark) => Array.from(mark.children) as HTMLElement[]);
 }
 
 function live(element: Element): Element {
@@ -151,7 +190,7 @@ export function patchPreview(
 
 	if (!old) {
 		const ids: FoldIds = { next: 0 };
-		const els = raws.map((raw) => renderBlock(raw, filePath, ids));
+		const els = renderBlocks(raws, filePath, ids);
 		const flat = els.flat() as HTMLElement[];
 		host.replaceChildren(...flat);
 		patch.wrappers = wrapHeadings(flat.filter(isTopHeading), ids);
@@ -193,7 +232,11 @@ export function patchPreview(
 	for (let index = head; index < oldTo; index += 1) {
 		if (!(pairwise && old.keys[index] === keys[index])) removed.push(...old.els[index].map(live));
 	}
-	for (const index of render) els[index] = renderBlock(raws[index], filePath, old.ids);
+	renderBlocks(
+		render.map((index) => raws[index]),
+		filePath,
+		old.ids,
+	).forEach((elements, at) => (els[render[at]] = elements));
 	const added = render.flatMap((index) => els[index]) as HTMLElement[];
 
 	// A renamed heading of the same level keeps its wrapper. Any other change
@@ -216,13 +259,12 @@ export function patchPreview(
 		added.some((e) => e.matches(FOLD_HEADS) || e.querySelector(FOLD_HEADS));
 
 	if (regroup) {
-		// Regroup: every block back to the top level, then wrapped again. The
-		// blocks are moved, not rebuilt.
-		for (const element of removed) element.remove();
-		const flat = els.flat() as HTMLElement[];
-		host.replaceChildren(...flat);
-		patch.wrappers = wrapHeadings(flat.filter(isTopHeading), old.ids);
-		applyFolds(host, foldOverrides);
+		patch.wrappers = regroupSections(host, els, head, newTo, removed, added, old.ids);
+		applyFolds(host, foldOverrides, true);
+		// A kept heading keeps its state, which its new wrapper takes on.
+		for (const wrapper of patch.wrappers) {
+			wrapper.classList.toggle('is-collapsed', wrapper.previousElementSibling!.classList.contains('is-collapsed'));
+		}
 	} else {
 		for (const index of render) {
 			const before = pairwise ? old.els[index].map(live) : [];
@@ -243,6 +285,70 @@ export function patchPreview(
 	patch.inserted = added;
 	patch.replaced = added.length;
 	return patch;
+}
+
+const levelOf = (heading: Element) => Number(heading.tagName[1]);
+const topHeadingOf = (elements: Element[] | undefined) => elements?.find(isTopHeading);
+
+/**
+ * Re-wraps the part of the document whose sections an edit to its top-level
+ * headings changed, and nothing else. With `L` the highest level the edit
+ * added or removed, that part runs from the nearest heading of level `L` or
+ * higher before the edit to the next one after it: a section of a higher
+ * level contains it unchanged, and one of the same level ends where it did.
+ * The blocks are moved, not rebuilt. Returns the new wrappers.
+ */
+function regroupSections(
+	host: HTMLElement,
+	els: Element[][],
+	from: number,
+	to: number,
+	removed: Element[],
+	added: Element[],
+	ids: FoldIds,
+): HTMLElement[] {
+	const level = Math.min(...[...removed, ...added].filter(isTopHeading).map(levelOf));
+	const wrapperOf = (heading: Element) => {
+		const next = heading.nextElementSibling;
+		return next?.classList.contains('foldable-content-wrapper') ? next : null;
+	};
+
+	// Where the regrouped run goes: a placeholder, set before anything moves.
+	const marker = host.ownerDocument.createComment('');
+	let start = 0;
+	for (let index = from - 1; index >= 0; index -= 1) {
+		const heading = topHeadingOf(els[index]);
+		if (!heading || levelOf(heading) > level) continue;
+		if (levelOf(heading) === level) {
+			start = index;
+			heading.before(marker);
+		} else {
+			start = index + 1;
+			const inner = Array.from(wrapperOf(heading)?.children ?? []).find((child) =>
+				child.classList.contains('content-inner'),
+			);
+			(inner ?? host).prepend(marker);
+		}
+		break;
+	}
+	if (!marker.parentNode) host.prepend(marker);
+	let end = els.length;
+	for (let index = to; index < els.length; index += 1) {
+		const heading = topHeadingOf(els[index]);
+		if (heading && levelOf(heading) <= level) {
+			end = index;
+			break;
+		}
+	}
+
+	const stale: Element[] = [];
+	for (const element of removed) if (isTopHeading(element)) stale.push(...[wrapperOf(element)].filter((w) => w !== null));
+	const run = els.slice(start, end).flat() as HTMLElement[];
+	for (const element of run) if (isTopHeading(element)) stale.push(...[wrapperOf(element)].filter((w) => w !== null));
+	for (const element of removed) element.remove();
+	marker.replaceWith(...run);
+	for (const wrapper of stale) wrapper.remove();
+	return wrapHeadings(run.filter(isTopHeading), ids);
 }
 
 /** Puts `nodes` where block `index` belongs: after the previous block's last element. */

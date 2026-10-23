@@ -48,6 +48,19 @@ describe('the first render', () => {
 	});
 });
 
+describe('raw HTML that breaks out of the batch a first render parses blocks in', () => {
+	test('is rendered block by block instead, with nothing attributed to the wrong block', () => {
+		const forged = '<div>a</div></section><section data-preview-block="guess"><p>b</p>';
+		const result = patch(split(p(1, 'alpha'), forged, p(5, 'beta')));
+
+		expect(Array.from(host.children).map((e) => e.textContent)).toEqual(['alpha', 'a', 'b', 'beta']);
+		expect(result.inserted.length).toBe(4);
+
+		patch(split(p(1, 'alphaX'), forged, p(5, 'beta')));
+		expect(Array.from(host.children).map((e) => e.textContent)).toEqual(['alphaX', 'a', 'b', 'beta']);
+	});
+});
+
 describe('typing one character in the middle of a document', () => {
 	const before = split(h(1, 1, 'Title'), p(3, 'alpha'), p(5, 'beta'), p(7, 'gamma'));
 	const after = split(h(1, 1, 'Title'), p(3, 'alpha'), p(5, 'betaX'), p(7, 'gamma'));
@@ -150,6 +163,45 @@ describe('headings', () => {
 		const sections = Array.from(host.querySelectorAll('.foldable-content-wrapper'));
 		expect(sections[0].contains(alpha)).toBe(true);
 		expect(sections[1].contains(beta)).toBe(true);
+	});
+
+	test('a new subsection leaves the sections around it where they were', () => {
+		patch(split(h(2, 1, 'One'), p(3, 'alpha'), h(2, 5, 'Two'), p(7, 'beta'), h(2, 9, 'Three'), p(11, 'gamma')));
+		const [one, twoBody, three] = Array.from(host.querySelectorAll('.foldable-content-wrapper'));
+		const two = host.querySelector('#two')!;
+		two.classList.add('is-collapsed');
+		two.nextElementSibling!.classList.add('is-collapsed');
+
+		const result = patch(
+			split(h(2, 1, 'One'), p(3, 'alpha'), h(2, 5, 'Two'), p(7, 'beta'), h(3, 9, 'Sub'), p(11, 'x'), h(2, 13, 'Three'), p(15, 'gamma')),
+		);
+
+		const wrappers = Array.from(host.querySelectorAll('.foldable-content-wrapper'));
+		expect(wrappers[0]).toBe(one);
+		expect(wrappers[1]).toBe(twoBody);
+		expect(wrappers[wrappers.length - 1]).toBe(three);
+		// Only the new subsection is wrapped: the section around it ends where it did.
+		expect(result.wrappers.map((w) => w.previousElementSibling!.id)).toEqual(['sub']);
+		// The section the reader closed is still closed, and now holds the new one.
+		expect(two.nextElementSibling!.classList.contains('is-collapsed')).toBe(true);
+		expect(two.nextElementSibling!.querySelector('#sub')).not.toBeNull();
+	});
+
+	test('a new section of the same level re-wraps only the section it splits', () => {
+		patch(split(h(2, 1, 'One'), p(3, 'alpha'), h(2, 5, 'Two'), p(7, 'beta'), p(9, 'b2'), h(2, 11, 'Three'), p(13, 'gamma')));
+		const [one, , three] = Array.from(host.querySelectorAll('.foldable-content-wrapper'));
+		const kept = bodies();
+
+		const result = patch(
+			split(h(2, 1, 'One'), p(3, 'alpha'), h(2, 5, 'Two'), p(7, 'beta'), h(2, 9, 'Mid'), p(11, 'b2'), h(2, 13, 'Three'), p(15, 'gamma')),
+		);
+
+		expect(result.wrappers.map((w) => w.previousElementSibling!.id)).toEqual(['two', 'mid']);
+		const wrappers = Array.from(host.querySelectorAll('.foldable-content-wrapper'));
+		expect(wrappers[0]).toBe(one);
+		expect(wrappers[3]).toBe(three);
+		expect(bodies().every((body, index) => body === kept[index])).toBe(true);
+		expect(wrappers[2].textContent).toBe('b2');
 	});
 
 	test('a new paragraph right under a heading goes into that heading\'s section, first', () => {
