@@ -133,6 +133,6 @@ test('the Rust side numbers repeated headings the way the renderer does', () => 
 	// "Objectives" is `objectives-1`, and offering the bare slug for it would
 	// link to the first section. `heading_anchor_id` stays fresh per lookup on
 	// purpose — that one answers a wikilink, which names a heading by text.
-	assert.match(rustSource, /let mut anchorizer = Anchorizer::new\(\);[\s\S]{0,900}?anchorizer\.anchorize\(text\.trim\(\)\)/);
+	assert.match(rustSource, /let mut anchorizer = Anchorizer::new\(\);[\s\S]{0,900}?anchorizer\.anchorize\(&text\)/);
 	assert.match(rustSource, /fn heading_anchor_id\(target: &str\) -> String \{\s*\n\s*Anchorizer::new\(\)/);
 });

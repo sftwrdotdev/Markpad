@@ -5,6 +5,7 @@
 	import { t } from '../utils/i18n.js';
 	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
 	import { foldKeyOf } from '../utils/foldState.js';
+	import { headingText } from '../utils/headingReference.js';
 	import { anchorScrollTop } from '../utils/previewAnchor.js';
 	import { jumpScrollBehavior } from '../utils/motion.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
@@ -153,12 +154,11 @@
 				// Everything the selector matches that is not a block anchor is a
 				// heading, which is the only other thing it asks for.
 				const h = el;
-				let text = h.textContent || '';
-				text = text.replace(/\s*\^[a-zA-Z0-9_-]+$/, '');
+				const text = headingText(h);
 				const anchor = h.querySelector('a.anchor') as HTMLElement | null;
 				const id = h.id || (anchor ? anchor.id : '');
 				if (id) {
-					result.push({ id, text: text.trim(), foldKey: foldKeyOf(h), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
+					result.push({ id, text, foldKey: foldKeyOf(h), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
 				}
 			}
 

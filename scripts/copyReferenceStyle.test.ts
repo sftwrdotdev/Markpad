@@ -96,6 +96,18 @@ test('each style is written the way its own resolver reads it', () => {
 	assert.equal(headingReference({ ...heading, style: 'inline' }), '[Setup](notes.md#setup)');
 });
 
+test('the wikilink drops only an extension the renderer would add back', () => {
+	// `process_wikilinks` appends `.md` to a target with no extension, so
+	// `[[note#Setup]]` reaches `note.md` and never `note.markdown`.
+	const reference = (fileName: string) =>
+		headingReference({ text: 'Setup', slug: 'setup', fileName, style: 'wikilink' });
+	assert.equal(reference('note.markdown'), '[[note.markdown#Setup]]');
+	assert.equal(reference('notes.txt'), '[[notes.txt#Setup]]');
+	// Left as `v1.2`, the target would read as having a `.2` extension.
+	assert.equal(reference('v1.2.md'), '[[v1.2.md#Setup]]');
+	assert.equal(reference('v1.2 spec.md'), '[[v1.2 spec#Setup]]');
+});
+
 test('an unsaved document has no file to name', () => {
 	const heading = { text: 'Setup', slug: 'setup', fileName: null };
 	assert.equal(headingReference({ ...heading, style: 'wikilink' }), '#Setup');

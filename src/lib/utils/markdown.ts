@@ -401,54 +401,9 @@ function processBlockIds(root: Element, doc: Document) {
 		anchor.setAttribute("aria-hidden", "true");
 		el.replaceWith(anchor);
 	}
-
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-		acceptNode(node) {
-			const parent = node.parentElement;
-			if (!parent) return NodeFilter.FILTER_REJECT;
-			if (
-				[
-					"CODE",
-					"PRE",
-					"SCRIPT",
-					"STYLE",
-					"H1",
-					"H2",
-					"H3",
-					"H4",
-					"H5",
-					"H6",
-				].includes(parent.tagName)
-			)
-				return NodeFilter.FILTER_REJECT;
-			return NodeFilter.FILTER_ACCEPT;
-		},
-	});
-
-	const blockIdPattern = / \^([a-zA-Z0-9_-]+)\s*$/;
-	const nodes: { node: Text; id: string }[] = [];
-	let textNode: Node | null;
-	while ((textNode = walker.nextNode())) {
-		const text = (textNode as Text).nodeValue || "";
-		const match = text.match(blockIdPattern);
-		if (match) nodes.push({ node: textNode as Text, id: match[1] });
-	}
-
-	for (const { node, id } of nodes) {
-		const text = node.nodeValue || "";
-		const cleanText = text.replace(blockIdPattern, "");
-		const anchor = doc.createElement("a");
-		anchor.id = id;
-		anchor.className = "block-id-anchor";
-		anchor.setAttribute("data-label", id);
-		anchor.setAttribute("aria-hidden", "true");
-		const parent = node.parentNode;
-		if (parent) {
-			const textBefore = doc.createTextNode(cleanText);
-			parent.replaceChild(anchor, node);
-			parent.insertBefore(textBefore, anchor);
-		}
-	}
+	// A trailing ` ^id` in text is the renderer's to rewrite (BLOCK_ID_RE in
+	// markdown.rs), and it already has. A second, looser copy of that rule
+	// here used to match ids it had deliberately left alone.
 }
 
 const taskTextBoundaryTags = new Set([

@@ -598,44 +598,48 @@ fn emit_pipes_on_line(lines: &[&str], line_no: usize, out: &mut Vec<(ByteSpan, &
 /// rewriter scans them, and both are line-local.
 fn app_syntax_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
     math_spans(lines, out);
-    for (index, text) in lines.iter().enumerate() {
-        let bytes = text.as_bytes();
-        let mut at = 0;
-        while at + 1 < bytes.len() {
-            if bytes[at] == b'[' && bytes[at + 1] == b'[' {
-                if let Some(close) = text[at..].find("]]") {
-                    let end = at + close + 2;
-                    out.push((
-                        ByteSpan {
-                            line: index,
-                            start: at,
-                            end: at + 2,
-                        },
-                        "wikilink.marker",
-                    ));
-                    out.push((
-                        ByteSpan {
-                            line: index,
-                            start: at + 2,
-                            end: end - 2,
-                        },
-                        "wikilink",
-                    ));
-                    out.push((
-                        ByteSpan {
-                            line: index,
-                            start: end - 2,
-                            end,
-                        },
-                        "wikilink.marker",
-                    ));
-                    at = end;
-                    continue;
-                }
-            }
-            at += 1;
+    wikilink_spans(lines, out);
+}
+
+/// `[[…]]` and `![[…]]`, found by the renderer's own patterns and rules
+/// (`wikilink_ranges`): a `[[note]]` without a heading, one inside code, and
+/// one followed by `(` all stay literal in the preview, so they stay
+/// uncoloured here.
+fn wikilink_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
+    let content = lines.join("\n");
+    let line_starts = line_starts(lines);
+    for (start, end, opener) in crate::markdown::wikilink_ranges(&content) {
+        if end < start + opener + 2 {
+            continue;
         }
+        emit_byte_range(
+            lines,
+            &line_starts,
+            start,
+            start + opener,
+            "wikilink.marker",
+            out,
+        );
+        emit_byte_range(
+            lines,
+            &line_starts,
+            start + opener,
+            end - 2,
+            "wikilink",
+            out,
+        );
+        emit_byte_range(lines, &line_starts, end - 2, end, "wikilink.marker", out);
     }
+}
+
+fn line_starts(lines: &[&str]) -> Vec<usize> {
+    let mut starts = Vec::with_capacity(lines.len());
+    let mut at = 0usize;
+    for line in lines {
+        starts.push(at);
+        at += line.len() + 1;
+    }
+    starts
 }
 
 /// `$…$` and `$$…$$`, found the way the renderer finds them.
@@ -649,12 +653,7 @@ fn app_syntax_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
 fn math_spans(lines: &[&str], out: &mut Vec<(ByteSpan, &'static str)>) {
     let content = lines.join("\n");
     let regions = crate::markdown::code_region_ranges(&content);
-    let mut line_starts = Vec::with_capacity(lines.len());
-    let mut at = 0usize;
-    for line in lines {
-        line_starts.push(at);
-        at += line.len() + 1;
-    }
+    let line_starts = line_starts(lines);
 
     for (start, end) in crate::markdown::find_math_spans(&content, &regions) {
         // Display math spans lines: `$$` opens on one and closes on another,
@@ -864,12 +863,33 @@ mod tests {
             ("~~gone~~\n", "strike"),
             ("==lit==\n", "highlight"),
             ("++new++\n", "insert"),
-            ("[[a page]]\n", "wikilink"),
+            ("[[a page#Setup]]\n", "wikilink"),
         ] {
             let kinds = kinds_on(text, 0);
             assert!(
                 kinds.contains(&kind.to_string()),
                 "{kind} missing in {kinds:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_brackets_the_preview_links_are_coloured_as_wikilinks() {
+        // The renderer leaves all of these literal: no heading, inside code,
+        // and a CommonMark link whose text happens to be bracketed.
+        for text in ["[[a page]]\n", "`[[#Setup]]`\n", "[[1#x]](https://x.dev)\n"] {
+            let kinds = kinds_on(text, 0);
+            assert!(
+                !kinds.iter().any(|k| k.starts_with("wikilink")),
+                "{text:?} is not a link in the preview: {kinds:?}"
+            );
+        }
+        // And these it does rewrite, embed included.
+        for text in ["[[#Setup]]\n", "![[a.png]]\n"] {
+            let kinds = kinds_on(text, 0);
+            assert!(
+                kinds.contains(&"wikilink".to_string()),
+                "{text:?}: {kinds:?}"
             );
         }
     }

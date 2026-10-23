@@ -151,6 +151,13 @@ describe('the entries that one walk produces', () => {
 		expect(toc.entries()).toEqual(['Section', 'inline']);
 	});
 
+	test('reads a heading the way the preview does, caret and all', () => {
+		// `# E = mc^2` has no block id — the renderer requires whitespace before
+		// the caret — so the outline must not strip one either.
+		const toc = harness(heading(1, 'e--mc2', 'E = mc^2', 1));
+		expect(toc.entries()).toEqual(['E = mc^2']);
+	});
+
 	test('drops a heading the renderer gave no id, and empties out with the document', () => {
 		const toc = harness('<h2 data-sourcepos="1:1-1:9">Nameless</h2>' + heading(2, 'named', 'Named', 3));
 		expect(toc.entries()).toEqual(['Named']);

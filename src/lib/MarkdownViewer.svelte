@@ -51,7 +51,7 @@ import {
 } from './utils/foldState.js';
 import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
 import { fontFamilyValue } from './utils/fontFamily.js';
-import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
+import { headingReference, headingText, preferredReferenceStyle } from './utils/headingReference.js';
 import {
 	findSourceLineRange,
 	getSourceLineAtPreviewOffset,
@@ -3202,7 +3202,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		const heading = (e.target as HTMLElement).closest('h1, h2, h3, h4, h5, h6');
 		let copyRefItem: any[] = [];
 		if (heading) {
-			const text = heading.textContent?.trim() || '';
+			const text = headingText(heading);
 			// The rendered id, straight off the element: comrak wrote it, and
 			// the outline reads it the same way — it can be on an anchor comrak
 			// nests inside the heading rather than on the heading itself.

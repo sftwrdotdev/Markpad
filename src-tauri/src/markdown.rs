@@ -41,8 +41,14 @@ static WIKILINK_RE: LazyLock<Regex> =
 /// it names, and `\s+` then spans the newline: the replacement has to put that
 /// newline back, or the anchor is folded onto the previous line and every line
 /// below it moves up one (see the line contract in `mod tests`).
-static BLOCK_ID_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?m)(\s+)\^([a-zA-Z0-9_-]+)$").expect("valid regex literal"));
+///
+/// `R` makes `$` match before a `\r\n` too. Without it a CRLF file has no line
+/// end this pattern recognises except the last one, and every other block id
+/// stays literal text. This is the only block-id rule: the preview and the
+/// outline both read the anchor it writes.
+static BLOCK_ID_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?mR)(\s+)\^([a-zA-Z0-9_-]+)[ \t]*$").expect("valid regex literal")
+});
 /// The rendered task-list `<input>` this pass is allowed to mark.
 ///
 /// The boolean attributes are matched as an unordered set rather than in a
@@ -576,6 +582,86 @@ fn process_internal_embeds(content: &str) -> Cow<'_, str> {
     })
 }
 
+/// A `WIKILINK_RE` match that `process_wikilinks` turns into a link.
+pub(crate) struct WikilinkParts<'a> {
+    path: &'a str,
+    heading: &'a str,
+    alias: Option<&'a str>,
+    /// `None` for a heading in this document (`[[#Setup]]`).
+    destination: Option<String>,
+}
+
+/// Whether a `WIKILINK_RE` match in `source` becomes a link, and its parts if
+/// it does. The renderer rewrites by this and the editor colours by it, so
+/// the two cannot disagree about what is a wikilink.
+pub(crate) fn wikilink_parts<'a>(source: &str, caps: &Captures<'a>) -> Option<WikilinkParts<'a>> {
+    let full = caps.get(0)?;
+    // The pattern is line-agnostic, but neither a heading id nor a
+    // filename contains a newline, so a target spanning lines can
+    // never resolve. Leaving it literal also keeps the line count
+    // stable — rewriting it to a single line would shift the source
+    // positions of every task checkbox below it (see
+    // `multiline_wikilinks_do_not_shift_task_source_positions`).
+    if full.as_str().contains('\n') {
+        return None;
+    }
+    // `![[…]]` is an embed, already rewritten by
+    // process_internal_embeds; it is never a link.
+    if source.as_bytes()[..full.start()].last() == Some(&b'!') {
+        return None;
+    }
+    // "[[1#x]](https://example.com)" is a CommonMark link whose text
+    // is "[1#x]"; claiming the brackets would strand the "(url)".
+    // Requiring a "#" already protects the common citation spelling
+    // "[[1]](url)", but not the forms that do carry one.
+    if source[full.end()..].starts_with('(') {
+        return None;
+    }
+
+    let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+    let (target, alias) = match inner.split_once('|') {
+        Some((target, alias)) => (target, Some(alias)),
+        None => (inner, None),
+    };
+    let alias = alias.filter(|a| !a.trim().is_empty());
+    // The `#` the pattern matched may have been in the alias half
+    // ("[[Notes|see #1]]"), which is a bare note link, not a heading
+    // link. Only a `#` in the target counts.
+    let (path, heading) = target.split_once('#')?;
+    let (path, heading) = (path.trim(), heading.trim());
+    if heading.is_empty() {
+        return None;
+    }
+    let destination = if path.is_empty() {
+        None
+    } else {
+        Some(wikilink_file_destination(path)?)
+    };
+    Some(WikilinkParts {
+        path,
+        heading,
+        alias,
+        destination,
+    })
+}
+
+/// Byte ranges, outside code, of the `![[embed]]`s and `[[…#heading]]` links
+/// `convert_markdown` rewrites, each with the length of its opening marker.
+pub(crate) fn wikilink_ranges(content: &str) -> Vec<(usize, usize, usize)> {
+    let regions = code_region_ranges(content);
+    let embeds = INTERNAL_EMBED_RE
+        .find_iter(content)
+        .map(|m| (m.start(), m.end(), 3));
+    let links = WIKILINK_RE
+        .captures_iter(content)
+        .filter(|caps| wikilink_parts(content, caps).is_some())
+        .map(|caps| (caps.get(0).unwrap().start(), caps.get(0).unwrap().end(), 2));
+    embeds
+        .chain(links)
+        .filter(|&(start, _, _)| !in_code_region(&regions, start))
+        .collect()
+}
+
 fn process_wikilinks<'a>(content: &'a str) -> Cow<'a, str> {
     let mut processed = Cow::Borrowed(content);
 
@@ -595,55 +681,21 @@ fn process_wikilinks<'a>(content: &'a str) -> Cow<'a, str> {
     if WIKILINK_RE.is_match(&processed) {
         let source: &str = &processed;
         let replaced = replace_outside_code(source, &WIKILINK_RE, |caps| {
-            let full = caps.get(0).unwrap();
-            let literal = || full.as_str().to_string();
-            // The pattern is line-agnostic, but neither a heading id nor a
-            // filename contains a newline, so a target spanning lines can
-            // never resolve. Leaving it literal also keeps the line count
-            // stable — rewriting it to a single line would shift the source
-            // positions of every task checkbox below it (see
-            // `multiline_wikilinks_do_not_shift_task_source_positions`).
-            if full.as_str().contains('\n') {
-                return literal();
-            }
-            // `![[…]]` is an embed, already rewritten by
-            // process_internal_embeds; it is never a link.
-            if source.as_bytes()[..full.start()].last() == Some(&b'!') {
-                return literal();
-            }
-            // "[[1#x]](https://example.com)" is a CommonMark link whose text
-            // is "[1#x]"; claiming the brackets would strand the "(url)".
-            // Requiring a "#" already protects the common citation spelling
-            // "[[1]](url)", but not the forms that do carry one.
-            if source[full.end()..].starts_with('(') {
-                return literal();
-            }
-
-            let inner = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let (target, alias) = match inner.split_once('|') {
-                Some((target, alias)) => (target, Some(alias)),
-                None => (inner, None),
-            };
-            let alias = alias.filter(|a| !a.trim().is_empty());
-            // The `#` the pattern matched may have been in the alias half
-            // ("[[Notes|see #1]]"), which is a bare note link, not a heading
-            // link. Only a `#` in the target counts.
-            let Some((path, heading)) = target.split_once('#') else {
+            let literal = || caps[0].to_string();
+            let Some(WikilinkParts {
+                path,
+                heading,
+                alias,
+                destination,
+            }) = wikilink_parts(source, caps)
+            else {
                 return literal();
             };
-            let (path, heading) = (path.trim(), heading.trim());
-            if heading.is_empty() {
-                return literal();
-            }
             let anchor = heading_anchor_id(heading);
 
-            if path.is_empty() {
+            let Some(destination) = destination else {
                 // Same document: [[#Setup]] / [[#Setup|jump]].
                 return format!("[{}](#{anchor})", alias.unwrap_or(heading));
-            }
-
-            let Some(destination) = wikilink_file_destination(path) else {
-                return literal();
             };
             // Obsidian renders an un-aliased heading link as "Note > Heading";
             // keeping that spelling means a pasted reference reads the same in
@@ -661,12 +713,25 @@ fn process_wikilinks<'a>(content: &'a str) -> Cow<'a, str> {
     // 2. Process ^block-id at the end of lines
     // For block IDs, they are trailing. We skip code blocks but also need to be careful with inline code at EOL.
     if BLOCK_ID_RE.is_match(&processed) {
-        let replaced = replace_outside_code(&processed, &BLOCK_ID_RE, |caps| {
-            // Re-emit the matched whitespace verbatim. For the common
-            // trailing form (" ^id") that is the same single space this used
-            // to hardcode; for an id on its own line it is the newline that
-            // keeps the following lines at their original numbers.
-            let leading = caps.get(1).map(|m| m.as_str()).unwrap_or(" ");
+        let source: &str = &processed;
+        let replaced = replace_outside_code(source, &BLOCK_ID_RE, |caps| {
+            // For an id on its own line the matched whitespace holds the line
+            // break, which is re-emitted verbatim so the following lines keep
+            // their original numbers. After text on the same line the spaces go with
+            // the id: left in, `## Setup ^s1` reads "Setup " to comrak, which
+            // renders the id `setup-` while every `[[#Setup]]` and completion
+            // asks for `setup`. Only text drops them — after a bare `#` or `-`
+            // the space is what makes the line a heading or a list item.
+            let leading = caps.get(1).unwrap();
+            let line_start = source[..leading.start()].rfind('\n').map_or(0, |i| i + 1);
+            let after_markers_only = source[line_start..leading.start()]
+                .chars()
+                .all(|c| c.is_whitespace() || c.is_ascii_digit() || "#-+*>.)".contains(c));
+            let leading = if leading.as_str().contains('\n') || after_markers_only {
+                leading.as_str()
+            } else {
+                ""
+            };
             let id = caps.get(2).map(|m| m.as_str()).unwrap_or("");
             format!(
                 "{}<a id=\"{}\" class=\"block-id-anchor\" data-label=\"{}\"></a>",
@@ -1728,7 +1793,11 @@ fn heading_anchors<'a>(
             }
         };
 
-        let text = unmask_math_text(&collect_inline_text(node), masked);
+        // comrak's own text collection, untrimmed, because that is exactly
+        // what its renderer anchorizes: a soft break in a multi-line setext
+        // heading is a space there (`foo-bar`), and a copy of the rule that
+        // dropped it offered `foobar`.
+        let text = unmask_math_text(&node.collect_text(), masked);
         if text.trim().is_empty() {
             continue;
         }
@@ -1736,26 +1805,12 @@ fn heading_anchors<'a>(
         anchors.push(HeadingAnchor {
             line: line as u32,
             level,
-            slug: anchorizer.anchorize(text.trim()),
+            slug: anchorizer.anchorize(&text),
             text: text.trim().to_owned(),
         });
     }
 
     anchors
-}
-
-/// The text a heading reads as, which is what comrak anchorizes: the literals
-/// of its inline children, with the emphasis and link markup dropped.
-fn collect_inline_text<'a>(node: &'a comrak::nodes::AstNode<'a>) -> String {
-    let mut text = String::new();
-    for descendant in node.descendants() {
-        match &descendant.data.borrow().value {
-            NodeValue::Text(literal) => text.push_str(literal),
-            NodeValue::Code(code) => text.push_str(&code.literal),
-            _ => {}
-        }
-    }
-    text
 }
 
 /// Puts masked math back into a piece of *text*, which is the spelling a text
@@ -2876,6 +2931,10 @@ pub(crate) mod tests {
             "## A [real link](https://x.dev) here\n",
             "## Code `let x = 1;` here\n",
             "## A **bold** and *italic* heading\n",
+            // A block id is rewritten to an anchor; the heading reads "Setup".
+            "## Setup ^s1\n",
+            // A soft break in a setext heading is a space to comrak.
+            "Foo\nBar\n===\n",
         ] {
             let html = convert_markdown(markdown);
             let rendered = html
@@ -3138,6 +3197,28 @@ pub(crate) mod tests {
             "got: {out}"
         );
         assert!(out.contains("[My Notes (v2) > Setup]"), "got: {out}");
+    }
+
+    #[test]
+    fn a_block_id_does_not_change_the_heading_id_a_wikilink_reaches() {
+        let html = convert_markdown("## Setup ^s1\n\n[[#Setup]]\n");
+        assert!(html.contains("id=\"setup\""), "{html}");
+        assert!(html.contains("href=\"#setup\""), "{html}");
+        assert!(html.contains("id=\"s1\""), "{html}");
+        // A heading or list item that is nothing but the id keeps its space.
+        for (markdown, tag) in [("# ^s1\n", "<h1"), ("- ^s1\n", "<li")] {
+            let html = convert_markdown(markdown);
+            assert!(html.contains(tag) && html.contains("id=\"s1\""), "{html}");
+        }
+    }
+
+    #[test]
+    fn block_ids_resolve_in_a_crlf_document() {
+        let html = convert_markdown("## Head ^h1\r\n\r\nPara ^p1\r\n\r\nPara\r\n^p2\r\n");
+        for id in ["h1", "p1", "p2"] {
+            assert!(html.contains(&format!("id=\"{id}\"")), "{id}: {html}");
+            assert!(!html.contains(&format!("^{id}")), "{id} left raw: {html}");
+        }
     }
 
     #[test]
