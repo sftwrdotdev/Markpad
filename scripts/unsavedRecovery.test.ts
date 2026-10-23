@@ -111,6 +111,43 @@ test('continuous changes reach disk within the bounded background delay', async 
 	recovery.dispose();
 });
 
+test('a stale mark serializes once per write, and flush serializes the latest content', async (context) => {
+	context.mock.timers.enable({ apis: ['setTimeout'] });
+	const writes: string[] = [];
+	let content = '';
+	let serialized = 0;
+	const snapshot = () => { serialized++; return content; };
+	const recovery = createBoundedWriter({ initial: '[]', write: async (json) => { writes.push(json); }, onError: (error) => { throw error; } });
+	for (let i = 0; i < 100; i++) {
+		content += 'a';
+		recovery.update(snapshot);
+		context.mock.timers.tick(4);
+	}
+	await Promise.resolve();
+	// 400 ms of typing: no keystroke serialized, nothing written yet.
+	assert.equal(serialized, 0);
+	context.mock.timers.tick(100);
+	await Promise.resolve();
+	assert.equal(serialized, 1);
+	assert.deepEqual(writes, ['a'.repeat(100)]);
+	content += 'b';
+	recovery.update(snapshot);
+	await recovery.flush();
+	assert.equal(serialized, 2);
+	assert.equal(writes.at(-1), 'a'.repeat(100) + 'b');
+	// Flushed: the cancelled timer does not write again.
+	context.mock.timers.tick(500);
+	await Promise.resolve();
+	assert.equal(writes.length, 2);
+	recovery.update(snapshot);
+	recovery.update('[]');
+	context.mock.timers.tick(500);
+	await Promise.resolve();
+	assert.equal(serialized, 2, 'turning the setting off drops the pending snapshot');
+	assert.equal(writes.at(-1), '[]');
+	recovery.dispose();
+});
+
 test('flush cancels delayed writes and serializes cleanup behind in-flight writes', async () => {
 	const writes: string[] = [];
 	let release!: () => void;
@@ -146,6 +183,23 @@ test('failed writes retry without another edit and flush reports failure', async
 	await Promise.resolve();
 	assert.equal(attempts, 2);
 	assert.equal(await recovery.flush(), true);
+	recovery.dispose();
+});
+
+test('a failed write still retries when the next stale snapshot is the same', async (context) => {
+	context.mock.timers.enable({ apis: ['setTimeout'] });
+	let attempts = 0;
+	const recovery = createBoundedWriter({
+		initial: '[]',
+		write: async () => { if (++attempts === 1) throw new Error('temporarily unavailable'); },
+		onError: () => {},
+	});
+	assert.equal(await recovery.flush('unsaved'), false);
+	recovery.update(() => 'unsaved');
+	context.mock.timers.tick(2000);
+	await Promise.resolve();
+	await Promise.resolve();
+	assert.equal(attempts, 2);
 	recovery.dispose();
 });
 

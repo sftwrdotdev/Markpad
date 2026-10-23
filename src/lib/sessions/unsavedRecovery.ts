@@ -75,13 +75,16 @@ export function restoreRecords(
  * bounded delay, not a resetting debounce: continuous typing must still reach
  * disk. Serialized writes prevent an older IPC from resurrecting content after
  * a save, discard, or setting change. `initial` is what is on disk already, so
- * it is not written again. */
+ * it is not written again. `update(() => json)` only marks the file stale: the
+ * snapshot is built when the delayed write fires or on flush, not per keystroke. */
 export function createBoundedWriter(options: {
 	write: (json: string) => Promise<void>;
 	onError: (error: unknown) => void;
 	initial?: string;
 }) {
 	let latest = options.initial ?? '';
+	let stale: (() => string) | undefined;
+	let retryDue = false;
 	let timer: ReturnType<typeof setTimeout> | undefined;
 	let writes = Promise.resolve(true);
 	let disposed = false;
@@ -90,6 +93,13 @@ export function createBoundedWriter(options: {
 		if (timer || disposed) return;
 		timer = setTimeout(() => {
 			timer = undefined;
+			if (stale) {
+				const json = stale();
+				stale = undefined;
+				if (json === latest && !retryDue) return;
+				latest = json;
+			}
+			retryDue = false;
 			void enqueue(latest);
 		}, delay);
 	}
@@ -102,24 +112,34 @@ export function createBoundedWriter(options: {
 			} catch (error) {
 				options.onError(error);
 				// Retry even if the user stopped typing, including failed cleanup.
-				if (json === latest) schedule(2000);
+				if (json === latest) {
+					retryDue = true;
+					schedule(2000);
+				}
 				return false;
 			}
 		});
 		return writes;
 	}
 
-	function update(json: string) {
-		if (disposed || json === latest) return;
+	function update(json: string | (() => string)) {
+		if (disposed) return;
+		if (typeof json === 'function') {
+			stale = json;
+			return schedule(500);
+		}
+		stale = undefined;
+		if (json === latest) return;
 		latest = json;
 		schedule(500);
 	}
 
-	function flush(json = latest): Promise<boolean> {
+	function flush(json?: string): Promise<boolean> {
 		if (timer) clearTimeout(timer);
 		timer = undefined;
-		latest = json;
-		return enqueue(json);
+		latest = json ?? stale?.() ?? latest;
+		stale = undefined;
+		return enqueue(latest);
 	}
 
 	/** Stops writing. Resolves once a write already under way has landed, so

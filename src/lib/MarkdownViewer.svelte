@@ -674,7 +674,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		if (!settings.persistOpenEditors) return void unsavedRecovery.update('[]');
 		// Track only what the snapshot keeps, so scrolling does not re-serialize.
 		for (const tab of tabManager.tabs) void [tab.path, tab.isDirty, tab.rawContent, tab.originalContent, tab.encoding];
-		unsavedRecovery.update(untrack(() => recoverySnapshot(tabManager.tabs)));
+		unsavedRecovery.update(() => recoverySnapshot(tabManager.tabs));
 	});
 
 	// Startup, setting on. Without it nothing is read, written or removed.
