@@ -107,8 +107,8 @@ const readRevisionByTab = new Map<string, number>();
  * Called BEFORE the first await, because everything it captures is about the
  * moment the read departs: which tab, which file that tab holds, and what its
  * buffer says. Read later and those describe whatever happened during the
- * wait — the tab the user switched to, the file they navigated to — which is
- * how a reload of one tab used to land in another.
+ * wait — the tab the user switched to, the file they navigated to — and a
+ * reload of one tab would land in another.
  *
  * The result is refused when, by the time it arrives:
  * - the tab is gone, or now holds a different file;
@@ -528,10 +528,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			}
 			if (!targetId) return;
 			const activeId = targetId;
-			// Callers that manage tabs themselves — back/forward, a link opened
-			// in a new tab — put the path on the tab before getting here, so
-			// this is where those tabs learn their identity. Cheap and idempotent
-			// for the tabs that already have it.
+			// Callers that manage tabs themselves — back/forward — put the path
+			// on the tab before getting here, so this is where those tabs learn
+			// their identity. Cheap and idempotent for the tabs that already
+			// have it.
 			tabManager.setTabPathKey(activeId, filePath, pathKey);
 
 			// Opening a file that is already open, in a tab that has unsaved
@@ -574,7 +574,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// slice, re-raising `isTruncated` — after which every save is refused
 			// and nothing retries. The claim's revision refuses it, and the same
 			// test refuses a result that would land on typing done during the
-			// read (Live Mode reloads on every external change).
+			// read (with Auto-Reload on, every external change reloads).
 			const mayApply = pinnedRead ?? claimTabForRead(activeId, loadOptions.discardUnsavedBuffer);
 			const isMarkdown = hasMarkdownLinkExtension(filePath);
 			const tab = tabManager.tabs.find((item) => item.id === activeId);

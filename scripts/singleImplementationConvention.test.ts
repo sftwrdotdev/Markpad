@@ -84,10 +84,8 @@ const RULES: Rule[] = [
 		// `mdown` rather than `md`: it is distinctive enough that prose and other
 		// identifiers cannot match it by accident.
 		//
-		// The editor's language table used to be allowed a copy of its own,
-		// which left `txt` out: a .txt note rendered as Markdown in the preview
-		// and showed as plain text in the editor. It derives its Markdown
-		// entries from this list now (utils/editorLanguage.ts).
+		// The editor's language table holds no copy: it derives its Markdown
+		// entries from this list (utils/editorLanguage.ts).
 		marker: /['"]mdown['"]/g,
 		allowed: ['src/lib/utils/markdownLinks.ts'],
 	},

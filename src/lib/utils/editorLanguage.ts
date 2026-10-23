@@ -1,8 +1,8 @@
 import { MARKDOWN_LINK_EXTENSIONS } from './markdownLinks.js';
 
 // The Markdown entries come from the document list rather than being spelled
-// out again: a hand-written copy here lacked `txt`, so a `.txt` note rendered
-// as Markdown in the preview while the editor showed it as plain text.
+// out again, so every file the preview renders as Markdown (`.txt` included)
+// is edited as Markdown too.
 const EDITOR_LANGUAGES: Record<string, string> = {
 	js: 'javascript',
 	jsx: 'javascript',

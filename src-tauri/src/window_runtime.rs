@@ -1249,11 +1249,11 @@ pub fn watch_file(
     let root = watch_root(target);
 
     // Build and arm the replacement *before* touching the watcher already
-    // registered for this window. Dropping the old one first meant a failure
-    // in either step below left the window with no watcher at all: the
-    // frontend only logs the error, so external edits would silently stop
-    // being reported for the rest of the session. Inserting last swaps them
-    // in one step — the map drops the previous watcher, which unregisters it.
+    // registered for this window. Dropping the old one first would leave the
+    // window with no watcher at all if either step below failed: the frontend
+    // only logs the error, so external edits would silently stop being
+    // reported for the rest of the session. `install` swaps them in one step —
+    // the map drops the previous watcher, which unregisters it.
     let emit = coalesced(Duration::from_millis(150), move || {
         let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
     });

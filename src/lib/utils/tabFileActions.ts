@@ -23,10 +23,9 @@ export function hasRealFilePath(path: string): boolean {
  * saved or not.
  *
  * Shared by the Export menu items, which are hidden without it, by the Export as
- * PDF chord (#673), and by the HTML export itself. Two spellings of one
- * condition is how the menu and the exports come to disagree: the menu used to
- * offer a saved file's exports on its path alone, so a saved empty file printed
- * a blank PDF page and its HTML export silently did nothing.
+ * PDF chord (#673), and by the HTML export itself, so the menu and the exports
+ * cannot disagree. A path alone does not count: a saved empty file has nothing
+ * to print or export.
  */
 export function hasExportableDocument(rawContent: string | undefined): boolean {
 	return !!rawContent;

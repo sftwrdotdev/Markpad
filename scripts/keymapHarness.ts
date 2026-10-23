@@ -143,7 +143,7 @@ export function registeredActions(mac: boolean): { actions: ActionDescriptor[]; 
 			if (typeof property !== 'string') return undefined;
 			if (property in target) return target[property];
 			const stub = record(property);
-			// Callbacks are read as `onnew?.()` and settings as
+			// Callbacks are read as `oncommand?.(…)` and settings as
 			// `settings.toggleWordWrap()`, so the stub has to be callable AND
 			// indexable.
 			return new Proxy(stub, {

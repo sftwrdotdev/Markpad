@@ -529,8 +529,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 			// last wins. Keep waiting for `tab-transfer-claimed`, and keep
 			// asking: a destination that closed or crashed after its claim
 			// never completes, and the broker hands the transfer back once
-			// its claim grace runs out. Asking only once left the tab
-			// unmovable until this window was reopened.
+			// its claim grace runs out.
 			const cancel = async () => {
 				if (settled) return;
 				try {

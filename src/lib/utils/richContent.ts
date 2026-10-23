@@ -293,8 +293,8 @@ const copiedLabels = new WeakMap<HTMLElement, string>();
 /**
  * Shows "Copied!" on a code block's label for 1.5 s.
  *
- * The content to restore is taken once per showing: a second click inside the
- * 1.5 s used to take "Copied!" itself as the original and put it back for good.
+ * The content to restore is taken once per showing, so a second click inside
+ * the 1.5 s does not take "Copied!" itself as the original.
  */
 export function flashCopiedLabel(label: HTMLElement) {
 	const original = copiedLabels.get(label) ?? label.innerHTML;
@@ -529,10 +529,9 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		}
 	}
 
-	// Only when there is something to draw: `initialize` builds and installs
-	// a site config, which measures at ~2.5ms in Chromium, and this function runs
-	// once per keystroke. A document with no diagram in it was paying that on
-	// every character. Asking first is one selector over a list already in hand.
+	// Only when there is something to draw: this function runs once per
+	// keystroke, and a document with no diagram in it never loads Mermaid.
+	// Asking first is one selector over a list already in hand.
 	const diagramBlocks = codeBlocks.filter(isDiagram);
 	if (diagramBlocks.length === 0 && staleDiagrams.length === 0) return;
 	let mermaid = libraries ? libraries.mermaid : diagrams.loaded;

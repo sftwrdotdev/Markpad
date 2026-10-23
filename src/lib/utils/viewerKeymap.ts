@@ -269,8 +269,8 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// Zen had only the Monaco half, so it did nothing in the preview (#800).
 	// `code`, not `key`: Option turns Z into Ω on a Mac.
 	if (modAlt && code === 'KeyZ') return 'toggle-zen-mode';
-	// The tab bar had only the Monaco half and the macOS menu, so off macOS the
-	// chord did nothing in the preview.
+	// Both halves, like Zen: off macOS no menu accelerator sits behind the
+	// preview to catch the chord.
 	if (modShift && key === 'b') return 'toggle-tabs';
 	// Save As. The app menu advertised this chord for as long as the menu has
 	// existed, but nothing ever bound it: the branch below matched on

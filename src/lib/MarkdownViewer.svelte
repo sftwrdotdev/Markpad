@@ -676,7 +676,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	$effect(() => {
 		if (!recoveryReady) return;
 		if (!settings.persistOpenEditors) return void unsavedRecovery.update('[]');
-		// Track only what the snapshot keeps, so scrolling does not re-serialize.
+		// The snapshot is built later, outside this effect, so its inputs are
+		// read here: only what it keeps, so scrolling does not mark it stale.
 		for (const tab of tabManager.tabs) void [tab.path, tab.isDirty, tab.rawContent, tab.originalContent, tab.encoding];
 		unsavedRecovery.update(() => recoverySnapshot(tabManager.tabs));
 	});
@@ -1195,9 +1196,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		});
 	});
 
-	// Watched whether or not Live Mode is on: an edit made elsewhere under
+	// Watched whether or not Auto-Reload is on: an edit made elsewhere under
 	// unsaved changes is reported when it happens, not at the next save.
-	// Live Mode only decides whether a clean tab reloads.
+	// Auto-Reload only decides whether a clean tab reloads.
 	$effect(() => {
 		if (currentFile) {
 			invoke('watch_file', { path: currentFile }).catch(console.error);
@@ -3668,10 +3669,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			: tabManager.goForward(activeTabId);
 
 		if (path) {
-			// No `resetScrollHistory` here, and none in `openMarkdownTargetInNewTab`
-			// either: goBack/goForward repoint the tab, so `clearReadingPosition`
-			// has already dropped its in-page stacks along with the rest of the
-			// position, and a tab opened by `addTab` never had any.
+			// No `resetScrollHistory` here: goBack/goForward repoint the tab, so
+			// `clearReadingPosition` has already dropped its in-page stacks along
+			// with the rest of the position.
 			await loadMarkdown(path, { skipTabManagement: true });
 		}
 	}

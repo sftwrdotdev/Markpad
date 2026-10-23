@@ -522,8 +522,9 @@ class TabManager {
 			// each file directly rather than through `loadMarkdown`, so nothing
 			// else would ever resolve these. Without this a restored window sits
 			// outside the one-tab-per-file rule until every tab happens to be
-			// reopened. Resolving in the background is safe because it only ever
-			// ADDS an identity — no tab is closed or reassigned here.
+			// reopened. Each resolution claims its path again by identity (see
+			// `setTabPathKey`), so two restored tabs on one file settle the way
+			// `claimPath` settles any other pair.
 			for (const tab of restored) {
 				void canonicalizePath(tab.path).then((key) => this.setTabPathKey(tab.id, tab.path, key));
 			}
@@ -864,11 +865,11 @@ class TabManager {
 	 * elsewhere while the resolution was in flight, and a key describing a file
 	 * the tab no longer holds is worse than no key at all.
 	 *
-	 * The claim is made again here, now with the key. Those routes claimed the
+	 * The claim is made again here, now with the key. Those routes claim the
 	 * path literally, so `C:/n/b.md` arriving beside a tab on `C:\n\b.md` (or
 	 * `readme.md` beside `Readme.md` on macOS, or a symlink beside its target)
-	 * passed as a different file and left two tabs with two auto-save timers on
-	 * one file. Every one of them learns its identity through this method, so
+	 * passes as a different file, and two tabs would keep two auto-save timers
+	 * on one file. Every one of them learns its identity through this method, so
 	 * this is the one place that can settle it for all of them.
 	 */
 	setTabPathKey(id: string, path: string, pathKey: string) {

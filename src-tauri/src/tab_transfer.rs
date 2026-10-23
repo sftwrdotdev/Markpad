@@ -29,8 +29,8 @@ pub struct PendingTransfer {
 
 /// Result of `cancel_detached_tab`. `cancelled == false && claimed == true`
 /// means the destination already took the payload and is still finishing:
-/// the source must keep waiting for `tab-transfer-claimed` instead of
-/// restoring its tab.
+/// the source must keep waiting for `tab-transfer-claimed`, and ask again
+/// later, instead of restoring its tab.
 #[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelOutcome {
