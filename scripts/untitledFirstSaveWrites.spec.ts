@@ -59,7 +59,6 @@ function makeSession() {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: () => {},
 		onDiskChangedUnderSave: (tabId: string) => void conflicts.push(tabId),
 		cancelPendingAutoSave: () => {},

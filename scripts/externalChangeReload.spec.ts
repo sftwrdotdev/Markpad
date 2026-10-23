@@ -69,7 +69,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: () => {},
 		onDiskChangedUnderSave: (tabId: string) => refusedSaves.push(tabId),
 		cancelPendingAutoSave: () => {},

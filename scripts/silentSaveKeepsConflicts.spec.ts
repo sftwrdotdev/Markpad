@@ -77,7 +77,6 @@ function makeViewer() {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: () => {},
 		onDiskChangedUnderSave: (id: string) => (fns.noteExternalChangeConflict as (id: string) => void)(id),
 		cancelPendingAutoSave: () => {},

@@ -59,7 +59,6 @@ type DocumentSessionOptions = {
 	setLoadingTabs: (tabIds: string[]) => void;
 	measureInitialViewport: () => void;
 	isScrolling: () => boolean;
-	renderRichContent: () => void;
 	onError: (message: string, error: unknown) => void;
 	/** The disk moved under a save, which was refused. Raise the conflict bar. */
 	onDiskChangedUnderSave: (tabId: string) => void;
@@ -682,7 +681,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 											tabManager.setTabDecodedLossy(activeId, fullLossy);
 											tabManager.setTabEncoding(activeId, fullEncoding);
 											updateLoading(activeId, false);
-											if (tabManager.activeTabId === activeId) setTimeout(options.renderRichContent, 10);
 										})
 										.catch((error) => {
 											options.onError('Error processing full markdown', error);

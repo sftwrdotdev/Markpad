@@ -76,7 +76,6 @@ function makeSession() {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: () => {},
 		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: (tabId: string) => void events.push(`cancel:${tabId}`),

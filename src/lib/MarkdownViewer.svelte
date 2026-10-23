@@ -969,7 +969,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			});
 		},
 		isScrolling: () => isScrolling,
-		renderRichContent,
 		onError: (message, error) => {
 			console.error(message, error);
 			addToast(`${message}: ${String(error)}`, 'error');

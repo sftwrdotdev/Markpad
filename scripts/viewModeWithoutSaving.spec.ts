@@ -185,7 +185,6 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 		liveMode: false,
 		toggleLiveMode: () => {},
 		tick: async () => {},
-		renderRichContent: () => {},
 		// No panes unless a test asks: where the reader lands (#799) is not
 		// what the rest of this file is about.
 		editorPane: undefined,
@@ -385,7 +384,6 @@ function makeSession(askClose: (title: string) => Promise<'save' | 'discard' | '
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: () => {},
 		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},

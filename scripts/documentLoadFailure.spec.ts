@@ -45,7 +45,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: (message: string, error: unknown) => void errors.push({ message, error }),
 		onDiskChangedUnderSave: () => {},
 		cancelPendingAutoSave: () => {},

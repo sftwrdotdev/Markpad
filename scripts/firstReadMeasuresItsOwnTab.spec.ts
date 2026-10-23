@@ -69,7 +69,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
 		setLoadingTabs: () => {},
 		measureInitialViewport: () => {},
 		isScrolling: () => false,
-		renderRichContent: () => {},
 		onError: (message: string, error: unknown) => {
 			throw new Error(`${message}: ${String(error)}`);
 		},
