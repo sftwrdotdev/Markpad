@@ -135,7 +135,7 @@ test('following a link into a new tab shows the tab that already holds the file'
 test('a link opened in a new tab goes through the ordinary open path', () => {
 	const fn = sliceBetween(viewer, 'async function openMarkdownTargetInNewTab', '\n\tasync function');
 	assert.doesNotMatch(fn, /tabManager\.addTab\(/);
-	assert.match(fn, /await loadMarkdown\(resolved\);/);
+	assert.match(fn, /await loadMarkdown\(resolved, \{ inNewTab: true \}\);/);
 });
 
 // --- the pre-existing loss, independent of one-tab-per-path ---

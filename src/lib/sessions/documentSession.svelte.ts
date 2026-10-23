@@ -24,6 +24,11 @@ export type LoadMarkdownOptions = {
 	 */
 	resetScrollHistory?: boolean;
 	/**
+	 * The file opens beside the one on screen (a link opened in a new tab), so
+	 * the tab being left keeps its in-page jump stacks.
+	 */
+	inNewTab?: boolean;
+	/**
 	 * Read the file even though the tab that will receive it holds unsaved
 	 * edits, discarding them. This is a REVERT, not an open, and only a caller
 	 * acting on an explicit user decision may ask for it — the "Reload" answer
@@ -490,7 +495,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// in-page stacks of whatever was on screen. Narrowing that to "only
 			// the tab whose text actually changes" is a behaviour change on its
 			// own terms, not part of making the stacks per tab.
-			if (loadOptions.resetScrollHistory || filePath !== options.currentFile()) {
+			if (loadOptions.resetScrollHistory || (!loadOptions.inNewTab && filePath !== options.currentFile())) {
 				options.resetScrollHistory();
 			}
 			// Navigation, back/forward and Reload act on the tab they were
