@@ -1773,7 +1773,7 @@
 
 			editor.addAction({
 				id: "file-reveal",
-				label: t('menu.openLocation', lang),
+				label: t('menu.openFileLocation', lang),
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyR,
 				],
@@ -1791,14 +1791,14 @@
 
 			editor.addAction({
 				id: "view-toggle-edit",
-				label: t('menu.toggleEditMode', lang),
+				label: t('menu.editMode', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyE],
 				run: () => ontoggleEdit?.(),
 			}),
 
 			editor.addAction({
 				id: "view-toggle-live",
-				label: t('menu.toggleLiveMode', lang),
+				label: t('menu.autoReload', lang),
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyL],
 				run: () => ontoggleLive?.(),
 			}),

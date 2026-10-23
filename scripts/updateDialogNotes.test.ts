@@ -18,3 +18,9 @@ test('release notes can be selected even though the app disables selection', () 
 	assert.match(notesRule, /user-select: text/);
 	assert.match(notesRule, /-webkit-user-select: text/);
 });
+
+test('the dialog promises reopened tabs only when restore is on', () => {
+	// With "Restore windows on launch" off nothing writes the snapshot, so the
+	// relaunched app opens empty and must not have been told otherwise.
+	assert.match(dialog, /\{#if settings\.restoreStateOnReopen\}<p>\{tk\('reopensTabs'\)\}<\/p>\{\/if\}/);
+});

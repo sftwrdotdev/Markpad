@@ -66,6 +66,10 @@ export type ShortcutEntry = {
 	 * menu, in all 26 locales.
 	 */
 	readonly labelKey: string;
+	/** The label on macOS, where the app menu names the command differently. */
+	readonly macosLabelKey?: string;
+	/** A note on where the chord works, for a command that is not everywhere. */
+	readonly hintKey?: string;
 	/**
 	 * The chords, most-advertised first. Written in the spelling the CODE uses,
 	 * which is not always the spelling a user reads: `Mod` renders as `Cmd` on
@@ -208,6 +212,8 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{
 		id: 'app-exit',
 		labelKey: 'menu.exit',
+		// The macOS app menu says "Quit Markpad"; Windows and Linux say "Exit".
+		macosLabelKey: 'menu.quit',
 		chords: ['Mod+Q'],
 		group: 'file',
 		documentCommands: ['app-exit'],
@@ -342,7 +348,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	// ---------------------------------------------------------------- view
 	{
 		id: 'view-toggle-edit',
-		labelKey: 'menu.editor',
+		labelKey: 'menu.editMode',
 		chords: ['Mod+E'],
 		group: 'view',
 		editorAction: true,
@@ -350,7 +356,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	},
 	{
 		id: 'view-toggle-live',
-		labelKey: 'menu.toggleLiveMode',
+		labelKey: 'menu.autoReload',
 		chords: ['Mod+L'],
 		group: 'view',
 		// Both halves, like Mod+E: Monaco's own Ctrl+L is `expandLineSelection`,
@@ -458,7 +464,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	},
 	{
 		id: 'tab-move-window',
-		labelKey: 'menu.moveToWindow',
+		labelKey: 'menu.moveToNextWindow',
 		chords: ['Mod+Shift+M'],
 		group: 'window',
 		documentCommands: ['move-tab-to-next-window'],
@@ -480,6 +486,8 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	{
 		id: 'app-command-palette',
 		labelKey: 'menu.commandPalette',
+		// Monaco's palette: there is none in the preview.
+		hintKey: 'settings.toolbarEditOrSplit',
 		chords: ['Mod+P'],
 		group: 'window',
 		editorAction: true,
@@ -578,7 +586,7 @@ export function shortcutLabel(id: string, modifier: 'Cmd' | 'Ctrl'): string | un
 type ShortcutSection = {
 	group: ShortcutGroup;
 	labelKey: string;
-	entries: ReadonlyArray<{ id: string; labelKey: string; chords: string[] }>;
+	entries: ReadonlyArray<{ id: string; labelKey: string; hintKey?: string; chords: string[] }>;
 };
 
 /** The whole registry, grouped and rendered for `platform` — what the panel draws. */
@@ -589,7 +597,8 @@ export function shortcutSections(platform: ShortcutPlatform): ShortcutSection[] 
 		labelKey,
 		entries: SHORTCUTS.filter((entry) => entry.group === group).map((entry) => ({
 			id: entry.id,
-			labelKey: entry.labelKey,
+			labelKey: (platform === 'macos' && entry.macosLabelKey) || entry.labelKey,
+			hintKey: entry.hintKey,
 			chords: entry.chords.map((chord) => formatChord(chord, modifier)),
 		})),
 	}));

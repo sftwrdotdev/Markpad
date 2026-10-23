@@ -1553,6 +1553,7 @@
 							</div>
 							<div class="toolbar-settings-list" role="list">
 								{#each editorToolbarSettingsTools as tool, index (tool.id)}
+									{@const toolName = t(tool.labelKey, settings.language)}
 									<div
 										class="toolbar-tool-row"
 										class:drag-source={editorToolbarDrag.draggingId === tool.id}
@@ -1562,7 +1563,7 @@
 										<button
 											type="button"
 											class="toolbar-drag-handle"
-											aria-label={`${t('settings.move', settings.language)}: ${tool.name}`}
+											aria-label={`${t('settings.move', settings.language)}: ${toolName}`}
 											onpointerdown={(e) => editorToolbarDrag.pointerDown(e, tool.id)}>
 											<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 												<circle cx="9" cy="5" r="1" fill="currentColor"/>
@@ -1580,19 +1581,19 @@
 											checked={isEditorToolbarToolVisible(tool.id)}
 											onchange={(e) => settings.setEditorToolbarToolVisible(tool.id, e.currentTarget.checked)}
 										/>
-										<label class="toolbar-tool-name" for={`editor-toolbar-tool-${tool.id}`}>{tool.name}</label>
+										<label class="toolbar-tool-name" for={`editor-toolbar-tool-${tool.id}`}>{toolName}</label>
 										<div class="toolbar-order-controls">
 											<button
 												type="button"
 												disabled={index === 0}
-												aria-label={`${t('settings.moveUp', settings.language)}: ${tool.name}`}
+												aria-label={`${t('settings.moveUp', settings.language)}: ${toolName}`}
 												onclick={() => settings.moveEditorToolbarTool(tool.id, 'up')}>
 												<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
 											</button>
 											<button
 												type="button"
 												disabled={index === editorToolbarSettingsTools.length - 1}
-												aria-label={`${t('settings.moveDown', settings.language)}: ${tool.name}`}
+												aria-label={`${t('settings.moveDown', settings.language)}: ${toolName}`}
 												onclick={() => settings.moveEditorToolbarTool(tool.id, 'down')}>
 												<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 											</button>
@@ -1728,7 +1729,7 @@
 
 							{#each section.entries as entry (entry.id)}
 								<div class="shortcut-row">
-									<span class="shortcut-name">{t(entry.labelKey, settings.language)}</span>
+									<span class="shortcut-name">{t(entry.labelKey, settings.language)}{#if entry.hintKey}<span class="toolbar-tool-hint">{t(entry.hintKey, settings.language)}</span>{/if}</span>
 									<span class="shortcut-keys">
 										{#each entry.chords as chord (chord)}
 											<kbd>{chord}</kbd>

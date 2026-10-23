@@ -24,7 +24,7 @@
 
 **Editing**
 - Monaco (VS Code editor) with Vim support
-- Split view, kept in sync line for line
+- Split view, with optional line-for-line scroll sync
 - Heading completion for links, and a customisable formatting toolbar
 - Paste an image straight into the document; drag files in to open them
 

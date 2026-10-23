@@ -64,10 +64,10 @@ test('each tool carries the label, name and shortcut the toolbar renders', () =>
 	assert.equal(byId.get('fmt-italic')?.shortcut?.('Cmd'), 'Cmd+I');
 	assert.equal(byId.get('fmt-underline')?.shortcut?.('Ctrl'), 'Ctrl+U');
 	assert.equal(byId.get('fmt-underline')?.label, 'U');
-	assert.equal(byId.get('fmt-underline')?.name, 'Underline');
+	assert.equal(byId.get('fmt-underline')?.labelKey, 'menu.underline');
 	assert.equal(byId.get('fmt-strikethrough')?.shortcut?.('Cmd'), 'Cmd+Shift+X');
 	assert.equal(byId.get('fmt-strikethrough')?.label, 'S');
-	assert.equal(byId.get('fmt-strikethrough')?.name, 'Strikethrough');
+	assert.equal(byId.get('fmt-strikethrough')?.labelKey, 'menu.strikethrough');
 	assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+Opt+T');
 
 	// The four buttons that gained a hint when the keymap was reworked. Three list

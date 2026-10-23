@@ -247,10 +247,13 @@ const UNTRANSLATED_TOASTS = new Map<string, string>([
 ]);
 
 const KNOWN_INDIRECT_CALLS = new Set([
+	'src/lib/components/EditorToolbar.svelte: t(tool.labelKey)',
 	'src/lib/components/Settings.svelte: t(action.hintKey)',
 	'src/lib/components/Settings.svelte: t(action.labelKey)',
+	'src/lib/components/Settings.svelte: t(entry.hintKey)',
 	'src/lib/components/Settings.svelte: t(entry.labelKey)',
 	'src/lib/components/Settings.svelte: t(section.labelKey)',
+	'src/lib/components/Settings.svelte: t(tool.labelKey)',
 	'src/lib/components/Tab.svelte: t(action.labelKey)',
 ]);
 

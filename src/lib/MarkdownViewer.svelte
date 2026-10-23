@@ -3206,7 +3206,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 
 		const img = (e.target as HTMLElement).closest('img');
 		let mediaItems: any[] = [];
-		if (img) {
+		// Only a local file can be saved: see `saveImageAs`.
+		if (img && normalizeAssetPath(img.src)) {
 			mediaItems = [
 				{ label: t('menu.saveImageAs', settings.language), onClick: () => saveImageAs(img.src) },
 				{ separator: true }
@@ -3279,7 +3280,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					selection?.addRange(range);
 				} },
 				{ separator: true },
-				{ label: t('menu.openLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
+				{ label: t('menu.openFileLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
 				{ label: t('menu.edit', settings.language), onClick: () => editSourceRange(editSourceTarget) },
 				{ separator: true },
 				{ label: t('menu.closeFile', settings.language), onClick: closeFile },

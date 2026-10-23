@@ -248,6 +248,42 @@ function chordOfAccelerator(accelerator: string): string {
 	return accelerator.replace(/^CmdOrCtrl\b/, 'Mod');
 }
 
+test('the panel names each command the way the macOS menu does', () => {
+	// One command, one name: the panel said "Exit" where the menu says "Quit
+	// Markpad", "Editor" for Edit Mode, "Toggle Live Mode" for Auto-Reload and
+	// "Move to" for Move Tab to Next Window.
+	const panel = shortcutSections('macos').flatMap((section) => section.entries);
+	// Pre-existing: the menu's check item is "Tab Bar", the panel's "Toggle Tab Bar".
+	const knownDifferent = new Set(['toggle-tabs']);
+	let compared = 0;
+	for (const { text, accelerator } of menuAccelerators()) {
+		const row = SHORTCUTS.find((entry) => entry.chords.includes(chordOfAccelerator(accelerator)));
+		if (!row || knownDifferent.has(row.id)) continue;
+		const entry = panel.find((candidate) => candidate.id === row.id)!;
+		assert.equal(t(entry.labelKey, 'en'), text, `${row.id}: the panel and the menu disagree`);
+		compared++;
+	}
+	assert.ok(compared > 30, `only ${compared} menu items compared`);
+	// Windows and Linux have no app menu; their in-app menu says Exit.
+	const windows = shortcutSections('windows').flatMap((section) => section.entries);
+	assert.equal(windows.find((entry) => entry.id === 'app-exit')?.labelKey, 'menu.exit');
+});
+
+test('the editor command palette names the commands the way the panel does', () => {
+	const editor = readSource('src/lib/components/Editor.svelte');
+	for (const id of ['file-reveal', 'view-toggle-edit', 'view-toggle-live']) {
+		const label = new RegExp(`id: "${id}",\\s*label: t\\('([^']+)'`).exec(editor)?.[1];
+		assert.equal(label, SHORTCUTS.find((entry) => entry.id === id)?.labelKey, `${id} in the palette`);
+	}
+});
+
+test('the command palette row says it only works in the editor', () => {
+	const palette = shortcutSections('macos')
+		.flatMap((section) => section.entries)
+		.find((entry) => entry.id === 'app-command-palette');
+	assert.equal(palette?.hintKey, 'settings.toolbarEditOrSplit');
+});
+
 test('every macOS menu accelerator is a chord the registry advertises for the command the item runs', () => {
 	const items = menuAccelerators();
 	assert.ok(items.length > 30, `${items.length} menu accelerators`);
@@ -929,11 +965,11 @@ function defines(lang: LanguageCode, key: string): boolean {
 /**
  * Registry labels that are NOT translated in every locale.
  *
- * Reusing existing keys bought full 26-locale coverage for 31 of the 38 labels
- * the panel needs. It did not buy it for these seven — and pretending otherwise
+ * Reusing existing keys bought full 26-locale coverage for 32 of the 38 labels
+ * the panel needs. It did not buy it for these six — and pretending otherwise
  * was the first thing this test caught. Every one of them is a key the app menu
  * ALREADY renders today (Reload from Disk, Find…, Back, Forward, Open File
- * Location, Move to, Window), so the panel inherits an existing gap rather than
+ * Location, Window), so the panel inherits an existing gap rather than
  * creating one, and `t()` falls back to English exactly as the menu does.
  *
  * Pinned rather than waived: a new under-translated label fails the test below,
@@ -943,7 +979,6 @@ const PARTIALLY_TRANSLATED: Record<string, number> = {
 	'menu.reloadFromDisk': 22,
 	'menu.openFileLocation': 21,
 	'menu.find': 22,
-	'menu.moveToWindow': 23,
 	'menu.back': 21,
 	'menu.forward': 21,
 	'menu.window': 23,

@@ -13,7 +13,8 @@ type EditorToolbarGroup = 'inline' | 'block' | 'list' | 'insert';
 export type EditorToolbarTool = {
 	id: string;
 	label: string;
-	name: string;
+	/** The app menu's i18n key for this command, so the toolbar names it the same way. */
+	labelKey: string;
 	shortcut?: (modifier: 'Ctrl' | 'Cmd') => string;
 	group: EditorToolbarGroup;
 };
@@ -25,21 +26,21 @@ export type EditorToolbarTool = {
  * and the shortcut it advertises cannot be attached to different commands.
  */
 const BASE_TOOLBAR_TOOLS: ReadonlyArray<Omit<EditorToolbarTool, 'shortcut'>> = [
-	{ id: 'fmt-bold', label: 'B', name: 'Bold', group: 'inline' },
-	{ id: 'fmt-italic', label: 'I', name: 'Italic', group: 'inline' },
-	{ id: 'fmt-underline', label: 'U', name: 'Underline', group: 'inline' },
-	{ id: 'fmt-strikethrough', label: 'S', name: 'Strikethrough', group: 'inline' },
-	{ id: 'fmt-inline-code', label: '`', name: 'Inline Code', group: 'inline' },
-	{ id: 'fmt-code-block', label: '{}', name: 'Code Block', group: 'block' },
-	{ id: 'fmt-quote', label: '>', name: 'Quote', group: 'block' },
-	{ id: 'fmt-heading-1', label: 'H1', name: 'Heading 1', group: 'block' },
-	{ id: 'fmt-heading-2', label: 'H2', name: 'Heading 2', group: 'block' },
-	{ id: 'fmt-heading-3', label: 'H3', name: 'Heading 3', group: 'block' },
-	{ id: 'fmt-bullet-list', label: '-', name: 'Bullet List', group: 'list' },
-	{ id: 'fmt-numbered-list', label: '1.', name: 'Numbered List', group: 'list' },
-	{ id: 'fmt-checklist', label: '[ ]', name: 'Checklist', group: 'list' },
-	{ id: 'fmt-link', label: '[]', name: 'Link', group: 'insert' },
-	{ id: 'insert-table-simple', label: '#', name: 'Table', group: 'insert' },
+	{ id: 'fmt-bold', label: 'B', labelKey: 'menu.bold', group: 'inline' },
+	{ id: 'fmt-italic', label: 'I', labelKey: 'menu.italic', group: 'inline' },
+	{ id: 'fmt-underline', label: 'U', labelKey: 'menu.underline', group: 'inline' },
+	{ id: 'fmt-strikethrough', label: 'S', labelKey: 'menu.strikethrough', group: 'inline' },
+	{ id: 'fmt-inline-code', label: '`', labelKey: 'menu.inlineCode', group: 'inline' },
+	{ id: 'fmt-code-block', label: '{}', labelKey: 'menu.codeBlock', group: 'block' },
+	{ id: 'fmt-quote', label: '>', labelKey: 'menu.quote', group: 'block' },
+	{ id: 'fmt-heading-1', label: 'H1', labelKey: 'menu.heading1', group: 'block' },
+	{ id: 'fmt-heading-2', label: 'H2', labelKey: 'menu.heading2', group: 'block' },
+	{ id: 'fmt-heading-3', label: 'H3', labelKey: 'menu.heading3', group: 'block' },
+	{ id: 'fmt-bullet-list', label: '-', labelKey: 'menu.bulletList', group: 'list' },
+	{ id: 'fmt-numbered-list', label: '1.', labelKey: 'menu.numberedList', group: 'list' },
+	{ id: 'fmt-checklist', label: '[ ]', labelKey: 'menu.checklist', group: 'list' },
+	{ id: 'fmt-link', label: '[]', labelKey: 'menu.link', group: 'insert' },
+	{ id: 'insert-table-simple', label: '#', labelKey: 'menu.insertTable', group: 'insert' },
 ];
 
 /**

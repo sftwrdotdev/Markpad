@@ -203,6 +203,8 @@
 					{#if updateStore.otherWindows.length > 0}
 						<div class="other-windows" role="alert">
 							<p>{tk('closeOtherWindows')}</p>
+							<!-- Only restore brings the tabs back: with it off, the relaunch opens empty. -->
+							{#if settings.restoreStateOnReopen}<p>{tk('reopensTabs')}</p>{/if}
 							<ul>
 								{#each updateStore.otherWindows as other (other.label)}
 									<li>{windowDisplay(other, settings.language)}</li>

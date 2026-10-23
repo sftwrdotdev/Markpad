@@ -63,9 +63,13 @@
 		return tool.shortcut ? tool.shortcut(modifier) : '';
 	}
 
+	function toolName(tool: EditorToolbarTool) {
+		return t(tool.labelKey, settings.language);
+	}
+
 	function handleMouseEnter(e: MouseEvent, tool: EditorToolbarTool) {
 		if (tool.id === 'insert-table-simple' && tablePickerOpen) return;
-		onshowTooltip?.(e, tool.name, getShortcutText(tool), 'below');
+		onshowTooltip?.(e, toolName(tool), getShortcutText(tool), 'below');
 	}
 
 	function handleHideMouseEnter(e: MouseEvent) {
@@ -217,7 +221,7 @@
 				<button
 					type="button"
 					class="toolbar-btn"
-					aria-label={getShortcutText(tool) ? `${tool.name} (${getShortcutText(tool)})` : tool.name}
+					aria-label={getShortcutText(tool) ? `${toolName(tool)} (${getShortcutText(tool)})` : toolName(tool)}
 					onmouseenter={(e) => handleMouseEnter(e, tool)}
 					onmouseleave={() => onhideTooltip?.()}
 					onfocus={(e) => handleMouseEnter(e as unknown as MouseEvent, tool)}
@@ -272,7 +276,7 @@
 										tablePickerOpen = true;
 									}}>
 									<span class="overflow-item-icon">{@render renderToolIcon(tool.id)}</span>
-									<span class="overflow-item-name">{tool.name}</span>
+									<span class="overflow-item-name">{toolName(tool)}</span>
 									{#if getShortcutText(tool)}
 										<span class="overflow-item-shortcut">{getShortcutText(tool)}</span>
 									{/if}
@@ -286,7 +290,7 @@
 										onaction(tool.id);
 									}}>
 									<span class="overflow-item-icon">{@render renderToolIcon(tool.id)}</span>
-									<span class="overflow-item-name">{tool.name}</span>
+									<span class="overflow-item-name">{toolName(tool)}</span>
 									{#if getShortcutText(tool)}
 										<span class="overflow-item-shortcut">{getShortcutText(tool)}</span>
 									{/if}

@@ -79,6 +79,13 @@ test('a local image is copied on the Rust side', () => {
 	assert.ok(bail < dialog, 'do not ask for a destination that cannot be written');
 });
 
+test('the preview offers Save Image As only for a local image', () => {
+	// A remote or data: image cannot be saved, so the item is not shown for one
+	// rather than shown and answered with an error toast.
+	const menu = sliceBetween(viewer, "const img = (e.target as HTMLElement).closest('img');", "t('menu.saveImageAs'");
+	assert.match(menu, /if \(img && normalizeAssetPath\(img\.src\)\)/);
+});
+
 test('the CSP that makes the remote case impossible is still the one described', () => {
 	// If `connect-src` is ever widened, the comment above stops being true and
 	// a JS download becomes possible again. Fail here rather than leave a

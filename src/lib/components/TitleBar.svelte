@@ -956,7 +956,7 @@
 								x2="18"
 								y2="10"></line
 							></svg>
-						<span class="action-label">{t('menu.openLocation', currentLanguage)}</span>
+						<span class="action-label">{t('menu.openFileLocation', currentLanguage)}</span>
 					</button>
 				{:else if id === 'viewMode'}
 					<div class="view-mode-group" role="group" aria-label={t('menu.view', currentLanguage)} transition:fly={{ x: 10, duration: 200 }}>
