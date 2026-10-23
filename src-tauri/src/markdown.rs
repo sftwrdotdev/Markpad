@@ -1465,6 +1465,7 @@ fn escape_html_text(text: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            '\0' => out.push('\u{FFFD}'),
             _ => out.push(ch),
         }
     }
@@ -1480,7 +1481,10 @@ fn escape_html_text(text: &str) -> String {
 ///
 /// Not a Tauri command: the registered entry point is `render_markdown`, and
 /// this is what it calls underneath.
-pub(crate) fn convert_markdown(content: &str) -> String {
+///
+/// `split_blocks`: write [`BLOCK_SEPARATOR`] between top-level blocks, so the
+/// preview can diff, process and sanitize block by block.
+pub(crate) fn convert_markdown_with(content: &str, split_blocks: bool) -> String {
     // The buffer this command was called with, captured before anything runs
     // and never rebound. What `annotate_task_checkboxes` is handed at the end
     // has to be this rather than the parameter name: a new step written as a
@@ -1496,14 +1500,21 @@ pub(crate) fn convert_markdown(content: &str) -> String {
 
     let options = markdown_options();
 
-    let html = render_html(&masked_math.text, &options);
+    let html = render_html(&masked_math.text, &options, split_blocks);
     annotate_task_checkboxes(restore_math_spans(&html, &masked_math), raw_buffer)
+}
+
+/// The document as one string, the form the export and the tests read.
+#[cfg(test)]
+pub(crate) fn convert_markdown(content: &str) -> String {
+    convert_markdown_with(content, false)
 }
 
 // `hardbreaks` renders a soft break as the same `<br>` as a hard one. The class
 // lets the Every Newline Breaks the Line setting hide just these in CSS (#967). The
 // `<br>` itself stays: scroll sync and display math read source lines off it.
-create_formatter!(PreviewFormatter, {
+// The `usize` is the open raw-HTML tag count `block_split_formatter` keeps.
+create_formatter!(PreviewFormatter<usize>, {
     NodeValue::SoftBreak => |context, node, entering| {
         if entering {
             context.write_str("<br class=\"softbreak\"")?;
@@ -1514,12 +1525,82 @@ create_formatter!(PreviewFormatter, {
     },
 });
 
-fn render_html(markdown: &str, options: &Options) -> String {
+/// Between two top-level blocks of the preview's HTML. comrak replaces every
+/// NUL in its input with U+FFFD and `escape_html_text` does the same for the
+/// math it restores, so no document can write one.
+pub(crate) const BLOCK_SEPARATOR: char = '\0';
+
+/// Tags a raw HTML block opens and leaves open, minus the ones it closes.
+/// `<details>` / markdown / `</details>` is three top-level blocks to comrak
+/// and one element to the browser, so no separator goes between them.
+static HTML_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"<(/?)([A-Za-z][A-Za-z0-9-]*)[^>]*?(/?)>").unwrap());
+const VOID_TAGS: &[&str] = &[
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track",
+    "wbr",
+];
+
+fn html_depth_change(literal: &str) -> isize {
+    HTML_TAG_RE
+        .captures_iter(literal)
+        .filter(|c| c[3].is_empty() && !VOID_TAGS.contains(&c[2].to_ascii_lowercase().as_str()))
+        .map(|c| if c[1].is_empty() { 1 } else { -1 })
+        .sum()
+}
+
+/// `context.user` is how many tags raw HTML has left open at the top level.
+fn block_split_formatter<'a>(
+    context: &mut comrak::html::Context<usize>,
+    node: &'a comrak::nodes::AstNode<'a>,
+    entering: bool,
+) -> Result<comrak::html::ChildRendering, std::fmt::Error> {
+    let top_level = node
+        .parent()
+        .is_some_and(|parent| matches!(parent.data().value, NodeValue::Document));
+    // Footnote definitions are one block: comrak opens the `<section>` on the
+    // first and closes it after the last.
+    if entering
+        && top_level
+        && context.user == 0
+        && node.previous_sibling().is_some()
+        && !(matches!(node.data().value, NodeValue::FootnoteDefinition(_))
+            && node
+                .previous_sibling()
+                .is_some_and(|prev| matches!(prev.data().value, NodeValue::FootnoteDefinition(_))))
+    {
+        // On a line of its own: the block's own `cr` then has nothing to add.
+        context.cr()?;
+        context.write_char(BLOCK_SEPARATOR)?;
+        context.lf()?;
+    }
+    if entering && top_level {
+        if let NodeValue::HtmlBlock(block) = &node.data().value {
+            context.user = context
+                .user
+                .saturating_add_signed(html_depth_change(&block.literal));
+        }
+    }
+    PreviewFormatter::formatter(context, node, entering)
+}
+
+fn render_html(markdown: &str, options: &Options, split_blocks: bool) -> String {
     let arena = Arena::new();
     let root = parse_document(&arena, markdown, options);
     let mut html = String::new();
-    PreviewFormatter::format_document(root, options, &mut html)
-        .expect("writing to a String cannot fail");
+    if split_blocks {
+        comrak::html::format_document_with_formatter(
+            root,
+            options,
+            &mut html,
+            &comrak::options::Plugins::default(),
+            block_split_formatter,
+            0,
+        )
+        .map(|_| ())
+    } else {
+        PreviewFormatter::format_document(root, options, &mut html, 0).map(|_| ())
+    }
+    .expect("writing to a String cannot fail");
     html
 }
 
@@ -3460,12 +3541,12 @@ pub(crate) mod tests {
     fn convert_markdown_body() -> String {
         let source = include_str!("markdown.rs").replace("\r\n", "\n");
         let needle = format!(
-            "\npub(crate) fn {}(content: &str) -> String {{",
-            "convert_markdown"
+            "\npub(crate) fn {}(content: &str, split_blocks: bool) -> String {{",
+            "convert_markdown_with"
         );
         let start = source
             .find(&needle)
-            .expect("convert_markdown must keep its `&str -> String` signature");
+            .expect("convert_markdown_with must keep its `(&str, bool) -> String` signature");
         let rest = &source[start + needle.len()..];
         rest[..rest
             .find("\n}\n")
@@ -3533,12 +3614,12 @@ pub(crate) mod tests {
         // tree happens to store it.
         let source = include_str!("markdown.rs").replace("\r\n", "\n");
         let needle = format!(
-            "\npub(crate) fn {}(content: &str) -> String {{",
-            "convert_markdown"
+            "\npub(crate) fn {}(content: &str, split_blocks: bool) -> String {{",
+            "convert_markdown_with"
         );
         let start = source
             .find(&needle)
-            .expect("convert_markdown must keep its `&str -> String` signature");
+            .expect("convert_markdown_with must keep its `(&str, bool) -> String` signature");
         let rest = &source[start + needle.len()..];
         let body = &rest[..rest
             .find("\n}\n")
@@ -3657,5 +3738,75 @@ pub(crate) mod tests {
             matching.contains("data-task-checkbox"),
             "the fail-safe rejected a genuine task line: {matching}",
         );
+    }
+}
+
+#[cfg(test)]
+mod split_blocks_tests {
+    use super::{convert_markdown, convert_markdown_with, BLOCK_SEPARATOR};
+
+    fn blocks(markdown: &str) -> Vec<String> {
+        convert_markdown_with(markdown, true)
+            .split(BLOCK_SEPARATOR)
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn split_blocks_adds_nothing_but_the_separators() {
+        for sample in [
+            include_str!("../../samples/markdown-syntax.md"),
+            include_str!("../../samples/markdown-syntax.zh-CN.md"),
+            include_str!("../../samples/stress-test.md"),
+            include_str!("../../samples/katex-stress.md"),
+            include_str!("../../samples/link-test.md"),
+        ] {
+            let split = convert_markdown_with(sample, true);
+            assert!(split.contains(BLOCK_SEPARATOR));
+            assert_eq!(split.replace("\0\n", ""), convert_markdown(sample));
+        }
+    }
+
+    #[test]
+    fn one_separator_between_top_level_blocks() {
+        let parts = blocks("# A\n\npara\n\n- x\n  - nested\n\n> quote\n");
+        assert_eq!(parts.len(), 4, "{parts:?}");
+        assert!(parts[0].starts_with("<h1"));
+        assert!(parts[1].starts_with("\n<p"));
+        assert!(parts[2].contains("nested"));
+    }
+
+    #[test]
+    fn footnote_definitions_stay_one_block() {
+        let parts = blocks("a[^1] b[^2]\n\n[^1]: x\n\n[^2]: y\n");
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert!(
+            parts[1].contains("<section ") && parts[1].contains("class=\"footnotes\""),
+            "{parts:?}"
+        );
+        assert!(parts[1].contains("</section>"));
+    }
+
+    #[test]
+    fn raw_html_left_open_holds_the_blocks_inside_it() {
+        let parts = blocks("<details>\n<summary>s</summary>\n\n**md**\n\n</details>\n\nafter\n");
+        assert_eq!(parts.len(), 2, "{parts:?}");
+        assert!(parts[0].contains("<strong") && parts[0].contains("</details>"));
+    }
+
+    #[test]
+    fn raw_html_that_never_closes_holds_the_rest_of_the_document() {
+        assert_eq!(blocks("<div>\n\na\n\nb\n").len(), 1);
+    }
+
+    #[test]
+    fn void_and_self_closing_tags_open_nothing() {
+        assert_eq!(blocks("<img src=\"x.png\">\n\na\n\n<hr/>\n\nb\n").len(), 4);
+    }
+
+    #[test]
+    fn no_document_can_write_the_separator() {
+        let html = convert_markdown_with("a\0b\n\n$x\0y$\n\n`c\0d`\n", true);
+        assert_eq!(html.matches(BLOCK_SEPARATOR).count(), 2, "{html:?}");
     }
 }

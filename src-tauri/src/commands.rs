@@ -5,7 +5,7 @@ use crate::fs_safety::{
     atomic_write, canonical_identity, encode_text, ensure_path_within_root, read_to_string_lossy,
     resolve_image_directory, safe_path_component,
 };
-use crate::markdown::{build_markdown_preview, convert_markdown, outline, Outline};
+use crate::markdown::{build_markdown_preview, convert_markdown_with, outline, Outline};
 use crate::window_runtime::{self, WatcherState};
 use std::fs;
 use std::path::Path;
@@ -118,9 +118,20 @@ pub async fn markdown_semantic_spans(
     .await
 }
 
+/// `split_blocks`: the preview's form, with `BLOCK_SEPARATOR` between
+/// top-level blocks. The export asks for the plain document.
 #[tauri::command]
-pub async fn render_markdown(content: String) -> Result<String, String> {
-    blocking(move || Ok(convert_markdown(&content))).await
+pub async fn render_markdown(
+    content: String,
+    split_blocks: Option<bool>,
+) -> Result<String, String> {
+    blocking(move || {
+        Ok(convert_markdown_with(
+            &content,
+            split_blocks.unwrap_or(false),
+        ))
+    })
+    .await
 }
 
 /// Reads a file, with the fidelity of the decode and the encoding it was
