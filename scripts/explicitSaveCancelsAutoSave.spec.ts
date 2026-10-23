@@ -128,6 +128,22 @@ test('a save reached without naming a tab disarms that tab too', async () => {
 	assert.deepEqual(events, [`cancel:${tabId}`, 'write:/notes/b.md']);
 });
 
+test('Save As disarms the debounce before it issues the write', async () => {
+	// Left armed, the timer fires after the tab has moved and puts a second
+	// write on the copy for no reason.
+	reset();
+	const session = makeSession();
+	disk.set('/notes/c.md', 'original');
+
+	await session.loadMarkdown('/notes/c.md');
+	const tabId = tabManager.activeTabId!;
+	tabManager.updateTabRawContent(tabId, 'edited');
+
+	nextSaveTarget = '/notes/c-copy.md';
+	assert.equal(await session.saveContentAs(), true);
+	assert.deepEqual(events, [`cancel:${tabId}`, 'write:/notes/c-copy.md']);
+});
+
 test('a Save dialog the user cancels leaves the timer armed', async () => {
 	// The standing rule for `cancelPendingAutoSave`: never disarm on a path the
 	// user can still back out of. Cancelling the dialog is exactly that — the

@@ -768,10 +768,19 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// auto-save effect only arms tabs that already have a path.
 		options.cancelPendingAutoSave(tab.id);
 		if (refuseIfLossilyDecoded(tab, targetPath, targetKey)) return false;
+		const fromDialog = tab.path === '';
 		return writeExclusively(tab.id, async () => {
 			// Snapshot taken on the far side of the wait. Anything typed while
 			// the previous write drained is part of what this save is for.
 			const snapshot = tab.rawContent;
+			// The path too. A Save As queued ahead of this save moves the tab
+			// while it waits, and the path read before the wait would compare
+			// the old file against the new file's baseline: a false "changed
+			// on disk" on the copy the user just made.
+			if (!fromDialog) {
+				targetPath = tab.path;
+				targetKey = tab.pathKey;
+			}
 			// The second line of defence, and the only one that does not rest on
 			// the watcher. Its events can be dropped, and until recently a
 			// watch armed on a file did not survive that file being renamed
@@ -854,6 +863,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// which land on the very same file.
 		const selectedKey = await canonicalizePath(selected);
 		if (refuseIfLossilyDecoded(tab, selected, selectedKey)) return false;
+		// This call writes the buffer, so the debounce has nothing left to do —
+		// the same reasoning, and the same placement after the dialog, as in
+		// `saveContent`.
+		options.cancelPendingAutoSave(tab.id);
 		// Shares the tab's guard with `saveContent`. The target is usually a
 		// different file, so the renames need not collide — but both
 		// continuations write the same tab's `originalContent`, `isDirty` and

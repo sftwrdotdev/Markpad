@@ -49,6 +49,8 @@ let writeDurationsMs: number[] = [];
 let writeCount = 0;
 /** What the Save/Save As dialog returns next. `null` is the user cancelling. */
 let nextSaveTarget: string | null = null;
+/** Times a save was refused as "changed on disk". */
+let conflicts = 0;
 
 (window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
@@ -95,7 +97,7 @@ function makeSession() {
 		isScrolling: () => false,
 		renderRichContent: () => {},
 		onError: () => {},
-		onDiskChangedUnderSave: () => {},
+		onDiskChangedUnderSave: () => void (conflicts += 1),
 		cancelPendingAutoSave: () => {},
 		askClose: async () => 'discard' as const,
 		onCloseSaveNewerEdits: () => {},
@@ -114,6 +116,7 @@ function reset() {
 	writeDurationsMs = [];
 	writeCount = 0;
 	nextSaveTarget = null;
+	conflicts = 0;
 }
 
 /** Open `path` in a tab and leave the buffer holding `edited`. */
@@ -221,6 +224,30 @@ test('saveContentAs waits behind the same tab guard', async () => {
 	const tab = tabManager.tabs.find((item) => item.id === tabId)!;
 	assert.equal(tab.path, '/notes/copy.md');
 	assert.equal(tab.isDirty, false, 'the older write must not leave the moved tab reading dirty');
+});
+
+test('an auto-save queued behind Save As writes the new file, not a false conflict', async () => {
+	// The debounce fires while the Save As write is still in flight, so its
+	// save waits behind it on the tab guard. By the time it runs the tab points
+	// at the copy and its baseline is the copy's text. Taking the path before
+	// the wait compared the OLD file against that baseline, and the copy the
+	// user just made came up "changed on disk".
+	reset();
+	const session = makeSession();
+	const tabId = await openDirtyTab(session, '/notes/h.md', 'A');
+	writeDurationsMs = [30, 5];
+	nextSaveTarget = '/notes/h-copy.md';
+
+	const saveAs = session.saveContentAs();
+	// Past the dialog, inside the copy's write.
+	await new Promise((resolve) => setTimeout(resolve, 5));
+	tabManager.updateTabRawContent(tabId, 'AB');
+	const autoSave = session.saveContent(tabId);
+
+	assert.deepEqual(await Promise.all([saveAs, autoSave]), [true, true]);
+	assert.equal(conflicts, 0, 'the save reported a conflict nobody caused');
+	assert.equal(disk.get('/notes/h-copy.md'), 'AB', 'the queued save must write the file the tab now points at');
+	assert.equal(disk.get('/notes/h.md'), 'original', 'the file the tab moved away from must be left alone');
 });
 
 test('closing a tab mid-write does not leave the older snapshot on disk', async () => {

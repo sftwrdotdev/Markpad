@@ -35,6 +35,9 @@ export class FolderManager {
 	error = $state<string | null>(null);
 
 	#unlisten: UnlistenFn | null = null;
+	/** Per folder, the read whose answer is still wanted. An older one landing late is dropped. */
+	#reads = new Map<string, number>();
+	#nextRead = 0;
 
 	rootName = $derived(this.root ? folderName(this.root) : '');
 
@@ -107,13 +110,17 @@ export class FolderManager {
 	}
 
 	async #read(path: string) {
+		const mine = ++this.#nextRead;
+		this.#reads.set(path, mine);
 		try {
 			const list = await invoke<FolderEntry[]>('read_folder_entries', { path });
+			if (!this.#landed(path, mine)) return;
 			// The folder may have been collapsed or closed while the read was in flight.
 			if (path !== this.root && !this.isExpanded(path)) return;
 			this.entries = { ...this.entries, [path]: list };
 			if (path === this.root) this.error = null;
 		} catch (error) {
+			if (!this.#landed(path, mine)) return;
 			if (path === this.root) {
 				this.error = String(error);
 			} else {
@@ -121,6 +128,13 @@ export class FolderManager {
 				this.#collapse(path);
 			}
 		}
+	}
+
+	/** Whether read `mine` of `path` is the newest one, retiring it if so. */
+	#landed(path: string, mine: number): boolean {
+		if (this.#reads.get(path) !== mine) return false;
+		this.#reads.delete(path);
+		return true;
 	}
 }
 

@@ -13,13 +13,52 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 pub struct WatcherState {
     pub(crate) watchers: Mutex<HashMap<String, RecommendedWatcher>>,
+    /// Window label -> the newest watch request it made. Arming runs on the
+    /// thread pool and can take seconds on a network share, so requests can
+    /// finish out of order; only the newest may install its watcher.
+    latest: Mutex<HashMap<String, u64>>,
+    next_request: AtomicU64,
 }
 
 impl WatcherState {
     pub fn new() -> Self {
         Self {
             watchers: Mutex::new(HashMap::new()),
+            latest: Mutex::new(HashMap::new()),
+            next_request: AtomicU64::new(0),
         }
+    }
+
+    /// Makes a new request for `label`, superseding any still arming.
+    fn request(&self, label: &str) -> u64 {
+        let id = self.next_request.fetch_add(1, Ordering::SeqCst) + 1;
+        lock_recover(&self.latest).insert(label.to_string(), id);
+        id
+    }
+
+    /// Installs `watcher` for request `id` unless a newer request (or the
+    /// window's destruction) came in behind it. A refused watcher is dropped,
+    /// which unregisters it.
+    fn install(&self, label: String, id: u64, watcher: RecommendedWatcher) -> bool {
+        let latest = lock_recover(&self.latest);
+        if latest.get(&label) != Some(&id) {
+            return false;
+        }
+        lock_recover(&self.watchers).insert(label, watcher);
+        true
+    }
+
+    /// Stops `label`'s watch, including one still arming.
+    fn unwatch(&self, label: &str) {
+        self.request(label);
+        lock_recover(&self.watchers).remove(label);
+    }
+
+    /// The window is gone: no request of its own can install after this.
+    pub(crate) fn forget_window(&self, label: &str) {
+        let mut latest = lock_recover(&self.latest);
+        latest.remove(label);
+        lock_recover(&self.watchers).remove(label);
     }
 }
 
@@ -1199,6 +1238,7 @@ pub fn watch_file(
     path: String,
 ) -> Result<(), String> {
     let label = window.label().to_string();
+    let request = state.request(&label);
     let event_label = label.clone();
     let watched_path = path.clone();
 
@@ -1232,13 +1272,13 @@ pub fn watch_file(
         .watch(&root, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
 
-    lock_recover(&state.watchers).insert(label, watcher);
+    state.install(label, request, watcher);
     Ok(())
 }
 
 #[tauri::command]
 pub fn unwatch_file(window: tauri::Window, state: State<'_, WatcherState>) -> Result<(), String> {
-    lock_recover(&state.watchers).remove(window.label());
+    state.unwatch(window.label());
     Ok(())
 }
 
@@ -1311,8 +1351,7 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
             }
         }
         tauri::WindowEvent::Destroyed => {
-            let state = window.state::<WatcherState>();
-            lock_recover(&state.watchers).remove(window.label());
+            window.state::<WatcherState>().forget_window(window.label());
             window
                 .state::<crate::folder::FolderWatcherState>()
                 .forget_window(window.label());
@@ -1330,6 +1369,39 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    fn idle_watcher() -> RecommendedWatcher {
+        RecommendedWatcher::new(|_: notify::Result<notify::Event>| {}, Config::default()).unwrap()
+    }
+
+    #[test]
+    fn a_watch_that_finishes_arming_late_never_replaces_a_newer_request() {
+        let state = WatcherState::new();
+        let slow = state.request("main");
+        let fast = state.request("main");
+        assert!(state.install("main".into(), fast, idle_watcher()));
+        assert!(
+            !state.install("main".into(), slow, idle_watcher()),
+            "the older request replaced the newer watch"
+        );
+    }
+
+    #[test]
+    fn unwatch_and_window_close_cancel_a_watch_still_arming() {
+        let state = WatcherState::new();
+        let pending = state.request("main");
+        state.unwatch("main");
+        assert!(!state.install("main".into(), pending, idle_watcher()));
+        assert!(lock_recover(&state.watchers).is_empty());
+
+        let pending = state.request("other");
+        state.forget_window("other");
+        assert!(
+            !state.install("other".into(), pending, idle_watcher()),
+            "a watch for a destroyed window was installed and leaked"
+        );
+        assert!(lock_recover(&state.watchers).is_empty());
+    }
     use std::time::{SystemTime, UNIX_EPOCH};
 
     /// A private directory to keep the pin file in, so a test never touches the

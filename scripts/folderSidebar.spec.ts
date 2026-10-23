@@ -12,6 +12,8 @@ type Entry = { name: string; path: string; isDir: boolean };
 let disk: Record<string, Entry[]> = {};
 const watched = new Set<string>();
 let folderChanged: ((event: { payload: string }) => void) | null = null;
+/** How long each successive read takes to answer, in ms, in call order. */
+let readDelaysMs: number[] = [];
 
 function dir(path: string, ...children: string[]): void {
 	disk[path] = children.map((child) => ({
@@ -23,9 +25,14 @@ function dir(path: string, ...children: string[]): void {
 
 function handleInvoke(command: string, args: Record<string, any>): unknown {
 	switch (command) {
-		case 'read_folder_entries':
-			if (!(args.path in disk)) throw new Error('Not a directory');
-			return disk[args.path];
+		case 'read_folder_entries': {
+			// The listing is taken when the read starts and handed back later.
+			const listing = disk[args.path];
+			const delay = readDelaysMs.shift() ?? 0;
+			return new Promise((resolve, reject) =>
+				setTimeout(() => (listing ? resolve(listing) : reject(new Error('Not a directory'))), delay),
+			);
+		}
 		case 'watch_folder':
 			watched.add(args.path);
 			return null;
@@ -54,6 +61,7 @@ const { FolderManager, folderName, isInside, snapshotFolder } = await import('..
 function freshDisk() {
 	disk = {};
 	watched.clear();
+	readDelaysMs = [];
 	localStorage.clear();
 	dir('/notes', 'drafts/', 'a.md', 'b.txt');
 	dir('/notes/drafts', 'old/', 'c.md');
@@ -93,6 +101,27 @@ test('a folder-changed event re-reads that one listing', async () => {
 	assert.deepEqual(
 		folder.entries['/notes'].map((e) => e.name),
 		['drafts', 'a.md', 'b.txt', 'new.md'],
+	);
+});
+
+test('an older read of a folder that answers last does not replace a newer one', async () => {
+	// Two re-reads of one folder in flight at once: a change event and the
+	// Refresh button, say. The first is slow and saw the file still there; the
+	// second saw it deleted. Whichever answers last used to win.
+	freshDisk();
+	const folder = new FolderManager();
+	await folder.open('/notes');
+
+	readDelaysMs = [30, 5];
+	const older = folder.refresh();
+	dir('/notes', 'drafts/', 'a.md');
+	const newer = folder.refresh();
+	await Promise.all([older, newer]);
+
+	assert.deepEqual(
+		folder.entries['/notes'].map((e) => e.name),
+		['drafts', 'a.md'],
+		'the deleted file came back from the older read',
 	);
 });
 
