@@ -211,6 +211,9 @@ pub async fn save_file_content(
     encoding: String,
 ) -> Result<(), String> {
     blocking(move || {
+        // As on read: a document saved to a share (Save As into
+        // `\\host\share\`) resolves its relative images against that host.
+        crate::asset_protocol::trust_document_host(&path);
         let bytes = encode_text(&content, &encoding)?;
         atomic_write(Path::new(&path), &bytes).map_err(|e| e.to_string())
     })
@@ -1159,6 +1162,23 @@ pub(crate) mod tests {
         assert_eq!(read(&image).unwrap(), "data:image/png;base64,cG5n");
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_save_to_a_share_trusts_its_host_like_a_read_does() {
+        // Save As into `\\host\share\` left the host untrusted until the
+        // file was reopened, so its relative images were refused. The write
+        // itself fails here (no such share); the attempt already touched it.
+        let doc = "//markpad-saved.invalid/share/doc.md";
+        assert!(!crate::asset_protocol::is_trusted_host(doc));
+        let _ = tauri::async_runtime::block_on(save_file_content(
+            doc.to_owned(),
+            String::new(),
+            "UTF-8".to_owned(),
+        ));
+        assert!(crate::asset_protocol::is_trusted_host(
+            "//markpad-saved.invalid/share/pic.png"
+        ));
     }
 
     #[test]

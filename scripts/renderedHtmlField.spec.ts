@@ -152,8 +152,6 @@ const exportsOffered = compileGate(
 	exportMenuGate.test,
 	{
 		tabManager: () => tabManager,
-		// MarkdownViewer.svelte:229 — `$derived(tabManager.activeTab?.path ?? '')`.
-		currentFile: () => tabManager.activeTab?.path ?? '',
 		// The gate moved into a helper when the Export as PDF chord needed the
 		// same condition (#673). Supplied as the real function, so what these
 		// tests evaluate is still the shipped decision rather than a stand-in.
@@ -218,12 +216,15 @@ const exportWouldRun = (() => {
 	assert.ok(guard, `expected ${EXPORT} to declare exportAsHtml`);
 
 	const text = exportSource.slice((guard as ts.Expression).getStart(file), (guard as ts.Expression).getEnd());
-	const bails = new Function('ctx', `return Boolean(${text});`) as (ctx: unknown) => boolean;
+	const bails = new Function('ctx', 'hasExportableDocument', `return Boolean(${text});`) as (
+		ctx: unknown,
+		gate: typeof hasExportableDocument,
+	) => boolean;
 	// The context MarkdownViewer.svelte builds for the active tab.
 	return () => {
 		const tab = tabManager.activeTab;
 		if (!tab) return false;
-		return !bails({ rawContent: tab.rawContent, tabPath: tab.path, tabTitle: tab.title });
+		return !bails({ rawContent: tab.rawContent, tabPath: tab.path, tabTitle: tab.title }, hasExportableDocument);
 	};
 })();
 
@@ -301,8 +302,8 @@ function settleRenderedCache() {
 
 test('the menu is never stricter than the export it fronts', () => {
 	// The invariant behind the fix, over the states a tab can be in. Being
-	// LOOSER is allowed (a saved file with an empty buffer still lists the
-	// entries, and the export then no-ops), being STRICTER is the defect.
+	// STRICTER is the defect this test is for; being looser is pinned by the
+	// saved-empty-file test below.
 	const states: Array<[string, () => void]> = [
 		['untitled, edited, TOC closed', () => void untitledBufferBeingEdited()],
 		[
@@ -377,17 +378,18 @@ test('a saved file is offered the export commands', () => {
 	assert.equal(exportsOffered.run(), true);
 });
 
-test('a tab whose file has not been read yet still lists the export commands', () => {
-	// A restored tab, or one whose large-file read has not landed: it has a
-	// path and an empty buffer. The entries stay — the menu must not appear
-	// and disappear while a file loads — and the export then no-ops. Pins the
-	// `currentFile !== ''` half of the gate, which the states above do not
-	// distinguish from the buffer half.
+test('a saved file with an empty buffer is offered nothing to export', () => {
+	// A saved empty file, or a tab whose read has not landed yet: a path and an
+	// empty buffer. The menu used to list the exports on the path alone, so
+	// Export as HTML then did nothing and Export as PDF printed a blank page.
+	// The menu, the PDF chord and the HTML export now ask one predicate.
 	reset();
 	tabManager.addTab('/notes/a.md');
 
-	assert.equal(tabManager.activeTab!.rawContent, '', 'precondition: nothing has been read');
-	assert.equal(exportsOffered.run(), true);
+	assert.equal(tabManager.activeTab!.rawContent, '', 'precondition: the buffer is empty');
+	assert.equal(exportWouldRun(), false, 'precondition: exportAsHtml returns null for an empty buffer');
+	assert.equal(exportsOffered.run(), false, 'so the menu must not offer it either');
+	assert.equal(hasExportableDocument(tabManager.activeTab!.rawContent), false, 'nor the PDF chord');
 });
 
 // ------------------------------------------------- addTab's Markdown argument

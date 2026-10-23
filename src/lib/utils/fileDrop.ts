@@ -38,6 +38,17 @@ function isDroppableImage(path: string): boolean {
 	return extension !== undefined && DROPPABLE_IMAGE_EXTENSIONS.includes(extension);
 }
 
+/**
+ * Which pane a drop is routed as, given the pane the pointer was tracked over.
+ * Anywhere but the editor — the preview, or outside both panes (the tab strip,
+ * the title bar) — answers as the preview does: a document opens, anything else
+ * is reported. Outside both panes in edit or split mode used to answer nothing
+ * at all, while the same drop in reading mode opened the file.
+ */
+export function dropPaneFor(target: DropPane | null, hasEditor: boolean): DropPane {
+	return target === 'editor' && hasEditor ? 'editor' : 'preview';
+}
+
 export function routeDroppedFile(path: string, pane: DropPane): DropAction {
 	// An image goes INTO the text, and only where there is text to go into.
 	// On the preview there is no caret, so it is reported rather than inserted.

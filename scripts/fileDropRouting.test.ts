@@ -24,6 +24,7 @@ import { readSource, sliceBetween } from './sourceTree.js';
 
 import {
 	DROPPABLE_IMAGE_EXTENSIONS,
+	dropPaneFor,
 	dropZoneLabel,
 	routeDroppedFile,
 	type DropAction,
@@ -95,6 +96,7 @@ test('the viewer routes both panes through it, and acts on all three answers', (
 		'isDragging = false;',
 	);
 
+	assert.match(dropHandler, /const pane = dropPaneFor\(dragTarget, !!currentEditor\);/);
 	assert.match(dropHandler, /switch \(routeDroppedFile\(path, pane\)\)/);
 	assert.match(dropHandler, /case 'insert':[\s\S]{0,120}?handleDroppedFile\(path, x, y\)/);
 	assert.match(dropHandler, /case 'open':[\s\S]{0,80}?loadMarkdown\(path\)/);
@@ -106,4 +108,17 @@ test('the viewer routes both panes through it, and acts on all three answers', (
 		viewerSource,
 		/function reportUnsupportedDrop\(path: string\)[\s\S]{0,300}?t\('toast\.unsupportedFile', settings\.language\)/,
 	);
+});
+
+test('a drop outside both panes opens a document in every mode', () => {
+	// In edit or split mode, a `.md` dropped on the tab strip was tracked over
+	// neither pane and the batch was dropped without a word, while the same
+	// drop in reading mode opened it.
+	assert.equal(dropPaneFor(null, true), 'preview');
+	assert.equal(dropPaneFor(null, false), 'preview');
+	assert.equal(routeDroppedFile('/notes/spec.md', dropPaneFor(null, true)), 'open');
+	assert.equal(dropPaneFor('editor', true), 'editor');
+	// The editor pane is only the editor while an editor is mounted there.
+	assert.equal(dropPaneFor('editor', false), 'preview');
+	assert.equal(dropPaneFor('preview', true), 'preview');
 });

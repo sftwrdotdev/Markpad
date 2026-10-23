@@ -19,6 +19,7 @@ import {
 } from './exportFonts.js';
 import { MERMAID_PRINT_THEME } from './mermaidPrint.js';
 import { normalizePreviewMaxWidth } from './previewWidth.js';
+import { hasExportableDocument } from './tabFileActions.js';
 
 /**
  * The Preview settings the live preview wears as inline styles: the font on
@@ -468,7 +469,7 @@ async function embedExportFonts(styles: string, root: HTMLElement): Promise<stri
 }
 
 export async function exportAsHtml(ctx: ExportContext): Promise<ExportHtmlResult | null> {
-	if (!ctx.rawContent) return null;
+	if (!hasExportableDocument(ctx.rawContent)) return null;
 
 	const defaultName = ctx.tabPath ? ctx.tabPath.replace(/\.[^.]+$/, '.html') : 'export.html';
 

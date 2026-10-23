@@ -591,7 +591,7 @@
 						buffer that has never been rendered, so gating on it hid an export
 						that would have produced a file.
 					-->
-					{#if hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)}
+					{#if hasExportableDocument(tabManager.activeTab?.rawContent)}
 						<div class="home-menu-divider"></div>
 						<button
 						class="home-menu-item"

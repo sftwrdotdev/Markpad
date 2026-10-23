@@ -84,15 +84,12 @@ const RULES: Rule[] = [
 		// `mdown` rather than `md`: it is distinctive enough that prose and other
 		// identifiers cannot match it by accident.
 		//
-		// MarkdownViewer.svelte is allowed because its list answers a different
-		// question. `getLanguage` maps an extension to a *Monaco grammar id*, and
-		// it deliberately leaves `txt` out — a .txt file gets plaintext
-		// highlighting even though this app renders it as Markdown. Folding the
-		// two together would have to pick one of those answers and be wrong about
-		// the other. That table has its own guard, the `return 'plaintext'` rule
-		// below.
+		// The editor's language table used to be allowed a copy of its own,
+		// which left `txt` out: a .txt note rendered as Markdown in the preview
+		// and showed as plain text in the editor. It derives its Markdown
+		// entries from this list now (utils/editorLanguage.ts).
 		marker: /['"]mdown['"]/g,
-		allowed: ['src/lib/utils/markdownLinks.ts', 'src/lib/MarkdownViewer.svelte'],
+		allowed: ['src/lib/utils/markdownLinks.ts'],
 	},
 	{
 		name: 'the list-marker grammar has one implementation in src',
@@ -146,12 +143,12 @@ const RULES: Rule[] = [
 	{
 		name: 'editor language mapping has one implementation',
 		why: 'A second extension-to-language table drifts from the one the editor actually uses, and the editor then opens a file under the wrong Monaco grammar.',
-		// Pins the Monaco language id the table falls back to, not the private
-		// `getLanguage` helper that happens to hold it today: 'plaintext' is a
+		// Pins the Monaco language id the table falls back to, not the
+		// `editorLanguageFor` helper that happens to hold it today: 'plaintext' is a
 		// magic string Monaco defines and TypeScript cannot check, and any second
 		// extension table has to name it too.
 		marker: /return '(?:plaintext)'/g,
-		allowed: ['src/lib/MarkdownViewer.svelte'],
+		allowed: ['src/lib/utils/editorLanguage.ts'],
 	},
 	{
 		name: 'the home tab sentinel is spelled in one place',

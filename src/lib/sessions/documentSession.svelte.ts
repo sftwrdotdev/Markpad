@@ -5,7 +5,7 @@ import { tabManager, type Tab } from '../stores/tabs.svelte.js';
 import { getMarkdownBodyWithoutFrontMatter } from '../utils/frontMatter.js';
 import { t } from '../utils/i18n.js';
 import { LIST_MARKER, LIST_MARKER_PREFIX, TASK_BOX } from '../utils/listSyntax.js';
-import { hasMarkdownLinkExtension } from '../utils/markdownLinks.js';
+import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../utils/markdownLinks.js';
 import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 
 export type LoadMarkdownOptions = {
@@ -743,7 +743,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		if (!targetPath) {
 			const selected = await save({
 				filters: [
-					{ name: 'Markdown', extensions: ['md'] },
+					{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS },
 					{ name: 'All Files', extensions: ['*'] },
 				],
 				defaultPath: tab.title,
@@ -842,7 +842,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		const copyIsPartial = tab.isTruncated === true;
 		const selected = await save({
 			filters: [
-				{ name: 'Markdown', extensions: ['md'] },
+				{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS },
 				{ name: 'All Files', extensions: ['*'] },
 			],
 			defaultPath: tab.path || undefined,

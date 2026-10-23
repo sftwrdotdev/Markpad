@@ -71,7 +71,8 @@ type Body = Cow<'static, [u8]>;
 static DOCUMENT_UNC_HOSTS: LazyLock<Mutex<HashSet<String>>> =
     LazyLock::new(|| Mutex::new(HashSet::new()));
 
-/// Records the share `document` lives on, if any. Called when a document is read.
+/// Records the share `document` lives on, if any. Called when a document is
+/// read or saved.
 pub(crate) fn trust_document_host(document: &str) {
     if let Some(host) = unc_host(document) {
         lock_recover(&DOCUMENT_UNC_HOSTS).insert(host);
@@ -96,6 +97,11 @@ fn unc_host(path: &str) -> Option<String> {
 
 fn refuses_unc(path: &str, trusted: &HashSet<String>) -> bool {
     unc_host(path).is_some_and(|host| !trusted.contains(&host))
+}
+
+#[cfg(test)]
+pub(crate) fn is_trusted_host(path: &str) -> bool {
+    !refuses_unc(path, &lock_recover(&DOCUMENT_UNC_HOSTS))
 }
 
 /// Answers one `asset:` request. Blocking: the caller is expected to be on a

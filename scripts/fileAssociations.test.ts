@@ -27,3 +27,12 @@ test('the Open dialog offers every extension Markpad treats as a document', () =
 	// A literal list is how the two drifted apart in the first place.
 	assert.doesNotMatch(viewer, /extensions: \['md/);
 });
+
+test('the Save dialogs offer the same document extensions', () => {
+	// Both hard-coded `['md']`, so a `.txt` note saved under a new name had to
+	// go through "All Files".
+	const session = readSource('src/lib/sessions/documentSession.svelte.ts');
+
+	assert.equal(session.match(/\{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS \}/g)?.length, 2);
+	assert.doesNotMatch(session, /extensions: \['md/);
+});

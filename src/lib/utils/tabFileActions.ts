@@ -19,19 +19,17 @@ export function hasRealFilePath(path: string): boolean {
 }
 
 /**
- * True when there is a document worth exporting: a file on disk, or an untitled
- * buffer someone has typed into.
+ * True when there is a document worth exporting: a buffer with something in it,
+ * saved or not.
  *
- * Shared by the Export menu items, which are hidden without it, and by the
- * Export as PDF chord (#673), which would otherwise print a blank page for a
- * document the menu says cannot be exported. Two spellings of one condition is
- * how the menu and the keyboard come to disagree.
- *
- * `currentFile` rather than the tab's path because that is what both call
- * sites already hold, and it is the same string.
+ * Shared by the Export menu items, which are hidden without it, by the Export as
+ * PDF chord (#673), and by the HTML export itself. Two spellings of one
+ * condition is how the menu and the exports come to disagree: the menu used to
+ * offer a saved file's exports on its path alone, so a saved empty file printed
+ * a blank PDF page and its HTML export silently did nothing.
  */
-export function hasExportableDocument(currentFile: string, rawContent: string | undefined): boolean {
-	return currentFile !== '' || !!rawContent;
+export function hasExportableDocument(rawContent: string | undefined): boolean {
+	return !!rawContent;
 }
 
 export function getTabFileActions(path: string): TabFileAction[] {

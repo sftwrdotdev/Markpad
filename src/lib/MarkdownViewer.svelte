@@ -27,6 +27,7 @@
 	import { isHomePath } from './utils/homeTab.js';
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
+	import { editorLanguageFor } from './utils/editorLanguage.js';
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
@@ -47,7 +48,7 @@ import {
 	toggleFoldFromClick,
 	type FoldHost,
 } from './utils/foldState.js';
-import { dropZoneLabel, routeDroppedFile, type DropPane } from './utils/fileDrop.js';
+import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
 import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, preferredReferenceStyle } from './utils/headingReference.js';
 import {
@@ -339,9 +340,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let frontMatterTagEditIndexes = $state<Record<string, number | null>>({});
 	let frontMatterTagEditDrafts = $state<Record<string, string>>({});
 	let isFrontMatterCollapsed = $derived(frontMatterCollapsedByKey[frontMatterPanelKey] ?? true);
-	// An untitled tab is Markdown until saved under another name; see `getLanguage`.
+	// An untitled tab is Markdown until saved under another name; see `editorLanguageFor`.
 	let isMarkdown = $derived(currentFile === '' || hasMarkdownLinkExtension(currentFile));
-	let editorLanguage = $derived(getLanguage(currentFile));
+	let editorLanguage = $derived(editorLanguageFor(currentFile));
 	let htmlContent = $derived(tabManager.activeTab?.content ?? '');
 	let scrollTop = $derived(tabManager.activeTab?.scrollTop ?? 0);
 	let isScrolled = $derived(scrollTop > 0);
@@ -1138,27 +1139,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			if (other.label !== appWindow.label) await other.close();
 		}
 		await appWindow.close();
-	}
-
-	const EDITOR_LANGUAGES: Record<string, string> = {
-		js: 'javascript',
-		jsx: 'javascript',
-		ts: 'typescript',
-		tsx: 'typescript',
-		html: 'html',
-		css: 'css',
-		json: 'json',
-		md: 'markdown',
-		markdown: 'markdown',
-		mdown: 'markdown',
-		mkd: 'markdown',
-	};
-
-	function getLanguage(path: string) {
-		if (!path) return 'markdown';
-		const ext = path.split('.').pop()?.toLowerCase() ?? '';
-		if (Object.hasOwn(EDITOR_LANGUAGES, ext)) return EDITOR_LANGUAGES[ext];
-		return 'plaintext';
 	}
 
 	/**
@@ -2674,7 +2654,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 				tabId: tab.id,
 				onDisk,
 				mine: tab.rawContent,
-				language: getLanguage(tab.path),
+				language: editorLanguageFor(tab.path),
 			};
 		} catch (error) {
 			console.error('Failed to read the file for comparison', error);
@@ -2885,7 +2865,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// through two different layers — the document handler in reading mode
 		// and the editor's own action in edit mode — and a guard on one of them
 		// still printed a blank page from the other (#673).
-		if (!hasExportableDocument(currentFile, tabManager.activeTab?.rawContent)) return;
+		if (!hasExportableDocument(tabManager.activeTab?.rawContent)) return;
 		const tab = tabManager.activeTab;
 		if (!printRootEl || pdfExporting) return;
 		pdfExporting = true;
@@ -4094,28 +4074,20 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						// branch used to look for an image and silently discard
 						// everything else, so a `.md` dropped there did nothing at
 						// all while the same drop on the preview opened it.
-						const pane: DropPane | null =
-							dragTarget === 'editor' && currentEditor
-								? 'editor'
-								: dragTarget === 'preview' || (!isSplit && !isEditing)
-									? 'preview'
-									: null;
-
-						if (pane) {
-							paths.forEach(path => {
-								switch (routeDroppedFile(path, pane)) {
-									case 'insert':
-										currentEditor?.handleDroppedFile(path, x, y);
-										break;
-									case 'open':
-										loadMarkdown(path);
-										break;
-									case 'unsupported':
-										reportUnsupportedDrop(path);
-										break;
-								}
-							});
-						}
+						const pane = dropPaneFor(dragTarget, !!currentEditor);
+						paths.forEach(path => {
+							switch (routeDroppedFile(path, pane)) {
+								case 'insert':
+									currentEditor?.handleDroppedFile(path, x, y);
+									break;
+								case 'open':
+									loadMarkdown(path);
+									break;
+								case 'unsupported':
+									reportUnsupportedDrop(path);
+									break;
+							}
+						});
 						
 						isDragging = false;
 						dragTarget = null;
