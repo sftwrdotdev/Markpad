@@ -39,7 +39,7 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": ["md", "markdown", "mdown", "mkd"],
         "contentTypes": [
           "net.daringfireball.markdown",
           "public.markdown"

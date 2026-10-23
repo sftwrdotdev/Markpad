@@ -1,16 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { readSource } from './sourceTree.js';
 
 const config = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
 	bundle: { fileAssociations: Array<{ ext: string[] }> };
 };
 
-test('installer advertises only Markdown file associations', () => {
+// Every extension Markpad treats as a Markdown document is associated, except
+// `.txt`. An extension added to either list fails here until the other follows.
+test('installer associates every Markdown extension except txt', () => {
 	const extensions = config.bundle.fileAssociations.flatMap((association) => association.ext);
-	assert.deepEqual(extensions, ['md', 'markdown']);
-	assert.equal(extensions.includes('txt'), false);
+	assert.deepEqual(
+		extensions,
+		MARKDOWN_LINK_EXTENSIONS.filter((ext) => ext !== 'txt'),
+	);
 });
 
 // The other half of the same policy, kept in this file so neither side moves

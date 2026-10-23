@@ -6,8 +6,8 @@
 ;
 ; Everything a hook does here has to be something the template does not already
 ; do. The template creates the desktop shortcut from the finish-page checkbox
-; (and automatically for silent and passive installs), registers `.md` and
-; `.markdown` from `bundle.fileAssociations` via APP_ASSOCIATE, and writes every
+; (and automatically for silent and passive installs), registers every extension
+; in `bundle.fileAssociations` via APP_ASSOCIATE, and writes every
 ; key through SHCTX so it follows `installMode`. Duplicating any of that from
 ; here overrides a choice the user was already given.
 
@@ -38,7 +38,7 @@
   Pop $0
 !macroend
 
-; The ProgID the bundler template registers `.md` and `.markdown` under. It is
+; The ProgID the bundler template registers the Markdown extensions under. It is
 ; `bundle.fileAssociations[].name` from tauri.conf.json verbatim -- the template
 ; expands `{{or association.name ext}}` into the APP_ASSOCIATE FILECLASS
 ; argument -- and nothing in the build exports it as a define, so it is repeated
@@ -69,8 +69,12 @@
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\shell\open\command" "" "$\"$INSTDIR\${MAINBINARYNAME}.exe$\" $\"%1$\""
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".md" ""
   WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".markdown" ""
+  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".mdown" ""
+  WriteRegStr SHCTX "Software\Classes\Applications\${MAINBINARYNAME}.exe\SupportedTypes" ".mkd" ""
   WriteRegStr SHCTX "Software\Classes\.md\OpenWithProgids" "${MARKPAD_PROGID}" ""
   WriteRegStr SHCTX "Software\Classes\.markdown\OpenWithProgids" "${MARKPAD_PROGID}" ""
+  WriteRegStr SHCTX "Software\Classes\.mdown\OpenWithProgids" "${MARKPAD_PROGID}" ""
+  WriteRegStr SHCTX "Software\Classes\.mkd\OpenWithProgids" "${MARKPAD_PROGID}" ""
 !macroend
 
 ; And hand them back. The Applications key is addressed by executable *name*,
@@ -90,9 +94,11 @@
   Pop $0
   DeleteRegValue SHCTX "Software\Classes\.md\OpenWithProgids" "${MARKPAD_PROGID}"
   DeleteRegValue SHCTX "Software\Classes\.markdown\OpenWithProgids" "${MARKPAD_PROGID}"
+  DeleteRegValue SHCTX "Software\Classes\.mdown\OpenWithProgids" "${MARKPAD_PROGID}"
+  DeleteRegValue SHCTX "Software\Classes\.mkd\OpenWithProgids" "${MARKPAD_PROGID}"
 !macroend
 
-; Give `.md` and `.markdown` a document icon of their own (#975).
+; Give the Markdown extensions a document icon of their own (#975).
 ;
 ; APP_ASSOCIATE points the ProgID's DefaultIcon at `Markpad.exe,0`, so Explorer
 ; draws every Markdown file with the app icon. The bundler embeds one icon in
