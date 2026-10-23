@@ -711,8 +711,9 @@ class TabManager {
 		// A transferred tab is never read from disk here — its buffer came with
 		// it — so nothing else would ever resolve its path, and it would sit out
 		// the one-tab-per-file rule for as long as it stayed open. Resolving it
-		// in the background cannot undo the claim above, but it does let every
-		// LATER open of the same file recognise this tab.
+		// in the background claims the path again by identity (see
+		// `setTabPathKey`), which catches a resident tab that spells the same
+		// file differently.
 		void canonicalizePath(tab.path).then((key) => this.setTabPathKey(tab.id, tab.path, key));
 		return tab.id;
 	}
@@ -862,10 +863,19 @@ class TabManager {
 	 * Guarded on the path still matching: the tab may have been navigated
 	 * elsewhere while the resolution was in flight, and a key describing a file
 	 * the tab no longer holds is worse than no key at all.
+	 *
+	 * The claim is made again here, now with the key. Those routes claimed the
+	 * path literally, so `C:/n/b.md` arriving beside a tab on `C:\n\b.md` (or
+	 * `readme.md` beside `Readme.md` on macOS, or a symlink beside its target)
+	 * passed as a different file and left two tabs with two auto-save timers on
+	 * one file. Every one of them learns its identity through this method, so
+	 * this is the one place that can settle it for all of them.
 	 */
 	setTabPathKey(id: string, path: string, pathKey: string) {
 		const tab = this.tab(id);
-		if (tab && tab.path === path) tab.pathKey = pathKey;
+		if (!tab || tab.path !== path) return;
+		tab.pathKey = pathKey;
+		this.claimPath(path, id, pathKey);
 	}
 
 	updateTabScroll(id: string, scrollTop: number) {
@@ -1223,7 +1233,8 @@ class TabManager {
 		// that has since been opened in another tab. History holds the paths
 		// as they were typed, not their identities, so this claim compares
 		// literally; the caller loads the file straight afterwards and
-		// `loadMarkdown` resolves the key then.
+		// `loadMarkdown` resolves the key then, which claims it again by
+		// identity (see `setTabPathKey`).
 		this.claimPath(path, id);
 		tab.historyIndex = result.historyIndex;
 		tab.path = path;

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
+import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
+
 // On macOS and Windows the filesystem folds case: `/notes/A.md` and
 // `/notes/a.md` are ONE file. (APFS folds Unicode normalization too, so the
 // NFC and NFD spellings of `café.md` are one file as well — which no amount of
@@ -189,6 +191,60 @@ test('two genuinely different files still get their own tabs', async () => {
 	await session.loadMarkdown('/notes/b.md');
 
 	assert.equal(tabManager.tabs.length, 2);
+});
+
+// Back/forward and a tab arriving from another window put a path on a tab
+// before anything has resolved it, so their claim compares spellings. The
+// identity arrives a moment later, and the claim has to be made again then.
+test('going back to a file open in another tab under another spelling leaves one tab', async () => {
+	reset();
+	const session = makeSession();
+	disk.set('/notes/A.md', { body: 'a', lossy: false });
+	disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+	await session.loadMarkdown('/notes/A.md');
+	const walker = tabManager.activeTabId!;
+	await session.loadMarkdown('/notes/b.md', { navigate: true });
+	await session.loadMarkdown('/notes/a.md');
+	tabManager.setActive(walker);
+
+	const path = tabManager.goBack(walker)!;
+	await session.loadMarkdown(path, { skipTabManagement: true });
+
+	assert.equal(tabManager.tabs.length, 1, 'one file, one tab');
+	assert.equal(tabManager.activeTabId, walker);
+});
+
+test('a tab arriving from another window under another spelling leaves one tab', async () => {
+	reset();
+	const session = makeSession();
+	disk.set('/notes/A.md', { body: 'resident copy', lossy: false });
+	await session.loadMarkdown('/notes/A.md');
+
+	const arrived = tabManager.insertTransferredTab({
+		path: '/notes/a.md',
+		title: 'a.md',
+		rawContent: 'edited elsewhere',
+		originalContent: 'resident copy',
+		isDirty: true,
+		isEditing: true,
+		scrollTop: 0,
+		scrollPercentage: 0,
+		anchorLine: asRendererLine(0),
+		isSplit: false,
+		splitRatio: 0.5,
+		isScrollSynced: false,
+		hasReplacementChars: false,
+		encoding: 'UTF-8',
+		history: ['/notes/a.md'],
+		historyIndex: 0,
+	});
+	// The path is resolved in the background; let that answer land.
+	await new Promise((resolve) => setTimeout(resolve, 0));
+
+	assert.equal(tabManager.tabs.length, 1, 'one file, one tab');
+	assert.equal(tabManager.tabs[0].id, arrived);
+	assert.equal(tabManager.tabs[0].rawContent, 'edited elsewhere');
 });
 
 test('Save As onto a file already open under another spelling does not leave two tabs on it', async () => {

@@ -90,11 +90,11 @@ import {
 	anchorIdCandidates,
 	getMarkdownLinkTarget as getRelativeMarkdownTarget,
 	hasMarkdownLinkExtension,
-	normalizeComparableMarkdownPath,
 	resolveMarkdownTargetPath,
 	type MarkdownLinkTarget as RelativeMarkdownTarget,
 } from './utils/markdownLinks.js';
 import { resolveLocalFileLinkPath } from './utils/localFileLinks.js';
+import { canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
 import { findSeedFromSelection } from './utils/findSeed.js';
 import { normalizeAssetPath } from './utils/exportHtml.js';
 import {
@@ -2116,9 +2116,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	async function openRelativeMarkdownTarget(target: RelativeMarkdownTarget) {
-		const resolved = resolveMarkdownTargetPath(currentFile, target);
+		const from = currentFile;
+		const resolved = resolveMarkdownTargetPath(from, target);
 		if (!resolved) return;
-		if (normalizeComparableMarkdownPath(resolved, settings.osType) === normalizeComparableMarkdownPath(currentFile, settings.osType)) {
+		// The same file, not the same string: `readme.md#a` inside `Readme.md`
+		// on macOS, or a link through a symlink, is a jump within this document,
+		// not a reload that asks to discard its unsaved edits.
+		const [resolvedKey, fromKey] = await Promise.all([canonicalizePath(resolved), canonicalizePath(from)]);
+		if (isSameFilePath({ path: resolved, pathKey: resolvedKey }, { path: from, pathKey: fromKey })) {
 			if (target.hash) {
 				await scrollToAnchorWhenReady(target.hash);
 			} else if (markdownBody) {
@@ -2138,10 +2143,12 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const resolved = resolveMarkdownTargetPath(currentFile, target);
 		if (!resolved) return;
 
-		tabManager.addTab(resolved);
-		await loadMarkdown(resolved, { skipTabManagement: true });
+		// The ordinary open path, as the Open dialog takes it: `loadMarkdown`
+		// resolves the file's identity first, so a tab already holding it under
+		// another spelling is activated instead of a second tab being built.
+		await loadMarkdown(resolved);
 		if (target.hash) {
-			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, resolved);
+			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, tabManager.activeTab?.path);
 		}
 	}
 

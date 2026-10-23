@@ -3,8 +3,9 @@ import test from 'node:test';
 
 import ts from 'typescript';
 
-import { getMarkdownLinkTarget } from '../src/lib/utils/markdownLinks.js';
+import { getMarkdownLinkTarget, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
+import { isSameFilePath } from '../src/lib/utils/pathIdentity.js';
 import { functionSource, offsetOf, readSource } from './sourceTree.js';
 
 /*
@@ -290,4 +291,48 @@ test('a markdown link is handled here and goes no further', async () => {
 	const { defaultPrevented, propagationStopped } = await clickLink('./other.md');
 	assert.equal(defaultPrevented, true);
 	assert.equal(propagationStopped, true);
+});
+
+// "Is this link the file I am reading?" is a question about the FILE. On
+// macOS `[x](readme.md#a)` inside `Readme.md` names the open document, and
+// comparing spellings answered no: the click asked to save or discard the
+// unsaved edits and reloaded the file instead of scrolling to `#a`.
+const openRelative = ts.transpileModule(functionSource(viewer, 'openRelativeMarkdownTarget'), {
+	compilerOptions: { target: ts.ScriptTarget.ES2022 },
+}).outputText;
+
+async function followLink(currentFile: string, path: string) {
+	const calls: string[] = [];
+	const run = new Function(
+		'deps',
+		`"use strict";
+		const {
+			currentFile, resolveMarkdownTargetPath, canonicalizePath, isSameFilePath,
+			scrollToAnchorWhenReady, markdownBody, pushScrollHistory, tabManager, canCloseTab, loadMarkdown,
+		} = deps;
+		${openRelative}
+		return openRelativeMarkdownTarget;`,
+	)({
+		currentFile,
+		resolveMarkdownTargetPath,
+		// A case-insensitive volume whose directory holds `Readme.md`.
+		canonicalizePath: async (p: string) => (p.toLowerCase() === '/notes/readme.md' ? '/notes/Readme.md' : p),
+		isSameFilePath,
+		scrollToAnchorWhenReady: async () => void calls.push('scroll'),
+		markdownBody: null,
+		pushScrollHistory: () => {},
+		tabManager: { activeTabId: 'tab' },
+		canCloseTab: async () => {
+			calls.push('ask to close');
+			return true;
+		},
+		loadMarkdown: async () => void calls.push('load'),
+	}) as (target: { path: string; hash: string }) => Promise<void>;
+	await run({ path, hash: 'a' });
+	return calls;
+}
+
+test('a link to the open file under another spelling scrolls instead of reloading', async () => {
+	assert.deepEqual(await followLink('/notes/Readme.md', 'readme.md'), ['scroll']);
+	assert.deepEqual(await followLink('/notes/Readme.md', 'other.md'), ['ask to close', 'load', 'scroll']);
 });

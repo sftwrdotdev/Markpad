@@ -87,9 +87,9 @@ function openEdited(path: string, onDisk: string, edits: string) {
 
 // --- opening a file must never cost a buffer ---
 
-// `openMarkdownTargetInNewTab` calls `addTab` and then loads with
-// `skipTabManagement`, so whatever tab `addTab` leaves active is the one the
-// disk content lands in. Today that is always a fresh tab, so this passes
+// `addTab` followed by a load with `skipTabManagement` is the shape back/forward
+// and a few other routes use: whatever tab `addTab` leaves active is the one
+// the disk content lands in. Today that is always a fresh tab, so this passes
 // without the guard — it is pinned here because it is the invariant, and any
 // future change to how an already-open path is resolved has to keep it.
 //
@@ -102,7 +102,6 @@ test('following a link into a new tab never costs the target tab its unsaved edi
 	const edited = openEdited('/notes/target.md', 'on disk', 'my unsaved paragraph');
 	tabManager.addTab('/notes/from.md', 'from text');
 
-	// Exactly what openMarkdownTargetInNewTab does.
 	tabManager.addTab('/notes/target.md');
 	await session.loadMarkdown('/notes/target.md', { skipTabManagement: true, resetScrollHistory: true });
 
@@ -129,10 +128,14 @@ test('following a link into a new tab shows the tab that already holds the file'
 	assert.deepEqual(reads, [], 'the file is not even read');
 });
 
-test('the call shape this guards is still the one MarkdownViewer uses', () => {
+// A link opened in a new tab takes the ordinary open path, which resolves the
+// file's identity before picking a tab. Putting the path on a tab first and
+// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
+// link opened a second tab beside the `C:\n\b.md` the user already had open.
+test('a link opened in a new tab goes through the ordinary open path', () => {
 	const fn = sliceBetween(viewer, 'async function openMarkdownTargetInNewTab', '\n\tasync function');
-	assert.match(fn, /tabManager\.addTab\(/);
-	assert.match(fn, /loadMarkdown\([^)]*\{[^}]*skipTabManagement: true/);
+	assert.doesNotMatch(fn, /tabManager\.addTab\(/);
+	assert.match(fn, /await loadMarkdown\(resolved\);/);
 });
 
 // --- the pre-existing loss, independent of one-tab-per-path ---

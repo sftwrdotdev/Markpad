@@ -26,8 +26,26 @@ export function parseRecentFiles(raw: string | null): string[] {
 	}
 }
 
+/**
+ * One spelling per file for a Windows path. The Open dialog hands over
+ * `C:\n\b.md` while a followed link resolves to `C:/n/b.md`, and both are one
+ * file, so the list showed it twice. Windows paths fold case as well.
+ * Anything else is compared as written: on macOS and Linux `\` is an ordinary
+ * filename character and case may matter.
+ */
+function recentFileKey(path: string): string {
+	return /^([a-z]:[\\/]|\\\\)/i.test(path) ? path.replace(/\\/g, '/').toLowerCase() : path;
+}
+
+/** Keeps the first spelling of each file, so the one just promoted wins. */
 function dedupe(files: readonly string[]): string[] {
-	return [...new Set(files)];
+	const seen = new Set<string>();
+	return files.filter((file) => {
+		const key = recentFileKey(file);
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
 }
 
 /** Moves `path` to the front, keeping the list at most {@link RECENT_FILES_LIMIT} long. */

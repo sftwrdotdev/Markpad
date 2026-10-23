@@ -139,14 +139,3 @@ export function isOpenInNewTabMarkdownTarget(href: string, currentFile: string):
 	if (!target) return false;
 	return resolveMarkdownTargetPath(currentFile, target) !== null;
 }
-
-export function normalizeComparableMarkdownPath(path: string, osType: string): string {
-	const normalized = path.replace(/\\/g, '/');
-	const comparable = normalized.startsWith('//')
-		? `//${normalized.slice(2).replace(/\/+/g, '/')}`
-		: normalized.replace(/\/+/g, '/');
-	if (osType === 'windows' || /^[a-z]:/i.test(comparable) || comparable.startsWith('//')) {
-		return comparable.toLowerCase();
-	}
-	return comparable;
-}

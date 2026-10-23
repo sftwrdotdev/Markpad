@@ -262,3 +262,11 @@ test('a window folds in what its siblings did', () => {
 	assert.match(viewer, /window\.addEventListener\('storage', onStorage\)/);
 	assert.match(viewer, /window\.removeEventListener\('storage', onStorage\)/);
 });
+
+// The Open dialog hands over `C:\n\b.md` and a followed link resolves to
+// `C:/n/b.md`. One file, so one entry, under the spelling opened last.
+test('a Windows path is one recent entry whichever separators it arrived with', () => {
+	assert.deepEqual(promoteRecentFile(['C:\\n\\b.md', '/x.md'], 'C:/n/B.md'), ['C:/n/B.md', '/x.md']);
+	// Elsewhere `\` is a filename character and case may matter.
+	assert.deepEqual(promoteRecentFile(['/n/a\\b.md', '/n/A.md'], '/n/a/b.md'), ['/n/a/b.md', '/n/a\\b.md', '/n/A.md']);
+});
