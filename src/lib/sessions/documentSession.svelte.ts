@@ -914,6 +914,29 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		});
 	}
 
+	/**
+	 * Rename the tab's file on disk and point the tab at the new name. Throws
+	 * what the backend refused with, for the caller to show.
+	 *
+	 * The same repoint as Save As, so it keeps Save As's two guarantees. It runs
+	 * in the tab's write queue: a save already writing the old path finishes
+	 * before the file moves, instead of renaming its temp file over the old name
+	 * after it and bringing the file back. And the tab takes the new path's
+	 * canonical key, so opening the file later under another spelling finds this
+	 * tab rather than opening a second one.
+	 */
+	async function renameFile(tabId: string, newPath: string): Promise<void> {
+		const tab = tabManager.tabs.find((item) => item.id === tabId);
+		if (!tab?.path) return;
+		// An armed debounce would capture the old path. The path change re-arms
+		// it through the auto-save effect.
+		options.cancelPendingAutoSave(tab.id);
+		await writeExclusively(tab.id, async () => {
+			await invoke('rename_file', { oldPath: tab.path, newPath });
+			tabManager.updateTabPath(tab.id, newPath, await canonicalizePath(newPath));
+		});
+	}
+
 	async function toggleTaskCheckbox(sourceLine: number, nowChecked: boolean) {
 		const tab = tabManager.activeTab;
 		if (!tab) return false;
@@ -1010,5 +1033,5 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return true;
 	}
 
-	return { loadMarkdown, saveContent, saveContentAs, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	return { loadMarkdown, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

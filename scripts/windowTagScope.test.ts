@@ -140,6 +140,7 @@ test('the popover carries Pin/Unpin and Remove, and each acts on the tag', async
 	// Pin persists the window's documents under the tag's name.
 	assert.equal(bar.pinLabel(), 'Pin Tag', 'the pin control does not offer to pin an unpinned tag');
 	bar.pinClick({ stopPropagation: () => {} });
+	await settle();
 	assert.equal(tabManager.windowTag?.pinned, true, 'Pin did not pin the tag');
 	assert.deepEqual(
 		invokeCalls.filter((call) => call.cmd === 'save_pinned_tag').map((call) => call.args),
@@ -314,6 +315,21 @@ test('a name another pinned tag holds is refused, in the popover', async () => {
 	await bar.applyTag();
 
 	assert.deepEqual(tabManager.windowTag, { name: 'Research', color: COLORS[2], pinned: true }, 'the rename went through anyway');
+	assert.equal(bar.state().tagEditorOpen, true);
+	assert.match(bar.state().tagError, /pinned tag already uses this name/i);
+});
+
+test('pinning under a name a closed pinned group holds is refused, in the popover', async () => {
+	// The group's window is closed, so no open window holds the name and the
+	// rename check never saw it. Pinning used to replace that group's files.
+	const { bar } = setup({ pinCreated: false });
+	tabManager.setWindowTag({ name: 'Work', color: COLORS[2] });
+	bar.openTagEditor();
+
+	bar.pinClick({ stopPropagation: () => {} });
+	await settle();
+
+	assert.deepEqual(tabManager.windowTag, { name: 'Work', color: COLORS[2], pinned: false }, 'the window was marked pinned anyway');
 	assert.equal(bar.state().tagEditorOpen, true);
 	assert.match(bar.state().tagError, /pinned tag already uses this name/i);
 });

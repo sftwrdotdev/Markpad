@@ -217,9 +217,12 @@ fn update_pinned_tags(
     Ok(())
 }
 
-/// Writes `color` and `files` to the pin named `name` and reports whether it
-/// existed. Only the explicit pin passes `create`: a window saves its pin as it
-/// ends, and another window may have unpinned the tag in the meantime.
+/// Reports whether a pin named `name` existed. A window's closing save
+/// refreshes that pin's `color` and `files` and never makes one: another window
+/// may have unpinned the tag in the meantime. The explicit pin passes `create`
+/// and only ever makes one: a pin already holding the name is a group the user
+/// made earlier, likely in a window now closed, so it is left alone, as
+/// `rename_pinned_tag_at` leaves it, rather than replaced.
 fn save_pinned_tag_at(
     lock: &Mutex<()>,
     path: &Path,
@@ -231,9 +234,11 @@ fn save_pinned_tag_at(
     let mut found = false;
     update_pinned_tags(lock, path, |tags| {
         if let Some(tag) = tags.iter_mut().find(|tag| tag.name == name) {
-            tag.color = color;
-            tag.files = files;
             found = true;
+            if !create {
+                tag.color = color;
+                tag.files = files;
+            }
         } else if create {
             tags.push(PinnedTag { name, color, files });
         }
@@ -291,17 +296,18 @@ pub fn list_pinned_tags(app: AppHandle) -> Vec<PinnedTag> {
     read_pinned_tags(&app)
 }
 
+/// `false` when another pin already holds the name.
 #[tauri::command]
 pub fn save_pinned_tag(
     app: AppHandle,
     name: String,
     color: String,
     files: Vec<String>,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
     save_pinned_tag_at(&state.pinned_tags, &path, name, color, files, true)
-        .map(|_| ())
+        .map(|found| !found)
         .map_err(String::from)
 }
 
@@ -1119,11 +1125,55 @@ pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
 /// Creates the destination window for a tab transfer. Its label carries the
 /// token, so the new frontend knows which transfer to claim.
 ///
+/// `tag_name` is the pinned group a window opened from Home or the title bar
+/// will adopt. It is recorded as that window's tag before the window exists,
+/// because the window reports its own tag only once it has mounted and read
+/// the group, and a second click on the group before then found no holder and
+/// opened the group again.
+///
 /// Async on purpose: a sync command runs on the main thread, and WebView2
 /// deadlocks building a window there (tauri-apps/tauri#12521).
 #[tauri::command]
-pub async fn create_transfer_window(app: AppHandle, token: String) -> Result<(), String> {
-    build_viewer_window(&app, &crate::tab_transfer::destination_label(&token))
+pub async fn create_transfer_window(
+    app: AppHandle,
+    token: String,
+    tag_name: Option<String>,
+) -> Result<(), String> {
+    let label = crate::tab_transfer::destination_label(&token);
+    let state = app.state::<AppState>();
+    if let Some(name) = tag_name {
+        reserve_window_tag(
+            &mut lock_recover(&state.window_registry),
+            &state.window_counter,
+            &label,
+            name,
+        );
+    }
+    let built = build_viewer_window(&app, &label);
+    if built.is_err() {
+        lock_recover(&state.window_registry).remove(&label);
+    }
+    built
+}
+
+/// Enters `label` in the registry holding `name`, as `set_window_meta` would.
+/// The window's own first report replaces it.
+fn reserve_window_tag(
+    registry: &mut HashMap<String, WindowMeta>,
+    counter: &AtomicU64,
+    label: &str,
+    name: String,
+) {
+    registry.insert(
+        label.to_string(),
+        WindowMeta {
+            number: counter.fetch_add(1, Ordering::SeqCst) + 1,
+            tag_name: Some(name),
+            tag_color: None,
+            active_tab_title: String::new(),
+            tab_count: 0,
+        },
+    );
 }
 
 /// The one factory for secondary windows: built hidden, the frontend shows it.
@@ -1945,14 +1995,15 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// Re-pinning a tag replaces its color and file list in place.
+    /// Pinning a window under a name a closed group still holds refuses, and
+    /// the group keeps its colour and files. It used to replace them.
     #[test]
-    fn saving_an_existing_tag_updates_it_rather_than_duplicating_it() {
+    fn pinning_a_taken_name_leaves_the_existing_group_alone() {
         let dir = temp_dir("pinned-tags-update");
         let path = dir.join("pinned-tags.json");
         let lock = Mutex::new(());
 
-        save_pinned_tag_at(
+        let found = save_pinned_tag_at(
             &lock,
             &path,
             "work".to_string(),
@@ -1961,7 +2012,8 @@ mod tests {
             true,
         )
         .unwrap();
-        save_pinned_tag_at(
+        assert!(!found);
+        let found = save_pinned_tag_at(
             &lock,
             &path,
             "work".to_string(),
@@ -1970,11 +2022,12 @@ mod tests {
             true,
         )
         .unwrap();
+        assert!(found, "the second pin was not told the name is taken");
 
         let tags = read_pinned_tags_at(&path);
         assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].color, "#d93025");
-        assert_eq!(tags[0].files, vec!["/tmp/b.md".to_string()]);
+        assert_eq!(tags[0].color, "#1a73e8");
+        assert_eq!(tags[0].files, vec!["/tmp/a.md".to_string()]);
 
         remove_pinned_tag_at(&lock, &path, "work".to_string()).unwrap();
         assert!(read_pinned_tags_at(&path).is_empty());
@@ -2126,16 +2179,15 @@ mod tests {
 
     /// The loss that makes tag names exclusive worth enforcing.
     ///
-    /// Two windows, one tag name, one pinned document set. Both windows pin —
-    /// serially, each holding the lock in turn, so #424's `pinned_tags` mutex
-    /// is doing its job and this is not a race. `save_pinned_tag_at` still
-    /// finds the entry BY NAME and replaces its whole `files` list, so the
-    /// second window's pin does not merge with the first's, it erases it. The
-    /// user set two windows up and gets one back.
+    /// Two windows, one tag name, one pinned document set. Both windows save
+    /// their pin as they close — serially, each holding the lock in turn, so
+    /// #424's `pinned_tags` mutex is doing its job and this is not a race.
+    /// `save_pinned_tag_at` still finds the entry BY NAME and replaces its
+    /// whole `files` list, so the second window's save does not merge with the
+    /// first's, it erases it. The user set two windows up and gets one back.
     ///
     /// Asserted on the surviving file rather than on the call, because the call
-    /// succeeds in both worlds: `save_pinned_tag` returns `Ok(())` either
-    /// way and nothing anywhere reports the overwrite.
+    /// succeeds in both worlds and nothing anywhere reports the overwrite.
     #[test]
     fn two_windows_sharing_a_tag_name_overwrite_one_anothers_pinned_files() {
         let dir = temp_dir("pinned-tags-shared-name");
@@ -2157,7 +2209,7 @@ mod tests {
             "Research".to_string(),
             "#d93025".to_string(),
             vec!["/notes/c.md".to_string()],
-            true,
+            false,
         )
         .unwrap();
 
@@ -2184,6 +2236,32 @@ mod tests {
             active_tab_title: String::new(),
             tab_count: 0,
         }
+    }
+
+    /// A pinned group's window holds the group's name from the moment it is
+    /// created, so a second click finds it and focuses it instead of opening
+    /// another window for the same group. Its own first report keeps the
+    /// number it was given.
+    #[test]
+    fn a_pinned_window_holds_its_tag_before_it_mounts() {
+        let mut registry = HashMap::new();
+        registry.insert("main".to_string(), meta_with_tag(None));
+        let counter = AtomicU64::new(1);
+
+        reserve_window_tag(
+            &mut registry,
+            &counter,
+            "window-pinned-576f726b-1",
+            "Work".to_string(),
+        );
+
+        assert!(tag_held_by_another_window(&registry, "main", "Work"));
+        assert!(!tag_held_by_another_window(
+            &registry,
+            "window-pinned-576f726b-1",
+            "Work"
+        ));
+        assert_eq!(registry["window-pinned-576f726b-1"].number, 2);
     }
 
     /// A name is taken by OTHER windows only — never by the asker itself.

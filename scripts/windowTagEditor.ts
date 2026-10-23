@@ -409,6 +409,8 @@ type SetupOptions = {
 	invokeFails?: boolean;
 	/** Answers `rename_pinned_tag`. */
 	pinRename?: 'renamed' | 'missing' | 'taken';
+	/** Answers `save_pinned_tag`: `false` when another pin holds the name. */
+	pinCreated?: boolean;
 };
 
 export function setup(options: SetupOptions = {}) {
@@ -426,6 +428,7 @@ export function setup(options: SetupOptions = {}) {
 		invokeCalls.push({ cmd, args });
 		if (options.invokeFails) return Promise.reject(new Error(`invoke failed: ${cmd}`));
 		if (cmd === 'rename_pinned_tag') return Promise.resolve(options.pinRename ?? 'renamed');
+		if (cmd === 'save_pinned_tag') return Promise.resolve(options.pinCreated ?? true);
 		if (cmd !== 'is_window_tag_taken') return Promise.resolve(null);
 		const answer = options.tagTakenElsewhere ?? false;
 		return Promise.resolve(typeof answer === 'function' ? answer() : answer);

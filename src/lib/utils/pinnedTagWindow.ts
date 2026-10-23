@@ -25,10 +25,15 @@ export async function pinnedTagHolder(name: string, self?: string): Promise<stri
 	return windows.find((window) => window.tag_name === name && window.label !== self)?.label;
 }
 
+/**
+ * `tagName` makes the backend record the new window as the group's holder at
+ * once, so a second click before the window mounts focuses it instead of
+ * opening the group twice.
+ */
 export async function openPinnedTagWindow(name: string): Promise<void> {
 	const holder = await pinnedTagHolder(name);
 	if (holder) await invoke('focus_window', { label: holder });
-	else await invoke('create_transfer_window', { token: pinnedWindowToken(name, Date.now()) });
+	else await invoke('create_transfer_window', { token: pinnedWindowToken(name, Date.now()), tagName: name });
 }
 
 /** New Window stages no tab, so its window must not try to claim one. */

@@ -877,7 +877,12 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		windowSession.record(untrack(windowStateJson));
 	});
 
+	// A window opened for a pinned group is entered in the registry under the
+	// group's name when it is created. Reporting before it has adopted the
+	// group would clear that name and let a second click open the group again.
+	let windowMetaReady = $state(pinnedTagFromWindowLabel(appWindow.label) === null);
 	$effect(() => {
+		if (!windowMetaReady) return;
 		invoke('set_window_meta', {
 			tagName: tabManager.windowTag?.name ?? null,
 			tagColor: tabManager.windowTag?.color ?? null,
@@ -929,7 +934,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// Tabs already here belong to this window's own group. The pinned one
 		// opens in a window of its own, which adopts it from its label.
 		if (tabManager.tabs.some((tab) => !isHomePath(tab.path))) {
-			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()) });
+			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()), tagName: tag.name });
 			return;
 		}
 		tabManager.setWindowTag({ ...tag, pinned: true });
@@ -3894,6 +3899,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 					if (tag) await openPinnedTag(tag);
 				}
 			}
+			windowMetaReady = true;
 			if (isDisposed) return;
 
 			const urlParams = new URLSearchParams(window.location.search);
@@ -3947,8 +3953,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						const oldPath = tab.path;
 						const newPath = oldPath.replace(/[/\\][^/\\]+$/, (m) => m.charAt(0) + newName);
 						try {
-							await invoke('rename_file', { oldPath, newPath });
-							tabManager.renameTab(tabId, newPath);
+							await documentSession.renameFile(tabId, newPath);
 							recentFiles = updateStoredRecentFiles((current) => renameRecentFile(current, oldPath, newPath));
 						} catch (e) {
 							console.error('Failed to rename file', e);

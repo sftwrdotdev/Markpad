@@ -243,7 +243,7 @@
 		tagEditorOpen = false;
 	}
 
-	function togglePinnedTag() {
+	async function togglePinnedTag() {
 		const tag = tabManager.windowTag;
 		if (!tag) return;
 		if (tag.pinned) {
@@ -252,7 +252,13 @@
 			return;
 		}
 		const files = tabManager.tabs.filter((tab) => hasRealFilePath(tab.path)).map((tab) => tab.path);
-		invoke('save_pinned_tag', { name: tag.name, color: tag.color, files }).catch(console.error);
+		// A pinned group whose window is closed still holds its name, and
+		// pinning over it would replace its files. Refused the way a rename is.
+		const created = await invoke('save_pinned_tag', { name: tag.name, color: tag.color, files }).catch(console.error);
+		if (created === false) {
+			tagError = t('menu.pinnedTagTaken', currentLanguage);
+			return;
+		}
 		tabManager.setWindowTag({ ...tag, pinned: true });
 	}
 

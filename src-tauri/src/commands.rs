@@ -432,7 +432,14 @@ pub async fn rename_file(old_path: String, new_path: String) -> Result<(), Strin
 /// that is already taken is refused. The exception is a target that is the
 /// same file under another spelling — `a.md` to `A.md` on a case-insensitive
 /// volume — which `canonical_identity` recognizes.
+///
+/// A rename names a file in the same folder. The frontend builds the new path
+/// by swapping the last segment for what the user typed, so `sub/x.md` there
+/// would move the file into a subfolder and `..` would name the folder itself.
 fn rename_file_blocking(old_path: &Path, new_path: &Path) -> Result<(), String> {
+    if new_path.parent() != old_path.parent() || new_path.file_name().is_none() {
+        return Err("The new name must not contain a path separator".to_string());
+    }
     if fs::symlink_metadata(new_path).is_ok() && !is_same_file(old_path, new_path) {
         let name = new_path.file_name().unwrap_or_default().to_string_lossy();
         return Err(format!("\"{name}\" already exists"));
@@ -1273,6 +1280,23 @@ pub(crate) mod tests {
         assert!(rename_file_blocking(&a, &b).is_err());
         assert_eq!(fs::read(&a).unwrap(), b"a");
         assert_eq!(fs::read(&b).unwrap(), b"b");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn a_rename_never_leaves_the_files_folder() {
+        // The new name is typed into the tab's Rename prompt and joined onto
+        // the old folder, so a separator in it used to move the file.
+        let root = temp_path("rename-separator");
+        fs::create_dir_all(root.join("sub")).unwrap();
+        let a = root.join("a.md");
+        fs::write(&a, b"a").unwrap();
+
+        assert!(rename_file_blocking(&a, &root.join("sub").join("x.md")).is_err());
+        assert!(rename_file_blocking(&a, &root.join("..")).is_err());
+        assert_eq!(fs::read(&a).unwrap(), b"a");
+        assert!(!root.join("sub").join("x.md").exists());
 
         fs::remove_dir_all(root).unwrap();
     }
