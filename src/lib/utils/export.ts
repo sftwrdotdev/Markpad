@@ -347,9 +347,8 @@ async function renderExportRichContent(root: HTMLElement, ctx: ExportContext): P
 			// One root, and always the whole thing: an exported file is a string,
 			// so there is no previous DOM to keep any of. The preview's split from
 			// this — same render, same filter, same detached parse, then either
-			// serialize it or diff it into the article — is the whole reason
-			// `blockPatch.ts` takes an already-sanitized string and produces nodes
-			// rather than owning a render of its own.
+			// serialize it or patch it into the article block by block, which is
+			// `previewPatch.ts`.
 			roots: [root],
 			libraries: ctx.libraries,
 			mermaidTheme: ctx.mermaidTheme,

@@ -63,7 +63,7 @@ type DocumentSessionOptions = {
 	setShowHome: (value: boolean) => void;
 	currentFile: () => string;
 	resetScrollHistory: () => void;
-	renderMarkdown: (raw: string, path: string, foldOverrides: Set<string>) => Promise<string>;
+	renderMarkdown: (raw: string) => Promise<string>;
 	afterLoad: () => Promise<unknown>;
 	saveRecentFile: (path: string) => void;
 	deleteRecentFile: (path: string) => void;
@@ -89,18 +89,6 @@ type DocumentSessionOptions = {
 	 */
 	onPartialCopySaved: () => void;
 };
-
-/**
- * Which folds the tab being loaded has flipped from the opening position its
- * own source asks for, read at render time rather than captured up front. A
- * large file is rendered twice — the 5MB preview, then the whole document once
- * the background read lands — and the user can fold something in between; the
- * second render has to honour that. An unknown tab flips nothing, which is what
- * a load of a tab that has since been closed should hand a renderer.
- */
-function foldsForTab(tabId: string): Set<string> {
-	return tabManager.tabs.find((item) => item.id === tabId)?.foldOverrides ?? new Set<string>();
-}
 
 /**
  * Per tab: the revision of the newest disk read aimed at it. Module scope
@@ -628,9 +616,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					[content, isFull, lossy, encoding] = (await invoke('open_markdown_preview', { path: filePath, maxBytes: 5_000_000 })) as [string, boolean, boolean, string];
 				}
 				if (!mayApply()) return;
-				// A navigation drops the folds of the document being left, so the
-				// file it moves to renders with none.
-				const processed = await options.renderMarkdown(content, filePath, pendingNavigateTabId ? new Set<string>() : foldsForTab(activeId));
+				const rendered = await options.renderMarkdown(content);
 				// Every write this stage makes comes after this one test, in one
 				// synchronous block. The encoding included: a prefix's detected
 				// encoding can differ from the whole file's, and `tab.encoding` is
@@ -646,7 +632,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);
 				if (pendingNavigateTabId) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
-				tabManager.updateTabContent(activeId, processed);
+				tabManager.updateTabContent(activeId, rendered);
 				// `isFull === false` means this is only the leading slice of a
 				// large file. Marking the tab keeps anything downstream from
 				// mistaking it for the whole document and writing it back.
@@ -679,10 +665,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 								try {
 									if (options.isScrolling()) return void setTimeout(applyFull, 100);
 									if (!canApplyFullLoad()) return updateLoading(activeId, false);
-									options.renderMarkdown(fullContent, filePath, foldsForTab(activeId))
-										.then((fullProcessed) => {
+									options.renderMarkdown(fullContent)
+										.then((fullRendered) => {
 											if (!canApplyFullLoad()) return updateLoading(activeId, false);
-											tabManager.updateTabContent(activeId, fullProcessed);
+											tabManager.updateTabContent(activeId, fullRendered);
 											tabManager.setTabRawContent(activeId, fullContent);
 											// This buffer REPLACES the preview's, so it
 											// carries its own verdict — the preview only

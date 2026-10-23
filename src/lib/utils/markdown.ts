@@ -689,12 +689,23 @@ export function processMarkdownHtml(
 ): string {
 	const parser = new DOMParser();
 	const doc = parser.parseFromString(html, "text/html");
+	processBlockMarkup(doc.body, filePath);
+	wrapHeadings(Array.from(doc.body.querySelectorAll(".foldable-header")), { next: 0 });
+	applyFolds(doc.body, foldOverrides);
+	return doc.body.innerHTML;
+}
 
-	// The keys handed out in THIS render, shared by the callout pass and the
-	// heading pass below so that neither can hand out a key the other used.
-	const foldKeys = new Set<string>();
+/** `+` or `-`, on a foldable callout: what the document opens it as. */
+const CALLOUT_FOLD_ATTR = "data-callout-fold";
 
-	for (const img of doc.querySelectorAll("img")) {
+/**
+ * Everything `processMarkdownHtml` does that only looks inside one top-level
+ * block. Fold keys and the heading wrappers need the whole document and are
+ * `applyFolds` and `wrapHeadings`.
+ */
+export function processBlockMarkup(root: Element, filePath: string): void {
+	const doc = root.ownerDocument;
+	for (const img of root.querySelectorAll("img")) {
 		const src = img.getAttribute("src");
 		let finalSrc = src;
 		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
@@ -750,7 +761,7 @@ export function processMarkdownHtml(
 		}
 	}
 
-	for (const a of doc.querySelectorAll("a")) {
+	for (const a of root.querySelectorAll("a")) {
 		const href = a.getAttribute("href");
 		if (href && isYoutubeLink(href)) {
 			const parent = a.parentElement;
@@ -799,7 +810,7 @@ export function processMarkdownHtml(
 		}
 	};
 
-	for (const bq of Array.from(doc.querySelectorAll("blockquote"))) {
+	for (const bq of Array.from(root.querySelectorAll("blockquote"))) {
 		// Only the text the quote's first paragraph opens with is a marker, as
 		// in Obsidian and GitHub: `[!note]` in code or a nested quote is text.
 		let first = bq.firstChild;
@@ -887,36 +898,21 @@ export function processMarkdownHtml(
 			if (contentInner.childNodes.length === 0) {
 				container.classList.add("callout-title-only");
 			} else {
-				// A callout the reader folds is remembered exactly like a
-				// heading, and `> [!note]-` is the document's opening position
-				// rather than a state of its own — see `foldState.ts`. A
-				// title-only callout hides nothing and so is not a fold at all,
-				// which is why the key is assigned in this branch.
-				if (isFoldable) {
-					const key = assignFoldKey(container, foldKeys);
-					if (isFolded(foldOverrides, key, fold === "-")) {
-						contentWrapper.classList.add("is-collapsed");
-						container.classList.add("is-collapsed");
-					}
-				}
+				// The fold key is the document's to hand out: see `applyFolds`.
+				if (isFoldable) container.setAttribute(CALLOUT_FOLD_ATTR, fold);
 				container.appendChild(contentWrapper);
 			}
 			bq.replaceWith(container);
 		}
 	}
 
-	processDisplayMathBlocks(doc.body, doc);
-	processBlockIds(doc.body, doc);
-	processTaskItems(doc.body);
-	processInlineMath(doc.body);
-	processSoftLineAnchors(doc.body, doc);
+	processDisplayMathBlocks(root, doc);
+	processBlockIds(root, doc);
+	processTaskItems(root);
+	processInlineMath(root);
+	processSoftLineAnchors(root, doc);
 
-	const headings = Array.from(doc.querySelectorAll("h1, h2, h3, h4, h5, h6"));
-	// The heading↔wrapper pairing only needs to be unique within this
-	// render's output (the previous DOM is replaced wholesale), so a
-	// counter keeps the HTML deterministic for identical input.
-	let nextFoldId = 0;
-	for (const h of headings) {
+	for (const h of Array.from(root.querySelectorAll("h1, h2, h3, h4, h5, h6"))) {
 		// comrak puts the deduplicated heading id ("title", "title-1", ...)
 		// on an empty inner <a class="anchor">, so h.id is empty and the fold
 		// key falls all the way back to the heading text — which collides for
@@ -934,13 +930,26 @@ export function processMarkdownHtml(
 		chevron.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 		h.insertBefore(chevron, h.firstChild);
 		h.classList.add("foldable-header");
+	}
 
-		const wrapper = doc.createElement("div");
-		wrapper.className = "foldable-content-wrapper";
-		const inner = doc.createElement("div");
-		inner.className = "content-inner";
-		wrapper.appendChild(inner);
+	// Clean up empty paragraphs that might be leftovers from blank lines
+	Array.from(root.querySelectorAll("p")).forEach((p) => {
+		if (isBlank(p.innerHTML)) {
+			p.remove();
+		}
+	});
+}
 
+/**
+ * Moves what follows each heading, up to the next heading of the same or a
+ * higher level, into the heading's `.foldable-content-wrapper`.
+ *
+ * `heads` in document order. Returns the wrappers it made.
+ */
+export function wrapHeadings(heads: Element[], ids: FoldIds): HTMLElement[] {
+	const made: HTMLElement[] = [];
+	for (const h of heads) {
+		const { wrapper, inner } = makeFoldWrapper(h.ownerDocument, h, ids);
 		let current = h.nextElementSibling;
 		const level = parseInt(h.tagName[1], 10);
 		while (current) {
@@ -954,24 +963,55 @@ export function processMarkdownHtml(
 			current = next;
 		}
 		if (h.parentNode) h.parentNode.insertBefore(wrapper, h.nextSibling);
-
-		const mappingId = "wrap-" + nextFoldId++;
-		h.setAttribute("data-fold-target", mappingId);
-		wrapper.id = mappingId;
-
-		const key = assignFoldKey(h, foldKeys);
-		if (isFolded(foldOverrides, key)) {
-			h.classList.add("is-collapsed");
-			wrapper.classList.add("is-collapsed");
-		}
+		made.push(wrapper);
 	}
+	return made;
+}
 
-	// Clean up empty paragraphs that might be leftovers from blank lines
-	Array.from(doc.querySelectorAll("p")).forEach((p) => {
-		if (isBlank(p.innerHTML)) {
-			p.remove();
-		}
-	});
+/** Where the `wrap-N` ids of one document have got to. */
+export interface FoldIds { next: number }
 
-	return doc.body.innerHTML;
+export function makeFoldWrapper(doc: Document, h: Element, ids: FoldIds) {
+	const wrapper = doc.createElement("div");
+	wrapper.className = "foldable-content-wrapper";
+	const inner = doc.createElement("div");
+	inner.className = "content-inner";
+	wrapper.appendChild(inner);
+	// Only has to be unique within the live document.
+	const mappingId = "wrap-" + ids.next++;
+	h.setAttribute("data-fold-target", mappingId);
+	wrapper.id = mappingId;
+	return { wrapper, inner };
+}
+
+/**
+ * Hands out every fold key in `root`, callouts first and then headings, in
+ * document order, and sets each fold's collapsed state from `foldOverrides`.
+ * With `onlyChanged`, a fold whose key did not change keeps the state it has,
+ * which may be one the reader toggled.
+ */
+export function applyFolds(root: Element, foldOverrides: Set<string>, onlyChanged = false): void {
+	const foldKeys = new Set<string>();
+	for (const container of Array.from(root.querySelectorAll(`.callout-foldable[${CALLOUT_FOLD_ATTR}]`))) {
+		// A title-only callout hides nothing, so it is not a fold.
+		const content = Array.from(container.childNodes).find(
+			(child): child is Element =>
+				child.nodeType === 1 && (child as Element).classList.contains("markdown-alert-content"),
+		);
+		if (!content) continue;
+		const before = container.getAttribute("data-fold-key");
+		const key = assignFoldKey(container, foldKeys);
+		if (onlyChanged && before === key) continue;
+		const folded = isFolded(foldOverrides, key, container.getAttribute(CALLOUT_FOLD_ATTR) === "-");
+		container.classList.toggle("is-collapsed", folded);
+		content.classList.toggle("is-collapsed", folded);
+	}
+	for (const h of Array.from(root.querySelectorAll(".foldable-header[data-fold-target]"))) {
+		const before = h.getAttribute("data-fold-key");
+		const key = assignFoldKey(h, foldKeys);
+		if (onlyChanged && before === key) continue;
+		const folded = isFolded(foldOverrides, key);
+		h.classList.toggle("is-collapsed", folded);
+		h.nextElementSibling?.classList.toggle("is-collapsed", folded);
+	}
 }

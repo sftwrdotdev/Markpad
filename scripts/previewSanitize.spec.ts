@@ -41,8 +41,8 @@ import assert from 'node:assert/strict';
 import DOMPurify from 'dompurify';
 import { afterEach, test } from 'vitest';
 
-import { patchPreviewBlocks } from '../src/lib/utils/blockPatch.js';
-import { sanitizeMarkdownFragment, sanitizeMarkdownHtml, ALLOWED_MARKDOWN_URI_REGEXP } from '../src/lib/utils/sanitize.js';
+import { patchPreview } from '../src/lib/utils/previewPatch.js';
+import { sanitizeMarkdownHtml, ALLOWED_MARKDOWN_URI_REGEXP } from '../src/lib/utils/sanitize.js';
 
 /** The document author's payload, as it arrives from comrak (`render.unsafe_ = true`). */
 const POC_STYLE = '<style>.titlebar{display:none} body{background-image:url("https://attacker.example/beacon")}</style>';
@@ -128,16 +128,14 @@ test('the inline style attribute is still allowed, because documents use it', ()
 });
 
 test('the preview path patches in the filtered nodes, with the same policy', () => {
-	// The preview hands DOMPurify's own nodes to the patch instead of a string,
-	// so this is the path the article is actually filled through.
+	// The patch takes the renderer's own output and sanitizes each block it
+	// inserts, so this is the path the article is actually filled through —
+	// on the first render and on an edit.
 	const { titlebar, preview } = mountApp();
+	const payload = '<p><a href="javascript:alert(1)">x</a><img src="x" onerror="alert(1)"></p>\0\n<script>alert(1)</script>';
 
-	patchPreviewBlocks(
-		preview,
-		sanitizeMarkdownFragment(
-			`${RENDERED}\n<p><a href="javascript:alert(1)">x</a><img src="x" onerror="alert(1)"></p><script>alert(1)</script>`,
-		),
-	);
+	patchPreview(preview, `${RENDERED}\0\n${payload}`, '/docs/a.md', new Set());
+	patchPreview(preview, `${RENDERED}\0\n<p>edit</p>\0\n${payload}`, '/docs/a.md', new Set());
 
 	assert.equal(preview.querySelector('p')?.textContent, 'An ordinary paragraph of prose.');
 	assert.equal(preview.querySelector('style, script, [onerror], [href^="javascript"]'), null);

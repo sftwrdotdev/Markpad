@@ -31,9 +31,7 @@
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
-import { processMarkdownHtml } from './utils/markdown';
 import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
-import { sanitizeMarkdownFragment } from './utils/sanitize.js';
 import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
@@ -42,7 +40,7 @@ import {
 	renderRichContent as renderRichContentInto,
 } from './utils/richContent.js';
 import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
-import { patchPreviewBlocks } from './utils/blockPatch.js';
+import { patchPreview } from './utils/previewPatch.js';
 import {
 	revealFold,
 	toggleFold,
@@ -147,7 +145,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let markdownBody: HTMLElement | null = $state(null);
 	let layoutContainerEl: HTMLElement | null = $state(null);
 	/**
-	 * One host per tab, holding that tab's rendered document. `blockPatch.ts`
+	 * One host per tab, holding that tab's rendered document. `previewPatch.ts`
 	 * owns their children, not Svelte: an `{@html}` here would rebuild the
 	 * article on every keystroke.
 	 *
@@ -1207,30 +1205,23 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	// exported document carries a CSP as the second line of defence.
 	//
 	// The preview has no second line: what it produces becomes nodes in the live
-	// application document, so the filter runs last — the processed HTML is
-	// cached in `tab.content` and sanitized at the sink (see the patch effect)
-	// into DOMPurify's own nodes, which `patchPreviewBlocks` moves into the
-	// article. No parse/serialize round trip happens after the sanitizer has
-	// had its say.
-	// Moving the call here instead would inject nodes the sanitizer never saw.
+	// application document, so the filter runs last. `tab.content` holds the
+	// renderer's own output, split into top-level blocks, and the patch effect
+	// hands it to `patchPreview`, which processes and sanitizes only the blocks
+	// that changed and moves DOMPurify's own nodes into the article. No
+	// parse/serialize round trip happens after the sanitizer has had its say.
 	//
-	// `folds` is a parameter rather than a read of the active tab because this
-	// renders documents that are NOT on screen: a window restore renders every
-	// restored tab, a cross-window arrival renders itself, the background
-	// completion of a large file lands long after the user may have switched
-	// away, and the first-stage read in `documentSession` resolves after three
-	// awaits a switch can happen inside — the four `previewHosts` lists. Each of
-	// those must fold the document it is rendering, not whichever one happens to
-	// be active when the promise resolves.
-	async function renderMarkdownPreview(raw: string, filePath: string, folds: Set<string>) {
+	// The document's path and folds are read when the patch runs, from the tab
+	// on screen, which is the document being patched: a navigation has already
+	// moved the tab to the new file and cleared its folds by then.
+	async function renderMarkdownPreview(raw: string) {
 		const body = getMarkdownBodyWithoutFrontMatter(raw);
-		const html = (await invoke('render_markdown', { content: body })) as string;
-		return processMarkdownHtml(html, filePath, folds);
+		return (await invoke('render_markdown', { content: body, splitBlocks: true })) as string;
 	}
 
 	async function renderTabPreviewFromRaw(tab: Tab) {
-		const processed = await renderMarkdownPreview(tab.rawContent, tab.path, tab.foldOverrides);
-		tabManager.updateTabContent(tab.id, processed);
+		const rendered = await renderMarkdownPreview(tab.rawContent);
+		tabManager.updateTabContent(tab.id, rendered);
 		tab.previewedRawContent = tab.rawContent;
 		// The patch effect turns the new `tab.content` into DOM and enriches what
 		// it changed, so this only has to wait for the flush. It used to call
@@ -1508,14 +1499,20 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		const unchanged = patchedHtml.get(host) === htmlContent;
 		patchedHtml.set(host, htmlContent);
 		if (unchanged) invalidateAnchorMemos();
-		const sanitized = unchanged ? null : sanitizeMarkdownFragment(htmlContent);
-		const patch = sanitized ? patchPreviewBlocks(host, sanitized) : { inserted: [] };
+		// Untracked: a fold toggle or a rename is not a new document.
+		const patch = unchanged
+			? { inserted: [], wrappers: [] }
+			: untrack(() => {
+					const tab = tabManager.activeTab;
+					return patchPreview(host, htmlContent, tab?.path ?? '', tab?.foldOverrides ?? NO_FOLD_OVERRIDES);
+				});
 		// Only the new blocks. `ResizeObserver.observe` on a target it is already
 		// watching re-registers it rather than doing nothing, and a fresh
 		// registration delivers an initial observation — so handing it the whole
 		// host would put back exactly the per-keystroke re-measure of every fold
 		// that keeping the observation alive removed.
 		for (const block of patch.inserted) foldLayout?.observe(block);
+		for (const wrapper of patch.wrappers) foldLayout?.observe(wrapper);
 		// A host's first enrichment is the cold start above: it waits for
 		// whichever libraries the document needs. A tab being re-activated
 		// patches to nothing, and its host is in the set from that first render.
@@ -1529,7 +1526,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	/**
 	 * The hosts whose document has been through `renderRichContent` at least
 	 * once. A `WeakMap`/`WeakSet` keyed on the container for the same reason
-	 * `renderedKeys` in `blockPatch.ts` is: a host that Svelte destroys with its
+	 * `states` in `previewPatch.ts` is: a host that Svelte destroys with its
 	 * tab takes its entry with it, so this cannot drift from the set of live
 	 * tabs the way a hand-kept registry can.
 	 */
@@ -3412,15 +3409,15 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			// word costs one render, and below the pause before a reader looks at
 			// the preview.
 			const timer = setTimeout(() => {
-				renderMarkdownPreview(rawContent, tab.path, tab.foldOverrides)
-					.then((processed) => {
+				renderMarkdownPreview(rawContent)
+					.then((rendered) => {
 						const currentTab = tabManager.activeTab;
 						if (
 							previewRenderRevision !== renderRevision ||
 							tabManager.activeTabId !== tabId ||
 							currentTab?.rawContent !== rawContent
 						) return;
-						tabManager.updateTabContent(tabId, processed);
+						tabManager.updateTabContent(tabId, rendered);
 						currentTab.previewedRawContent = rawContent;
 						// No `tick().then(renderRichContent)`: the new content is a
 						// dependency of the patch effect, which patches the blocks

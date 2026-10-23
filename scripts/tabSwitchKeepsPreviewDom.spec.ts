@@ -1,12 +1,9 @@
 import { beforeEach, expect, test } from 'vitest';
 
-import { patchPreviewBlocks as patchNodes } from '../src/lib/utils/blockPatch.js';
+import { patchPreview } from '../src/lib/utils/previewPatch.js';
 
-/** The patch takes the sanitizer's nodes; these tests start from markup. */
 function patchPreviewBlocks(host: HTMLElement, html: string) {
-	const template = document.createElement('template');
-	template.innerHTML = html;
-	return patchNodes(host, template.content);
+	return patchPreview(host, html, '/docs/a.md', new Set());
 }
 
 /**
@@ -21,26 +18,24 @@ function patchPreviewBlocks(host: HTMLElement, html: string) {
  * moved after it had been restored.
  *
  * There is a host per tab now, and this is the property that makes the switch
- * free. It is a property of `patchPreviewBlocks` plus the per-host memo it
- * keeps (`renderedKeys`, a `WeakMap` keyed on the container), not of any new
- * module: re-patching a host that already holds that document matches every key
- * and changes nothing.
+ * free. It is a property of `patchPreview` plus the per-host record it keeps
+ * (`states`, a `WeakMap` keyed on the container), not of any new module:
+ * re-patching a host that already holds that document matches every key and
+ * changes nothing.
  *
  * What this cannot check is the wiring in `MarkdownViewer.svelte` that gives
  * each tab its own host — that component cannot be mounted outside Tauri. What
  * it does check is the mechanism the wiring depends on, and it is the half that
- * would fail silently: a keying change in `blockPatch.ts` would still look
+ * would fail silently: a keying change in `previewPatch.ts` would still look
  * correct on screen and quietly put the whole cost back.
  */
 
+/** The renderer's output with `splitBlocks`: one block per `\0`. */
 function doc(title: string, paragraphs: string[]): string {
-	const blocks = paragraphs
-		.map((text, i) => `<p data-sourcepos="${i + 3}:1-${i + 3}:${text.length}">${text}</p>`)
-		.join('');
-	return (
-		`<h1 data-sourcepos="1:1-1:${title.length}" id="${title}">${title}</h1>` +
-		`<div class="foldable-content-wrapper"><div class="content-inner">${blocks}</div></div>`
-	);
+	return [
+		`<h1 data-sourcepos="1:1-1:${title.length}" id="${title}">${title}</h1>`,
+		...paragraphs.map((text, i) => `<p data-sourcepos="${i + 3}:1-${i + 3}:${text.length}">${text}</p>`),
+	].join('\0\n');
 }
 
 const A = doc('alpha', ['one', 'two', 'three']);

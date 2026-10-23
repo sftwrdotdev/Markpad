@@ -220,7 +220,7 @@ export interface RenderRichContentOptions {
 	 * The elements holding processed Markdown. Live or detached, both work.
 	 *
 	 * A list, not one element, because the preview no longer rebuilds its
-	 * article: `blockPatch.ts` replaces the blocks that changed and hands their
+	 * article: `previewPatch.ts` replaces the blocks that changed and hands their
 	 * new nodes here, so a keystroke typesets one paragraph instead of the
 	 * document. The export passes the single detached element it is building.
 	 * The roots must not contain one another — each is visited on its own, so a
@@ -264,6 +264,13 @@ function defaultIdFactory(index: number): string {
  * `<audio>`, a YouTube `<img>`/`<a>` becomes a thumbnail link — and the same
  * gap costs the same thing there.
  */
+/**
+ * Enrichment replaces some blocks with a node of its own (a Mermaid diagram)
+ * or moves them into one (a code block's shell). `previewPatch.ts` holds on to
+ * the block it inserted and follows this to what stands in its place now.
+ */
+export const replacedBy = new WeakMap<Element, Element>();
+
 export function carrySourcepos(from: Element, to: Element) {
 	const sourcepos = from.getAttribute('data-sourcepos');
 	if (sourcepos) to.setAttribute('data-sourcepos', sourcepos);
@@ -360,7 +367,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	 * by `pre code`, and a diagram that has been drawn once has no `<pre>` left:
 	 * this function replaced it with the `.mermaid-diagram` container. While the
 	 * preview was `{@html sanitizedHtml}` that was invisible, because every
-	 * render put the whole document back as source; `blockPatch.ts` keeps the
+	 * render put the whole document back as source; the block patch keeps the
 	 * enriched nodes instead, so from #632 on a theme change reached no diagram
 	 * at all, in any mode. The source is on the container already —
 	 * `mermaidPrint.ts` keeps it there so the PDF path can rebuild the diagram
@@ -372,7 +379,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 	 * no rendered diagram in them, so this is one selector that matches nothing.
 	 *
 	 * What a theme change costs, measured in Chromium over the real pipeline
-	 * (comrak -> `processMarkdownHtml` -> `sanitizeMarkdownHtml` -> `blockPatch`
+	 * (comrak -> `processMarkdownHtml` -> `sanitizeMarkdownHtml` -> the block patch
 	 * -> here) in a 1000x800 preview box, as one whole-article
 	 * `renderRichContent` with highlight.js and the display-maths memo already
 	 * warm, two runs:
@@ -460,6 +467,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 				wrapper.className = 'code-block-shell';
 				preEl.replaceWith(wrapper);
 				wrapper.appendChild(preEl);
+				replacedBy.set(preEl, wrapper);
 			}
 
 			const label = doc.createElement('button');
@@ -594,6 +602,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			rememberDiagramSource(container, mermaidCode, options.mermaidTheme);
 			container.innerHTML = sanitizeDiagramSvg(svg);
 			preEl.replaceWith(container);
+			replacedBy.set(preEl, container);
 		} catch (error) {
 			options.onError?.(error);
 			console.error('Failed to render Mermaid diagram:', error);
@@ -604,6 +613,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			errorDiv.style.padding = '1em';
 			errorDiv.textContent = `Error rendering Mermaid diagram: ${error}`;
 			preEl.replaceWith(errorDiv);
+			replacedBy.set(preEl, errorDiv);
 		}
 		// Scroll sync's sample table may still hold the `<pre>`.
 		invalidateAnchorMemos();

@@ -98,7 +98,7 @@ type Fakes = {
 	askCustomCalls: string[];
 	saveCalls: string[];
 	loadCalls: string[];
-	renderedFrom: Array<{ raw: string; path: string }>;
+	renderedFrom: string[];
 	toasts: string[];
 	saveFails: boolean;
 	/** Text the "user" appends while `saveContent` is awaiting (TOCTOU). */
@@ -106,7 +106,7 @@ type Fakes = {
 };
 
 /** `renderMarkdownPreview`'s stand-in: the output names what it was given. */
-const rendered = (raw: string, path: string) => `<html path="${path}">${raw}</html>`;
+const rendered = (raw: string) => `<html>${raw}</html>`;
 
 function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, unknown> = {}): Harness {
 	const source = [
@@ -163,9 +163,9 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 			return true;
 		},
 		cancelPendingAutoSave: () => {},
-		renderMarkdownPreview: async (raw: string, path: string) => {
-			fakes.renderedFrom.push({ raw, path });
-			return rendered(raw, path);
+		renderMarkdownPreview: async (raw: string) => {
+			fakes.renderedFrom.push(raw);
+			return rendered(raw);
 		},
 		// The disk route, with the real function's dirty short-circuit.
 		loadMarkdown: async (path: string, options: any = {}) => {
@@ -174,8 +174,8 @@ function buildHarness(fakes: Fakes, isEditing: boolean, panes: Record<string, un
 			const receiving = tabManager.tabs.find((item) => item.id === activeId)!;
 			if (receiving.isDirty && receiving.path === path && !options.discardUnsavedBuffer) return;
 			const content = fakes.disk.get(path) ?? '';
-			fakes.renderedFrom.push({ raw: content, path });
-			tabManager.updateTabContent(activeId, rendered(content, path));
+			fakes.renderedFrom.push(content);
+			tabManager.updateTabContent(activeId, rendered(content));
 			tabManager.setTabRawContent(activeId, content);
 		},
 		documentSession: { ensureFullContent: async () => true, isLossySaveRefused: () => false },
@@ -261,11 +261,11 @@ test('reading mode shows the buffer, not the file', async () => {
 	await harness.toggleEdit();
 
 	// The whole point of the bug: with a disk read here, this is `ON_DISK`.
-	assert.equal(tab.content, rendered(IN_BUFFER, tab.path));
+	assert.equal(tab.content, rendered(IN_BUFFER));
 	assert.deepEqual(
 		fakes.renderedFrom,
-		[{ raw: IN_BUFFER, path: tab.path }],
-		'the preview is rendered once, from the buffer, under the tab\'s own path',
+		[IN_BUFFER],
+		'the preview is rendered once, from the buffer',
 	);
 	assert.deepEqual(fakes.loadCalls, [], 'the file is not re-read to leave the editor');
 });
@@ -284,7 +284,7 @@ test('an untitled buffer never reaches the Save dialog on a view toggle', async 
 
 	assert.deepEqual(fakes.saveCalls, [], 'saveContent would open the Save dialog for a pathless tab');
 	assert.equal(tab.isEditing, false);
-	assert.equal(tab.content, rendered('# untitled\n', ''));
+	assert.equal(tab.content, rendered('# untitled\n'));
 });
 
 test('auto-save still flushes on the way out, because the debounce is about to be dropped', async () => {
@@ -300,7 +300,7 @@ test('auto-save still flushes on the way out, because the debounce is about to b
 	assert.deepEqual(fakes.askCustomCalls, [], 'the flush is silent — it is the user\'s own setting');
 	assert.equal(tab.isDirty, false);
 	assert.equal(tab.isEditing, false);
-	assert.equal(tab.content, rendered(IN_BUFFER, tab.path));
+	assert.equal(tab.content, rendered(IN_BUFFER));
 });
 
 test('a file that cannot be written no longer traps the user in the editor', async () => {
@@ -316,7 +316,7 @@ test('a file that cannot be written no longer traps the user in the editor', asy
 	assert.deepEqual(fakes.saveCalls, [tab.id], 'the flush was attempted');
 	assert.ok(fakes.toasts.includes('toast.autoSaveFailed'), 'and the failure was reported');
 	assert.equal(tab.isEditing, false, 'but the view still switches');
-	assert.equal(tab.content, rendered(IN_BUFFER, tab.path));
+	assert.equal(tab.content, rendered(IN_BUFFER));
 	assert.equal(tab.isDirty, true, 'the buffer is still there to be rescued');
 });
 
@@ -332,7 +332,7 @@ test('edits typed during the flush are shown, and reported as not yet on disk', 
 	assert.equal(tab.isEditing, false, 'the TOCTOU case is no longer a reason to stay in the editor');
 	assert.equal(
 		tab.content,
-		rendered(IN_BUFFER + 'typed while saving\n', tab.path),
+		rendered(IN_BUFFER + 'typed while saving\n'),
 		'the preview shows the newest text, which is exactly what is NOT on disk',
 	);
 });
@@ -351,7 +351,7 @@ test('closing split view on a dirty file neither asks nor writes', async () => {
 	assert.equal(fakes.disk.get(tab.path), ON_DISK, 'the file is untouched');
 	assert.equal(tab.isSplit, false);
 	assert.equal(tab.isDirty, true);
-	assert.equal(tab.content, rendered(IN_BUFFER, tab.path), 'the surviving pane keeps showing the buffer');
+	assert.equal(tab.content, rendered(IN_BUFFER), 'the surviving pane keeps showing the buffer');
 });
 
 test('closing split view honours auto-save the same way leaving edit mode does', async () => {
@@ -363,7 +363,7 @@ test('closing split view honours auto-save the same way leaving edit mode does',
 	assert.deepEqual(fakes.saveCalls, [tab.id]);
 	assert.deepEqual(fakes.askCustomCalls, []);
 	assert.equal(tab.isSplit, false);
-	assert.equal(tab.content, rendered(IN_BUFFER, tab.path));
+	assert.equal(tab.content, rendered(IN_BUFFER));
 });
 
 // ------------------------------------------------------------- the boundary

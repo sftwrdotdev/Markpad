@@ -288,7 +288,7 @@ function elementChildren(node: AnchorNode): AnchorNode[] {
  * every candidate sibling on every call, and on a 13,000-line document that is
  * ~6ms per mapping — measured, in Chrome, over this pipeline's own output.
  *
- * WHAT INVALIDATES THEM: `invalidateAnchorMemos`, which `patchPreviewBlocks`
+ * WHAT INVALIDATES THEM: `invalidateAnchorMemos`, which `patchPreview`
  * calls before it touches the tree. It has to, because these answers are no
  * longer a function of a node's identity.
  *
@@ -296,9 +296,9 @@ function elementChildren(node: AnchorNode): AnchorNode[] {
  * wholesale by `bind:innerHTML` on every render pass, so a changed document was
  * a new set of nodes and the entries describing the old ones were collected
  * with them. Nothing invalidated these memos because nothing could.
- * `blockPatch.ts` breaks that premise on purpose — it keeps the nodes whose
+ * `previewPatch.ts` breaks that premise on purpose — it keeps the nodes whose
  * rendering did not change, and rewrites `data-sourcepos` ON THOSE KEPT NODES
- * from the new tree (`refreshSourcepos`, `carrySourcepos`). A kept node is the
+ * from the new markup (`moveSourcepos`). A kept node is the
  * same key, so its entry survives the edit that changed its range, and the memo
  * keeps answering with the lines the block used to be on — permanently, because
  * nothing is ever going to replace that node either. Every edit that shifts a

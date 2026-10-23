@@ -37,30 +37,13 @@ const SOURCES = readSourceFiles('src');
 const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
 const sanitizeSource = readSource('src/lib/utils/sanitize.ts');
 const richContentSource = readSource('src/lib/utils/richContent.ts');
-
-/**
- * The identifier the preview injects with `{@html}`, proved to be the shared
- * sanitizer's output.
- *
- * The chain is what matters — something is declared from
- * `sanitizeMarkdownFragment(...)` and *that* something is what reaches `{@html}` —
- * so this reads the name out of the source instead of pinning it. The previous
- * form spelled the whole declaration out (`let sanitizedHtml = $derived(...)`),
- * which made the private binding name, the `let`, and the `$derived` wrapper
- * into contract; renaming the variable or switching how it is computed would
- * have failed the suite while the security property held.
- */
-function sanitizedSinkName(): string {
-	const declaration = viewerSource.match(/(?:let|const)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*\bsanitizeMarkdownFragment\(/);
-	assert.ok(declaration, 'the preview must derive what it injects from sanitizeMarkdownFragment');
-	return declaration![1];
-}
+const previewPatchSource = readSource('src/lib/utils/previewPatch.ts');
 
 test('the preview sanitizes through the shared policy, not a local config', () => {
 	assert.match(
-		viewerSource,
+		previewPatchSource,
 		/import\s*\{[^}]*\bsanitizeMarkdownFragment\b[^}]*\}\s*from\s*'[^']*\/sanitize\.js'/,
-		'the viewer must import the shared sanitizer',
+		'the preview patch must import the shared sanitizer',
 	);
 
 	// The sinks: every `{@html …}` in the viewer, whatever the expression looks
@@ -83,7 +66,7 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 	//
 	// The document's own sink is no longer one of them. `{@html sanitizedHtml}`
 	// rebuilt the whole article per keystroke, so the preview now patches in only
-	// the blocks that changed (see utils/blockPatch.ts) — which means the string
+	// the blocks that changed (see utils/previewPatch.ts) — which means the string
 	// becomes nodes inside that module instead of inside the compiler's `@html`.
 	// The security property is unchanged and the chain is the same length: the
 	// sanitizer's output, and nothing else, is what is parsed. The two
@@ -101,25 +84,28 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 		'unexpected {@html} sink — what the preview injects is the shared sanitizer output',
 	);
 
-	// The document sink, in the form it takes now: one call, and what it is
-	// handed is the sanitized string. `patchPreviewBlocks` is the only way into
-	// the preview's article, so pinning its argument pins the whole path.
-	const patchArguments = [...viewerSource.matchAll(/patchPreviewBlocks\(\s*[\w.]+\s*,\s*([\w.]+)\s*\)/g)].map(
-		(match) => match[1],
-	);
-	assert.deepEqual(
-		patchArguments,
-		[sanitizedSinkName()],
-		'the preview must patch in the shared sanitizer output, once, and nothing else',
+	// The document sink, in the form it takes now: one call, handed the
+	// renderer's output. `patchPreview` is the only way into the preview's
+	// article, so what it does with that string is the whole path.
+	assert.equal(
+		[...viewerSource.matchAll(/\bpatchPreview\(\s*host\s*,\s*htmlContent\s*,/g)].length,
+		1,
+		'the preview must reach the article through patchPreview, once',
 	);
 
-	// And that the module it is handed to has no way of making nodes out of a
-	// string: it moves the sanitizer's own nodes and parses nothing.
-	const blockPatchSource = readSource('src/lib/utils/blockPatch.ts');
-	const parses = [...blockPatchSource.matchAll(/\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
-		(m) => m[1].trim(),
+	// Inside it: the one place markup is parsed is a block of the renderer's
+	// output, into a detached document of its own, before the filter — and what
+	// a block puts into the article is the filter's own nodes. Nothing is
+	// parsed after `sanitizeMarkdownFragment`, and no markup is assembled.
+	const parses = [...previewPatchSource.matchAll(/(\w+)\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
+		(m) => `${m[1]} = ${m[2].trim()}`,
 	);
-	assert.deepEqual(parses, [], 'blockPatch.ts must move the sanitized nodes and never assemble markup of its own');
+	assert.deepEqual(parses, ['box = raw'], 'previewPatch.ts parses only a raw block, before the filter');
+	assert.match(previewPatchSource, /const box = scratch\.createElement\('div'\);/, 'into the detached scratch document');
+	const renderBlock = sliceBetween(previewPatchSource, 'function renderBlock(', '\n}\n');
+	assert.match(renderBlock, /const clean = sanitizeMarkdownFragment\(box\.innerHTML\);\n\tconst top = Array\.from\(clean\.children\)/);
+	assert.match(renderBlock, /return top;$/, 'a block is inserted as the filter returned it');
+	assert.doesNotMatch(previewPatchSource, /insertAdjacentHTML|outerHTML|createContextualFragment/);
 
 	// Why the footnote sink is allowed, pinned as a direction rather than as a
 	// spelling: the tooltip body is read out of the rendered document, never
@@ -127,7 +113,7 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 	//
 	// `previewBlocks` and not `markdownBody`, and the difference is the whole
 	// point of the assertion rather than a rename. The article now holds one
-	// host per open tab, and `previewBlocks` is the one `patchPreviewBlocks` was
+	// host per open tab, and `previewBlocks` is the one `patchPreview` was
 	// handed above — so this pins the tooltip to the exact element the sanitized
 	// string was parsed into, where the previous spelling only reached the box
 	// containing it.
@@ -149,7 +135,7 @@ test('the preview sanitizes through the shared policy, not a local config', () =
 });
 
 test('the shared policy the preview now gets is the one that forbids author stylesheets', () => {
-	// Read as one chain: the preview calls sanitizeMarkdownFragment (test
+	// Read as one chain: the preview patch calls sanitizeMarkdownFragment (test
 	// above), which passes MARKDOWN_SANITIZE_CONFIG and only asks for nodes
 	// back, as the export's sanitizeMarkdownHtml passes it, and that config
 	// forbids the tag the payload needs.
@@ -222,8 +208,8 @@ test('the diagram sanitizer stays separate from the document policy', () => {
 test('the two paths keep their opposite orders on purpose', () => {
 	// The export sanitizes the renderer output and processes afterwards
 	// (scripts/exportSanitize.test.ts pins that). The preview processes first
-	// and sanitizes at the sink, so the string that reaches `{@html}` is exactly
-	// the sanitizer's output — there is no parse/serialize round trip after the
+	// and sanitizes at the sink, so what reaches the article is exactly the
+	// sanitizer's output — there is no parse/serialize round trip after the
 	// filter has run. Pin the order so the difference cannot be "tidied up"
 	// into a weaker one without reading why.
 	//
@@ -232,14 +218,17 @@ test('the two paths keep their opposite orders on purpose', () => {
 	// argument list `(html, filePath, collapsedHeaders)` and the trailing
 	// semicolon — which pinned three private parameter names and a formatting
 	// choice as the price of checking which call happens where.
+	// The preview processes each block it inserts in `renderBlock`, and
+	// nowhere else; the viewer hands the renderer's output straight to the patch.
+	assert.deepEqual(callSiteOffsets(viewerSource, 'processMarkdownHtml'), [], 'the viewer processes nothing itself');
 	assert.deepEqual(
-		callSiteOffsets(viewerSource, 'processMarkdownHtml').map((offset) => enclosingFunctionName(viewerSource, offset)),
-		['renderMarkdownPreview'],
-		'renderMarkdownPreview must be the one place that processes the renderer output',
+		callSiteOffsets(previewPatchSource, 'processBlockMarkup').map((offset) => enclosingFunctionName(previewPatchSource, offset)),
+		['renderBlock'],
+		'renderBlock must be the one place that processes the renderer output',
 	);
-	assert.doesNotMatch(
-		viewerSource,
-		/processMarkdownHtml\(\s*sanitizeMarkdown/,
+	const renderBlock = sliceBetween(previewPatchSource, 'function renderBlock(', '\n}\n');
+	assert.ok(
+		renderBlock.indexOf('processBlockMarkup(') < renderBlock.indexOf('sanitizeMarkdownFragment('),
 		'the preview must not move the filter ahead of processing without revisiting the note above',
 	);
 	// The sink half — that what `{@html}` injects is the sanitizer's output — is

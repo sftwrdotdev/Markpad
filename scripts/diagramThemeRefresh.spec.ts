@@ -11,7 +11,7 @@
  * it was replaced by the `.mermaid-diagram` container holding the SVG.
  *
  * That was invisible while the preview was `{@html sanitizedHtml}`, because
- * every render put the whole document back as source. `blockPatch.ts` (#632)
+ * every render put the whole document back as source. the block patch (#632)
  * keeps enriched nodes across renders instead, and from then on a theme change
  * reached no diagram at all. The `<pre>` is gone, `patch.inserted` is empty on
  * a re-render of the same document, and typing does not help either: the
@@ -24,14 +24,7 @@
 
 import { describe, expect, test } from 'vitest';
 
-import { patchPreviewBlocks as patchNodes } from '../src/lib/utils/blockPatch.js';
-
-/** The patch takes the sanitizer's nodes; these tests start from markup. */
-function patchPreviewBlocks(host: HTMLElement, html: string) {
-	const template = document.createElement('template');
-	template.innerHTML = html;
-	return patchNodes(host, template.content);
-}
+import { patchPreview } from '../src/lib/utils/previewPatch.js';
 import { readDiagramSource } from '../src/lib/utils/mermaidPrint.js';
 import { renderRichContent, type RichContentLibraries } from '../src/lib/utils/richContent.js';
 import { resetDiagramCache } from '../src/lib/utils/diagramCache.js';
@@ -130,7 +123,7 @@ describe('a pass that is not a theme change', () => {
 		// The keystroke path: the patch replaces the paragraph and hands only
 		// that block to the enrichment. The diagram is not in it, and a theme it
 		// no longer matches must not drag it into the pass.
-		const patch = patchPreviewBlocks(document.createElement('div'), '<p>x</p>');
+		const patch = patchPreview(document.createElement('div'), '<p>x</p>', '', new Set());
 		await renderRichContent({
 			roots: patch.inserted,
 			libraries: libraries(draws),

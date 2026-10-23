@@ -71,7 +71,7 @@ export interface FoldLayoutObservation {
 	/**
 	 * Start watching the fold contents inside newly rendered markup.
 	 *
-	 * Called with the blocks `blockPatch.ts` just inserted, rather than with the
+	 * Called with the blocks `previewPatch.ts` just inserted, rather than with the
 	 * whole article. The observation used to be torn down and rebuilt on every
 	 * keystroke, which meant a document's every fold got a fresh
 	 * ResizeObserver registration per character — and a fresh registration

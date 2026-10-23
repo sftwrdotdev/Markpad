@@ -3804,6 +3804,29 @@ mod split_blocks_tests {
         assert_eq!(blocks("<img src=\"x.png\">\n\na\n\n<hr/>\n\nb\n").len(), 4);
     }
 
+    /// `scripts/previewPatchParity.spec.ts` replays the preview's block patch
+    /// over this sample's blocks, so the fixture has to be what the renderer
+    /// says today. `MARKPAD_UPDATE_FIXTURES=1 cargo test` rewrites it.
+    #[test]
+    fn preview_block_fixture_is_current() {
+        let blocks = blocks(include_str!("../../samples/markdown-syntax.md"));
+        let json = serde_json::to_string_pretty(&blocks).unwrap() + "\n";
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../scripts/fixtures/markdown-syntax.blocks.json"
+        );
+        if std::env::var_os("MARKPAD_UPDATE_FIXTURES").is_some() {
+            std::fs::write(path, &json).unwrap();
+        }
+        let fixture = std::fs::read_to_string(path)
+            .unwrap_or_default()
+            .replace("\r\n", "\n");
+        assert!(
+            fixture == json,
+            "{path} is stale: run `MARKPAD_UPDATE_FIXTURES=1 cargo test preview_block_fixture`"
+        );
+    }
+
     #[test]
     fn no_document_can_write_the_separator() {
         let html = convert_markdown_with("a\0b\n\n$x\0y$\n\n`c\0d`\n", true);
