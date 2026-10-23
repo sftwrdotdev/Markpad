@@ -2,7 +2,6 @@ import { untrack } from 'svelte';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tabManager } from '../stores/tabs.svelte.js';
-import { claimTabForRead } from './documentSession.svelte.js';
 import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
 import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { validateTransferPayload, type TransferableTab } from '../utils/tabTransfer.js';
@@ -68,7 +67,8 @@ type WindowSessionOptions = {
 	isDisposed: () => boolean;
 	restoreState: (json: string) => void;
 	restoredTabs: () => RestoredTab[];
-	applyRestoredContent: (tabId: string, raw: string) => Promise<void>;
+	/** Read a restored tab the way an open reads it. Never throws. */
+	loadRestoredTab: (tabId: string) => Promise<void>;
 	dropRestoredTab: (tabId: string) => void;
 	canTransfer: (tabId: string) => boolean;
 	canDetach: (tabId: string) => boolean;
@@ -305,46 +305,30 @@ export function createWindowSession(options: WindowSessionOptions) {
 				for (const tab of options.restoredTabs()) {
 					// The home screen is not a document. Snapshots from builds that
 					// wrote its `HOME_TAB_PATH` sentinel must not turn into a read
-					// of a file by that name — and unlike a file that merely failed
-					// to read, there is nothing here to come back to later.
+					// of a file by that name.
 					if (!hasRealFilePath(tab.path)) {
 						options.dropRestoredTab(tab.id);
 						continue;
 					}
-					if (deferAll || deferred.includes(tab.path)) {
-						tabManager.markTabContentUnavailable(tab.id);
-						continue;
-					}
-					progress.pending = tab.path;
+					// A deferred document is not owed a read: it stays unavailable
+					// until the user asks for it (edit, reload). Every other tab
+					// waits unread and is read when it is first activated.
+					if (deferAll || deferred.includes(tab.path)) tabManager.markTabContentUnavailable(tab.id);
+					else tabManager.markTabUnread(tab.id);
+				}
+				// Only the tab on screen is read now, the way a normal open reads
+				// it. Taken synchronously, before any await, so the activation
+				// path cannot start a second read of it.
+				const active = tabManager.activeTab;
+				if (active && tabManager.takeUnread(active.id)) {
+					progress.pending = active.path;
 					// Awaited: the record has to be on disk before the read it
 					// describes starts, or the launch this read kills is the one
 					// that leaves nothing behind.
 					await writeProgress(progress);
-					// The restored tabs are on screen while this runs, so the user
-					// can type into one, or close it, before its read lands.
-					const mayApply = claimTabForRead(tab.id);
-					try {
-						// `_checked`, because restore fills an editable buffer, and
-						// both of its answers belong to the tab: `lossy` so a file
-						// nothing could decode is never written back over, and the
-						// encoding so a legacy one is written back as itself.
-						const [raw, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-						if (options.isDisposed()) return true;
-						if (mayApply()) {
-							await options.applyRestoredContent(tab.id, raw);
-							tabManager.setTabDecodedLossy(tab.id, lossy);
-							tabManager.setTabEncoding(tab.id, encoding);
-						}
-						if (options.isDisposed()) return true;
-					} catch (error) {
-						if (options.isDisposed()) return true;
-						// One failed read is not a decision to close the document.
-						// The file may be on a share that is down or a drive that is
-						// not plugged in; dropping the tab here also dropped it from
-						// the snapshot written moments later, so it never came back.
-						options.onWarning('Restore: keeping tab whose file could not be read', error);
-						tabManager.markTabContentUnavailable(tab.id);
-					}
+					if (options.isDisposed()) return true;
+					await options.loadRestoredTab(active.id);
+					if (options.isDisposed()) return true;
 					progress.pending = null;
 					await writeProgress(progress);
 				}

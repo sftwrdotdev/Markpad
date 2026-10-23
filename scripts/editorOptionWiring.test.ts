@@ -366,7 +366,7 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 	}).outputText;
 
-	// The literals close over seven locals and one import, stubbed rather than
+	// The literals close over eight locals and one import, stubbed rather than
 	// reconstructed — except the import, which is the real function: the
 	// settings-derived options live there now, and stubbing them would leave
 	// the evaluated object missing exactly what these tests read.
@@ -375,7 +375,8 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 	// right stub because nothing it can contain is an option this file asserts
 	// on. `zoomLevel` is 100, the neutral factor, for the same reason.
 	// `fontIsMonospace` is false, the opposite of the parameter's default, so a
-	// literal that forgets to pass it is visible.
+	// literal that forgets to pass it is visible. `readOnly` is false, the
+	// editor on a whole buffer.
 	return new Function(
 		'settings',
 		'value',
@@ -385,8 +386,9 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		'zoomLevel',
 		'fontIsMonospace',
 		'editorOptionsFromSettings',
+		'readOnly',
 		`return ${js};`,
-	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, false, editorOptionsFromSettings) as Record<
+	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, false, editorOptionsFromSettings, false) as Record<
 		string,
 		unknown
 	>;

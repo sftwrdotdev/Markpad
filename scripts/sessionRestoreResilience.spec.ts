@@ -77,12 +77,19 @@ let died = false;
 			case 'clear_restore_progress':
 				storedProgress = null;
 				return Promise.resolve(null);
-			case 'read_file_content_checked': {
+			case 'canonicalize_path':
+				return Promise.resolve(args.path);
+			case 'read_file_content_checked':
+			case 'open_markdown_preview': {
 				onRead(args.path);
 				if (unreadable.has(args.path) || !disk.has(args.path)) {
 					return Promise.reject(new Error(`cannot read ${args.path}`));
 				}
-				return Promise.resolve([disk.get(args.path), false]);
+				return Promise.resolve(
+					cmd === 'open_markdown_preview'
+						? [disk.get(args.path), true, false, 'UTF-8']
+						: [disk.get(args.path), false, 'UTF-8'],
+				);
 			}
 			default:
 				return Promise.resolve(null);
@@ -92,6 +99,7 @@ let died = false;
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createWindowSession } = await import('../src/lib/sessions/windowSession.svelte.js');
+const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
 const warnings: string[] = [];
 const errors: string[] = [];
@@ -100,7 +108,36 @@ const notices: Array<{ deferredPath: string | null }> = [];
 /** The "Restore windows on launch" setting, as the session sees it. */
 let restoreEnabled = true;
 
+/**
+ * The document session restore reads through, as MarkdownViewer wires it. Its
+ * `readActiveIfUnread` is what the viewer's activation effect calls; the tests
+ * call it by hand after `setActive`, which is all that effect does.
+ */
+let documents = makeDocuments();
+function makeDocuments() {
+	return createDocumentSession({
+		setShowHome: () => {},
+		currentFile: () => tabManager.activeTab?.path ?? '',
+		resetScrollHistory: () => {},
+		renderMarkdown: async (raw: string) => `<p>${raw}</p>`,
+		afterLoad: async () => {},
+		saveRecentFile: () => {},
+		deleteRecentFile: () => {},
+		setLoadingTabs: () => {},
+		measureInitialViewport: () => {},
+		isScrolling: () => false,
+		onError: (message) => errors.push(message),
+		onDiskChangedUnderSave: () => {},
+		cancelPendingAutoSave: () => {},
+		askClose: async () => 'discard' as const,
+		onCloseSaveNewerEdits: () => {},
+		onCloseAutoSaveFailed: () => {},
+		onPartialCopySaved: () => {},
+	});
+}
+
 function makeSession() {
+	documents = makeDocuments();
 	return createWindowSession({
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
@@ -110,12 +147,7 @@ function makeSession() {
 		isDisposed: () => false,
 		restoreState: (json) => tabManager.restoreState(json),
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
-		applyRestoredContent: async (tabId, raw) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			if (!tab) return;
-			tab.rawContent = raw;
-			tab.originalContent = raw;
-		},
+		loadRestoredTab: (tabId) => documents.readRestoredTab(tabId),
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
 		canTransfer: () => true,
 		canDetach: () => true,
@@ -168,35 +200,42 @@ function persistedPaths(): string[] {
 	return storedSnapshot ? JSON.parse(storedSnapshot).tabs.map((tab: { path: string }) => tab.path) : [];
 }
 
-const readsOf = () => invokeCalls.filter((call) => call.cmd === 'read_file_content_checked').map((call) => call.args.path);
+const isRead = (cmd: string) => cmd === 'read_file_content_checked' || cmd === 'open_markdown_preview';
+const readsOf = () => invokeCalls.filter((call) => isRead(call.cmd)).map((call) => call.args.path);
+
+/** What the viewer does when the user clicks a tab. */
+async function activate(path: string) {
+	tabManager.setActive(tabManager.tabs.find((tab) => tab.path === path)!.id);
+	await documents.readActiveIfUnread();
+}
 
 // --- a read that fails is not a decision to close the document ---
 
 test('a file that cannot be read keeps its tab', async () => {
-	reset(['/a.md', '/away.md', '/c.md']);
+	reset(['/away.md', '/a.md', '/c.md']);
 	unreadable.add('/away.md');
 
 	await makeSession().restore();
 
 	assert.deepEqual(
 		tabManager.tabs.map((tab) => tab.path),
-		['/a.md', '/away.md', '/c.md'],
+		['/away.md', '/a.md', '/c.md'],
 	);
 	assert.ok(
-		warnings.some((message) => message.includes('could not be read')),
+		errors.some((message) => message.includes('Error loading file')),
 		'the failure is reported, not silent',
 	);
 });
 
 test('the failed read is not written back into the snapshot', async () => {
-	reset(['/a.md', '/away.md']);
+	reset(['/away.md', '/a.md']);
 	unreadable.add('/away.md');
 
 	await makeSession().restore();
 
 	// This is the whole bug: the trimmed list used to be persisted right after
 	// the loop, so the tab never came back even once the drive was plugged in.
-	assert.deepEqual(persistedPaths(), ['/a.md', '/away.md']);
+	assert.deepEqual(persistedPaths(), ['/away.md', '/a.md']);
 });
 
 test('the empty buffer of an unreadable tab is flagged so nothing can save it over the file', async () => {
@@ -214,15 +253,81 @@ test('the empty buffer of an unreadable tab is flagged so nothing can save it ov
 	assert.equal(tab.isTruncated, true);
 });
 
-test('the documents that did read are restored normally', async () => {
-	reset(['/a.md', '/away.md'], { '/a.md': '# hello' });
-	unreadable.add('/away.md');
+// --- only the tab on screen is read at startup ---
+
+test('restore reads the tab on screen and leaves the others unread', async () => {
+	reset(['/a.md', '/b.md', '/c.md'], { '/a.md': '# hello' });
 
 	await makeSession().restore();
 
-	const readable = tabManager.tabs.find((tab) => tab.path === '/a.md')!;
-	assert.equal(readable.rawContent, '# hello');
-	assert.notEqual(readable.isTruncated, true);
+	assert.deepEqual(readsOf(), ['/a.md'], 'one read, not one per tab');
+	const [a, b, c] = tabManager.tabs;
+	assert.equal(a.rawContent, '# hello');
+	assert.notEqual(a.isTruncated, true);
+	for (const tab of [b, c]) {
+		assert.equal(tab.unread, true);
+		// Empty and flagged incomplete, so nothing can take it for the file.
+		assert.equal(tab.rawContent, '');
+		assert.equal(tab.isTruncated, true);
+	}
+});
+
+test('an unread tab is read once, when it is first activated', async () => {
+	reset(['/a.md', '/b.md'], { '/b.md': '# b' });
+	await makeSession().restore();
+	invokeCalls = [];
+
+	await activate('/b.md');
+	// The activation effect re-runs on unrelated changes; it is owed one read.
+	await documents.readActiveIfUnread();
+
+	assert.deepEqual(readsOf(), ['/b.md']);
+	const b = tabManager.tabs.find((tab) => tab.path === '/b.md')!;
+	assert.equal(b.rawContent, '# b');
+	assert.equal(b.unread, false);
+	assert.equal(b.isTruncated, false);
+});
+
+test('switching tabs during the breadcrumb write gives the read back to the tab it was taken from', async () => {
+	reset(['/a.md', '/b.md'], { '/a.md': '# a', '/b.md': '# b' });
+	// The write that names the document about to be read: the user can click
+	// another tab while it is on its way to disk.
+	let release!: () => void;
+	const written = new Promise<void>((resolve) => (release = resolve));
+	let switched = false;
+	const real = (window as any).__TAURI_INTERNALS__.invoke;
+	(window as any).__TAURI_INTERNALS__.invoke = (cmd: string, args: any) => {
+		if (!switched && cmd === 'save_restore_progress' && JSON.parse(args.json).pending === '/a.md') {
+			switched = true;
+			return written.then(() => real(cmd, args));
+		}
+		return real(cmd, args);
+	};
+	try {
+		const restoring = makeSession().restore();
+		while (!switched) await flush();
+		await activate('/b.md');
+		release();
+		await restoring;
+	} finally {
+		(window as any).__TAURI_INTERNALS__.invoke = real;
+	}
+
+	assert.deepEqual(readsOf(), ['/b.md'], '/a.md is not read into /b.md, nor read while hidden');
+	const a = tabManager.tabs.find((tab) => tab.path === '/a.md')!;
+	assert.equal(a.unread, true, 'the read restore took for /a.md is owed to it again');
+	await activate('/a.md');
+	assert.equal(a.rawContent, '# a');
+});
+
+test('an unread tab cannot be saved over its file', async () => {
+	reset(['/a.md', '/b.md']);
+	await makeSession().restore();
+	const b = tabManager.tabs.find((tab) => tab.path === '/b.md')!;
+	tabManager.updateTabRawContent(b.id, 'typed into an empty buffer');
+
+	assert.equal(await documents.saveContent(b.id), false);
+	assert.equal(invokeCalls.some((call) => call.cmd === 'save_file_content'), false);
 });
 
 // --- an interrupted restore costs one document, not the session ---
@@ -234,13 +339,14 @@ test('an interrupted restore names the document it was on', async () => {
 
 	await makeSession().restore();
 
-	// The breadcrumb has to be updated per document; a flag that only says "a
-	// restore was running" cannot tell the next launch what to skip.
-	assert.deepEqual(seen, ['/a.md', '/big.md', '/c.md']);
+	// Only the tab on screen is read at startup, so it is the one document the
+	// breadcrumb can name; a flag that only says "a restore was running"
+	// could not tell the next launch what to skip.
+	assert.deepEqual(seen, ['/a.md']);
 });
 
 test('the launch after an interruption restores everything except the suspect', async () => {
-	reset(['/a.md', '/big.md', '/c.md']);
+	reset(['/big.md', '/a.md', '/c.md']);
 	localStorage.setItem(
 		RESTORE_IN_PROGRESS_KEY,
 		JSON.stringify({ running: true, pending: '/big.md', deferred: [], interruptions: 0 }),
@@ -248,13 +354,21 @@ test('the launch after an interruption restores everything except the suspect', 
 
 	await makeSession().restore();
 
-	assert.deepEqual(readsOf(), ['/a.md', '/c.md'], 'the suspect is not read again');
+	assert.deepEqual(readsOf(), [], 'the suspect is on screen and is not read again');
 	assert.deepEqual(
 		tabManager.tabs.map((tab) => tab.path),
-		['/a.md', '/big.md', '/c.md'],
+		['/big.md', '/a.md', '/c.md'],
 		'every tab is still there, including the deferred one',
 	);
-	assert.deepEqual(persistedPaths(), ['/a.md', '/big.md', '/c.md']);
+	assert.deepEqual(persistedPaths(), ['/big.md', '/a.md', '/c.md']);
+	// Deferred is not unread: activation does not read it behind the
+	// breadcrumb's back. Editing or Reload is the user asking for it.
+	const big = tabManager.tabs.find((tab) => tab.path === '/big.md')!;
+	assert.equal(big.unread, false);
+	assert.equal(big.isTruncated, true);
+	await activate('/a.md');
+	await activate('/big.md');
+	assert.deepEqual(readsOf(), ['/a.md']);
 	assert.equal(storedSnapshot !== null, true, 'the snapshot is never discarded');
 	assert.equal(
 		invokeCalls.some((call) => call.cmd === 'clear_window_state'),
@@ -279,7 +393,7 @@ test('a breadcrumb from an older build no longer wipes the session', async () =>
 		false,
 	);
 	// It names no suspect, so it costs one retry rather than one document.
-	assert.deepEqual(readsOf(), ['/a.md', '/b.md']);
+	assert.deepEqual(readsOf(), ['/a.md']);
 });
 
 test('a finished restore leaves no breadcrumb behind', async () => {
@@ -360,7 +474,7 @@ test('a snapshot of nothing but HOME does not cost the window its session', asyn
 
 	assert.deepEqual(tabManager.tabs, []);
 	assert.equal(
-		invokeCalls.some((call) => call.cmd === 'read_file_content_checked'),
+		invokeCalls.some((call) => isRead(call.cmd)),
 		false,
 	);
 });
@@ -427,11 +541,10 @@ async function launch(dies: (call: { cmd: string; args: any }) => boolean = () =
 const readsOfPath = (path: string) => readsOf().filter((read) => read === path).length;
 
 test('a document that kills the launch reading it is read by exactly one more launch', async () => {
-	reset(['/a.md', '/poison.md', '/c.md']);
+	reset(['/poison.md', '/a.md', '/c.md']);
 	// The #201 shape: one document takes the process down, every time, before
 	// the window is usable. The user's only move is to launch it again.
-	const poison = ({ cmd, args }: { cmd: string; args: any }) =>
-		cmd === 'read_file_content_checked' && args.path === '/poison.md';
+	const poison = ({ cmd, args }: { cmd: string; args: any }) => isRead(cmd) && args.path === '/poison.md';
 
 	// A stopping bound, not an expected count: the design promises two, and a
 	// broken mechanism never recovers at all, so anything comfortably above two
@@ -461,10 +574,11 @@ test('a document that kills the launch reading it is read by exactly one more la
 	assert.equal(readsOfPath('/poison.md'), 1, 'the document that killed a launch is not read again');
 	assert.deepEqual(
 		tabManager.tabs.map((tab) => tab.path),
-		['/a.md', '/poison.md', '/c.md'],
+		['/poison.md', '/a.md', '/c.md'],
 		'and the session comes back whole, minus the content of the one suspect',
 	);
-	assert.deepEqual(readsOf().slice(-2), ['/a.md', '/c.md'], 'the other documents are read normally');
+	await activate('/a.md');
+	assert.deepEqual(readsOf().slice(-1), ['/a.md'], 'the other documents are read normally');
 });
 
 test('launches killed before the snapshot arrives still count, so startup can give up by itself', async () => {
@@ -514,12 +628,12 @@ test('claiming the launch early does not strand a window that had nothing to res
 	storedSnapshot = snapshotOf(['/a.md', '/b.md']);
 	invokeCalls = [];
 	assert.equal(await launch(), 'restored');
-	assert.deepEqual(readsOf(), ['/a.md', '/b.md']);
+	assert.deepEqual(readsOf(), ['/a.md']);
 });
 
 test('the launch that follows an interruption tells the user which document it skipped', async () => {
-	reset(['/a.md', '/poison.md']);
-	await launch(({ cmd, args }) => cmd === 'read_file_content_checked' && args.path === '/poison.md');
+	reset(['/poison.md', '/a.md']);
+	await launch(({ cmd, args }) => isRead(cmd) && args.path === '/poison.md');
 	notices.length = 0;
 
 	assert.equal(await launch(), 'restored');
@@ -604,7 +718,7 @@ test('a snapshot an older build left in localStorage is still restored, then mig
 		['/a.md', '/b.md'],
 		'the documents come back; the untitled and HOME entries are not files',
 	);
-	assert.deepEqual(readsOf(), ['/a.md', '/b.md'], 'and their content is read from disk, not from the stale copy');
+	assert.deepEqual(readsOf(), ['/a.md'], 'and the one on screen is read from disk, not from the stale copy');
 	assert.deepEqual(persistedPaths(), ['/a.md', '/b.md'], 'the session is now on the Rust side');
 	assert.equal(localStorage.getItem(LEGACY_STATE_KEY), null, 'and the old key is not read a second time');
 });

@@ -107,12 +107,7 @@ function makeSession() {
 		isDisposed: () => false,
 		restoreState: (json) => tabManager.restoreState(json),
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
-		applyRestoredContent: async (tabId, raw) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			if (!tab) return;
-			tab.rawContent = raw;
-			tab.originalContent = raw;
-		},
+		loadRestoredTab: async () => {},
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
 		canTransfer: () => true,
 		canDetach: () => true,

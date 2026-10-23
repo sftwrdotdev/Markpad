@@ -242,6 +242,7 @@ test('typing into a restored tab before its read lands is kept', async () => {
 	tabManager.closeAll();
 	localStorage.clear();
 	disk.set('/notes/a.md', 'a on disk');
+	const session = makeSession();
 
 	const windowSession = createWindowSession({
 		windowStateKey: 'readLandsState',
@@ -252,7 +253,7 @@ test('typing into a restored tab before its read lands is kept', async () => {
 		isDisposed: () => false,
 		restoreState: (json) => tabManager.restoreState(json),
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
-		applyRestoredContent: async (tabId, raw) => tabManager.setTabRawContent(tabId, raw),
+		loadRestoredTab: (tabId) => session.readRestoredTab(tabId),
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
 		canTransfer: () => true,
 		canDetach: () => true,
@@ -264,9 +265,10 @@ test('typing into a restored tab before its read lands is kept', async () => {
 		onInterrupted: () => {},
 	});
 
-	const gate = hold('read_file_content_checked');
+	// A preview tab: restore reads it the way an open does, through the slice.
+	const gate = hold('open_markdown_preview');
 	const restoring = windowSession.restore();
-	while (tabManager.tabs.length === 0 || held.has('read_file_content_checked')) await settle();
+	while (tabManager.tabs.length === 0 || held.has('open_markdown_preview')) await settle();
 	const a = tabManager.tabs[0].id;
 	tabManager.updateTabRawContent(a, 'typed while restoring');
 	gate.resolve(undefined);

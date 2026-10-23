@@ -41,6 +41,12 @@ export type LoadMarkdownOptions = {
 	 * having to know whether that file is already open and edited.
 	 */
 	discardUnsavedBuffer?: boolean;
+	/**
+	 * Leave the recent-files list alone. A restored tab read on its first
+	 * activation is a tab switch to the user, not an open, and must not move
+	 * its file to the top of the list.
+	 */
+	skipRecentFile?: boolean;
 };
 
 /**
@@ -564,7 +570,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// and comparing the spellings would miss it and overwrite the buffer.
 			const receiving = tabManager.tabs.find((item) => item.id === activeId);
 			if (receiving && receiving.isDirty && isSameFilePath(receiving, target) && !loadOptions.discardUnsavedBuffer) {
-				if (filePath) options.saveRecentFile(filePath);
+				if (filePath && !loadOptions.skipRecentFile) options.saveRecentFile(filePath);
 				await options.afterLoad();
 				return;
 			}
@@ -718,7 +724,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tabManager.setTabRawContent(activeId, content);
 			}
 			await options.afterLoad();
-			if (filePath) options.saveRecentFile(filePath);
+			if (filePath && !loadOptions.skipRecentFile) options.saveRecentFile(filePath);
 		} catch (error) {
 			console.error('Error loading file:', error);
 			// A watcher can observe a transient gap while another process replaces
@@ -1036,5 +1042,31 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return true;
 	}
 
-	return { loadMarkdown, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	/**
+	 * Read a restored tab whose read was taken for it (`takeUnread`) — the
+	 * startup pass for the tab on screen, or `readActiveIfUnread` on a later
+	 * activation. Same call as Reload from disk minus the discard: the tab
+	 * keeps its mode, a preview reads the 5MB slice first, and #547's claim
+	 * still refuses a result that would land on typing.
+	 *
+	 * `loadMarkdown` fills the ACTIVE tab. If another tab became active while
+	 * the caller awaited, this one is owed its read again, on activation.
+	 */
+	function readRestoredTab(tabId: string): Promise<void> {
+		const tab = tabManager.activeTab;
+		if (!tab || tab.id !== tabId) {
+			tabManager.markTabUnread(tabId);
+			return Promise.resolve();
+		}
+		return loadMarkdown(tab.path, { skipTabManagement: true, preserveEditState: true, skipRecentFile: true });
+	}
+
+	/** The activation half of lazy restore: read the tab on screen if it is still owed one. */
+	function readActiveIfUnread(): Promise<void> {
+		const tab = tabManager.activeTab;
+		if (!tab || !tabManager.takeUnread(tab.id)) return Promise.resolve();
+		return readRestoredTab(tab.id);
+	}
+
+	return { loadMarkdown, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

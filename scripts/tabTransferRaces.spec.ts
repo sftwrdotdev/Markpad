@@ -71,7 +71,7 @@ function makeSession(accept: () => Promise<string | null> = async () => null) {
 		isDisposed: () => false,
 		restoreState: () => {},
 		restoredTabs: () => [],
-		applyRestoredContent: async () => {},
+		loadRestoredTab: async () => {},
 		dropRestoredTab: () => {},
 		canTransfer: () => true,
 		canDetach: () => true,

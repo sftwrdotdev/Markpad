@@ -33,7 +33,7 @@ function makeSession() {
 		isDisposed: () => false,
 		restoreState: () => {},
 		restoredTabs: () => [],
-		applyRestoredContent: async () => {},
+		loadRestoredTab: async () => {},
 		dropRestoredTab: () => {},
 		canTransfer: () => true,
 		canDetach: () => true,

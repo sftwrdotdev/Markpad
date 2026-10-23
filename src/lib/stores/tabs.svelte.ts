@@ -244,6 +244,14 @@ export interface Tab {
 	 */
 	isTruncated?: boolean;
 	/**
+	 * A restored tab whose file has not been read yet. Restore reads only the
+	 * active tab; the rest wait here, empty and `isTruncated` so no writer can
+	 * mistake the empty buffer for the document, until they are activated.
+	 * Cleared by the first read that lands (`setTabRawContent`) or taken by
+	 * `takeUnread` when that read departs, so it is never owed twice.
+	 */
+	unread?: boolean;
+	/**
 	 * The `rawContent` the preview in `content` was rendered from — the answer
 	 * to "is what is on screen still this document?".
 	 *
@@ -351,6 +359,7 @@ function makeTab(fields: TabFields): Tab {
 		isScrollSynced: false,
 		foldOverrides: new Set<string>(),
 		isTruncated: false,
+		unread: false,
 		...fields,
 	};
 }
@@ -799,7 +808,24 @@ class TabManager {
 			tab.rawContent = raw;
 			tab.originalContent = raw;
 			tab.isTruncated = isTruncated;
+			tab.unread = false;
 		}
+	}
+
+	/** Restore left this tab unread: see `Tab.unread`. A dirty buffer is never touched. */
+	markTabUnread(id: string) {
+		const tab = this.tab(id);
+		if (!tab || tab.isDirty) return;
+		this.markTabContentUnavailable(id);
+		tab.unread = true;
+	}
+
+	/** True once per unread tab: the caller is the one read it is owed. */
+	takeUnread(id: string): boolean {
+		const tab = this.tab(id);
+		if (!tab?.unread) return false;
+		tab.unread = false;
+		return true;
 	}
 
 	/**

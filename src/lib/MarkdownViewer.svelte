@@ -748,19 +748,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			restoredFolder = snapshotFolder(json);
 		},
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
-		applyRestoredContent: async (tabId, raw) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			if (!tab) return;
-			// Through the store, not by assigning the two buffers here: this is
-			// a whole file read from disk, so it also settles `isTruncated` —
-			// and a tab whose earlier restore attempt was deferred arrives here
-			// carrying `true` from `markTabContentUnavailable`, which would have
-			// gone on refusing every save of a buffer that is now complete.
-			tabManager.setTabRawContent(tabId, raw);
-			const processed = await renderMarkdownPreview(raw, tab.path, tab.foldOverrides);
-			if (isDisposed) return;
-			tabManager.updateTabContent(tab.id, processed);
-		},
+		loadRestoredTab: (tabId) => documentSession.readRestoredTab(tabId),
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
 		// A partially loaded buffer must never be handed to another window.
 		// The transfer payload has no field for "incomplete" (see
@@ -3447,6 +3435,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		}
 	});
 
+	// Lazy restore: a restored tab is read when it is first shown (`Tab.unread`).
+	$effect(() => {
+		if (tabManager.activeTab?.unread) untrack(() => void documentSession.readActiveIfUnread());
+	});
+
 	async function toggleSplitView(tabId: string) {
 		const tab = tabManager.tabs.find((t) => t.id === tabId);
 		if (!tab) return;
@@ -4323,6 +4316,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 							<Editor
 								bind:this={editorPane}
 								value={tabManager.activeTab.rawContent}
+								readOnly={tabManager.activeTab.isTruncated === true}
 								language={editorLanguage}
 								theme={settings.theme}
 								zoomLevel={settings.zoomLevel}

@@ -120,10 +120,11 @@ test('the flag is set before the buffer can reach a writer', () => {
 test('window restore cannot launder the flag away', () => {
 	// Restore reads each file back into an editable buffer. With the bare
 	// command it produced mojibake that looked safe to save, so reopening the
-	// app was a way around the guard.
-	assert.match(windowSession, /read_file_content_checked/);
-	assert.match(windowSession, /tabManager\.setTabDecodedLossy\(tab\.id, lossy\)/);
-	assert.doesNotMatch(windowSession, /invoke\('read_file_content'/);
+	// app was a way around the guard. It now reads through `loadMarkdown`,
+	// which sets the flag on every load, and reads nothing itself.
+	assert.doesNotMatch(windowSession, /invoke\('read_file/);
+	assert.match(sliceBetween(session, 'function readRestoredTab', 'function readActiveIfUnread'), /return loadMarkdown\(tab\.path,/);
+	assert.match(loadMarkdown(), /tabManager\.setTabDecodedLossy\(activeId, lossy\)/);
 });
 
 test('saveContent refuses to write a lossy buffer over its own file', () => {

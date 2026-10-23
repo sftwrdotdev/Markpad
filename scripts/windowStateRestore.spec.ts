@@ -124,15 +124,34 @@ test('entries that are not files are dropped on the way back in', () => {
 
 test('startup restore reads content from disk, not from the snapshot', () => {
 	const restore = sliceBetween(session, 'async function restore', 'async function claimTransferredTab');
-	assert.match(restore, /read_file_content/);
-	// a file that cannot be read keeps its tab and its place in the snapshot —
-	// dropping it here also dropped it from the snapshot written moments later
-	// (sessionRestoreResilience.spec.ts)
+	// The tab on screen is read the way an open reads it, through the document
+	// session's `loadMarkdown`; restore itself reads no file, and never takes a
+	// document's text from the snapshot (sessionRestoreResilience.spec.ts).
+	assert.match(restore, /await options\.loadRestoredTab\(active\.id\);/);
+	assert.doesNotMatch(restore, /invoke\('read_file/);
+	assert.match(viewer, /loadRestoredTab: \(tabId\) => documentSession\.readRestoredTab\(tabId\),/);
+	// Its read is taken before the first await, so the activation effect cannot
+	// start a second one while the breadcrumb is being written.
+	assert.ok(
+		offsetOf(restore, 'tabManager.takeUnread(active.id)') < offsetOf(restore, 'progress.pending = active.path'),
+		'the read is taken before the breadcrumb write',
+	);
+	// the others wait unread; a deferred document is unavailable instead, so
+	// activation does not read it behind the breadcrumb's back
 	assert.match(restore, /tabManager\.markTabContentUnavailable\(tab\.id\);/);
+	assert.match(restore, /else tabManager\.markTabUnread\(tab\.id\);/);
 	// dropping is reserved for an entry that is not a file at all — a legacy
 	// 'HOME' sentinel (homeSentinelSnapshot.spec.ts)
 	assert.match(restore, /if \(!hasRealFilePath\(tab\.path\)\) \{\s*\n\s*options\.dropRestoredTab\(tab\.id\);/);
 	assert.match(viewer, /await windowSession\.restore\(\);/);
+});
+
+test('an editor on a buffer that is not the whole file refuses typing', () => {
+	// An unread or unreadable tab in edit mode shows an empty buffer that no
+	// save will ever accept. Read-only at the keyboard, not a toast at the save.
+	assert.match(viewer, /readOnly=\{tabManager\.activeTab\.isTruncated === true\}/);
+	const editor = readSource('src/lib/components/Editor.svelte');
+	assert.match(editor, /editor\.updateOptions\(\{ \.\.\.editorOptionsFromSettings\(settings, zoomLevel, fontIsMonospace\), readOnly \}\)/);
 });
 
 test('the close flow resolves dirty tabs before serializing window state', () => {

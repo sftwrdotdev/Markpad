@@ -87,6 +87,7 @@
 		// so there is no longer a value for the parent to bind back to.
 		zoomLevel = 100,
 		theme = "system",
+		readOnly = false,
 	} = $props<{
 		value: string;
 		language?: string;
@@ -107,6 +108,12 @@
 		sharedCursor?: { line: number; column: number } | null;
 		zoomLevel?: number;
 		theme?: string;
+		/**
+		 * The buffer is not the whole file — a restored tab not read yet, a
+		 * file that could not be read. Typing there could never be saved, so
+		 * it is refused at the keyboard instead of at the save.
+		 */
+		readOnly?: boolean;
 	}>();
 
 	let container: HTMLDivElement;
@@ -354,6 +361,7 @@
 			// effect runs, and a font size changed under them afterwards
 			// keeps the pixel offset, not the line (#799).
 			...editorOptionsFromSettings(settings, zoomLevel),
+			readOnly,
 			scrollBeyondLastLine: true,
 			stickyScroll: { enabled: settings.stickyScroll },
 			wordBasedSuggestions: "off",
@@ -2328,9 +2336,9 @@
 		if (switched || currentLanguage !== languageId) syncStatusFromModel();
 	});
 
-	/** The one place the settings reach Monaco after creation: the effect below, and `onMount` once the font is measured. */
+	/** The one place the settings, and `readOnly`, reach Monaco after creation: the effect below, and `onMount` once the font is measured. */
 	function applySettingsOptions() {
-		editor.updateOptions(editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace));
+		editor.updateOptions({ ...editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace), readOnly });
 	}
 
 	$effect(() => {
