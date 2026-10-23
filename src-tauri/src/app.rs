@@ -195,6 +195,7 @@ pub fn run() {
             tab_transfer::claim_detached_tab,
             tab_transfer::complete_detached_tab,
             tab_transfer::cancel_detached_tab,
+            tab_transfer::refresh_detached_tab,
             window_runtime::create_transfer_window,
             window_runtime::set_window_meta,
             window_runtime::list_viewer_windows,

@@ -120,7 +120,7 @@ function makeSession() {
 		onTransferClaimed: () => {},
 		acceptTransferredTab: async (tab) => {
 			tabManager.addTab(tab.path, tab.rawContent);
-			return true;
+			return tabManager.activeTabId;
 		},
 		onError: () => {},
 		onWarning: () => {},

@@ -18,7 +18,7 @@ test('the source keeps waiting when the destination has already claimed', () => 
 	const cancel = sliceFrom(session, 'const cancel = async ()');
 	assert.match(cancel, /outcome\.cancelled/);
 	assert.match(cancel, /outcome\.claimed/);
-	assert.match(cancel, /if \(!outcome\.cancelled && outcome\.claimed\) return;/);
+	assert.match(cancel, /if \(!outcome\.cancelled && outcome\.claimed\) \{\s*\n\s*setTimeout\(cancel, 15_000\);\s*\n\s*return;/);
 });
 
 test('the destination releases its claim when it cannot finish', () => {

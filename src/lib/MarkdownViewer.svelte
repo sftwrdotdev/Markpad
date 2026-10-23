@@ -802,11 +802,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			const id = tabManager.insertTransferredTab(snapshot);
 			try {
 				const transferred = tabManager.tabs.find((tab) => tab.id === id);
-				if (!transferred) return false;
+				if (!transferred) return null;
 				await renderTabPreviewFromRaw(transferred);
 				if (isDisposed) {
 					tabManager.closeTab(id);
-					return false;
+					return null;
 				}
 				// The reading position travels with the tab, and until here nothing
 				// put it back. `insertTransferredTab` activates the tab
@@ -832,7 +832,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						measurePreviewBox,
 					);
 				}
-				return true;
+				return id;
 			} catch (error) {
 				tabManager.closeTab(id);
 				throw error;

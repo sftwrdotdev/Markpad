@@ -121,7 +121,7 @@ function makeSession() {
 		canDetach: () => true,
 		transferPayload: () => '',
 		onTransferClaimed: () => {},
-		acceptTransferredTab: async () => true,
+		acceptTransferredTab: async () => 'arrived',
 		onError: (message) => errors.push(message),
 		onWarning: (message) => warnings.push(message),
 		onInterrupted: (interruption) => notices.push(interruption),

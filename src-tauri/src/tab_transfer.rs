@@ -38,6 +38,17 @@ pub struct CancelOutcome {
     pub claimed: bool,
 }
 
+/// Result of `refresh_detached_tab`. `Gone` means the transfer already
+/// ended: completed (the source is about to hear `tab-transfer-claimed`) or
+/// cancelled.
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum RefreshOutcome {
+    Updated,
+    Revoked,
+    Gone,
+}
+
 /// Who is allowed to cancel a staged transfer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CancelAuthority {
@@ -207,15 +218,18 @@ impl TabTransferBroker {
 
     /// The source's own timeout path: never destroys a transfer the
     /// destination has already claimed and is still working on.
+    ///
+    /// One lock for the read and the removal. Released in between, a
+    /// `complete` landing in the gap took the entry and told the source it
+    /// had moved, while this still reported `cancelled` and the source kept
+    /// its copy: the tab in both windows.
     fn cancel_from_source(&self, token: &str, now: Instant) -> CancelOutcome {
-        let claimed_at = match self.peek(token) {
-            Some(entry) => entry.claimed_at,
-            None => {
-                return CancelOutcome {
-                    cancelled: false,
-                    claimed: false,
-                }
-            }
+        let mut inner = crate::window_runtime::lock_recover(&self.inner);
+        let Some(claimed_at) = inner.entries.get(token).map(|entry| entry.claimed_at) else {
+            return CancelOutcome {
+                cancelled: false,
+                claimed: false,
+            };
         };
         if let Some(claimed_at) = claimed_at {
             if now.duration_since(claimed_at) < CLAIM_GRACE {
@@ -225,11 +239,41 @@ impl TabTransferBroker {
                 };
             }
         }
-        self.take(token);
+        inner.insertion_order.retain(|entry| entry != token);
+        inner.entries.remove(token);
         CancelOutcome {
             cancelled: true,
             claimed: claimed_at.is_some(),
         }
+    }
+
+    /// The source's tab changed after it was staged. Until the destination
+    /// claims, the newer copy simply replaces the payload. After the claim
+    /// the destination is rendering the old copy, so the transfer is
+    /// withdrawn instead: its `complete` then finds nothing and it rolls
+    /// back, and the source keeps the tab it is still editing.
+    fn refresh_as(
+        &self,
+        caller_label: &str,
+        token: &str,
+        payload: String,
+    ) -> Result<RefreshOutcome, String> {
+        let mut inner = crate::window_runtime::lock_recover(&self.inner);
+        let Some(entry) = inner.entries.get_mut(token) else {
+            return Ok(RefreshOutcome::Gone);
+        };
+        if entry.source_label != caller_label {
+            return Err(format!(
+                "TRANSFER_FORBIDDEN: window '{caller_label}' may not refresh this tab transfer"
+            ));
+        }
+        if entry.claimed_at.is_none() {
+            entry.payload = payload;
+            return Ok(RefreshOutcome::Updated);
+        }
+        inner.insertion_order.retain(|entry| entry != token);
+        inner.entries.remove(token);
+        Ok(RefreshOutcome::Revoked)
     }
 
     /// The destination's rollback path: it owns the claim, so it may always
@@ -356,6 +400,16 @@ pub fn cancel_detached_tab(
     token: String,
 ) -> Result<CancelOutcome, String> {
     state.cancel_as(window.label(), &token, Instant::now())
+}
+
+#[tauri::command]
+pub fn refresh_detached_tab(
+    window: tauri::Window,
+    state: State<'_, TabTransferBroker>,
+    token: String,
+    payload: String,
+) -> Result<RefreshOutcome, String> {
+    state.refresh_as(window.label(), &token, payload)
 }
 
 #[cfg(test)]
@@ -533,6 +587,61 @@ mod tests {
             }
         );
         assert!(broker.peek(&token).is_none());
+    }
+
+    // The source kept typing while the new window booted: the destination
+    // must claim the newer copy, not the one staged at the click.
+    #[test]
+    fn refresh_before_the_claim_replaces_the_payload() {
+        let broker = TabTransferBroker::new();
+        let token = broker.stage("old".to_string(), "main".to_string());
+        let destination = destination_label(&token);
+
+        assert_eq!(
+            broker.refresh_as("main", &token, "new".to_string()),
+            Ok(RefreshOutcome::Updated)
+        );
+        assert_eq!(
+            broker
+                .claim_as(&destination, &token, Instant::now())
+                .unwrap()
+                .as_deref(),
+            Some("new")
+        );
+    }
+
+    // After the claim the destination is rendering the old copy. Completing
+    // it would close the source tab over the newer text, so the transfer is
+    // withdrawn and the destination's completion fails.
+    #[test]
+    fn refresh_after_the_claim_withdraws_the_transfer() {
+        let broker = TabTransferBroker::new();
+        let token = broker.stage("old".to_string(), "main".to_string());
+        let destination = destination_label(&token);
+        broker
+            .claim_as(&destination, &token, Instant::now())
+            .unwrap();
+
+        assert_eq!(
+            broker.refresh_as("main", &token, "new".to_string()),
+            Ok(RefreshOutcome::Revoked)
+        );
+        assert!(broker.complete_as(&destination, &token).is_err());
+        assert_eq!(
+            broker.refresh_as("main", &token, "newer".to_string()),
+            Ok(RefreshOutcome::Gone)
+        );
+    }
+
+    #[test]
+    fn only_the_source_may_refresh() {
+        let broker = TabTransferBroker::new();
+        let token = broker.stage("doc".to_string(), "main".to_string());
+        let refusal = broker
+            .refresh_as(&destination_label(&token), &token, "forged".to_string())
+            .expect_err("the destination must not rewrite the source's document");
+        assert!(refusal.starts_with("TRANSFER_FORBIDDEN"), "{refusal}");
+        assert_eq!(broker.peek(&token).unwrap().payload, "doc");
     }
 
     #[test]
