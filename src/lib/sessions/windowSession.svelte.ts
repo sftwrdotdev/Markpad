@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tabManager } from '../stores/tabs.svelte.js';
+import { claimTabForRead } from './documentSession.svelte.js';
 import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
 import { hasRealFilePath } from '../utils/tabFileActions.js';
 import { validateTransferPayload, type TransferableTab } from '../utils/tabTransfer.js';
@@ -317,6 +318,9 @@ export function createWindowSession(options: WindowSessionOptions) {
 					// describes starts, or the launch this read kills is the one
 					// that leaves nothing behind.
 					await writeProgress(progress);
+					// The restored tabs are on screen while this runs, so the user
+					// can type into one, or close it, before its read lands.
+					const mayApply = claimTabForRead(tab.id);
 					try {
 						// `_checked`, because restore fills an editable buffer, and
 						// both of its answers belong to the tab: `lossy` so a file
@@ -324,9 +328,11 @@ export function createWindowSession(options: WindowSessionOptions) {
 						// encoding so a legacy one is written back as itself.
 						const [raw, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
 						if (options.isDisposed()) return true;
-						await options.applyRestoredContent(tab.id, raw);
-						tabManager.setTabDecodedLossy(tab.id, lossy);
-						tabManager.setTabEncoding(tab.id, encoding);
+						if (mayApply()) {
+							await options.applyRestoredContent(tab.id, raw);
+							tabManager.setTabDecodedLossy(tab.id, lossy);
+							tabManager.setTabEncoding(tab.id, encoding);
+						}
 						if (options.isDisposed()) return true;
 					} catch (error) {
 						if (options.isDisposed()) return true;

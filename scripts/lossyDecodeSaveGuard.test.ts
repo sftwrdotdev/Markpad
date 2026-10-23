@@ -112,8 +112,9 @@ test('the editable-pane shortcut reports fidelity too', () => {
 test('the flag is set before the buffer can reach a writer', () => {
 	const body = loadMarkdown();
 	const set = offsetOf(body, 'setTabDecodedLossy(activeId, lossy)');
-	const firstAwait = offsetOf(body, 'options.renderMarkdown(content');
-	assert.ok(set < firstAwait, 'the flag must be set before the first await that follows the load');
+	const buffer = offsetOf(body, 'setTabRawContent(activeId, content');
+	assert.ok(set < buffer, 'the flag must be set before the buffer it describes');
+	assert.doesNotMatch(body.slice(set, buffer), /await /, 'and in the same synchronous block');
 });
 
 test('window restore cannot launder the flag away', () => {

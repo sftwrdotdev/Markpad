@@ -129,7 +129,7 @@ import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
-import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
+import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
 	import 'katex/dist/katex.min.css';
@@ -2385,6 +2385,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 					// switch.
 					tab.isEditing = true;
 				} else {
+					const mayApply = claimTabForRead(tab.id);
 					try {
 						// This buffer is about to be handed to the editor, and
 						// the editor arms auto-save. The checked command is what
@@ -2393,6 +2394,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 						// `loadMarkdown` left behind — a file can be converted
 						// to UTF-8 (or away from it) between the two reads.
 						const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
+						// A task ticked, or the tab closed, while this was out.
+						if (!mayApply()) return;
 						tabManager.setTabDecodedLossy(tab.id, lossy);
 						tabManager.setTabEncoding(tab.id, encoding);
 						// Goes through the store so a tab that held only the
@@ -3441,11 +3444,13 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			// The buffer must be complete first (not empty, not a large file's
 			// partial read), or auto-save writes a truncated file.
 			if (tab.path && !tab.isEditing && !tab.rawContent) {
+				const mayApply = claimTabForRead(tab.id);
 				try {
 					// Checked, like every other read that fills an editable
 					// buffer: split view is an editor, so this tab must carry
 					// the fidelity of its own decode rather than inherit one.
 					const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
+					if (!mayApply()) return;
 					tabManager.setTabDecodedLossy(tab.id, lossy);
 					tabManager.setTabEncoding(tab.id, encoding);
 					tabManager.setTabRawContent(tab.id, content);

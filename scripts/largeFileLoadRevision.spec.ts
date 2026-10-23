@@ -9,12 +9,12 @@ const sessionPath = 'src/lib/sessions/documentSession.svelte.ts';
 const session = existsSync(sessionPath) ? readSource(sessionPath) : '';
 
 test('large-file completion requires the current clean load revision and unchanged view mode', () => {
-	assert.match(session, /const loadRevisionByTab = new Map<string, number>\(\);/);
-	assert.match(session, /const fullLoadRevision = \(loadRevisionByTab\.get\(activeId\) \?\? 0\) \+ 1;/);
-	assert.match(session, /loadRevisionByTab\.set\(activeId, fullLoadRevision\);/);
+	// The revision, the path and the untouched buffer are `claimTabForRead`'s
+	// test; the view mode is the completion's own.
+	assert.match(session, /const mayApplyFull = claimTabForRead\(activeId\);/);
 	assert.match(
 		session,
-		/loadRevisionByTab\.get\(activeId\) === fullLoadRevision[\s\S]*!targetTab\.isDirty[\s\S]*targetTab\.isEditing === initialIsEditing[\s\S]*targetTab\.isSplit === initialIsSplit/,
+		/mayApplyFull\(\) && targetTab\?\.isEditing === initialIsEditing && targetTab\?\.isSplit === initialIsSplit/,
 	);
 });
 

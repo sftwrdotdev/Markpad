@@ -92,8 +92,55 @@ function foldsForTab(tabId: string): Set<string> {
 	return tabManager.tabs.find((item) => item.id === tabId)?.foldOverrides ?? new Set<string>();
 }
 
+/**
+ * Per tab: the revision of the newest disk read aimed at it. Module scope
+ * rather than per session, because the reads it orders are not all the
+ * session's own — entering the editor or split view, and the startup restore,
+ * read the file elsewhere and fill the same buffer.
+ */
+const readRevisionByTab = new Map<string, number>();
+
+/**
+ * Claim a tab for a disk read that is about to fill it, and get back the test
+ * the result has to pass before it may be written there.
+ *
+ * Called BEFORE the first await, because everything it captures is about the
+ * moment the read departs: which tab, which file that tab holds, and what its
+ * buffer says. Read later and those describe whatever happened during the
+ * wait — the tab the user switched to, the file they navigated to — which is
+ * how a reload of one tab used to land in another.
+ *
+ * The result is refused when, by the time it arrives:
+ * - the tab is gone, or now holds a different file;
+ * - a newer read of the same tab has departed since, so this one is stale;
+ * - the buffer changed meanwhile — typing, a ticked task, a save. Writing a
+ *   read over it replaces `originalContent` as well, so the edit would be
+ *   lost AND the tab would look clean. Only a caller acting on the user's own
+ *   "discard my changes" may pass `discardUnsavedBuffer`.
+ *
+ * "Changed since departure", not "dirty": a buffer that was already dirty
+ * when the read left was dealt with by the caller (a navigation moves the tab
+ * off that document), and every other reader declines a dirty tab before
+ * claiming it.
+ *
+ * Every read that fills a tab's buffer goes through here, so that one answer
+ * holds for all of them instead of each re-deriving part of it.
+ */
+export function claimTabForRead(tabId: string, discardUnsavedBuffer = false): () => boolean {
+	const tab = tabManager.tabs.find((item) => item.id === tabId);
+	const path = tab?.path;
+	const raw = tab?.rawContent;
+	const original = tab?.originalContent;
+	const revision = (readRevisionByTab.get(tabId) ?? 0) + 1;
+	readRevisionByTab.set(tabId, revision);
+	return () => {
+		const current = tabManager.tabs.find((item) => item.id === tabId);
+		if (!current || current.path !== path || readRevisionByTab.get(tabId) !== revision) return false;
+		return discardUnsavedBuffer || (current.rawContent === raw && current.originalContent === original);
+	};
+}
+
 export function createDocumentSession(options: DocumentSessionOptions) {
-	const loadRevisionByTab = new Map<string, number>();
 	const loadingTabs = new Set<string>();
 	// Tabs whose next save is authorised to overwrite a changed file, set by
 	// answering the conflict bar with "keep mine". One save each.
@@ -282,6 +329,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		if (!tab.isTruncated) return true;
 		if (!tab.path) return true;
 		if (tab.isDirty) return false;
+		const mayApply = claimTabForRead(tabId);
 		try {
 			// Checked, like every other read that ends in a writable buffer.
 			// The bare command was safe here only because this re-reads a file
@@ -291,6 +339,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// the buffer instead of a memory of how it was obtained; it also
 			// CLEARS the flag for a file converted to UTF-8 since the load.
 			const [full, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
+			// Overtaken, edited or closed while the read was out. Whether the
+			// buffer is whole is still the question asked, so the tab answers it.
+			if (!mayApply()) return tabManager.tabs.find((item) => item.id === tabId)?.isTruncated === false;
 			tabManager.setTabDecodedLossy(tabId, lossy);
 			// The preview's answer came from the first 5MB; this one is the
 			// whole file's, and it is the one every save from here on uses.
@@ -432,7 +483,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	async function loadMarkdown(filePath: string, loadOptions: LoadMarkdownOptions = {}) {
 		options.setShowHome(false);
 		let existing = null;
-		let pendingNavigateTabId: string | null = null;
 		try {
 			// The second arm predates the stacks being per tab and is kept as it
 			// was: this runs before tab management, so the tab it reaches is the
@@ -443,6 +493,13 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			if (loadOptions.resetScrollHistory || filePath !== options.currentFile()) {
 				options.resetScrollHistory();
 			}
+			// Navigation, back/forward and Reload act on the tab they were
+			// called from, so it is pinned here, ahead of the first await.
+			// Taking `activeTabId` after it took the tab the user had switched
+			// to meanwhile: the other document's text landed in it, clean, and
+			// its next auto-save wrote that text over its own file.
+			const pinnedId = loadOptions.navigate || loadOptions.skipTabManagement ? tabManager.activeTabId : null;
+			const pinnedRead = pinnedId ? claimTabForRead(pinnedId, loadOptions.discardUnsavedBuffer) : null;
 			// Ask the filesystem what file this path names, ONCE, before any of
 			// the decisions below. Every one of them is really a "same file?"
 			// question — is it already open, does it belong to the tab holding
@@ -458,17 +515,19 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			const pathKey = await canonicalizePath(filePath);
 			const target = { path: filePath, pathKey };
 
-			if (loadOptions.navigate && tabManager.activeTab) {
-				pendingNavigateTabId = tabManager.activeTab.id;
-			} else if (!loadOptions.skipTabManagement) {
+			if (pinnedRead && !pinnedRead()) return;
+			const pendingNavigateTabId = loadOptions.navigate ? pinnedId : null;
+			let targetId = pinnedId;
+			if (!pinnedId && !loadOptions.skipTabManagement) {
 				existing = tabManager.tabs.find((tab) => isSameFilePath(tab, target));
 				if (existing) tabManager.setActive(existing.id);
 				else if (tabManager.activeTab && tabManager.activeTab.path === '' && !tabManager.activeTab.isDirty && tabManager.activeTab.rawContent.trim() === '') {
 					tabManager.updateTabPath(tabManager.activeTab.id, filePath, pathKey);
 				} else tabManager.addTab(filePath, '', pathKey);
+				targetId = tabManager.activeTabId;
 			}
-			const activeId = tabManager.activeTabId;
-			if (!activeId) return;
+			if (!targetId) return;
+			const activeId = targetId;
 			// Callers that manage tabs themselves — back/forward, a link opened
 			// in a new tab — put the path on the tab before getting here, so
 			// this is where those tabs learn their identity. Cheap and idempotent
@@ -492,9 +551,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// something a caller states, never something this function infers
 			// from surrounding state.
 			//
-			// Note the tab is found by `activeTabId`: whether the caller reached
+			// Note the tab is found by `activeId`: whether the caller reached
 			// it by `setActive` on an already-open file, by `addTab` resolving to
-			// it, or by never having left it, the buffer at risk is the same one.
+			// it, or by pinning it, the buffer at risk is the same one.
 			//
 			// The match is by file, not by string: reopening `/notes/A.md` while
 			// `/notes/a.md` sits here with unsaved edits is reopening THIS file,
@@ -506,19 +565,17 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				return;
 			}
 
-			const fullLoadRevision = (loadRevisionByTab.get(activeId) ?? 0) + 1;
-			loadRevisionByTab.set(activeId, fullLoadRevision);
 			// #547: every read below is an await, and this load may be overtaken
 			// while one is in flight — the startup path is delivered on two
 			// channels that nothing dedupes (`RunEvent::Opened` both stashes the
 			// path for `send_markdown_path` and emits `file-path`; argv is read by
-			// both as well), so two loads can run on one tab. The full-load stage
-			// already refuses to apply a stale result; the first stage did not, and
-			// an older preview landing last overwrote the winner's complete buffer
-			// with its 5MB slice, re-raising `isTruncated` — after which every save
-			// is refused and nothing retries. Same revision test, applied to every
-			// write a load makes.
-			const isCurrentLoad = () => loadRevisionByTab.get(activeId) === fullLoadRevision;
+			// both as well), so two loads can run on one tab. An older preview
+			// landing last overwrote the winner's complete buffer with its 5MB
+			// slice, re-raising `isTruncated` — after which every save is refused
+			// and nothing retries. The claim's revision refuses it, and the same
+			// test refuses a result that would land on typing done during the
+			// read (Live Mode reloads on every external change).
+			const mayApply = pinnedRead ?? claimTabForRead(activeId, loadOptions.discardUnsavedBuffer);
 			const isMarkdown = hasMarkdownLinkExtension(filePath);
 			const tab = tabManager.tabs.find((item) => item.id === activeId);
 
@@ -560,10 +617,17 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				} else {
 					[content, isFull, lossy, encoding] = (await invoke('open_markdown_preview', { path: filePath, maxBytes: 5_000_000 })) as [string, boolean, boolean, string];
 				}
-				// Ahead of the encoding verdict, not just the buffer: a prefix's
-				// detected encoding can differ from the whole file's, and
-				// `tab.encoding` is what the save writes with.
-				if (!isCurrentLoad()) return;
+				if (!mayApply()) return;
+				// A navigation drops the folds of the document being left, so the
+				// file it moves to renders with none.
+				const processed = await options.renderMarkdown(content, filePath, pendingNavigateTabId ? new Set<string>() : foldsForTab(activeId));
+				// Every write this stage makes comes after this one test, in one
+				// synchronous block. The encoding included: a prefix's detected
+				// encoding can differ from the whole file's, and `tab.encoding` is
+				// what the save writes with. And the navigation included: it moves
+				// the tab to the new file, so a refusal after it would leave the
+				// old document's buffer under the new path for auto-save to write.
+				if (!mayApply()) return;
 				// Decided on every load, before the buffer can reach a writer.
 				// Both branches report both, so this also CLEARS the flag on a
 				// file the user has since converted to UTF-8 — and repoints the
@@ -572,8 +636,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);
 				if (pendingNavigateTabId) tabManager.navigate(pendingNavigateTabId, filePath, pathKey);
-				const processed = await options.renderMarkdown(content, filePath, foldsForTab(activeId));
-				if (!isCurrentLoad()) return;
 				tabManager.updateTabContent(activeId, processed);
 				// `isFull === false` means this is only the leading slice of a
 				// large file. Marking the tab keeps anything downstream from
@@ -581,9 +643,12 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				tabManager.setTabRawContent(activeId, content, !isFull);
 
 				if (!isFull) {
+					// A read of its own, claimed now that the preview is the buffer:
+					// it lands only on that untouched preview.
+					const mayApplyFull = claimTabForRead(activeId);
 					const canApplyFullLoad = () => {
 						const targetTab = tabManager.tabs.find((item) => item.id === activeId);
-						return targetTab?.path === filePath && loadRevisionByTab.get(activeId) === fullLoadRevision && !targetTab.isDirty && targetTab.isEditing === initialIsEditing && targetTab.isSplit === initialIsSplit;
+						return mayApplyFull() && targetTab?.isEditing === initialIsEditing && targetTab?.isSplit === initialIsSplit;
 					};
 					updateLoading(activeId, true);
 					// Everything above addresses the tab by id, so a switch during
@@ -641,7 +706,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// Same race, same guard: this branch reads the whole file, so it
 				// cannot strand a slice, but a stale one still overwrites the
 				// winner's buffer and encoding and flips the tab into the editor.
-				if (!isCurrentLoad()) return;
+				if (!mayApply()) return;
 				tabManager.setTabDecodedLossy(activeId, lossy);
 				tabManager.setTabEncoding(activeId, encoding);
 				lossySaveWarnedTabs.delete(activeId);
