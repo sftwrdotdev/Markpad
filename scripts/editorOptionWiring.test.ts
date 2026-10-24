@@ -362,7 +362,9 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 	// the effect race #369 removed.
 	assert.equal(literals.length, 1, `exactly one ${callee} call site in Editor.svelte`);
 
-	const js = ts.transpileModule(`(${literals[0].getText(source)})`, {
+	// Bound to a name, not returned as an expression: TypeScript 6 prefixes the
+	// output with "use strict", and `return ${js}` would return that string.
+	const js = ts.transpileModule(`const options = (${literals[0].getText(source)});`, {
 		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 	}).outputText;
 
@@ -387,7 +389,7 @@ function optionsPassedTo(callee: string, settings: Record<string, unknown> = {})
 		'fontIsMonospace',
 		'editorOptionsFromSettings',
 		'readOnly',
-		`return ${js};`,
+		`${js}\nreturn options;`,
 	)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, false, editorOptionsFromSettings, false) as Record<
 		string,
 		unknown

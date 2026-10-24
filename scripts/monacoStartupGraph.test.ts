@@ -74,7 +74,7 @@ function staticSpecifiers(source: string): string[] {
 function resolveLocal(specifier: string, fromFile: string): string | null {
 	let target: string;
 	if (specifier.startsWith('.')) target = resolve(dirname(fromFile), specifier);
-	else if (specifier.startsWith('$lib/')) target = resolve('src/lib', specifier.slice('$lib/'.length));
+	else if (specifier.startsWith('#lib/')) target = resolve('src/lib', specifier.slice('#lib/'.length));
 	else if (specifier.startsWith('$app/') || !specifier.startsWith('/')) return null;
 	else return null;
 
@@ -116,7 +116,7 @@ test('the parser sees the imports it is supposed to see', () => {
 
 	assert.ok(files.includes('src/lib/MarkdownViewer.svelte'), 'reached the viewer from the entry');
 	assert.ok(files.includes('src/lib/components/Editor.svelte'), 'reached Editor.svelte, which is still statically imported');
-	assert.ok(files.includes('src/lib/stores/settings.svelte.ts'), 'followed a $lib specifier with a .js extension');
+	assert.ok(files.includes('src/lib/stores/settings.svelte.ts'), 'followed a #lib specifier with a .js extension');
 	assert.ok(files.length > 30, `walked a real graph, not a stub (got ${files.length} files)`);
 
 	// The negative check below is only meaningful if a static Monaco import
