@@ -5,7 +5,9 @@ import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { readSource } from './sourceTree.js';
 
 const config = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
-	bundle: { fileAssociations: Array<{ ext: string[] }> };
+	bundle: {
+		fileAssociations: Array<{ ext: string[]; contentTypes?: string[]; mimeType?: string; name: string }>;
+	};
 };
 
 // Every extension Markpad treats as a Markdown document is associated, except
@@ -16,6 +18,23 @@ test('installer associates every Markdown extension except txt', () => {
 		extensions,
 		MARKDOWN_LINK_EXTENSIONS.filter((ext) => ext !== 'txt'),
 	);
+});
+
+// macOS ignores `ext` once an association has a content type, and its
+// Markdown type (net.daringfireball.markdown, owned by the system) only tags
+// .md and .markdown. Any other extension must sit in an association with no
+// content type or MIME type, or it gets a dynamic UTI that no association
+// claims and Markpad drops out of Finder's Open With. One name keeps a single
+// Windows ProgID, which hooks.nsi registers under.
+test('macOS claims extensions outside the system Markdown type by extension', () => {
+	for (const association of config.bundle.fileAssociations) {
+		if (association.contentTypes) {
+			assert.deepEqual(association.ext, ['md', 'markdown']);
+		} else {
+			assert.equal(association.mimeType, undefined);
+		}
+		assert.equal(association.name, 'Markdown File');
+	}
 });
 
 // The other half of the same policy, kept in this file so neither side moves

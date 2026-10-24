@@ -39,12 +39,18 @@
     ],
     "fileAssociations": [
       {
-        "ext": ["md", "markdown", "mdown", "mkd"],
+        "ext": ["md", "markdown"],
         "contentTypes": [
           "net.daringfireball.markdown",
           "public.markdown"
         ],
         "mimeType": "text/markdown",
+        "name": "Markdown File",
+        "description": "Opens Markdown files with Markpad",
+        "role": "Editor"
+      },
+      {
+        "ext": ["mdown", "mkd"],
         "name": "Markdown File",
         "description": "Opens Markdown files with Markpad",
         "role": "Editor"
