@@ -12,6 +12,7 @@ import {
 	NODE_TEXT,
 	type ShimNode,
 } from './renderProtocolDom.ts';
+import { readSource } from './sourceTree.js';
 
 installShimDom();
 
@@ -639,6 +640,14 @@ describe('jump to the selected fragment', () => {
 		const raw = ['---', 'title: "T"', '---', '', '# Title'].join('\r\n') + '\r\n';
 		assert.equal(frontMatterLineOffset(raw), 4);
 		assert.equal(raw.split('\r\n')[1 + frontMatterLineOffset(raw) - 1], '# Title');
+	});
+
+	test('the real stress document shifts by its front matter', () => {
+		// The fixture the reporter of the offset was reading: 10 lines of front
+		// matter plus the blank line after it, heading on buffer line 12.
+		const raw = readSource(new URL('../samples/stress-test.md', import.meta.url));
+		assert.equal(frontMatterLineOffset(raw), 11);
+		assert.equal(raw.split('\n')[11], '# Markdown Reader Stress Test');
 	});
 
 	test('a --- that is not front matter shifts nothing', () => {

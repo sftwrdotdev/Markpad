@@ -170,6 +170,15 @@ describe('settings persistence', async () => {
 		}
 	});
 
+	test('the outline following the editor has no preference of its own', () => {
+		// #169. The outline has always followed the preview unconditionally, and
+		// following the editor is the same feature answering for the other pane: a
+		// switch would make half of one behaviour optional. `editor.tocFollows`
+		// (scroll or cursor) is which editor position it follows, not whether.
+		const keys = createSettingsPersistence().map((entry) => entry.key);
+		assert.deepEqual(keys.filter((key) => /toc/i.test(key) && /editor/i.test(key.replace(/^editor\./, ''))), []);
+	});
+
 	/** Every key currently in localStorage, with its value. */
 	function storageSnapshot(): Map<string, string> {
 		const out = new Map<string, string>();
