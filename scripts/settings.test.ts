@@ -143,6 +143,7 @@ describe('font family values', () => {
 		const editor = editorOptionsFromSettings(
 			{
 				minimap: false,
+				stickyScroll: true,
 				wordWrap: 'on',
 				editorMaxWidth: 80,
 				lineNumbers: 'on',

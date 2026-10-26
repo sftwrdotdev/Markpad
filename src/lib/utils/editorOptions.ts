@@ -98,6 +98,7 @@ export function editorOptionsFromSettings(
 		// cursor line. 'all' applies it to clicks too, not only to keyboard moves.
 		cursorSurroundingLines: settings.typewriterMode ? TYPEWRITER_SURROUNDING_LINES : 0,
 		cursorSurroundingLinesStyle: settings.typewriterMode ? "all" : "default",
+		stickyScroll: { enabled: settings.stickyScroll },
 	};
 }
 
@@ -108,7 +109,7 @@ export function editorOptionsFromSettings(
  * re-applied.
  */
 export function createdEditorOptions(
-	settings: EditorOptionSettings & { stickyScroll: boolean },
+	settings: EditorOptionSettings,
 	zoomPercent: number,
 	readOnly: boolean,
 ): MonacoEditor.IStandaloneEditorConstructionOptions {
@@ -122,7 +123,6 @@ export function createdEditorOptions(
 		...editorOptionsFromSettings(settings, zoomPercent),
 		readOnly,
 		scrollBeyondLastLine: true,
-		stickyScroll: { enabled: settings.stickyScroll },
 		wordBasedSuggestions: "off",
 		quickSuggestions: false,
 		// Monaco's Unicode highlighter is built for source code, where a
@@ -265,6 +265,7 @@ export function editorReadOnly(tab: { isTruncated?: boolean }): boolean {
 /** The slice of the settings store the options above are derived from. */
 export type EditorOptionSettings = {
 	minimap: boolean;
+	stickyScroll: boolean;
 	wordWrap: string;
 	editorMaxWidth: number;
 	lineNumbers: string;

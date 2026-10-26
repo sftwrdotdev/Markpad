@@ -128,6 +128,7 @@ describe('editor options', () => {
 	/** A settled settings store, so each test names only the field it is about. */
 	const SETTINGS = {
 		minimap: false,
+		stickyScroll: true,
 		wordWrap: 'on',
 		editorMaxWidth: 80,
 		lineNumbers: 'on',
@@ -140,6 +141,13 @@ describe('editor options', () => {
 		animateCursor: true,
 		typewriterMode: false,
 	};
+
+	test('Sticky Headings reaches the editor that is already open', () => {
+		// It was set in the creation literal only, so turning the setting on or off
+		// changed nothing until the next editor was created.
+		assert.deepEqual(editorOptionsFromSettings(SETTINGS, 100).stickyScroll, { enabled: true });
+		assert.deepEqual(editorOptionsFromSettings({ ...SETTINGS, stickyScroll: false }, 100).stickyScroll, { enabled: false });
+	});
 
 	test('the caret glide is a setting and not a hard-coded on', () => {
 		// It was `cursorSmoothCaretAnimation: 'on'` in the creation literal (#710),
@@ -424,7 +432,7 @@ describe('editor options', () => {
 
 	/** What `monaco.editor.create` gets for a settings store, on a whole buffer. */
 	function created(settings: Partial<typeof SETTINGS> = {}) {
-		return createdEditorOptions({ ...SETTINGS, stickyScroll: true, ...settings }, 100, false);
+		return createdEditorOptions({ ...SETTINGS, ...settings }, 100, false);
 	}
 
 	test('an option a setting can change is one `updateOptions` re-applies', () => {
@@ -434,8 +442,6 @@ describe('editor options', () => {
 		// shape as the `fontSize` divergence #369 removed. So: change each setting,
 		// and every option that moves at creation has to move the same way in what
 		// the update effect re-applies to the open editor.
-		// `stickyScroll` is left out: it is set only at creation today (known bug,
-		// reported, not fixed here).
 		const OTHER: Record<string, string> = { wordWrap: 'off', lineNumbers: 'off', renderLineHighlight: 'none', editorFont: 'Georgia' };
 		for (const [field, value] of Object.entries(SETTINGS)) {
 			const changed = { ...SETTINGS, [field]: typeof value === 'boolean' ? !value : typeof value === 'number' ? value + 6 : OTHER[field] };
@@ -579,7 +585,7 @@ describe('editor options', () => {
 		assert.equal(editorReadOnly({ isTruncated: true }), true);
 		assert.equal(editorReadOnly({ isTruncated: false }), false);
 		assert.equal(editorReadOnly({}), false);
-		assert.equal(createdEditorOptions({ ...SETTINGS, stickyScroll: true }, 100, true).readOnly, true, 'at creation');
+		assert.equal(createdEditorOptions(SETTINGS, 100, true).readOnly, true, 'at creation');
 		assert.equal(updatedEditorOptions(SETTINGS, 100, true, true).readOnly, true, 'and when a tab is read later');
 		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).readOnly, false, 'and typing is back once it is whole');
 	});
