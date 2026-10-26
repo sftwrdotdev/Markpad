@@ -182,9 +182,8 @@ export interface ExportDocumentInput {
  * child of `<body>`, so a percentage cap resolves to the width it already has —
  * but `none` says the intended thing without depending on that reasoning, and
  * it cannot interact with `box-sizing` the way a percentage can. `margin: 0
- * auto` then centres nothing (there is no slack to distribute) and the
- * `padding: 40px !important` still holds the text off the window edge, which is
- * exactly how the preview behaves in full-width mode.
+ * auto` then centres nothing (there is no slack to distribute) and the page
+ * margin padding still holds the text off the window edge.
  *
  * The value is normalized here rather than trusted, because this is the seam
  * where it stops being a number and becomes a CSS declaration: `previewMaxWidth`
@@ -235,13 +234,14 @@ ${appearance}
 }
 @media screen {
 	.markdown-body {
-		padding: 40px !important;
+		padding: var(--page-margin, 1cm) !important;
 	}
 }
 /* The copied print sheet hides everything outside #app, because the app prints
    #print-root inside it. An exported file has no #app: its article is the page.
    The :not(#app) is there for weight, to outrank that rule. Its padding is left
-   to the print sheet, so paper gets the same margins as the app's PDF. */
+   to the print sheet, so paper gets the same margins as the app's PDF; the
+   screen rule above uses the same margin, so the file looks the same both ways. */
 @media print {
 	body > .markdown-body:not(#app) {
 		display: block !important;

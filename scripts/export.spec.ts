@@ -11,7 +11,8 @@ const appStyles = readSource('src/styles.css');
  * Loads `html` into the jsdom document as it would come out on `media`. jsdom
  * applies no media type itself, so each `@media` block that names `media` (or
  * `all`) is replaced in place by its own rules, and every other `@media` block
- * is dropped.
+ * is dropped. jsdom also leaves `var()` unresolved (a padding of `var(--x)`
+ * computes to 0), so each one is replaced by the root's value for it.
  */
 function render(html: string, media: 'print' | 'screen'): Document {
 	document.documentElement.innerHTML = html.replace(/^<!DOCTYPE html>\s*<html[^>]*>/, '').replace(/<\/html>\s*$/, '');
@@ -23,6 +24,20 @@ function render(html: string, media: 'print' | 'screen'): Document {
 			const inner = applies ? Array.from(rule.cssRules, (r) => r.cssText) : [];
 			sheet.deleteRule(index);
 			inner.forEach((text, offset) => sheet.insertRule(text, index + offset));
+		}
+	}
+	const root = getComputedStyle(document.documentElement);
+	for (const sheet of Array.from(document.styleSheets)) {
+		for (const rule of Array.from(sheet.cssRules)) {
+			if (!(rule instanceof CSSStyleRule)) continue;
+			for (const name of Array.from(rule.style)) {
+				const value = rule.style.getPropertyValue(name);
+				if (!value.includes('var(')) continue;
+				const resolved = value.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)/g, (_, variable: string, fallback?: string) =>
+					root.getPropertyValue(variable).trim() || (fallback ?? '').trim(),
+				);
+				rule.style.setProperty(name, resolved, rule.style.getPropertyPriority(name));
+			}
 		}
 	}
 	return document;
@@ -52,17 +67,23 @@ describe('printing an exported HTML file', () => {
 
 	test('gets the same paper margins as the app’s own PDF', () => {
 		// The PDF route prints #print-root inside #app; the export used to keep its
-		// screen padding on paper instead.
+		// 40px screen padding on paper instead.
 		const pdf = render(
 			`<head><style>${appStyles}</style></head><body><div id="app"><div id="print-root"><article class="markdown-body"></article></div></div></body>`,
 			'print',
 		);
 		const paper = article(pdf).paddingTop;
+		assert.ok(parseFloat(paper) > 0, `the PDF has no page margin: ${paper}`);
 		assert.equal(article(render(exported, 'print')).paddingTop, paper);
 		assert.equal(article(render(exported, 'print')).paddingLeft, paper);
 	});
 
-	test('keeps its 40px padding on screen', () => {
-		assert.equal(article(render(exported, 'screen')).paddingTop, '40px');
+	test('looks the same on screen as on paper', () => {
+		// One page margin for both, so the file does not change shape when printed.
+		const screen = article(render(exported, 'screen'));
+		const paper = article(render(exported, 'print'));
+		assert.ok(parseFloat(screen.paddingTop) > 0, `no margin on screen: ${screen.paddingTop}`);
+		assert.equal(screen.paddingTop, paper.paddingTop);
+		assert.equal(screen.paddingLeft, paper.paddingLeft);
 	});
 });
