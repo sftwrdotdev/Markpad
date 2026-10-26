@@ -33,8 +33,8 @@ describe('moving tabs between windows', () => {
 	test('create_transfer_window is async so window creation cannot deadlock the main thread', () => {
 		const lib = readRustBackend();
 
-		assert.match(lib, /#\[tauri::command\]\n(?:pub )?async fn create_transfer_window\(/);
-		assert.doesNotMatch(lib, /#\[tauri::command\]\n(?:pub )?fn create_transfer_window\(/);
+		assert.match(lib, /#\[tauri::command\]\n#\[specta::specta\]\n(?:pub )?async fn create_transfer_window\(/);
+		assert.doesNotMatch(lib, /#\[tauri::command\]\n#\[specta::specta\]\n(?:pub )?fn create_transfer_window\(/);
 	});
 });
 

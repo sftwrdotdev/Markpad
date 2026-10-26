@@ -43,15 +43,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
+use tauri_specta::Event;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FolderEntry {
     pub name: String,
     pub path: String,
     pub is_dir: bool,
 }
+
+/// `folder-changed`: a watched folder of this window gained or lost an entry.
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct FolderChanged(pub String);
 
 /// Window label -> its one folder watcher.
 pub struct FolderWatcherState {
@@ -98,7 +103,7 @@ fn new_folder_watch(handle: AppHandle, label: String) -> Result<FolderWatch, Str
     let pending = changed.clone();
     let emit = coalesced(Duration::from_millis(200), move || {
         for folder in std::mem::take(&mut *lock_recover(&pending)) {
-            let _ = handle.emit_to(label.as_str(), "folder-changed", folder);
+            let _ = FolderChanged(folder).emit_to(&handle, label.as_str());
         }
     });
     let watched = folders.clone();
@@ -168,11 +173,13 @@ pub fn list_folder(dir: &Path) -> Result<Vec<FolderEntry>, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn read_folder_entries(path: String) -> Result<Vec<FolderEntry>, String> {
     blocking(move || list_folder(Path::new(&path))).await
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn watch_folder(
     window: tauri::Window,
     handle: AppHandle,
@@ -201,6 +208,7 @@ pub async fn watch_folder(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn unwatch_folder(
     window: tauri::Window,
     state: tauri::State<'_, FolderWatcherState>,
@@ -215,6 +223,7 @@ pub fn unwatch_folder(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn unwatch_all_folders(
     window: tauri::Window,
     state: tauri::State<'_, FolderWatcherState>,

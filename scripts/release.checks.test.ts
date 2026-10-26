@@ -936,7 +936,7 @@ describe('a package-managed install is not offered an update', () => {
 		// connects the two halves: an unregistered command fails at runtime, and
 		// this flow's runtime is a Linux package nobody on this project runs daily.
 		assert.match(rust, /fn self_update_supported\(app: AppHandle\) -> bool/);
-		const handler = sliceBetween(rust, 'tauri::generate_handler![', '])');
+		const handler = sliceBetween(rust, 'collect_commands![', '])');
 		assert.match(handler, /self_update_supported/);
 	});
 
@@ -1001,8 +1001,8 @@ describe('Tauri command registration', () => {
 	function registeredCommands(): Set<string> {
 		// `sliceBetween` keeps its start anchor, so the first comma-separated entry
 		// would otherwise be `generate_handler![\n  clipboard_write_text`.
-		const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'generate_handler![', '])').replace(
-			'generate_handler![',
+		const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'collect_commands![', '])').replace(
+			'collect_commands![',
 			'',
 		);
 		return new Set(
@@ -1053,7 +1053,7 @@ describe('heavy commands run off the main thread', () => {
 
 	for (const name of ['clipboard_read_image', 'save_window_state']) {
 		test(`${name} runs off the main thread`, () => {
-			assert.match(rust, new RegExp(`#\\[tauri::command\\]\\n(?:pub )?async fn ${name}\\(`));
+			assert.match(rust, new RegExp(`#\\[tauri::command\\]\\n#\\[specta::specta\\]\\n(?:pub )?async fn ${name}\\(`));
 		});
 	}
 });
@@ -1342,7 +1342,8 @@ describe('single implementations', () => {
 			// spelling — the same loop's else-branch, which is how 20 locales got a
 			// `toc` section they did not previously have.
 			marker: /Object\.assign\(|\btranslations\b(?:\s*\[[^\]]*\])+\s*=(?!=)/g,
-			allowed: [],
+			// bindings.ts: tauri-specta's generated event helper, not a table.
+			allowed: ['src/lib/bindings.ts'],
 		},
 		{
 			name: 'this suite reads a file through one function',

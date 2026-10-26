@@ -148,6 +148,13 @@ jobs:
           cd src-tauri
           cargo test
 
+      # `cargo test` just ran `export_bindings`, which rewrites
+      # src/lib/bindings.ts from the registered commands and events. A Rust
+      # command or event changed without the regenerated file committed leaves a
+      # diff here, before the frontend can drift from what Rust answers.
+      - name: check generated bindings are committed
+        run: git diff --exit-code src/lib/bindings.ts
+
       # `-D warnings` is only defensible because the count is currently zero:
       # the two that existed (a redundant `'static` on a const, a `push_str`
       # with a one-character literal) are fixed in the same commit as this

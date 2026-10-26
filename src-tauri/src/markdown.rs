@@ -1760,7 +1760,7 @@ pub(crate) fn blank_front_matter(markdown: &str, lines: usize) -> Cow<'_, str> {
 /// The editor's headings and foldable blocks, from one parse: its folding
 /// provider wants both for the same buffer, and parsing a long document is the
 /// expensive part.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 pub(crate) struct Outline {
     anchors: Vec<HeadingAnchor>,
     folds: Vec<FoldRange>,
@@ -1777,7 +1777,7 @@ pub(crate) fn outline(markdown: &str, front_matter_lines: usize) -> Outline {
 }
 
 /// Lines the editor can fold, 1-based and inclusive.
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
 pub(crate) struct FoldRange {
     start: u32,
     end: u32,
@@ -1818,7 +1818,7 @@ fn block_fold_ranges<'a>(root: &'a comrak::nodes::AstNode<'a>, markdown: &str) -
 }
 
 /// A heading, and the id a link has to name to reach it.
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, specta::Type)]
 pub(crate) struct HeadingAnchor {
     /// 1-based line in the buffer the caller passed, for ordering the list.
     line: u32,

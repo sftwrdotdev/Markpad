@@ -142,7 +142,7 @@ describe('live mode watched path', () => {
 	test('a watcher notification is routed to its watched path', () => {
 		// The event name across Rust and TypeScript. What the viewer does with the
 		// event runs in documents.conflicts.spec.ts (handleFileChanged).
-		assert.match(runtime, /emit_to\(event_label\.as_str\(\), "file-changed", watched_path\.clone\(\)\)/);
+		assert.match(runtime, /FileChanged\(watched_path\.clone\(\)\)\.emit_to\(&handle, event_label\.as_str\(\)\)/);
 		assert.match(viewer, /await appWindow\.listen\('file-changed', \(event\) => externalChange\.handleFileChanged\(event\.payload as string, liveMode\)\)/);
 	});
 

@@ -33,7 +33,7 @@ use crate::markdown::{blank_front_matter, markdown_options};
 
 /// One coloured range, in the coordinates Monaco's semantic tokens speak:
 /// zero-based line, zero-based UTF-16 column, length in UTF-16 code units.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
 pub struct SemanticSpan {
     /// A legend entry in `utils/semanticTokens.ts`. `kind.marker` there is a
     /// token type plus its `marker` modifier, which is how Monaco's theme

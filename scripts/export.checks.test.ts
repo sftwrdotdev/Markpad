@@ -760,7 +760,7 @@ describe('native PDF printing', () => {
 		const tauriLib = readRustBackend();
 
 		const registered = new Set(
-			sliceBetween(tauriLib, 'tauri::generate_handler![', ']')
+			sliceBetween(tauriLib, 'collect_commands![', ']')
 				.split(',')
 				.map((entry) => entry.trim().replace(/^.*::/, '')),
 		);
@@ -774,7 +774,7 @@ describe('native PDF printing', () => {
 			assert.ok(registered.has(command), `export.ts invokes '${command}', which lib.rs must register`);
 			assert.match(
 				tauriLib,
-				new RegExp(`#\\[tauri::command\\]\\n(?:pub )?(?:async )?fn ${command}\\(`),
+				new RegExp(`#\\[tauri::command\\]\\n#\\[specta::specta\\]\\n(?:pub )?(?:async )?fn ${command}\\(`),
 				`${command} must be defined as a Tauri command`,
 			);
 		}
