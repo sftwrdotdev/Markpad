@@ -123,32 +123,10 @@ describe('window geometry is saved while the app runs', () => {
 });
 
 describe('moving tabs between windows', () => {
-	const runtime = readSource('src-tauri/src/window_runtime.rs');
 	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const tab = readSource('src/lib/components/Tab.svelte');
 	const titleBar = readSource('src/lib/components/TitleBar.svelte');
-
-	test('the runtime registers live viewer windows in stable creation order', () => {
-		assert.match(runtime, /window_counter/);
-		assert.match(runtime, /pub fn set_window_meta/);
-		assert.match(runtime, /pub fn list_viewer_windows/);
-		assert.match(runtime, /list\.sort_by_key\(\|entry\| entry\.meta\.number\)/);
-
-		// Deregistration, read inside the arm that has to do it. The previous form
-		// was `/window_registry[\s\S]*?remove\(window\.label\(\)\)/` over the whole
-		// file: `window_registry` is the struct field at the top, `remove(window
-		// .label())` is the *watcher* cleanup ~430 lines down, and nothing required
-		// the two to be one statement. Measured — deleting the registry removal from
-		// the `Destroyed` arm left the suite green, and every closed window stayed in
-		// `list_viewer_windows` as a transfer target that no longer exists.
-		const destroyed = sliceBetween(runtime, 'tauri::WindowEvent::Destroyed => {', '\n        }');
-		assert.match(
-			destroyed,
-			/window_registry\)\.remove\(window\.label\(\)\)/,
-			'a destroyed window must be deregistered, or it is still offered as a move target',
-		);
-	});
 
 	test('moving to an existing window uses the acknowledged transfer protocol', () => {
 		assert.match(session, /async function transfer\(/);
@@ -466,34 +444,6 @@ describe('a pinned group opens in a window that holds it', () => {
 
 describe('a cold start does not steal focus', () => {
 	const backend = readRustBackend();
-
-	function showWindowSource(): string {
-		const match = /pub async fn show_window\([\s\S]*?\n\}/.exec(backend);
-		assert.ok(match, 'show_window is gone: this file no longer states anything');
-		return match[0];
-	}
-
-	test('the launch window is shown without being activated on a cold start', () => {
-		const showWindow = showWindowSource();
-
-		// The defect (#702): the window is built hidden and revealed once the
-		// frontend mounts, seconds after launch, and the reveal called `set_focus`
-		// unconditionally — pulling the user out of whatever they had switched to.
-		// The label and the one-shot flag together are what make it the FIRST show
-		// of the LAUNCH window that stays quiet.
-		assert.match(showWindow, /window\.label\(\)\s*==\s*LAUNCH_LABEL/);
-		assert.match(showWindow, /MAIN_WINDOW_SHOWN\.swap\(true,/);
-
-		// Not vacuous: the other callers — a detached tab window, the close walk
-		// needing its dialog visible — still activate, so this cannot pass by
-		// `set_focus` having been deleted outright.
-		assert.match(showWindow, /set_focus\(\)/);
-
-		// And the quiet path returns before reaching it.
-		const guard = showWindow.indexOf('return;');
-		const focus = showWindow.indexOf('set_focus()');
-		assert.ok(guard > 0 && guard < focus, 'the cold-start path falls through to set_focus');
-	});
 
 	test('no window builder opts out of focus', () => {
 		// `.focused(false)` on a window built hidden leaves WebView2 on Windows with

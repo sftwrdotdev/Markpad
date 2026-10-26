@@ -119,6 +119,52 @@ impl AppState {
             claimed_recovery: Mutex::new(HashSet::new()),
         }
     }
+
+    /// A viewer window's own report of itself. Its number is given on its first
+    /// report and kept, so the Move-to-window list stays in creation order.
+    fn record_window_meta(
+        &self,
+        label: String,
+        tag_name: Option<String>,
+        tag_color: Option<String>,
+        active_tab_title: String,
+        tab_count: usize,
+    ) {
+        let mut registry = lock_recover(&self.window_registry);
+        let entry = registry.entry(label).or_insert_with(|| WindowMeta {
+            number: self.window_counter.fetch_add(1, Ordering::SeqCst) + 1,
+            tag_name: None,
+            tag_color: None,
+            active_tab_title: String::new(),
+            tab_count: 0,
+        });
+        entry.tag_name = tag_name;
+        entry.tag_color = tag_color;
+        entry.active_tab_title = active_tab_title;
+        entry.tab_count = tab_count;
+    }
+
+    fn viewer_windows(&self) -> Vec<WindowListEntry> {
+        let registry = lock_recover(&self.window_registry);
+        let mut list: Vec<WindowListEntry> = registry
+            .iter()
+            .map(|(label, meta)| WindowListEntry {
+                label: label.clone(),
+                meta: meta.clone(),
+            })
+            .collect();
+        list.sort_by_key(|entry| entry.meta.number);
+        list
+    }
+
+    /// A closed window is no longer a move target, and a quit under way
+    /// remembers that it closed it.
+    fn window_destroyed(&self, label: &str) {
+        lock_recover(&self.window_registry).remove(label);
+        if let Some(closed) = lock_recover(&self.quit).as_mut() {
+            closed.push(label.to_string());
+        };
+    }
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -355,18 +401,7 @@ pub fn set_window_meta(
     if !is_viewer_label(&label) {
         return;
     }
-    let mut registry = lock_recover(&state.window_registry);
-    let entry = registry.entry(label).or_insert_with(|| WindowMeta {
-        number: state.window_counter.fetch_add(1, Ordering::SeqCst) + 1,
-        tag_name: None,
-        tag_color: None,
-        active_tab_title: String::new(),
-        tab_count: 0,
-    });
-    entry.tag_name = tag_name;
-    entry.tag_color = tag_color;
-    entry.active_tab_title = active_tab_title;
-    entry.tab_count = tab_count;
+    state.record_window_meta(label, tag_name, tag_color, active_tab_title, tab_count);
 }
 
 /// Whether a window other than `label` currently carries `name` as its tag.
@@ -410,16 +445,7 @@ pub fn is_window_tag_taken(
 
 #[tauri::command]
 pub fn list_viewer_windows(state: State<'_, AppState>) -> Vec<WindowListEntry> {
-    let registry = lock_recover(&state.window_registry);
-    let mut list: Vec<WindowListEntry> = registry
-        .iter()
-        .map(|(label, meta)| WindowListEntry {
-            label: label.clone(),
-            meta: meta.clone(),
-        })
-        .collect();
-    list.sort_by_key(|entry| entry.meta.number);
-    list
+    state.viewer_windows()
 }
 
 /// Starts a quit (`true`) or ends one a close cancelled (`false`), returning
@@ -513,6 +539,12 @@ pub fn focus_window(app: AppHandle, label: String) -> Result<(), String> {
 /// Consumed by the launch window's first show. See `show_window`.
 static MAIN_WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 
+/// Whether this show is the launch window's first, the one that must not
+/// activate. Asking consumes it. See `show_window`.
+fn is_cold_start_show(label: &str, shown: &AtomicBool) -> bool {
+    label == LAUNCH_LABEL && !shown.swap(true, Ordering::Relaxed)
+}
+
 /// Reveals a window that was built hidden.
 ///
 /// The launch window is built hidden so no empty frame is on screen while the
@@ -532,8 +564,7 @@ static MAIN_WINDOW_SHOWN: AtomicBool = AtomicBool::new(false);
 /// of those must still come to the front.
 #[tauri::command]
 pub async fn show_window(window: tauri::Window) {
-    let is_cold_start =
-        window.label() == LAUNCH_LABEL && !MAIN_WINDOW_SHOWN.swap(true, Ordering::Relaxed);
+    let is_cold_start = is_cold_start_show(window.label(), &MAIN_WINDOW_SHOWN);
 
     let _ = window.show();
 
@@ -1405,11 +1436,7 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
             window
                 .state::<crate::folder::FolderWatcherState>()
                 .forget_window(window.label());
-            let app_state = window.state::<AppState>();
-            lock_recover(&app_state.window_registry).remove(window.label());
-            if let Some(closed) = lock_recover(&app_state.quit).as_mut() {
-                closed.push(window.label().to_string());
-            };
+            window.state::<AppState>().window_destroyed(window.label());
         }
         _ => {}
     }
@@ -2414,6 +2441,49 @@ mod tests {
         assert_eq!(left_behind, Vec::<String>::new());
 
         fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn listed(state: &AppState) -> Vec<String> {
+        state
+            .viewer_windows()
+            .into_iter()
+            .map(|entry| entry.label)
+            .collect()
+    }
+
+    /// Move-to-window lists open windows in the order they were opened, and
+    /// never one that has closed: a closed window offered as a target takes the
+    /// tab nowhere.
+    #[test]
+    fn the_runtime_registers_live_viewer_windows_in_stable_creation_order() {
+        let state = AppState::new();
+        for label in ["main", "window-b", "window-a"] {
+            state.record_window_meta(label.into(), None, None, "t".into(), 1);
+        }
+        // A later report from the first window keeps its place.
+        state.record_window_meta("main".into(), Some("Work".into()), None, "u".into(), 2);
+        assert_eq!(listed(&state), ["main", "window-b", "window-a"]);
+
+        update_quit(&state.quit, true);
+        state.window_destroyed("window-b");
+        assert_eq!(listed(&state), ["main", "window-a"]);
+        assert_eq!(update_quit(&state.quit, false), ["window-b"]);
+    }
+
+    /// Only the launch window's first show stays in the background (#702); a
+    /// detached tab window or the close walk revealing a window still activates.
+    #[test]
+    fn the_launch_window_is_shown_without_being_activated_on_a_cold_start() {
+        let shown = AtomicBool::new(false);
+        assert!(
+            !is_cold_start_show("window-a", &shown),
+            "another window's show is not the cold start"
+        );
+        assert!(is_cold_start_show(LAUNCH_LABEL, &shown));
+        assert!(
+            !is_cold_start_show(LAUNCH_LABEL, &shown),
+            "only the first show is quiet"
+        );
     }
 }
 
