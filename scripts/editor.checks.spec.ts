@@ -19,7 +19,8 @@ import { readSource } from './sourceTree.js';
  * events here set it by hand.
  */
 describe('AltGr guard in Editor.svelte', () => {
-	const EDITOR = readSource('src/lib/components/Editor.svelte');
+	// The mount sequence lives in utils/mountEditor.ts since the mountEditor move.
+	const EDITOR = readSource('src/lib/utils/mountEditor.ts');
 
 	test('Editor.svelte tracks AltGr in a context key', () => {
 		// The context key every Ctrl+Alt action refuses (editor.actions.test.ts
