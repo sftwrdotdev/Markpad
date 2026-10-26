@@ -644,19 +644,6 @@ describe('preview width', () => {
 
 	const tocOverlaySource = readSource(new URL('../src/lib/utils/tocOverlay.ts', import.meta.url));
 
-	test('settings load, persist, and reset the preview width through one normalizer', () => {
-		assert.match(settingsSource, /previewMaxWidth = \$state\(DEFAULT_PREVIEW_MAX_WIDTH\)/);
-		// Persistence moved from one all-fields effect to one entry per localStorage
-		// key (so that a change in one window stops rewriting every other key from a
-		// stale snapshot). The preview width still round-trips under the same key and
-		// through the same normalizer; only the plumbing that reads and writes it is
-		// now shared. See scripts/settingsPersistence.spec.ts.
-		assert.match(settingsSource, /key: 'preview\.maxWidth'/);
-		assert.match(settingsSource, /read: \(s\) => String\(s\.previewMaxWidth\)/);
-		assert.match(settingsSource, /normalizePreviewMaxWidth\(savedPreviewMaxWidth\)/);
-		assert.match(settingsSource, /resetPreviewMaxWidth\(\)[\s\S]*this\.previewMaxWidth = DEFAULT_PREVIEW_MAX_WIDTH/);
-	});
-
 	test('preview layout derives width and ToC geometry from the same preference', () => {
 		assert.match(viewerSource, /getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)/);
 		// The gutter arithmetic moved to `tocOverlay.ts` with #176, which added the

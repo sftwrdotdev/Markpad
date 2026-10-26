@@ -595,6 +595,25 @@ describe('settings persistence', async () => {
 		assert.equal(store.previewFullWidth, false);
 	});
 
+	test('settings load, persist, and reset the preview width through one normalizer', () => {
+		resetStorage({ 'preview.maxWidth': 'banana' });
+		assert.equal(createStore().previewMaxWidth, 880, 'garbage loads as the default');
+
+		resetStorage({ 'preview.maxWidth': '99999' });
+		const store = createStore();
+		assert.equal(store.previewMaxWidth, 1600, 'an out-of-range width loads clamped');
+
+		store.previewMaxWidth = 1200;
+		flushSync();
+		assert.equal(localStorage.getItem('preview.maxWidth'), '1200');
+		assert.equal(createStore().previewMaxWidth, 1200, 'a restart keeps it');
+
+		store.resetPreviewMaxWidth();
+		flushSync();
+		assert.equal(store.previewMaxWidth, 880);
+		assert.equal(localStorage.getItem('preview.maxWidth'), '880');
+	});
+
 	test('the legacy full-width key is honoured once and then superseded', () => {
 		resetStorage({ isFullWidth: 'true' });
 		assert.equal(createStore().previewFullWidth, true, 'an install upgrading from the old key keeps its setting');
