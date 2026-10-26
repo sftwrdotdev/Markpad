@@ -1,69 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
-import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
-
-import { bareCommands } from './keymapHarness.js';
 import { readRustBackend, readSource, sliceFrom } from './sourceTree.js';
 import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 
 /*
  * Issue #604: Enter, Tab and Shift+Tab on list items and tables. The handlers
- * run in editing.test.ts. What is left here is the condition the app DECLARES
- * for them — the `when` expression, evaluated out of the source — because an
- * Enter binding that forgets `!suggestWidgetVisible` breaks the completion
- * popup silently, and the installed Monaco's own Shift+Tab command.
+ * and the `when` clauses the app binds them behind run in editing.test.ts.
+ * What is left here is the installed Monaco's own Shift+Tab command.
  */
 describe('list keys in the editor', () => {
-	// ------------------------------------------------------------- the when clauses
-
-	/** Guards that must stand in front of all three keys, and what owns the key without them. */
-	const SHARED_GUARDS: Record<string, string> = {
-		editorTextFocus: 'the find box and the rename input both take Enter, and neither is the text',
-		'!editorReadonly': 'reading mode types nothing',
-		'!suggestWidgetVisible':
-			'Enter accepts a completion and Tab accepts a completion; this app has two completion providers, so the popup is a live case',
-		'!inSnippetMode': 'Tab jumps to the next snippet placeholder, and so does Shift+Tab backwards',
-	};
-
-	test('the editing keys are registered, and behind every guard that owns them first', () => {
-		// `bareCommands()` in ./keymapHarness.ts EVALUATES each `addCommand`
-		// argument, so the keybinding numbers are Monaco's own and the `when` string
-		// is the one the component computes.
-		const calls = bareCommands();
-
-		const enter = calls.filter((call) => call.binding === KeyCode.Enter);
-		assert.equal(enter.length, 1, 'exactly one Enter binding');
-		assert.equal(enter[0].handler, 'continueListOnEnter');
-
-		const tab = calls.filter((call) => call.binding === KeyCode.Tab);
-		assert.equal(tab.length, 1, 'exactly one plain-Tab binding');
-		assert.equal(tab[0].handler, 'handleTabKey');
-
-		const shiftTab = calls.filter((call) => call.binding === (KeyMod.Shift | KeyCode.Tab));
-		assert.equal(shiftTab.length, 1, 'exactly one Shift+Tab binding');
-		assert.equal(shiftTab[0].handler, 'handleShiftTabKey');
-
-		for (const call of [enter[0], tab[0], shiftTab[0]]) {
-			for (const [guard, why] of Object.entries(SHARED_GUARDS)) {
-				assert.ok(
-					call.when.split('&&').some((clause) => clause.trim() === guard),
-					`${call.handler} is bound without ${guard}: ${why}. when = ${call.when}`,
-				);
-			}
-		}
-
-		// The extra guard both Tab keys need: the accessibility toggle exists so that
-		// Tab leaves the editor, and a binding at weight 1000 would take that away.
-		for (const call of [tab[0], shiftTab[0]]) {
-			assert.ok(
-				call.when.includes('!editorTabMovesFocus'),
-				`${call.handler} is bound without !editorTabMovesFocus: ${call.when}`,
-			);
-		}
-	});
-
 	test("Monaco's outdent is still what Shift+Tab means outside the app's handler", () => {
 		// The Shift+Tab handler's last path re-sends `outdent` (run in
 		// editing.test.ts). This pins the installed Monaco half of that claim.
