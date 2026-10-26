@@ -4,11 +4,7 @@ import { decodeKeybinding, type KeyCodeChord } from 'monaco-editor/esm/vs/base/c
 import { KeyCodeUtils } from 'monaco-editor/esm/vs/base/common/keyCodes.js';
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
-import ts from 'typescript';
 
-import { isInFencedCode } from '../src/lib/utils/codeFence.js';
-import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
-import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { viewerCommandTable, type ViewerCommandHost } from '../src/lib/utils/viewerCommands.js';
 import { editorActions, editorKeyCommands, type EditorActionDeps, type EditorKeyCommand } from '../src/lib/utils/editorActions.js';
@@ -305,111 +301,4 @@ export type BareCommand = EditorKeyCommand;
  */
 export function bareCommands(): BareCommand[] {
 	return editorKeyCommands({ KeyMod, KeyCode } as never);
-}
-
-/** What a handler did to the stub editor it was handed. */
-export type RecordedEdits = {
-	triggers: string[];
-	edits: Array<{ range: number[]; text: string; cursor: number[] }>;
-	/** `setSelection` calls: a caret moved without an edit. */
-	selections: number[][];
-	undoStops: number;
-};
-
-class FakeRange {
-	constructor(
-		readonly startLineNumber: number,
-		readonly startColumn: number,
-		readonly endLineNumber: number,
-		readonly endColumn: number,
-	) {}
-	isEmpty() {
-		return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
-	}
-	numbers() {
-		return [this.startLineNumber, this.startColumn, this.endLineNumber, this.endColumn];
-	}
-}
-
-/**
- * Component handlers, extracted by name and evaluated against a stub editor.
- *
- * `names` is every function the run needs, entry point LAST — a handler that
- * dispatches through helpers needs the helpers in scope, and naming them makes
- * the dependency visible instead of resolving it with a stub that would happily
- * pass.
- *
- * The list and table modules in scope are the REAL ones, so a handler that
- * stopped calling them — or called them with the wrong column — fails here
- * rather than passing against a second, more agreeable copy.
- */
-export function runEditorHandler(
-	names: string[],
-	options: { lines: string[]; selections: number[][]; eol?: string },
-): RecordedEdits {
-	const recorded: RecordedEdits = { triggers: [], edits: [], selections: [], undoStops: 0 };
-	const eol = options.eol ?? '\n';
-	const selections = options.selections.map((s) => new FakeRange(s[0], s[1], s[2], s[3]));
-
-	const model = {
-		getLineContent: (line: number) => options.lines[line - 1],
-		getLineCount: () => options.lines.length,
-		getLineMaxColumn: (line: number) => options.lines[line - 1].length + 1,
-		getEOL: () => eol,
-		getValueInRange: (range: FakeRange) => {
-			const span = options.lines.slice(range.startLineNumber - 1, range.endLineNumber);
-			span[span.length - 1] = span[span.length - 1].slice(0, range.endColumn - 1);
-			span[0] = span[0].slice(range.startColumn - 1);
-			return span.join(eol);
-		},
-	};
-
-	const scope: Record<string, unknown> = {
-		blockEnter,
-		isInFencedCode,
-		parseListItem,
-		shiftListItem,
-		tableStep,
-		tableOperation,
-		monaco: { Range: FakeRange, Selection: FakeRange },
-		editor: {
-			getModel: () => model,
-			getSelection: () => selections[0],
-			getSelections: () => selections,
-			pushUndoStop: () => {
-				recorded.undoStops += 1;
-			},
-			setSelection: (selection: FakeRange) => {
-				recorded.selections.push(selection.numbers());
-			},
-			trigger: (_source: string, handlerId: string, payload: { text?: string } | null) => {
-				recorded.triggers.push(payload?.text ? `${handlerId}:${JSON.stringify(payload.text)}` : handlerId);
-			},
-			executeEdits: (
-				_source: string,
-				edits: Array<{ range: FakeRange; text: string }>,
-				cursor?: FakeRange[],
-			) => {
-				for (const [index, edit] of edits.entries()) {
-					recorded.edits.push({
-						range: edit.range.numbers(),
-						text: edit.text,
-						cursor: cursor?.[index]?.numbers() ?? [],
-					});
-				}
-			},
-		},
-	};
-
-	const source = readSource('src/lib/components/Editor.svelte');
-	const declarations = names.map((name) => `const ${name} = ${functionSource(source, name)};`).join('\n');
-	const js = ts.transpileModule(declarations, {
-		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-	}).outputText;
-	const build = new Function('scope', `with (scope) { ${js}\nreturn ${names[names.length - 1]}; }`) as (
-		s: unknown,
-	) => () => void;
-	build(new Proxy(scope, { has: () => true }))();
-
-	return recorded;
 }

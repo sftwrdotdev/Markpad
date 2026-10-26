@@ -217,7 +217,7 @@ describe('shortcut registry', () => {
 });
 
 describe('formatting shortcuts keymap', () => {
-	// Monaco's own default chords are checked in `editor.checks.spec.ts`.
+	// Monaco's own default chords are checked in `editor.chords.spec.ts`.
 
 	// ------------------------------------- a core Monaco binding, left alone
 
@@ -225,7 +225,7 @@ describe('formatting shortcuts keymap', () => {
 		// #652 took this key off as a guard against `Mod+K Shift+R` (Delete Row),
 		// one slip away. That chord and the whole `Mod+K` namespace are gone, so the
 		// guard protected nothing and cost users a key they asked for back (#821).
-		// Nothing of ours may claim the chord either; `editor.checks.spec.ts`
+		// Nothing of ours may claim the chord either; `editor.chords.spec.ts`
 		// holds that side.
 		assert.doesNotMatch(
 			readSource('src/lib/components/Editor.svelte'),

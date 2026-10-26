@@ -2,10 +2,9 @@
 	import { onMount, onDestroy } from "svelte";
 	import { tabManager } from "../stores/tabs.svelte.js";
 	import { settings, wheelZoomFactor } from "../stores/settings.svelte.js";
-	import { t, type LanguageCode } from '../utils/i18n.js';
-	import { isLinkifyPasteTarget, MARKDOWN_LANGUAGE_ID } from '../utils/pasteContext.js';
+	import { t } from '../utils/i18n.js';
+	import { MARKDOWN_LANGUAGE_ID } from '../utils/pasteContext.js';
 	import * as editorEdits from '../utils/editorEdits.js';
-	import { clipboardTextForSelection } from '../utils/editorEdits.js';
 	import {
 		INLINE_WRAP_LOOKAROUND,
 		inlineWrapEdit,
@@ -46,13 +45,10 @@
 		lineCoordinates,
 		type BufferLine,
 	} from '../utils/lineCoordinates.js';
-	import {
-		documentParentDir,
-		imageEmbed,
-		resolveImageDirectory,
-	} from '../utils/imageEmbed.js';
-	import { routeDroppedFile } from '../utils/fileDrop.js';
 	import { editorActions, editorKeyCommands, type EditorKeyHandler } from '../utils/editorActions.js';
+	import * as editorClipboard from '../utils/editorClipboard.js';
+	import { localizedEditorActions } from '../utils/editorLocalizedActions.svelte.js';
+	import type { EditorClipboardDeps } from '../utils/editorClipboard.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
 	// parse+eval, paid once per window because every window is its own webview)
@@ -139,14 +135,6 @@
 		showWordCount: () => settings.wordCount,
 	});
 
-	// A Monaco action captures its label when it is registered, so actions built
-	// once at mount keep whatever language they were built with — switching the
-	// UI language used to leave the editor's context menu in the old one until
-	// the app was restarted. `addAction` returns an `IDisposable` for exactly
-	// this case: the registration below is re-run on every language change, and
-	// the previous disposables are released first so ids are never registered
-	// twice (a duplicate id leaves a duplicate context-menu entry behind).
-	//
 	// `editorReady` has to be `$state` rather than a plain `if (editor)` guard:
 	// `editor` is assigned inside `onMount` and is not reactive, so an effect
 	// that bailed out on it would never re-run once the editor appeared. That
@@ -163,7 +151,6 @@
 		scrollTo: scrollToSyncPosition,
 	});
 	let fontIsMonospace = $state(true);
-	let localizedActions: Monaco.IDisposable[] = [];
 
 	// Synchronous, so the keybindings can be registered once at mount; see
 	// `platformOf` for why its fallback cannot disagree with `settings.osType`.
@@ -442,8 +429,6 @@
 	// component scope, not inside `onMount`, because the actions that call them
 	// are torn down and rebuilt whenever the UI language changes.
 
-	const insertTextAtCursor = (text: string) => editorEdits.insertTextAtCursor(editor, text);
-
 	// Which markers each of these tools writes and which it accepts back lives in
 	// `utils/editorToolbar.ts`, beside the line-marker table and keyed by the same
 	// ids — so the button, the shortcut and the context-menu entry cannot disagree
@@ -587,23 +572,16 @@
 	const wrapAsCodeBlock = () => editorEdits.wrapAsCodeBlock(editor);
 	const insertLink = () => editorEdits.insertLink(editor);
 
-	function disposeLocalizedActions() {
-		for (const action of localizedActions) action.dispose();
-		localizedActions = [];
-	}
-
 	/**
-	 * Every action whose label comes from `t()` is registered here, so the whole
-	 * set can be rebuilt in one place when the UI language changes. Actions with
-	 * no user-visible label (the Ctrl+V command) stay in `onMount`.
+	 * Every action whose label comes from `t()`, rebuilt when the UI language
+	 * changes: utils/editorLocalizedActions.svelte.ts. Actions with no
+	 * user-visible label (the Ctrl+V command) stay in `onMount`.
 	 */
-	function registerLocalizedActions(lang: LanguageCode) {
-		// Belt and braces: Svelte runs the effect cleanup before a re-run, but
-		// re-registering an id without disposing the old action would leave a
-		// duplicate entry in the context menu, so never assume it happened.
-		disposeLocalizedActions();
-
-		const descriptors = editorActions(
+	const disposeLocalizedActions = localizedEditorActions({
+		language: () => settings.language,
+		ready: () => editorReady,
+		editor: () => editor,
+		descriptors: (lang) => editorActions(
 			{
 				monaco,
 				isMac: isMacPlatform(),
@@ -619,9 +597,8 @@
 				editTable,
 			},
 			lang,
-		);
-		localizedActions = descriptors.map((descriptor) => editor.addAction(descriptor));
-	}
+		),
+	});
 
 	const insertSimpleTable = () => {
 		const selection = editor.getSelection();
@@ -646,14 +623,6 @@
 			},
 		]);
 	};
-
-	$effect(() => {
-		const lang = settings.language;
-		if (!editorReady) return;
-
-		registerLocalizedActions(lang);
-		return disposeLocalizedActions;
-	});
 
 	onDestroy(disposeLocalizedActions);
 
@@ -703,224 +672,22 @@
 		return Number.isFinite(line) ? { ...position, line } : position;
 	}
 
-	/**
-	 * Cut, copy and paste — one implementation each, reached from the keyboard
-	 * and from the context menu alike.
-	 *
-	 * All three go through Rust (`arboard`) rather than through the webview's
-	 * `navigator.clipboard`, which is the only thing that works everywhere:
-	 * wry leaves the webview's clipboard permission off by default, and turning
-	 * it on does not help — tauri-apps/tauri#12007 is open on exactly this, and
-	 * the official answer is the clipboard plugin, which is the same Rust route
-	 * Markpad already had for ⌘V. Verified by hand on Windows: with the wry
-	 * permission enabled, the webview's own paste still does nothing.
-	 *
-	 * Six entry points, three functions. Before this there were six
-	 * implementations: ⌘X was the browser's, ⌘C and ⌘V were ours, and the three
-	 * menu items were Monaco's — of which Paste could not work in a webview at
-	 * all (#207) and Cut and Copy are dead on Linux, where the same wry default
-	 * gates `set_javascript_can_access_clipboard`.
-	 *
-	 * What cut and copy take: `clipboardTextForSelection` in utils/editorEdits.ts.
-	 */
-	export async function pasteFromClipboard() {
-		// Focus first, as `runEditorAction` does, and for the same reason: this
-		// runs from the context menu as well as from ⌘V, and a menu item leaves
-		// the focus on itself. Paste then inserted the text and left no caret —
-		// no blink, and the next ⌘Z went nowhere, which reads as "undo is
-		// broken" rather than "the editor is not focused".
-		//
-		// A no-op on the ⌘V path, where the editor is focused by definition.
-		editor?.focus();
-			try {
-				// The image is written before it is linked, and the reader can
-				// switch tabs while it is: the link then belongs to no other model.
-				const pasteModel = editor.getModel();
-				const tabPath = tabManager.activeTab?.path;
-				const parentDir = tabPath ? documentParentDir(tabPath) : null;
-				if (tabPath && parentDir !== null) {
-					const imgDirName = resolveImageDirectory(
-						settings.imageDirectory,
-						tabPath,
-					);
-					const embeds: string[] = [];
-
-					// A file copied in Explorer or Finder is a path on the clipboard,
-					// not pixels (#768). Read it first and copy it as a drop does, so
-					// it keeps its own name and bytes rather than whatever preview the
-					// file manager put beside it.
-					const files = await invoke("clipboard_read_file_list").catch(() => null) as string[] | null;
-					for (const srcPath of files ?? []) {
-						if (routeDroppedFile(srcPath, "editor") !== "insert") continue;
-						const relPath = (await invoke("copy_file_to_img", {
-							srcPath,
-							parentDir,
-							imageDirectory: imgDirName,
-						})) as string;
-						embeds.push(imageEmbed(relPath));
-					}
-
-					if (embeds.length === 0) {
-						// check for image in clipboard via Rust
-						const base64Image = await invoke("clipboard_read_image", { macosImageScaling: settings.macosImageScaling }).catch(() => null) as string | null;
-						if (base64Image) {
-							const filename = `paste_${Date.now()}.png`; // output of Rust command is always PNG
-							const relPath = (await invoke("save_image", {
-								parentDir,
-								filename,
-								base64Data: base64Image,
-								imageDirectory: imgDirName,
-							})) as string;
-							embeds.push(imageEmbed(relPath));
-						}
-					}
-
-					// The written file stays: it is in the first tab's folder, where
-					// the reader can see it, and deleting on a guess is what #368 removed.
-					if (editor.getModel() !== pasteModel) return;
-					const position = editor.getPosition();
-					if (embeds.length > 0 && position) {
-						const selection = editor.getSelection();
-						const range =
-							selection && !selection.isEmpty()
-								? selection
-								: new monaco.Range(
-										position.lineNumber,
-										position.column,
-										position.lineNumber,
-										position.column,
-									);
-
-						editor.pushUndoStop();
-						editor.executeEdits("paste-image", [
-							{
-								range,
-								text: embeds.join("\n"),
-								forceMoveMarkers: true,
-							},
-						]);
-
-						return;
-					}
-				}
-
-				// fall through to text paste via Rust
-				const rawText = await invoke("clipboard_read_text").catch(() => "") as string;
-				if (!rawText) return;
-				// Every edit below is a paste, and a paste is its own undo step:
-				// `executeEdits` appends to the step typing left open, so without
-				// this one Cmd+Z takes back the paste AND the words before it.
-				editor.pushUndoStop();
-				
-				const text = rawText.trim();
-				const urlRegex = /^(?:(?:https?|file|tauri):\/\/|www\.)[^\s]{2,}$/i;
-				const isUrl = urlRegex.test(text);
-
-				const selections = editor.getSelections();
-				const model = editor.getModel();
-				if (!selections || selections.length === 0 || !model) {
-					insertTextAtCursor(rawText);
-					return;
-				}
-
-				// if it's not a URL or we have no multi-line selection/complex case, just insert
-				const hasSelection = selections.some((s) => !s.isEmpty());
-				const isMultiLine = selections.some((s) => s.startLineNumber !== s.endLineNumber);
-
-				if (!isUrl || isMultiLine || !isLinkifyPasteTarget(model, selections[0], monaco.editor)) {
-					const edits = selections.map(s => ({
-						range: s,
-						text: rawText,
-						forceMoveMarkers: true
-					}));
-					editor.executeEdits("paste-text", edits);
-					return;
-				}
-
-				if (hasSelection) {
-					const edits = selections.map((selection) => {
-						const selectedText = model.getValueInRange(selection);
-						// Pasting a URL over a URL replaces it. Wrapping would
-						// nest the old URL as the link text — and inside
-						// existing link syntax like ![](url) it produces
-						// broken nesting: ![]([old](new)).
-						if (urlRegex.test(selectedText.trim())) {
-							return {
-								range: selection,
-								text,
-								forceMoveMarkers: true,
-							};
-						}
-						const linkUrl = text.toLowerCase().startsWith("www.")
-							? `http://${text}`
-							: text;
-						return {
-							range: selection,
-							text: `[${selectedText}](${linkUrl})`,
-							forceMoveMarkers: true,
-						};
-					});
-					editor.executeEdits("paste-link", edits);
-				} else {
-					const displayText = text.replace(
-						/^(?:https?|file|tauri):\/\/|www\./i,
-						"",
-					);
-					const linkUrl = text.toLowerCase().startsWith("www.")
-						? `http://${text}`
-						: text;
-					const template = `[${displayText}](${linkUrl})`;
-					const edits = selections.map((selection) => {
-						return {
-							range: selection,
-							text: template,
-							forceMoveMarkers: true,
-						};
-					});
-
-					editor.executeEdits("paste-link", edits);
-
-					let accumulatedShift = 0;
-					let lastLine = -1;
-					const newSelections = selections.map((s) => {
-						if (s.startLineNumber !== lastLine) {
-							accumulatedShift = 0;
-							lastLine = s.startLineNumber;
-						}
-						const startColumn = s.startColumn + accumulatedShift + 1;
-						const endColumn = startColumn + displayText.length;
-						accumulatedShift += template.length;
-						return new monaco.Selection(
-							s.startLineNumber,
-							startColumn,
-							s.startLineNumber,
-							endColumn,
-						);
-					});
-					editor.setSelections(newSelections);
-				}
-			} catch (err) {
-				console.error("Paste failed:", err);
-			}
+	// Cut, copy, paste and the drop handler: utils/editorClipboard.ts.
+	const clipboard: EditorClipboardDeps = {
+		editor: () => editor,
+		monaco: () => monaco,
+		invoke,
+		tabs: tabManager,
+		settings,
+	};
+	export function pasteFromClipboard() {
+		return editorClipboard.pasteFromClipboard(clipboard);
 	}
-
-	export async function copyToClipboard() {
-		editor?.focus();
-		const { text } = clipboardTextForSelection(editor, monaco);
-		if (text) await invoke('clipboard_write_text', { text }).catch(console.error);
+	export function copyToClipboard() {
+		return editorClipboard.copyToClipboard(clipboard);
 	}
-
-	export async function cutToClipboard() {
-		editor?.focus();
-		const { text, range } = clipboardTextForSelection(editor, monaco);
-		if (!text || !range || !editor) return;
-		const model = editor.getModel();
-		await invoke('clipboard_write_text', { text }).catch(console.error);
-		// `range` is in this model's coordinates; after a tab switch it would
-		// delete text from the other document.
-		if (editor.getModel() !== model) return;
-		editor.pushUndoStop();
-		editor.executeEdits('cut', [{ range, text: '', forceMoveMarkers: true }]);
+	export function cutToClipboard() {
+		return editorClipboard.cutToClipboard(clipboard);
 	}
 
 	/**
@@ -1127,60 +894,8 @@
 			};
 		}
 	});
-	export async function handleDroppedFile(path: string, x: number, y: number) {
-		if (!editor || !tabManager.activeTab?.path) return;
-
-		const target = (editor as any).getTargetAtClientPoint(x, y);
-		const position = target?.position || editor.getPosition();
-		if (!position) return;
-
-		const tabPath = tabManager.activeTab.path;
-		const parentDir = documentParentDir(tabPath);
-		if (parentDir === null) return;
-		const dropModel = editor.getModel();
-
-		try {
-			const imgDirName = resolveImageDirectory(
-				settings.imageDirectory,
-				tabPath,
-			);
-			const relPath = (await invoke("copy_file_to_img", {
-				srcPath: path,
-				parentDir,
-				imageDirectory: imgDirName,
-			})) as string;
-			// As in `pasteFromClipboard`: a tab switch during the copy leaves the
-			// file where it was copied and the link out of the other document.
-			if (editor.getModel() !== dropModel) return;
-			const embed = imageEmbed(relPath);
-
-			editor.pushUndoStop();
-			editor.executeEdits(
-				"drop-image",
-				[
-					{
-						range: new monaco.Range(
-							position.lineNumber,
-							position.column,
-							position.lineNumber,
-							position.column,
-						),
-						text: embed,
-						forceMoveMarkers: true,
-					},
-				],
-				[
-					new monaco.Selection(
-						position.lineNumber,
-						position.column + embed.length,
-						position.lineNumber,
-						position.column + embed.length,
-					),
-				],
-			);
-		} catch (err) {
-			console.error("Failed to copy dropped file:", err);
-		}
+	export function handleDroppedFile(path: string, x: number, y: number) {
+		return editorClipboard.handleDroppedFile(clipboard, path, x, y);
 	}
 
 	let dragCaretDecoration: string[] = [];
