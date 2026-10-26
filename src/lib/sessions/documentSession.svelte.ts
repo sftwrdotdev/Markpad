@@ -1054,5 +1054,15 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return readRestoredTab(tab.id);
 	}
 
-	return { loadMarkdown, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	/**
+	 * A link opened in a new tab. The ordinary open path, as the Open dialog
+	 * takes it: `loadMarkdown` resolves the file's identity first, so a tab
+	 * already holding it under another spelling is activated instead of a
+	 * second tab being built.
+	 */
+	function openInNewTab(filePath: string) {
+		return loadMarkdown(filePath, { inNewTab: true });
+	}
+
+	return { loadMarkdown, openInNewTab, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

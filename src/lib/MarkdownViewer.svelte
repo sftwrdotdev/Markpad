@@ -1884,10 +1884,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		const resolved = resolveMarkdownTargetPath(currentFile, target);
 		if (!resolved) return;
 
-		// The ordinary open path, as the Open dialog takes it: `loadMarkdown`
-		// resolves the file's identity first, so a tab already holding it under
-		// another spelling is activated instead of a second tab being built.
-		await loadMarkdown(resolved, { inNewTab: true });
+		await documentSession.openInNewTab(resolved);
 		if (target.hash) {
 			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, tabManager.activeTab?.path);
 		}

@@ -517,6 +517,25 @@ describe('path identity on a case-folding volume', () => {
 		assert.equal(tabManager.tabs.length, 2);
 	});
 
+	// A link opened in a new tab takes the ordinary open path, which resolves the
+	// file's identity before picking a tab. Putting the path on a tab first and
+	// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
+	// link opened a second tab beside the `C:\n\b.md` the user already had open.
+	test('a link opened in a new tab goes through the ordinary open path', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/A.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/A.md');
+		const first = tabManager.activeTabId!;
+		await session.loadMarkdown('/notes/b.md');
+		await session.openInNewTab('/notes/a.md');
+
+		assert.equal(tabManager.tabs.length, 2, 'a link to an open file opened a second tab');
+		assert.equal(tabManager.activeTabId, first);
+	});
+
 	// Back/forward and a tab arriving from another window put a path on a tab
 	// before anything has resolved it, so their claim compares spellings. The
 	// identity arrives a moment later, and the claim has to be made again then.

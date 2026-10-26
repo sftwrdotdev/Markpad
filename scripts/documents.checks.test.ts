@@ -724,16 +724,6 @@ describe('reopening a dirty document', () => {
 	// Cwd-relative, not `import.meta.url`: see the note on `readSource`.
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	// A link opened in a new tab takes the ordinary open path, which resolves the
-	// file's identity before picking a tab. Putting the path on a tab first and
-	// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
-	// link opened a second tab beside the `C:\n\b.md` the user already had open.
-	test('a link opened in a new tab goes through the ordinary open path', () => {
-		const fn = sliceBetween(viewer, 'async function openMarkdownTargetInNewTab', '\n\tasync function');
-		assert.doesNotMatch(fn, /tabManager\.addTab\(/);
-		assert.match(fn, /await loadMarkdown\(resolved, \{ inNewTab: true \}\);/);
-	});
-
 	// --- reverting is still possible, and only by saying so ---
 	//
 	// Authorization is declared by the caller, never inferred by the session from
