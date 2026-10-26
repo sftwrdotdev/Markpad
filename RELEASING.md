@@ -44,7 +44,7 @@ If you ever lose the private key:
 
 ### 5. `alecdotdev/Markpad` is load-bearing
 
-The updater endpoint in `src-tauri/tauri.conf.json` points at **`sftwrdotdev/Markpad`**. (`scripts/release.checks.test.ts` holds that name and the endpoint together — if the repository ever moves again, this line moves with it.)
+The updater endpoint in `src-tauri/tauri.conf.json` points at **`sftwrdotdev/Markpad`**. (`scripts/release.workflows.test.ts` holds that name and the endpoint together — if the repository ever moves again, this line moves with it.)
 
 That only helps builds made from here on. The endpoint is compiled into the binary, so every copy up to and including v2.7.0 asks GitHub for `https://github.com/alecdotdev/Markpad/releases/latest/download/latest.json` and reaches the current feed only because GitHub answers with a 301. Those installs use that redirect for as long as they run.
 
@@ -112,7 +112,7 @@ Back it up in the same place as the minisign private key, and treat it with the 
 
 ## Per-release workflow
 
-The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. `scripts/release.checks.test.ts` guards that.
+The workflow uses `npm ci`, so its installed dependency graph is exactly the committed lockfile. Do not replace it with `npm install` in release jobs. `scripts/release.workflows.test.ts` guards that.
 
 [`snapcraft.yaml`](snapcraft.yaml) builds nothing. It packages the `.deb` the release already shipped (`plugin: dump`, `source-type: deb`), so the snap carries the same binary as the `.deb` and the AppImage. The same test asserts it is packaging rather than building.
 

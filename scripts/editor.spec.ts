@@ -4,7 +4,8 @@ import { afterAll, describe, test } from 'vitest';
 import { countWords } from '../src/lib/utils/wordCount.js';
 import { isAltGraphChord } from '../src/lib/utils/viewerKeymap.js';
 import { contextMenuFor, editorContextMenuItems, type EditorMenuPane } from '../src/lib/utils/viewerContextMenu.js';
-import { loadLocale, t } from '../src/lib/utils/i18n.js';
+import { type LanguageCode, loadLocale, t } from '../src/lib/utils/i18n.js';
+import { translations } from './allTranslations.js';
 
 /*
  * The status bar counted `text.match(/\S+/g)` and then kept only the tokens
@@ -220,6 +221,18 @@ describe('editor context menu (#261)', () => {
 		assert.ok(item?.onClick, `no "${label}" item`);
 		item.onClick();
 	};
+
+	test('every label the editor menu asks for exists in every language', () => {
+		// A missing key does not throw: `t()` falls back to English, so a
+		// forgotten locale shows one English item in an otherwise translated
+		// menu (#261). Each label must be one the language itself defines.
+		for (const [code, table] of Object.entries(translations)) {
+			const own = new Set(Object.values(table.menu ?? {}));
+			for (const item of editorContextMenuItems(() => null, code as LanguageCode, 'linux')) {
+				if (item.label) assert.ok(own.has(item.label), `${code}: "${item.label}" is not in its own menu table`);
+			}
+		}
+	});
 
 	test('the editor menu runs the same three functions the keyboard runs', () => {
 		// One implementation per operation is the whole point: six entry points

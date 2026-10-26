@@ -818,6 +818,8 @@ describe('lossy save refusal scope', () => {
 	/** Every `save_file_content` that reached the backend. */
 	let writes = 0;
 	const LOSSY = 'text with � in it';
+	/** What the Save As dialog returns next. */
+	let nextSaveTarget: string | null = null;
 
 	beforeAll(() => {
 		(window as any).__TAURI_INTERNALS__ = {
@@ -828,6 +830,7 @@ describe('lossy save refusal scope', () => {
 				if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
 				if (cmd === 'open_markdown_preview') return Promise.resolve([LOSSY, true, true]);
 				if (cmd === 'read_file_content_checked') return Promise.resolve([LOSSY, true]);
+				if (cmd === 'save') return Promise.resolve(nextSaveTarget);
 				if (cmd === 'save_file_content') {
 					writes++;
 					return writeFails ? Promise.reject(new Error('Os { code: 28, kind: StorageFull }')) : Promise.resolve(null);
@@ -938,6 +941,20 @@ describe('lossy save refusal scope', () => {
 		assert.equal(session.isLossySaveRefused(tab.id), true);
 		assert.equal(await session.saveContent(tab.id), false);
 		assert.equal(toasts.length, 1, 'still only the one explanation');
+	});
+
+	test('Save As forgets that the refusal was said', async () => {
+		// Save As gives the tab a UTF-8 file it matches, so a later lossy load into
+		// the same tab is a new condition and is explained again.
+		const { session, tab } = await refusedTab();
+		nextSaveTarget = '/notes/copy.md';
+		assert.equal(await session.saveContentAs(), true);
+		assert.equal(tab.path, '/notes/copy.md');
+
+		tabManager.setTabDecodedLossy(tab.id, true);
+		tabManager.updateTabRawContent(tab.id, 'edited after the copy');
+		assert.equal(await session.saveContent(tab.id), false);
+		assert.equal(toasts.length, 2, 'the new refusal is explained');
 	});
 
 	test('saveContent is the choke point auto-save and the close dialogs share', async () => {

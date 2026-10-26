@@ -7,158 +7,20 @@ import { describe, test } from 'node:test';
 
 import { parse } from 'yaml';
 
-import { callbackBodies, enclosingFunctionName, functionSource, offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
-
-// scripts/sourceTree.ts is the plumbing four convention tests state their claims
-// through, so a hole in it is a hole in all of them at once, and it is invisible
-// from those files: they keep passing. Both holes below were real.
-//
-//  - `enclosingFunctionName` matched `\n\t…function NAME(` and nothing else. A
-//    raw `invoke('render_markdown')` inside `const f = async () => {}` was
-//    therefore attributed to the classic `function` above it, which in
-//    MarkdownViewer.svelte is the wrapper preview.checks.test.ts
-//    demands. Measured: the bypass planted, the whole suite green.
-//  - The `$effect` bodies editor.checks.test.ts checks were sliced with
-//    `/\$effect\(\(\) => \{([\s\S]*?)\n\t\}\);/`, which needs a tab-indented
-//    closing brace. Measured: a one-line effect merged into its successor and
-//    the ungated `editor` read inside it went unreported.
-//
-// So the forms are pinned here, on the helpers, where a regression is one
-// failure with a name rather than four tests quietly asserting nothing. These
-// run against string literals, not against `src/` — refactoring the app cannot
-// make them fail, and changing the helper is the only thing that can.
+import { offsetOf, readSource, sliceBetween } from './sourceTree.js';
 
 describe('the sourceTree helpers', () => {
-	/** `enclosingFunctionName` over one `<script>`, at the offset of `needle`. */
-	function scopeOf(script: string, needle = 'HERE'): string | null {
-		const source = `<script lang="ts">\n${script}\n</script>\n`;
-		return enclosingFunctionName(source, offsetOf(source, needle));
-	}
-
-	test('every declaration form in src/ names its enclosing function', () => {
-		// The four shapes `src/` actually uses: 451 classic declarations, 74
-		// `const f = (…) =>` / `const f = async (…) =>`, the class methods in
-		// stores/, and object-literal shorthand (MarkdownViewer's `acceptNode`).
-		assert.equal(scopeOf('function classic() {\n\tHERE;\n}'), 'classic');
-		assert.equal(scopeOf('export async function exported() {\n\tHERE;\n}'), 'exported');
-		assert.equal(scopeOf('const arrow = () => {\n\tHERE;\n};'), 'arrow');
-		assert.equal(scopeOf('const asyncArrow = async (raw: string) => {\n\tHERE;\n};'), 'asyncArrow');
-		assert.equal(scopeOf('const typed: () => void = () => {\n\tHERE;\n};'), 'typed');
-		assert.equal(scopeOf('const expression = function () {\n\tHERE;\n};'), 'expression');
-		assert.equal(scopeOf('const named = function inner() {\n\tHERE;\n};'), 'inner');
-		assert.equal(scopeOf('const obj = {\n\tshorthand() {\n\t\tHERE;\n\t},\n};'), 'shorthand');
-		assert.equal(scopeOf('const obj = {\n\tprop: () => {\n\t\tHERE;\n\t},\n};'), 'prop');
-		assert.equal(scopeOf('class C {\n\tmethod() {\n\t\tHERE;\n\t}\n}'), 'method');
-		assert.equal(scopeOf('class C {\n\tfield = () => {\n\t\tHERE;\n\t};\n}'), 'field');
-		assert.equal(scopeOf('obj.assigned = () => {\n\tHERE;\n};'), 'assigned');
-
-		// The regression that motivated the rewrite: an arrow function declared
-		// after a classic one used to inherit the classic one's name.
-		assert.equal(
-			scopeOf('function wrapper() {\n\treturn 1;\n}\n\nconst bypass = async () => {\n\tHERE;\n};'),
-			'bypass',
-		);
-	});
-
-	test('an offset outside every named function has no enclosing name', () => {
-		assert.equal(scopeOf('const x = HERE;'), null);
-		assert.equal(scopeOf('function f() {\n\treturn 1;\n}\nconst x = HERE;'), null);
-
-		// An inline handler in the markup is not inside any named function either,
-		// so a caller comparing against a wrapper name fails on it rather than
-		// silently inheriting the last function declared above.
-		const markup = '<script lang="ts">\n\tfunction f() {}\n</script>\n\n<button onclick={() => HERE}>x</button>\n';
-		assert.equal(enclosingFunctionName(markup, offsetOf(markup, 'HERE')), null);
-	});
-
-	test('the innermost named function wins, and anonymous ones are transparent', () => {
-		assert.equal(scopeOf('function outer() {\n\tfunction inner() {\n\t\tHERE;\n\t}\n}'), 'inner');
-		assert.equal(scopeOf('function outer() {\n\tconst inner = () => {\n\t\tHERE;\n\t};\n}'), 'inner');
-
-		// Lexically still inside `outer`, which is what the callers ask about.
-		assert.equal(scopeOf('function outer() {\n\tqueue.then(() => {\n\t\tHERE;\n\t});\n}'), 'outer');
-	});
-
-	test('a callback body is its own body, whatever the closing brace looks like', () => {
-		// The exact hole: with no `\n\t});` of its own, the one-line effect used to
-		// merge into the next one — and the merged text carried the `editorReady`
-		// the first effect was missing.
-		const source = [
-			'<script lang="ts">',
-			'\t$effect(() => { if (editor) editor.layout(); });',
-			'\t$effect(() => {',
-			'\t\tif (editorReady) sync();',
-			'\t});',
-			'\t$effect.pre(() => {\n\t\tpre();\n\t});',
-			'</script>',
-		].join('\n');
-
-		assert.deepEqual(callbackBodies(source, '$effect'), [
-			'{ if (editor) editor.layout(); }',
-			'{\n\t\tif (editorReady) sync();\n\t}',
-		]);
-		assert.deepEqual(callbackBodies(source, '$effect.pre'), ['{\n\t\tpre();\n\t}']);
-		assert.deepEqual(callbackBodies(source, 'onMount'), []);
-	});
-
-	test('a function is extracted as a function, not as "up to the next declaration"', () => {
-		// The hole this closes: an anchor pair that names the *neighbour* stops
-		// bounding the subject as soon as anything is declared between them, and a
-		// neighbour carrying the same guard then satisfies the assertion. Here the
-		// two functions are deliberately near-identical, which is the case in
-		// MarkdownViewer.svelte (`canTransfer`/`canDetach`,
-		// `handleDetach`/`moveTabToWindow`) that went undetected.
-		const source = [
-			'<script lang="ts">',
-			'\tasync function subject(id: string) {',
-			'\t\treturn guard(id);',
-			'\t}',
-			'',
-			'\tasync function neighbour(id: string) {',
-			'\t\treturn guard(id);',
-			'\t}',
-			'',
-			'\tconst options = {',
-			'\t\tpredicate: (id: string) => guard(id),',
-			'\t};',
-			'</script>',
-		].join('\n');
-
-		assert.equal(functionSource(source, 'subject'), 'async function subject(id: string) {\n\t\treturn guard(id);\n\t}');
-		assert.equal(functionSource(source, 'predicate'), '(id: string) => guard(id)');
-
-		// The neighbour is not part of the subject, which is the whole point.
-		assert.doesNotMatch(functionSource(source, 'subject'), /neighbour/);
-
-		// A renamed or duplicated subject is a failure with a name, not a wider slice.
-		assert.throws(() => functionSource(source, 'gone'), /exactly one function named "gone", found 0/);
-		// Two functions of the same name is the case a "first match wins" helper
-		// would silently pick one of — a wrapper and the method it delegates to, say.
-		assert.throws(
-			() => functionSource(source.replace('predicate:', 'subject:'), 'subject'),
-			/exactly one function named "subject", found 2/,
-		);
-	});
-
-	test('the parsers read .ts files as well as components', () => {
-		const module = 'export function fromModule() {\n\tHERE;\n}\n';
-		assert.equal(enclosingFunctionName(module, offsetOf(module, 'HERE')), 'fromModule');
-		assert.deepEqual(callbackBodies('queueMicrotask(() => {\n\trun();\n});\n', 'queueMicrotask'), ['{\n\trun();\n}']);
-	});
-
 	test('a missing anchor fails loudly instead of slicing from -1', () => {
 		// `'abc'.slice(-1)` is `'c'`, not `''` — which is why an unguarded
 		// `slice(indexOf(...))` produces a one-character subject that no
 		// `doesNotMatch` can fail against.
 		assert.equal('abc'.slice('abc'.indexOf('zzz')), 'c');
 
-		assert.throws(() => sliceFrom('abc', 'zzz'), /expected to find "zzz"/);
 		assert.throws(() => sliceBetween('abc', 'zzz', 'b'), /expected to find "zzz"/);
 		assert.throws(() => sliceBetween('abc', 'a', 'zzz'), /expected to find "zzz" after "a"/);
 		assert.throws(() => offsetOf('abc', 'zzz'), /expected to find "zzz"/);
 		assert.throws(() => offsetOf('abcb', 'b', 4), /expected to find "b"/);
 
-		assert.equal(sliceFrom('abc', 'b'), 'bc');
 		assert.equal(sliceBetween('abcd', 'b', 'd'), 'bc');
 		assert.equal(offsetOf('abcb', 'b', 2), 3);
 

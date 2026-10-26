@@ -506,7 +506,7 @@ export function getAnchorScrollTop(
  * and the scroll range as `scrollMax`, as everywhere else in this file — neither
  * the DOM shim nor jsdom has a layout, so a test supplies its own, and
  * `scrollHeight` is not a measurement `src/lib/utils` is allowed to take (see
- * the fold-height rule in release.checks.test.ts).
+ * the `fold-height-from-layout` lint rule in eslint.config.js).
  */
 export type PreviewScrollContainer = AnchorNode & {
 	scrollTop: number;

@@ -17,7 +17,7 @@ import type * as Monaco from 'monaco-editor';
  * WHY THE MAP LIVES HERE AND NOT ON THE TAB. `Tab` is a plain data record in a
  * store that is imported by the whole app, and Monaco is loaded with a dynamic
  * `import()` from `Editor.svelte` precisely so it stays out of the startup
- * chunk (~86% of the startup JavaScript — see `editor.checks.test.ts`).
+ * chunk (~86% of the startup JavaScript; test.yml checks the built chunks).
  * A model field on `Tab` would either put Monaco back in that graph or type the
  * field as `any`. This module keeps the models, imports Monaco for its TYPES
  * only — `import type` is erased, so it costs nothing at runtime and adds no

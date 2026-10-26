@@ -16,7 +16,7 @@
  *
  * Upstream: microsoft/monaco-editor#4796, fixed by microsoft/vscode#333909.
  * Once a Monaco release carries that change, delete this file, the plugin in
- * vite.config.js and editor.checks.test.ts. Until then the build fails
+ * vite.config.js and its tests in editor.test.ts. Until then the build fails
  * loudly the moment either anchor stops matching exactly once — which is
  * what a Monaco bump that already has the fix will do.
  */

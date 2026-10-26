@@ -1122,7 +1122,7 @@ describe('preview patch parity', () => {
  * What the shared sanitizer actually does to an author stylesheet — run, not
  * described.
  *
- * `preview.checks.test.ts` pins the WIRING: that the preview reaches the
+ * The lint rules (eslint.config.js) pin the WIRING: that the preview reaches the
  * shared policy, that the policy forbids `<style>`, that no second DOMPurify
  * call site assembles a config of its own. None of that runs DOMPurify, because
  * DOMPurify needs a real DOM and `node --test` has none. The behavioural half

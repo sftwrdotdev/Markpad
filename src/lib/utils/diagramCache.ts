@@ -11,7 +11,7 @@
  *
  * Mermaid's renderer, given an id and a source, does not return an
  * id-independent string. (This module never calls it — `richContent.ts` is the
- * one render site, and `release.checks.test.ts` keeps it that
+ * one render site, and the `mermaid-render-sites` lint rule keeps it that
  * way.) The id it is given prefixes the diagram's `<style>` selectors (`#id
  * .node rect{…}`),
  * every arrow marker's `id`, and every `url(#id_flowchart-v2-pointEnd)` that

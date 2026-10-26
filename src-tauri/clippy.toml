@@ -1,0 +1,11 @@
+disallowed-methods = [
+    # `.focused(false)` on a window built hidden leaves WebView2 on Windows
+    # with no drop target, so every file dragged onto the window is refused
+    # (#768, tauri-apps/wry#1639). `true` is the default, so the call has no
+    # other use.
+    { path = "tauri::webview::WebviewWindowBuilder::focused", reason = "focused(false) leaves WebView2 with no drop target (#768); true is the default" },
+    # `APPIMAGE` is settable by hand. tauri's `Env` also checks the executable
+    # is under $TMPDIR/.mount_ (`app.env().appimage`), which is what gates
+    # self-update on Linux.
+    { path = "std::env::var", reason = "read APPIMAGE through tauri's Env (app.env().appimage), which also verifies the mount" },
+]

@@ -23,7 +23,7 @@ import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { createdEditorOptions, editorOptionsFromSettings, editorReadOnly, updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
 import { importedThemeRules, MARKDOWN_SCOPE_ALIASES, markdownKindColors, monacoTokenRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
-import { encodeSemanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
+import { encodeSemanticTokens, SEMANTIC_KINDS, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { resolveExportImagePath } from '../src/lib/utils/exportHtml.js';
 import { DEFAULT_IMAGE_DIRECTORY, documentParentDir, encodeImageDestination, imageEmbed, resolveImageDirectory } from '../src/lib/utils/imageEmbed.js';
 import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
@@ -59,8 +59,7 @@ describe('context menu labels', () => {
 	 * menu rendered the English label.
 	 *
 	 * These labels are held to a stricter bar than the dictionary at large.
-	 * settings.checks.test.ts reports per-locale gaps rather than failing on them,
-	 * because 19 locales are missing >100 keys and nobody should have to translate
+	 * A locale may leave keys untranslated (`LocaleTable` is partial), because 19 locales are missing >100 keys and nobody should have to translate
 	 * a new English string 25 times before landing it. That trade does not apply
 	 * here: this is a fixed list of a dozen context-menu entries, all 26 languages
 	 * define all of them today, and adding an eleventh action means adding a row to
@@ -727,6 +726,33 @@ describe('editor theme', () => {
 // against the legend the encoder indexes, the legend against the theme rules
 // that style it, and the delta encoding Monaco decodes.
 describe('semantic tokens', () => {
+	test('no kind falls through to an imported theme that has nothing to say', () => {
+		// The failure this guards is silent and total. A semantic token whose type
+		// the theme does not name resolves to the theme's *root* rule, whose
+		// foreground is a real colour id rather than "none"
+		// (`semanticTokensProviderStyling.js`, the `if (tokenStyle.foreground)`
+		// branch), and `sparseTokensStore` then masks the grammar's colour out and
+		// paints that plain default over it. An imported theme lost its heading,
+		// link, quote and inline-code colours to this path the moment the semantic
+		// layer shipped, and nothing in either file said so.
+		const emitted: readonly string[] = SEMANTIC_KINDS;
+
+		const rules = importedThemeRules(
+			[{ scope: 'markup.bold', settings: { foreground: '#e06c75', fontStyle: 'bold' } }],
+			true,
+		);
+		// `base: 'vs-dark'` with `inherit: true` contributes the default foreground
+		// that every unmatched token resolves to.
+		const theme = TokenTheme.createFromParsedTokenTheme(
+			parseTokenTheme([{ token: '', foreground: '#d4d4d4', background: '#1e1e1e' }, ...rules]),
+			[],
+		);
+		const fallthrough = theme._match('a-token-no-rule-names').metadata;
+
+		const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
+		assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
+	});
+
 	test('the legend and the theme agree on what can be styled', () => {
 		// A rule for a type the legend lacks styles nothing; a type with no rule
 		// paints whatever the grammar left, which for a construct the grammar has

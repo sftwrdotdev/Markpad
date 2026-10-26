@@ -114,7 +114,7 @@ declare module 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHigh
 	};
 }
 
-// The four modules shortcuts.checks.test.ts drives to turn Markpad's
+// The four modules keymapHarness.ts drives to turn Markpad's
 // keybinding numbers back into chords.
 //
 // `KeyMod` and `KeyCode` are re-exported by the `monaco-editor` entry point with

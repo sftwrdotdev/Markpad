@@ -228,7 +228,7 @@ export function editorActions(deps: EditorActionDeps, lang: LanguageCode): Monac
 		// on. `addAction` registers at weight 1000, above every Monaco
 		// default, so a clash is silent — our action simply wins and the
 		// Monaco command loses its key. The reasoning per binding is below,
-		// and `shortcuts.checks.test.ts` is what stops the next one from
+		// and `editor.chords.spec.ts` is what stops the next one from
 		// landing on an occupied chord.
 
 		{

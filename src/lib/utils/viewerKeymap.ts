@@ -254,7 +254,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// `file-new` binds Ctrl/Cmd+N as well, and this handler used to know
 	// about only one of the two, which left Ctrl+N doing nothing at all
 	// outside the editor. Both are listed here so the two paths cannot
-	// drift again; `shortcuts.checks.test.ts` holds them equal.
+	// drift again; `shortcuts.editor.test.ts` holds them equal.
 	if (mod && (key === 't' || key === 'n')) return 'new-file';
 	if (modShift && key === 'n') return 'new-window';
 	if (mod && key === 'o') return 'open-file';
