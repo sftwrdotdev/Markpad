@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { flashCopiedLabel, renderRichContent, replacedBy, type RichContentLibraries } from '../src/lib/utils/richContent.js';
-import { patchPreview } from '../src/lib/utils/previewPatch.js';
+import { patchHost, patchPreview } from '../src/lib/utils/previewPatch.js';
 import { readDiagramSource } from '../src/lib/utils/mermaidPrint.js';
 import { resetDiagramCache } from '../src/lib/utils/diagramCache.js';
 import { toggleFold } from '../src/lib/utils/foldState.js';
@@ -9,7 +9,9 @@ import { type AnchorBox, type AnchorNode, findAnchorElement, getPreviewOffsetFor
 import { processMarkdownHtml } from '../src/lib/utils/markdown.js';
 import { type Annotation, annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf } from '../src/lib/utils/previewAnnotations.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
-import { copyableFlavours, copyableHtml } from '../src/lib/utils/previewCopy.js';
+import { copyableFlavours, copyableHtml, handleCopy } from '../src/lib/utils/previewCopy.js';
+import { linkTooltipFor } from '../src/lib/utils/previewLinks.js';
+import { imageMenuItems, saveImageAs, type SaveImageDeps } from '../src/lib/utils/viewerContextMenu.js';
 import { type DomPoint, pointAtSource, sourceAtPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, sanitizeMarkdownFragment, sanitizeMarkdownHtml } from '../src/lib/utils/sanitize.js';
 import blocks from './fixtures/markdown-syntax.blocks.json';
@@ -273,6 +275,26 @@ describe('line samples cache', () => {
 		await renderRichContent({ roots: [root], libraries, mermaidTheme: 'default' });
 		expect(root.querySelector('pre')).toBeNull();
 		expect(lineAt(250)).toBe(20);
+	});
+
+	test('a tab switch that skips the patch still drops the table', () => {
+		// Re-activating a tab hands its host the document it already holds, so the
+		// patch is skipped — but the hosts' `display` is what changed, and
+		// `isAnchorable` reads it.
+		const host = document.createElement('div');
+		document.body.replaceChildren(host);
+		const html = '<p data-sourcepos="1:1-1:1">x</p>\0\n<p data-sourcepos="10:1-10:1">y</p>';
+		const tab = () => ({ filePath: '/docs/a.md', foldOverrides: new Set<string>() });
+		patchHost(host, html, tab, () => {});
+		const measure = (node: AnchorNode) => ({ top: (node as unknown as Element).textContent === 'y' ? 100 : 0, height: 0 });
+		getSourceLineAtPreviewOffset(host, 50, measure);
+
+		const walk = vi.spyOn(Node.prototype, 'childNodes', 'get');
+		const patch = patchHost(host, html, tab, () => {});
+		expect(patch.inserted).toHaveLength(0);
+		getSourceLineAtPreviewOffset(host, 50, measure);
+		expect(walk).toHaveBeenCalled();
+		walk.mockRestore();
 	});
 });
 
@@ -1320,5 +1342,216 @@ describe('rich content idempotence', () => {
 			expect(article.querySelectorAll('.code-block-shell').length).toBe(1);
 			expect(article.querySelectorAll('.lang-label').length).toBe(1);
 		});
+	});
+});
+
+describe('link hover preview', () => {
+	test('the hover preview never prints the webview origin', () => {
+		// `[3.md](./3.md)` showed `tauri://localhost/3.md`: the DOM resolves
+		// `href` against the webview's own origin. The box names the link as the
+		// document wrote it.
+		const anchor = document.createElement('a');
+		anchor.setAttribute('href', './3.md');
+		assert.notEqual(anchor.href, './3.md', 'jsdom resolves the property, as the webview does');
+		assert.deepEqual(linkTooltipFor(anchor, { findAnchorTarget: () => null, footnoteRoot: null }), {
+			text: './3.md',
+			html: '',
+			isFootnote: false,
+		});
+	});
+
+	test('a footnote tooltip is read back out of the rendered preview', () => {
+		// `{@html tooltip.html}` is the one sink besides the patched article, and it
+		// is allowed because its body is a clone of what the sanitized article
+		// already holds — never markup built from the unrendered buffer.
+		const preview = document.createElement('div');
+		preview.innerHTML = '<ol><li id="fn-1"><p>The <em>note</em> <a href="#fnref-1" class="footnote-backref">↩</a></p></li></ol>';
+		const ref = document.createElement('a');
+		ref.setAttribute('href', 'fn-1');
+		ref.setAttribute('data-footnote-ref', '');
+		const label = linkTooltipFor(ref, { findAnchorTarget: () => null, footnoteRoot: preview });
+		assert.equal(label?.isFootnote, true);
+		assert.equal(label?.html, '<p>The <em>note</em> </p>');
+		assert.equal(preview.querySelector('.footnote-backref')?.textContent, '↩', 'the preview keeps its own back-link');
+	});
+});
+
+describe('preview copy handler', () => {
+	// #549 put both DOM-selection copy routes — ⌘C in the preview, and Edit ▸ Copy
+	// in the menu bar — on one handler that writes the clipboard itself, because
+	// WebKit's own copy writes a WebArchive beside the text. #674 added exactly one
+	// more flavour, `text/html`, built here rather than by the scheme.
+
+	afterEach(() => {
+		window.getSelection()?.removeAllRanges();
+		document.body.innerHTML = '';
+	});
+
+	function copyEvent() {
+		const written: Record<string, string> = {};
+		let prevented = false;
+		const event = {
+			clipboardData: { setData: (type: string, value: string) => { written[type] = value; } },
+			preventDefault: () => { prevented = true; },
+		} as unknown as ClipboardEvent;
+		return { event, written, prevented: () => prevented };
+	}
+
+	function select(html: string) {
+		document.body.innerHTML = `<article>${html}</article>`;
+		const range = document.createRange();
+		range.selectNodeContents(document.querySelector('article')!);
+		const selection = window.getSelection()!;
+		selection.removeAllRanges();
+		selection.addRange(range);
+		return selection;
+	}
+
+	const DOC = '/Users/me/notes/report.md';
+
+	test('the copy handler writes plain text and cancels the native copy', () => {
+		select('<p>hello <strong>world</strong></p>');
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.equal(copy.written['text/plain'], 'hello world');
+		// Without this the native copy still runs and still builds the archive.
+		assert.equal(copy.prevented(), true);
+	});
+
+	test('the rich flavour is the one this handler builds, and the only one', () => {
+		// RTF is WebKit's own flavour; writing it would be the scheme deciding again.
+		const selection = select('<p>hello <strong>world</strong></p>');
+		const expected = copyableFlavours(selection, DOC).html;
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(Object.keys(copy.written).sort(), ['text/html', 'text/plain']);
+		assert.equal(copy.written['text/html'], expected);
+		assert.match(copy.written['text/html'], /<strong>world<\/strong>/);
+	});
+
+	test('both flavours come from one decision', () => {
+		// A selection containing math takes its plain text from the formula
+		// source, which only the HTML pass knows about.
+		select(
+			'<p>Energy <span class="katex">' +
+				'<span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math></span>' +
+				'<span class="katex-html" aria-hidden="true"><span class="base">E=mc2</span></span>' +
+				'</span></p>',
+		);
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.equal(copy.written['text/plain'], 'Energy $E=mc^2$');
+		assert.doesNotMatch(copy.written['text/html'], /katex-mathml/);
+	});
+
+	test('a selection inside a form control is left to the platform', () => {
+		// `getSelection()` cannot read a selection inside a field, so cancelling
+		// here would copy an empty string. Monaco takes input through a hidden
+		// textarea, which keeps the editor on its own copy path (#548).
+		const field = document.createElement('textarea');
+		document.body.append(field);
+		field.focus();
+		const article = document.createElement('article');
+		article.innerHTML = '<p>preview text</p>';
+		document.body.append(article);
+		const range = document.createRange();
+		range.selectNodeContents(article);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+		assert.equal(document.activeElement, field);
+		assert.equal(window.getSelection()!.isCollapsed, false);
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(copy.written, {});
+		assert.equal(copy.prevented(), false);
+	});
+
+	test('a collapsed selection is not copied', () => {
+		// Edit ▸ Copy is enabled with nothing selected; writing '' would clear the
+		// clipboard instead of leaving it alone.
+		select('<p>preview text</p>');
+		window.getSelection()!.collapseToStart();
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(copy.written, {});
+		assert.equal(copy.prevented(), false);
+	});
+});
+
+/*
+ * "Save image as" could never save a remote image, and on Windows it could not
+ * save a LOCAL one either. It took `src.startsWith('http')` -> `fetch(src)`:
+ * the app's CSP is `connect-src 'self'`, so that fetch is refused before a
+ * request is made, and `convertFileSrc` spells a local file
+ * `http://asset.localhost/…` on Windows, so every Windows image fell into that
+ * unreachable branch. `normalizeAssetPath` (#363) recognises both spellings.
+ */
+describe('save image as', () => {
+	function recordingDeps(dest: string | null = '/out/saved.png') {
+		const calls: string[] = [];
+		const deps: SaveImageDeps = {
+			save: async (options) => {
+				calls.push(`save:${options.defaultPath}`);
+				return dest;
+			},
+			copyFile: async (src, to) => void calls.push(`copy:${src}->${to}`),
+			toast: (message, type = 'info') => void calls.push(`toast:${type}:${message}`),
+			language: 'en',
+		};
+		return { deps, calls };
+	}
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	test('the viewer recognises an asset URL with the shared helper', async () => {
+		// Both spellings convertFileSrc emits, Windows first.
+		for (const [src, path] of [
+			['http://asset.localhost/C%3A%2FUsers%2FDaniel%2Fimg%2Fdiagram.png', 'C:/Users/Daniel/img/diagram.png'],
+			['asset://localhost/%2Fhome%2Fdaniel%2Fdiagram.png', '/home/daniel/diagram.png'],
+		]) {
+			const { deps, calls } = recordingDeps();
+			await saveImageAs(src, deps);
+			assert.equal(calls[1], `copy:${path}->/out/saved.png`, src);
+		}
+	});
+
+	test('nothing tries to fetch image bytes from the webview any more', async () => {
+		// Dead code that reads like a working feature: it opened no dialog, wrote
+		// no file, and reported a network failure that never happened.
+		const fetch = vi.fn(async () => new Response(new Uint8Array([1])));
+		vi.stubGlobal('fetch', fetch);
+		for (const src of ['https://example.test/a.png', 'http://asset.localhost/C%3A%2Fa.png', 'data:image/png;base64,AA==']) {
+			await saveImageAs(src, recordingDeps().deps);
+		}
+		assert.equal(fetch.mock.calls.length, 0);
+	});
+
+	test('a local image is copied on the Rust side', async () => {
+		const local = recordingDeps();
+		await saveImageAs('asset://localhost/%2Fpics%2Fcat.jpg', local.deps);
+		assert.deepEqual(local.calls, ['save:image.jpg', 'copy:/pics/cat.jpg->/out/saved.png', 'toast:info:Image saved successfully']);
+
+		// And the save dialog is only offered for a file that can actually be
+		// written; the remote case bails out before it.
+		const remote = recordingDeps();
+		await saveImageAs('https://example.test/a.png', remote.deps);
+		assert.equal(remote.calls.length, 1);
+		assert.match(remote.calls[0], /^toast:error:/);
+	});
+
+	test('the preview offers Save Image As only for a local image', () => {
+		// A remote or data: image cannot be saved, so the item is not shown for one
+		// rather than shown and answered with an error toast.
+		const itemsFor = (src: string) => {
+			const img = document.createElement('img');
+			img.src = src;
+			return imageMenuItems(img, 'en', () => {}).map((item) => item.label ?? '-');
+		};
+		assert.deepEqual(itemsFor('asset://localhost/%2Fpics%2Fcat.jpg'), ['Save Image As...', '-']);
+		assert.deepEqual(itemsFor('http://asset.localhost/C%3A%2Fcat.jpg'), ['Save Image As...', '-']);
+		assert.deepEqual(itemsFor('https://example.test/cat.jpg'), []);
+		assert.deepEqual(itemsFor('data:image/png;base64,AA=='), []);
 	});
 });

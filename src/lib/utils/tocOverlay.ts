@@ -72,3 +72,26 @@ export function isTocOverhanging(input: TocOverhangInput): boolean {
 	const gutter = (input.viewerWidth - input.previewContentWidth) / 2;
 	return input.tocWidth > Math.max(MIN_GUTTER, gutter);
 }
+
+/**
+ * A floating outline gets out of the way (an outside click, a picked entry)
+ * only while it IS covering something: pinned it is a sidebar, and one sitting
+ * in the margin is not in anybody's way.
+ */
+export function tocAutoCollapses(isOverhanging: boolean, isPinned: boolean): boolean {
+	return isOverhanging && !isPinned;
+}
+
+/**
+ * Does this pointerdown dismiss the floating outline? The toggle button owns
+ * its own click; closing here as well would open and shut the panel in one
+ * gesture. Anything inside the panel, the resize handle included, is use.
+ */
+export function dismissesToc(
+	target: Node | null,
+	panel: Node | null | undefined,
+	toggle: Node | null | undefined,
+): boolean {
+	if (!target) return false;
+	return !(panel?.contains(target) || toggle?.contains(target));
+}

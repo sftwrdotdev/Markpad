@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildExportDocument, exportAsHtml, exportAsPdf, exportContentMaxWidth, exportThemeAttribute } from '../src/lib/utils/export.ts';
 import { DEFAULT_PREVIEW_MAX_WIDTH, getPreviewContentWidth, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
 import { plainAppearance } from './exportFixtures.ts';
+import { exportContextFrom, previewLayout } from '../src/lib/utils/previewLayout.ts';
 import { parseFrontMatter } from '../src/lib/utils/frontMatter.js';
 import { isAssetUrl, normalizeAssetPath, renderStaticFrontMatterPanel, resolveExportImagePath, rewriteMarkdownHrefForExport } from '../src/lib/utils/exportHtml.js';
 import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
@@ -1496,5 +1497,36 @@ describe('PDF prints the export article', () => {
 		t.mock.timers.tick(3000);
 		await run.result;
 		assert.ok(run.log.includes('print_pdf'));
+	});
+});
+
+describe('export context', () => {
+	const doc = { rawContent: '# x', tabTitle: 'x', tabPath: '/x.md', mermaidTheme: 'default' };
+	const appearance = { previewFont: 'Lato', previewFontSize: 16, codeFont: 'Menlo', codeFontSize: 14, highlightColor: 'yellow' };
+	const reading = { isEditing: false, isSplit: false, viewerWidth: 1400 };
+
+	test("the exporter is handed the preview's own derived width", () => {
+		for (const [previewMaxWidth, previewFullWidth] of [
+			[1240, false],
+			[1240, true],
+			['corrupted', false],
+			[99999, false],
+		] as const) {
+			const settings = {
+				...appearance,
+				previewMaxWidth,
+				previewFullWidth,
+				tocSide: 'left' as const,
+				splitEditorSide: 'left' as const,
+				tocWidth: 240,
+				previewNewlineBreaks: true,
+				language: 'en' as const,
+			};
+			const preview = previewLayout(settings, reading);
+			const exported = exportContextFrom(settings, doc).contentWidth;
+			assert.equal(exported, preview.contentWidth, `${previewMaxWidth}/${previewFullWidth}`);
+			// And that is the value the live preview wears as `--preview-max-width`.
+			assert.equal(preview.maxWidthCss, exported === null ? '100%' : `${exported}px`);
+		}
 	});
 });

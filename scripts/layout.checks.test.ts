@@ -15,17 +15,13 @@ describe('split pane ratio', () => {
 		assert.equal(/Math\.(min|max)/.test(source), false);
 	});
 
-	test('both splitter routes take the direction from the same place', () => {
-		// The failure this guards is a splitter that follows the pointer one way
-		// and the arrow keys the other — invisible until someone swaps the panes.
+	test('no splitter route spells the direction itself', () => {
+		// The routes' agreement is layout.test.ts "both splitter routes take the
+		// direction from the same place". This is the absence of a third copy.
 		const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-		const calls = viewer.match(/splitRatioAfterMove\(/g) ?? [];
-		assert.equal(calls.length, 2, 'expected the drag and the arrow keys, and nothing else');
-
-		// No route may reintroduce the sign itself.
 		assert.equal(/splitEditorSide === 'left' \? /.test(viewer), false);
 	});
+
 });
 
 describe('fold layout', () => {
@@ -56,13 +52,6 @@ describe('fold layout', () => {
 		);
 	});
 
-	test('preview lifecycle starts and cleans up fold observation', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		assert.match(viewer, /const host = previewBlocks;[\s\S]*?observeFoldLayout\(host\)/);
-		assert.match(viewer, /observation\.stop\(\)/);
-	});
-
 	// The direction the previous spelling could not state. `observeFoldLayout` used
 	// to be handed `markdownBody`, and that was right while the article held one
 	// document; it now holds one `.markdown-blocks` host per open tab, all but one
@@ -84,44 +73,8 @@ describe('fold layout', () => {
 
 		assert.doesNotMatch(
 			viewer,
-			/observeFoldLayout\(\s*markdownBody/,
+			/(?:observeFoldLayout\(|followFoldLayout\(\s*\w+\s*,\s*\(\)\s*=>)\s*markdownBody/,
 			'observing the article would measure every hidden tab and write zero heights into it',
-		);
-	});
-
-	test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		assert.match(viewer, /if \(!host \|\| !hasPreviewPane\) return;/);
-		assert.match(viewer, /let hasPreviewPane = \$derived\(!isEditing \|\| isSplit\);/);
-	});
-
-	// The observation used to be torn down and rebuilt on every render, which is
-	// how a document's every fold came to re-measure once per character:
-	// `ResizeObserver.observe` re-registers a target it is already watching, and a
-	// registration delivers an initial observation. What replaced it is a live
-	// observation plus `observe` calls for the blocks the patch inserted, so the
-	// two halves of that have to stay coupled — a viewer that re-observes the whole
-	// host, or a `foldLayout.ts` that only observes from a root, puts the cost back
-	// without changing a single assertion above.
-	test('only newly patched blocks are handed to the fold observer', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const foldLayout = readSource('src/lib/utils/foldLayout.ts');
-
-		assert.match(
-			viewer,
-			/for \(const \w+ of patch\.inserted\) foldLayout\?\.observe\(\w+\)/,
-			'the viewer must observe the patched blocks, not the whole preview',
-		);
-		assert.doesNotMatch(
-			viewer,
-			/foldLayout\?\.observe\(host\)/,
-			're-observing the host re-registers every fold in the document',
-		);
-		assert.match(
-			foldLayout,
-			/observe\(scope: Element\)/,
-			'observeFoldLayout must accept a scope smaller than the article',
 		);
 	});
 });
@@ -193,14 +146,6 @@ describe('outline follows the editor', () => {
 });
 
 describe('outline overlay placement', () => {
-	test('the outline collapses itself only when it is in the way', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		// Both auto-collapse paths are gated on the same predicate, so a window wide
-		// enough to hold the outline beside the text keeps the old behaviour.
-		assert.match(viewer, /isOverhanging && !settings\.pinnedToc/);
-		// Click-outside must not fight the toggle button, which owns its own click.
-		assert.match(viewer, /tocToggleEl\?\.contains\(target\)/);
-	});
 
 	test('the outline\'s toggle drops the editor toolbar\'s offset once it is over the outline', () => {
 		// Collapsed, the button floats over the editor pane and `--pane-top-chrome`

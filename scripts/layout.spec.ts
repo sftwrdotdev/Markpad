@@ -1,13 +1,19 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, onTestFinished, test, vi } from 'vitest';
 
 import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
-import { observeFoldLayout } from '../src/lib/utils/foldLayout.js';
+import { observeFoldLayout, type FoldLayoutObservation } from '../src/lib/utils/foldLayout.js';
 import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.js';
+import { previewLayout } from '../src/lib/utils/previewLayout.js';
+import { dismissesToc, tocAutoCollapses } from '../src/lib/utils/tocOverlay.js';
+import { followFoldLayout, previewPaneShown } from '../src/lib/utils/foldLayoutEffect.svelte.js';
+import { runeEffect } from './runeEffect.svelte.js';
+import { patchHost } from '../src/lib/utils/previewPatch.js';
+import { followPreviewPatch } from '../src/lib/utils/previewPatchEffect.svelte.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -1084,5 +1090,179 @@ describe('fold layout', () => {
 		runFrames();
 		assert.equal(wrapper.style.getPropertyValue('--fold-content-height'), '200px');
 		layout.stop();
+	});
+});
+
+describe('fold layout observation', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	// The fold layout used to be re-measured from the whole article on every
+	// patch, and `ResizeObserver.observe` on a target it already watches
+	// re-registers it and delivers a fresh observation. So a keystroke must hand
+	// the observer only what the patch inserted.
+	test('only newly patched blocks are handed to the fold observer', () => {
+		const observed: Element[] = [];
+		vi.stubGlobal('requestAnimationFrame', () => 0);
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				observe(target: Element) {
+					observed.push(target);
+				}
+				disconnect() {}
+			},
+		);
+		const host = document.createElement('div');
+		document.body.replaceChildren(host);
+		const doc = (last: string) =>
+			[
+				'<h2 data-sourcepos="1:1-1:4">A</h2>',
+				'<p data-sourcepos="3:1-3:1">a</p>',
+				'<h2 data-sourcepos="5:1-5:4">B</h2>',
+				`<p data-sourcepos="7:1-7:1">${last}</p>`,
+			].join('\0\n');
+		const tab = () => ({ filePath: '/docs/a.md', foldOverrides: new Set<string>() });
+		const layout = observeFoldLayout(host);
+
+		patchHost(host, doc('b'), tab, (scope) => layout.observe(scope));
+		const folds = [...host.querySelectorAll('.foldable-content-wrapper > .content-inner')];
+		assert.equal(folds.length, 2);
+		assert.deepEqual(new Set(observed.splice(0)), new Set(folds), 'a first render observes every fold');
+
+		patchHost(host, doc('b, edited'), tab, (scope) => layout.observe(scope));
+		const edited = [...host.querySelectorAll('p')].find((p) => p.textContent === 'b, edited')!;
+		assert.ok(observed.every((target) => edited.contains(target)), 'only the edited block is observed');
+		layout.stop();
+	});
+
+	/** A host with one fold, a recording ResizeObserver, and the effect following it. */
+	function follow(initial: { host: 'a' | 'b' | null; shown: boolean }) {
+		const observed: Element[] = [];
+		let disconnects = 0;
+		vi.stubGlobal('requestAnimationFrame', () => 0);
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				observe(target: Element) {
+					observed.push(target);
+				}
+				disconnect() {
+					disconnects++;
+				}
+			},
+		);
+		const article = document.createElement('article');
+		const fold = '<div class="foldable-content-wrapper"><div class="content-inner"><p>x</p></div></div>';
+		article.innerHTML = `<div id="a">${fold}</div><div id="b" style="display: none">${fold}</div>`;
+		document.body.replaceChildren(article);
+		const hosts = { a: article.querySelector<HTMLElement>('#a')!, b: article.querySelector<HTMLElement>('#b')! };
+		const state = runeProps(initial);
+		const holder: { current: FoldLayoutObservation | null } = { current: null };
+		const dispose = runeEffect(() =>
+			followFoldLayout(holder, () => (state.host ? hosts[state.host] : null), () => state.shown),
+		);
+		flushSync();
+		return { state, holder, hosts, observed, disconnects: () => disconnects, dispose };
+	}
+
+	test('preview lifecycle starts and cleans up fold observation', () => {
+		const run = follow({ host: 'a', shown: true });
+		assert.ok(run.holder.current, 'the observation is published for the patch');
+		assert.deepEqual(run.observed, [run.hosts.a.querySelector('.content-inner')]);
+
+		// Switching tabs moves the observation to the newly visible host.
+		run.state.host = 'b';
+		flushSync();
+		assert.equal(run.disconnects(), 1);
+		assert.equal(run.observed.at(-1), run.hosts.b.querySelector('.content-inner'));
+
+		run.dispose();
+		assert.equal(run.disconnects(), 2);
+		assert.equal(run.holder.current, null);
+	});
+
+	test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
+		assert.equal(previewPaneShown(true, false), false, 'edit mode hides the preview');
+		assert.equal(previewPaneShown(true, true), true, 'split keeps it');
+		assert.equal(previewPaneShown(false, false), true);
+
+		const run = follow({ host: 'a', shown: false });
+		assert.equal(run.holder.current, null);
+		assert.deepEqual(run.observed, []);
+
+		run.state.shown = true;
+		flushSync();
+		assert.ok(run.holder.current);
+		run.state.shown = false;
+		flushSync();
+		assert.equal(run.holder.current, null);
+		assert.equal(run.disconnects(), 1);
+		run.dispose();
+	});
+});
+
+describe('outline overlay placement', () => {
+	test('the outline collapses itself only when it is in the way', () => {
+		const settings = { previewMaxWidth: 880, previewFullWidth: false, tocSide: 'left' as const, splitEditorSide: 'left' as const, tocWidth: 240 };
+		const wide = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1400 });
+		const narrow = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1000 });
+		// A window wide enough to hold the outline beside the text keeps it open.
+		assert.equal(tocAutoCollapses(wide.isOverhanging, false), false);
+		assert.equal(tocAutoCollapses(narrow.isOverhanging, false), true);
+		// Pinned, it is a sidebar and stays.
+		assert.equal(tocAutoCollapses(narrow.isOverhanging, true), false);
+
+		// Click-outside must not fight the toggle button, which owns its own click.
+		const panel = document.createElement('nav');
+		const handle = panel.appendChild(document.createElement('div'));
+		const toggle = document.createElement('button');
+		const icon = toggle.appendChild(document.createElement('span'));
+		const text = document.createElement('p');
+		assert.equal(dismissesToc(icon, panel, toggle), false);
+		assert.equal(dismissesToc(handle, panel, toggle), false);
+		assert.equal(dismissesToc(text, panel, toggle), true);
+		assert.equal(dismissesToc(null, panel, toggle), false);
+	});
+});
+
+describe('outline render signal', () => {
+	test('the revision is published by the patch, not by the render', () => {
+		// A signal derived from the rendered string rather than from the write to
+		// the DOM is the bug: on a mount the outline scanned an article the patch
+		// had not filled yet, and the string never changed again to make it look.
+		const state = runeProps({ host: null as HTMLElement | null, html: '<h1>One</h1>' });
+		let published: { readonly revision: number } | null = null;
+		const seen: string[] = [];
+		const dispose = runeEffect(() => {
+			published = followPreviewPatch(
+				() => state.host,
+				() => state.html,
+				(host, html) => (host.innerHTML = html),
+			);
+		});
+		flushSync();
+		const revision = () => published!.revision;
+		const watch = runeEffect(() => {
+			void revision();
+			seen.push(state.host?.textContent ?? '');
+		});
+		flushSync();
+		onTestFinished(() => (watch(), dispose()));
+
+		state.html = '<h1>Two</h1>';
+		flushSync();
+		assert.equal(revision(), 0, 'a render with nowhere to patch it publishes nothing');
+
+		state.host = document.createElement('article');
+		flushSync();
+		assert.equal(revision(), 1);
+		assert.equal(seen.at(-1), 'Two', 'once published, the article already holds the document');
+
+		state.html = '<h1>Three</h1>';
+		flushSync();
+		assert.equal(revision(), 2);
+		assert.equal(seen.at(-1), 'Three');
 	});
 });

@@ -4,10 +4,12 @@ import { anchorIdCandidates, getMarkdownLinkTarget, resolveMarkdownTargetPath } 
 import { asBufferLine, asRendererLine, type BufferLine, lineCoordinates } from '../src/lib/utils/lineCoordinates.ts';
 import { opensInNewTab } from '../src/lib/utils/shortcuts.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
+import { followDocumentLink, handlePreviewClick, openRelativeMarkdownTarget, openWithSystem, type PreviewClickDeps } from '../src/lib/utils/previewLinks.js';
 import { type KeyContext, viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { viewerCommandTable } from './keymapHarness.js';
 import { adjustPreviewMaxWidth, DEFAULT_PREVIEW_MAX_WIDTH, getPreviewContentWidth, getStoredPreviewFullWidth, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH, normalizePreviewMaxWidth } from '../src/lib/utils/previewWidth.js';
 import { normalizeAssetPath } from '../src/lib/utils/exportHtml.js';
+import { previewLayout } from '../src/lib/utils/previewLayout.ts';
 import { processMarkdownHtml } from '../src/lib/utils/markdown.ts';
 import { parseHtml, type ShimElement } from './renderProtocolDom.ts';
 import { useShimDom } from './preview.domShim.ts';
@@ -691,5 +693,239 @@ describe('YouTube external fallback', () => {
 
 		assert.equal(root.querySelectorAll('a.youtube-link').length, 0);
 		assert.equal(root.querySelectorAll('img').length, 0);
+	});
+});
+
+describe('preview link clicks', () => {
+	/*
+	 * Three listeners see a click on a document link, in this order:
+	 *
+	 *   <article>                  handlePreviewClick  — folds, anchors, markdown links, zoom
+	 *   document.documentElement   SvelteKit's router  — `if (event.defaultPrevented) return`
+	 *   document                   followDocumentLink  — local files and URLs
+	 *
+	 * #772: `[PDF_1](Files/PDF_1.pdf)` opened the file AND left the app on a 404
+	 * page, because the preview declined the click without claiming it and the
+	 * router navigated to a route an SPA does not have.
+	 */
+
+	type Calls = string[];
+
+	/** The parts of a DOM element these handlers read. */
+	function element(tag: string, attrs: Record<string, string> = {}, parent: FakeElement | null = null): FakeElement {
+		return {
+			tag,
+			src: attrs.src ?? '',
+			href: attrs.resolvedHref ?? '',
+			getAttribute: (name: string) => attrs[name] ?? null,
+			closest(selector: string) {
+				for (let el: FakeElement | null = this; el; el = el.parent) if (el.tag === selector) return el;
+				return null;
+			},
+			parent,
+		};
+	}
+	interface FakeElement {
+		tag: string;
+		src: string;
+		href: string;
+		parent: FakeElement | null;
+		getAttribute(name: string): string | null;
+		closest(selector: string): FakeElement | null;
+	}
+
+	function click(target: FakeElement) {
+		const result = { defaultPrevented: false, propagationStopped: false };
+		const event = {
+			detail: 1,
+			target,
+			preventDefault: () => { result.defaultPrevented = true; },
+			stopPropagation: () => { result.propagationStopped = true; },
+		} as unknown as MouseEvent;
+		return { event, result };
+	}
+
+	function previewDeps(calls: Calls, overrides: Partial<PreviewClickDeps> = {}): PreviewClickDeps {
+		return {
+			hideTooltip: () => void calls.push('hide tooltip'),
+			toggleFold: () => false,
+			scrollToAnchor: async (id) => void calls.push(`scroll ${id}`),
+			opensInNewTab: () => false,
+			openInNewTab: async (t) => void calls.push(`new tab ${t.path}`),
+			openHere: async (t) => void calls.push(`open ${t.path}`),
+			zoom: (data) => void calls.push(`zoom ${data.src ?? data.html}`),
+			placeCursor: () => void calls.push('place cursor'),
+			...overrides,
+		};
+	}
+
+	async function clickLink(href: string) {
+		const { event, result } = click(element('a', { href }));
+		await handlePreviewClick(event, previewDeps([]));
+		return result;
+	}
+
+	test('a link the document handler opens leaves the preview already claimed', async () => {
+		for (const href of ['Files/PDF_1.pdf', './Files/MP4_1.mp4', '/srv/data.csv', 'https://example.com']) {
+			const { defaultPrevented, propagationStopped } = await clickLink(href);
+			assert.equal(defaultPrevented, true, `${href} must not reach the router undecided`);
+			// Claimed, not swallowed: the document handler is one listener further
+			// up and is the thing that opens it.
+			assert.equal(propagationStopped, false, `${href} must still reach the document handler`);
+		}
+	});
+
+	test('a markdown link is handled here and goes no further', async () => {
+		const { defaultPrevented, propagationStopped } = await clickLink('./other.md');
+		assert.equal(defaultPrevented, true);
+		assert.equal(propagationStopped, true);
+	});
+
+	test('a click takes the hover preview down before it does anything else', async () => {
+		// Every branch can be the one that replaces the document — a fold, an
+		// anchor, a relative link — and removing the hovered anchor dispatches
+		// no `mouseout`, so the box would stay on screen.
+		const cases: [FakeElement, Partial<PreviewClickDeps>][] = [
+			[element('span'), { toggleFold: () => true }],
+			[element('a', { href: '#intro' }), {}],
+			[element('a', { href: './other.md' }), {}],
+			[element('img', { src: 'asset://localhost/a.png' }), {}],
+		];
+		for (const [target, overrides] of cases) {
+			const calls: Calls = [];
+			await handlePreviewClick(click(target).event, previewDeps(calls, overrides));
+			assert.equal(calls[0], 'hide tooltip', `${target.tag}: ${calls.join(', ')}`);
+		}
+	});
+
+	test('linked YouTube thumbnails are not intercepted by image zoom', async () => {
+		// The poster is an <img> inside the link: the anchor must claim the click,
+		// or clicking it opens the zoom overlay instead of the browser.
+		const link = element('a', { href: 'https://www.youtube.com/watch?v=abc' });
+		const poster = element('img', { src: 'https://img.youtube.com/vi/abc/hqdefault.jpg' }, link);
+		const calls: Calls = [];
+		const { event, result } = click(poster);
+		await handlePreviewClick(event, previewDeps(calls));
+		assert.deepEqual(calls, ['hide tooltip']);
+		assert.equal(result.defaultPrevented, true, 'left for the document handler to open');
+	});
+
+	const DOC = '/notes/report.md';
+
+	function documentDeps(calls: Calls, openUrl: (url: string) => Promise<void> = async (url) => void calls.push(`url ${url}`)) {
+		return {
+			currentFile: DOC,
+			openHere: async (t: { path: string }) => void calls.push(`open ${t.path}`),
+			openWithSystem: async (path: string) => void calls.push(`system ${path}`),
+			openUrl,
+			openFailed: (rawHref: string) => void calls.push(`failed ${rawHref}`),
+		};
+	}
+
+	async function followLink(href: string, resolvedHref: string, openUrl?: (url: string) => Promise<void>) {
+		const calls: Calls = [];
+		const anchor = element('a', { href, resolvedHref }) as unknown as HTMLAnchorElement;
+		const { event, result } = click(anchor as unknown as FakeElement);
+		await followDocumentLink(event, anchor, documentDeps(calls, openUrl));
+		return { calls, defaultPrevented: result.defaultPrevented };
+	}
+
+	test('markdown targets are still claimed before the local-file branch', async () => {
+		// `./other.md` must open in a tab, not in an external editor.
+		const { calls } = await followLink('./other.md', 'tauri://localhost/other.md');
+		assert.deepEqual(calls, ['open ./other.md']);
+	});
+
+	test('a local file is handed to the OS as a path, not as a URL', async () => {
+		// The DOM resolves the href against the webview origin; the OS gets the
+		// disk path the document means.
+		const { calls, defaultPrevented } = await followLink('Files/data.csv', 'tauri://localhost/Files/data.csv');
+		assert.deepEqual(calls, ['system /notes/Files/data.csv']);
+		assert.equal(defaultPrevented, true);
+		assert.deepEqual((await followLink('https://example.com/a', 'https://example.com/a')).calls, ['url https://example.com/a']);
+	});
+
+	function systemDeps(calls: Calls, launchable: boolean, openPath = async (path: string) => void calls.push(`open ${path}`)) {
+		return {
+			isLaunchable: async () => launchable,
+			reveal: async (path: string) => void calls.push(`reveal ${path}`),
+			openPath,
+			revealed: (path: string) => void calls.push(`toast revealed ${path}`),
+			openFailed: (path: string) => void calls.push(`toast failed ${path}`),
+		};
+	}
+
+	test('a launchable target is revealed, not opened', async () => {
+		// `openPath` hands the file to the OS default handler, and for
+		// `./setup.command`, `Calculator.app` or `x.exe` that handler runs it.
+		const launchable: Calls = [];
+		await openWithSystem('/notes/setup.command', systemDeps(launchable, true));
+		assert.deepEqual(launchable, ['reveal /notes/setup.command', 'toast revealed /notes/setup.command']);
+
+		const document: Calls = [];
+		await openWithSystem('/notes/data.csv', systemDeps(document, false));
+		assert.deepEqual(document, ['open /notes/data.csv']);
+	});
+
+	test('neither OS call can leave an unhandled rejection behind', async () => {
+		// `openUrl` rejects for anything outside the opener scope. Unhandled, that
+		// rejection was the whole visible symptom on macOS: nothing happened, and
+		// nothing said why.
+		const refused = async () => { throw new Error('ForbiddenPath'); };
+		const originalError = console.error;
+		console.error = () => {};
+		try {
+			const file: Calls = [];
+			await openWithSystem('/notes/data.csv', systemDeps(file, false, refused));
+			assert.deepEqual(file, ['toast failed /notes/data.csv']);
+
+			const { calls } = await followLink('tel:123', 'tel:123', refused);
+			assert.deepEqual(calls, ['failed tel:123']);
+		} finally {
+			console.error = originalError;
+		}
+	});
+
+	// "Is this link the file I am reading?" is a question about the FILE. On
+	// macOS `[x](readme.md#a)` inside `Readme.md` names the open document, and
+	// comparing spellings answered no: the click asked to save or discard the
+	// unsaved edits and reloaded the file instead of scrolling to `#a`.
+	async function openRelative(currentFile: string, path: string) {
+		const calls: Calls = [];
+		await openRelativeMarkdownTarget({ path, hash: 'a' }, {
+			currentFile,
+			// A case-insensitive volume whose directory holds `Readme.md`.
+			canonicalizePath: async (p) => (p.toLowerCase() === '/notes/readme.md' ? '/notes/Readme.md' : p),
+			scrollToAnchorWhenReady: async () => void calls.push('scroll'),
+			scrollToTop: () => void calls.push('top'),
+			activeTabId: 'tab',
+			canCloseTab: async () => {
+				calls.push('ask to close');
+				return true;
+			},
+			loadMarkdown: async () => void calls.push('load'),
+		});
+		return calls;
+	}
+
+	test('a link to the open file under another spelling scrolls instead of reloading', async () => {
+		assert.deepEqual(await openRelative('/notes/Readme.md', 'readme.md'), ['scroll']);
+		assert.deepEqual(await openRelative('/notes/Readme.md', 'other.md'), ['ask to close', 'load', 'scroll']);
+	});
+});
+
+describe('preview layout', () => {
+	test('preview layout derives width and ToC geometry from the same preference', () => {
+		// A 1400px pane and a 240px outline: at 880px the text leaves a 260px
+		// gutter the outline fits in; widened to 1240px the gutter is 80px and the
+		// outline covers the text. One preference moves both answers.
+		const reading = { isEditing: false, isSplit: false, viewerWidth: 1400 };
+		const base = { previewMaxWidth: 880, previewFullWidth: false, tocSide: 'left' as const, splitEditorSide: 'left' as const, tocWidth: 240 };
+		const narrow = previewLayout(base, reading);
+		assert.deepEqual([narrow.maxWidthCss, narrow.isOverhanging], ['880px', false]);
+		const wide = previewLayout({ ...base, previewMaxWidth: 1240 }, reading);
+		assert.deepEqual([wide.maxWidthCss, wide.isOverhanging], ['1240px', true]);
+		const full = previewLayout({ ...base, previewFullWidth: true }, reading);
+		assert.deepEqual([full.maxWidthCss, full.isOverhanging], ['100%', true]);
 	});
 });

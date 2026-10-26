@@ -28,3 +28,24 @@ export function splitRatioAfterMove(
 ): number {
 	return startRatio + (editorSide === 'left' ? fraction : -fraction);
 }
+
+/**
+ * The arrow keys' route: one 5% step, the same units the drag moves in. `null`
+ * for any other key.
+ */
+export function splitRatioAfterKey(ratio: number, key: string, editorSide: SplitEditorSide): number | null {
+	const step = key === 'ArrowLeft' ? -0.05 : key === 'ArrowRight' ? 0.05 : 0;
+	if (step === 0) return null;
+	return splitRatioAfterMove(ratio, step, editorSide);
+}
+
+/** The pointer's route: travel from `startX` as a share of the window. */
+export function splitRatioAfterDrag(
+	startRatio: number,
+	startX: number,
+	clientX: number,
+	containerWidth: number,
+	editorSide: SplitEditorSide,
+): number {
+	return splitRatioAfterMove(startRatio, (clientX - startX) / containerWidth, editorSide);
+}

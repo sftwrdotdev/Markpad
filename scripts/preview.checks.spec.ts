@@ -1,78 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, test } from 'vitest';
 import assert from 'node:assert/strict';
-import { readSource } from './sourceTree.js';
-import { parse } from 'svelte/compiler';
-
-/**
- * Switching theme has to re-draw the diagrams, and until this file existed it
- * did not — in any mode, for any theme.
- *
- * Mermaid bakes fills, strokes and label colours into the SVG as attributes, so
- * a stylesheet cannot retarget them; `mermaidPrint.ts` says why at length, and
- * re-rendering is the answer it already reaches for on the way to a PDF. The
- * preview's own theme change was supposed to do the same thing through
- * `renderRichContent`, and could not: that function finds diagrams by
- * `pre code`, and a diagram that has been drawn once has no `<pre>` any more —
- * it was replaced by the `.mermaid-diagram` container holding the SVG.
- *
- * That was invisible while the preview was `{@html sanitizedHtml}`, because
- * every render put the whole document back as source. the block patch (#632)
- * keeps enriched nodes across renders instead, and from then on a theme change
- * reached no diagram at all. The `<pre>` is gone, `patch.inserted` is empty on
- * a re-render of the same document, and typing does not help either: the
- * diagram's markup is unchanged, so the patch keeps the node.
- *
- * The libraries are stood in for at the same boundary `exportRichContent` and
- * `richContentIdempotence` use. What is under test is Markpad's bookkeeping:
- * which containers it decides are stale, and what it does to them.
- */
-describe('diagram theme refresh', () => {
-	/**
-	 * The wiring, which the tests above cannot reach: `renderRichContent` now knows
-	 * how to re-draw a stale diagram, but the theme effect still has to call it, in
-	 * every mode and once per theme change.
-	 *
-	 * A source assertion, because the caller is a Svelte effect that cannot be
-	 * imported. It pins today's spelling of an internal call, so a rename breaks it
-	 * without breaking anything real; what it is here for is the guard, which was
-	 * `markdownBody && !isEditing`. That made the whole effect — the `dataset`
-	 * writes, `monaco.editor.setTheme`, and for a `vscode:` theme an
-	 * `invoke('read_vscode_theme')` and a re-parse — re-run on every mode toggle
-	 * and on every tab switch that changed the mode, with nothing about the theme
-	 * having moved. And it excluded from the re-colour every tab in edit mode,
-	 * including a split tab entered from edit mode, whose preview is on screen.
-	 */
-	test('the theme effect re-colours in every mode, and does not re-run on a mode change', async () => {
-		const { readSource } = await import('./sourceTree.js');
-		const viewer: string = readSource('src/lib/MarkdownViewer.svelte');
-
-		const effect = viewer.match(
-			/\t\$effect\(\(\) => \{\n\t\t\/\/ Persistence and cross-window sync[\s\S]*?\n\t\}\);/,
-		)?.[0];
-		expect(effect, 'the theme effect must still be recognisable').toBeTruthy();
-
-		// The mode is not a reason to re-apply a theme, and this is the only read
-		// that ever made it one.
-		expect(effect).not.toMatch(/isEditing/);
-		expect(effect).toMatch(
-			/const recolourDiagrams = \(\) => untrack\(\(\) => \{ if \(markdownBody\) renderRichContent\(\); \}\);/,
-		);
-
-		// Once per branch: the `vscode:` branch does not know its own appearance
-		// until `parseAndApplyVscodeTheme` has published `dataset.themeType`, which
-		// is what `currentMermaidTheme` reads.
-		expect(effect!.match(/recolourDiagrams\(\);/g)).toHaveLength(2);
-		expect(effect).toMatch(/loadVscodeTheme\([\s\S]*?recolourDiagrams\(\);/);
-	});
-});
-
-describe('line samples cache', () => {
-	test('a tab switch that skips the patch still drops the table', () => {
-		// The hosts' `display` is what changed, and `isAnchorable` reads it.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		expect(viewer).toMatch(/if \(unchanged\) invalidateAnchorMemos\(\);/);
-	});
-});
+import { refreshesPreviewCache } from '../src/lib/utils/previewRefresh.js';
 
 describe('rendered HTML field', () => {
 	// ---------------------------------------------------------------- environment
@@ -148,38 +76,14 @@ describe('rendered HTML field', () => {
 
 	// ------------------------------- 2. the condition that refreshes tab.content
 
-	const VIEWER = 'src/lib/MarkdownViewer.svelte';
-
-	const viewerSource = readSource(VIEWER);
-
-	const previewCacheRefreshes = (() => {
-		const ast = parse(viewerSource, { modern: true, filename: VIEWER });
-		const matches: Node[] = [];
-		collect(ast.instance, (node) => {
-			if (node.type !== 'IfStatement') return;
-			const test = viewerSource.slice(node.test.start, node.test.end);
-			const body = viewerSource.slice(node.consequent.start, node.consequent.end);
-			if (test.includes('settings.showToc') && body.includes('updateTabContent')) matches.push(node);
-		});
-		assert.equal(
-			matches.length,
-			1,
-			`expected exactly one condition in ${VIEWER} guarding the preview-cache render, found ${matches.length}`,
-		);
-
-		return compileGate(
-			viewerSource,
-			matches[0].test,
-			{
-				tab: () => tabManager.activeTab,
-				settings: () => settings,
-				// MarkdownViewer.svelte passes the active tab's own flag down as
-				// the `isEditing` prop.
-				isEditing: () => tabManager.activeTab?.isEditing ?? false,
-			},
-			'the preview-cache refresh condition',
-		);
-	})();
+	/** The viewer's own refresh condition, for the active tab. */
+	const previewCacheRefreshes = {
+		text: 'refreshesPreviewCache(tab, isEditing, settings.showToc)',
+		run: () => {
+			const tab = tabManager.activeTab;
+			return !!tab && refreshesPreviewCache(tab, tab.isEditing, settings.showToc);
+		},
+	};
 
 	// ----------------------------------------------------------------- fixtures
 

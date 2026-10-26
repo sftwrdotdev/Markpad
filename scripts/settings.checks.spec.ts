@@ -90,32 +90,21 @@ describe('settings persistence', async () => {
 		assert.match(appHtml, /localStorage\.getItem\('theme'\)/);
 	});
 
-	test('the startup background is told the appearance, not the theme name', () => {
-		// The fourth reader of this one setting, and the one that cannot see
-		// localStorage at all: `app.rs` paints a window's background before the
-		// webview exists, reading `theme.txt`. Its vocabulary is "dark", "light" and
-		// "anything else means ask the OS" — so every `vscode:` name fell into that
-		// last arm, and a dark VS Code theme on a light desktop flashed white on
-		// every launch. Whether such a theme is dark is inside its own JSON, which
-		// only the frontend parses, so the resolved answer is what gets sent.
+	test('the startup background command and its vocabulary match app.rs', () => {
+		// What the frontend sends runs in settings.themeEffect.spec.ts ("the startup
+		// background is told the appearance, not the theme name"). What stays here
+		// is the contract: the command name, and the two words, are literals in
+		// two languages with no compiler between them.
 		const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
-		assert.match(viewerSource, /function saveStartupAppearance\(appearance: 'system' \| 'light' \| 'dark'\)/);
 		assert.match(viewerSource, /invoke\('save_theme', \{ theme: appearance \}\)/);
 		assert.equal(
 			(viewerSource.match(/invoke\('save_theme'/g) ?? []).length,
 			1,
 			'save_theme has one caller, so nothing can send it a raw theme name',
 		);
-		// The VS Code branch answers only after the parse, because that is when the
-		// appearance becomes knowable.
-		assert.match(
-			viewerSource,
-			/loadVscodeTheme\(name, [\s\S]{0,400}?saveStartupAppearance\(document\.documentElement\.dataset\.themeType === 'dark' \? 'dark' : 'light'\)/,
-		);
 		// The viewer keeps no theme of its own beside the store's.
 		assert.doesNotMatch(viewerSource, /let theme = \$state/);
 
-		// Both words are literals in two languages with no compiler between them.
 		const appRs = readSource('src-tauri/src/app.rs');
 		assert.match(appRs, /"dark" => Some\(tauri::window::Color/);
 		assert.match(appRs, /"light" => Some\(tauri::window::Color/);

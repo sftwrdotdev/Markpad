@@ -107,3 +107,31 @@ export function headingReference({ text, slug, fileName, style }: HeadingReferen
 	const destination = fileName ? `${fileName}#${slug}` : `#${slug}`;
 	return `[${linkLabel(text)}](${linkDestination(destination)})`;
 }
+
+/**
+ * The reference for a heading of `tab`'s document, in the spelling that
+ * document is written in. The style is read from the buffer, so an unsaved
+ * edit already counts.
+ */
+export function referenceForTab(
+	text: string,
+	slug: string,
+	tab: { path?: string | null; rawContent?: string } | null | undefined,
+): string {
+	const fileName = tab?.path ? tab.path.split(/[/\\]/).pop() || null : null;
+	return headingReference({
+		text,
+		slug,
+		fileName,
+		style: preferredReferenceStyle(tab?.rawContent ?? ''),
+	});
+}
+
+/**
+ * A rendered heading's id, straight off the element: comrak wrote it, and the
+ * outline reads it the same way. It can be on an anchor comrak nests inside the
+ * heading rather than on the heading itself.
+ */
+export function headingSlug(heading: Element): string {
+	return heading.id || heading.querySelector('a.anchor')?.id || '';
+}
