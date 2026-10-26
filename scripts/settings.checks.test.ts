@@ -385,6 +385,9 @@ describe('translation coverage', () => {
 		'src/lib/components/Settings.svelte: t(action.labelKey)',
 		'src/lib/components/Settings.svelte: t(entry.hintKey)',
 		'src/lib/components/Settings.svelte: t(entry.labelKey)',
+		// OPEN_FILE_MODE_OPTIONS and TAB_POSITION_OPTIONS, harvested the same way.
+		'src/lib/components/Settings.svelte: t(mode.labelKey)',
+		'src/lib/components/Settings.svelte: t(position.labelKey)',
 		'src/lib/components/Settings.svelte: t(section.labelKey)',
 		'src/lib/components/Settings.svelte: t(tool.labelKey)',
 		'src/lib/components/Tab.svelte: t(action.labelKey)',

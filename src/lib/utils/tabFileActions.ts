@@ -31,6 +31,17 @@ export function hasExportableDocument(rawContent: string | undefined): boolean {
 	return !!rawContent;
 }
 
+/**
+ * The Home menu's export gate for a tab. It reads the Markdown buffer, not
+ * `content`: that is the rendered-preview HTML, refreshed only while the
+ * preview is on screen, so in plain edit mode with the TOC closed — the
+ * default state of a new file — it is still empty for a buffer that exports
+ * fine.
+ */
+export function canExportTab(tab: { rawContent: string } | null | undefined): boolean {
+	return hasExportableDocument(tab?.rawContent);
+}
+
 export function getTabFileActions(path: string): TabFileAction[] {
 	const disabled = !hasRealFilePath(path);
 

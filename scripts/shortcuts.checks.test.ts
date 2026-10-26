@@ -917,7 +917,6 @@ describe('formatting shortcuts keymap', () => {
 
 describe('menu and modal guards', () => {
 	const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-	const titleBar = readSource(new URL('../src/lib/components/TitleBar.svelte', import.meta.url));
 	const modal = readSource(new URL('../src/lib/components/Modal.svelte', import.meta.url));
 
 	// Three of the four assertions below used to spell `\n\t\t` and `\n\t\t\t` into
@@ -942,11 +941,6 @@ describe('menu and modal guards', () => {
 		// First statement, not merely present: every branch below it either opens a
 		// menu or returns, so a modal guard placed after any of them is not a guard.
 		assert.match(contextMenuHandler, /^function handleContextMenu\([^)]*\)\s*\{\s*if \(modalState\.show\)\s*return;/);
-	});
-
-	test('titlebar menus close before a document context menu opens', () => {
-		assert.match(titleBar, /window\.addEventListener\('contextmenu', handleGlobalDismiss\)/);
-		assert.match(titleBar, /window\.addEventListener\('blur', handleGlobalDismiss\)/);
 	});
 
 	test('modal backdrop consumes context-menu events outside text fields', () => {

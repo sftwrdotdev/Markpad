@@ -18,6 +18,7 @@
 		EDITOR_FONT_SIZE_RANGE,
 		EDITOR_MAX_WIDTH_RANGE,
 		PREVIEW_FONT_SIZE_RANGE,
+		TAB_POSITION_OPTIONS,
 		type NumericSettingRange,
 		type ThemeSetting,
 	} from '../stores/settings.svelte.js';
@@ -26,6 +27,7 @@
 	import { t, getSupportedLanguages } from '../utils/i18n.js';
 	import { shortcutSections } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
+	import { OPEN_FILE_MODE_OPTIONS } from '../utils/openFileMode.js';
 	import type { LanguageCode } from '../utils/i18n.js';
 	import { getEditorToolbarTools } from '../utils/editorToolbar.js';
 	import { getTitlebarToolbarActions, type TitlebarToolbarPlacement } from '../utils/titlebarToolbar.js';
@@ -1298,9 +1300,9 @@
 								<label for="appearance-tab-position">{t('settings.tabPosition', settings.language)}</label>
 								<div class="select-wrapper">
 									<select id="appearance-tab-position" disabled={!settings.showTabs} bind:value={settings.tabPosition}>
-										<option value="top">{t('settings.tabPositionTop', settings.language)}</option>
-										<option value="left">{t('settings.tabPositionLeft', settings.language)}</option>
-										<option value="right">{t('settings.tabPositionRight', settings.language)}</option>
+										{#each TAB_POSITION_OPTIONS as position}
+											<option value={position.value}>{t(position.labelKey, settings.language)}</option>
+										{/each}
 									</select>
 									<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 								</div>
@@ -1614,9 +1616,9 @@
 							<label for="files-open-file-mode">{t('settings.openFileMode', settings.language)}</label>
 							<div class="select-wrapper">
 								<select id="files-open-file-mode" bind:value={settings.openFileMode}>
-									<option value="preview">{t('settings.preview', settings.language)}</option>
-									<option value="editor">{t('settings.editor', settings.language)}</option>
-									<option value="split">{t('menu.splitView', settings.language)}</option>
+									{#each OPEN_FILE_MODE_OPTIONS as mode}
+										<option value={mode.value}>{t(mode.labelKey, settings.language)}</option>
+									{/each}
 								</select>
 								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 							</div>

@@ -16,6 +16,13 @@ export type OpenFileMode = 'preview' | 'editor' | 'split';
 
 export const DEFAULT_OPEN_FILE_MODE: OpenFileMode = 'preview';
 
+/** The Settings select, in order: the one control, with its three answers. */
+export const OPEN_FILE_MODE_OPTIONS: readonly { value: OpenFileMode; labelKey: string }[] = [
+	{ value: 'preview', labelKey: 'settings.preview' },
+	{ value: 'editor', labelKey: 'settings.editor' },
+	{ value: 'split', labelKey: 'menu.splitView' },
+];
+
 export function isOpenFileMode(value: unknown): value is OpenFileMode {
 	return value === 'preview' || value === 'editor' || value === 'split';
 }

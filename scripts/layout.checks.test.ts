@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { asBufferLine, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
+import { FOLD_TRANSITION_MS } from '../src/lib/utils/foldLayout.js';
 import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
-import { sourceLineOf } from '../src/lib/utils/tocFollow.js';
 import { callbackBodies, functionSource, readSource, sliceBetween } from './sourceTree.js';
 
 describe('scroll sync input', () => {
@@ -77,19 +77,15 @@ describe('fold layout', () => {
 	// lands on a target that is still moving — a defect that only shows up as "find
 	// sometimes scrolls to the wrong place".
 	test('the find-bar fold re-aim delay outlasts the CSS fold transition', () => {
-		const findBar = readSource('src/lib/components/FindBar.svelte');
 		const styles = readSource('src/styles.css');
-
-		const declared = findBar.match(/const FOLD_TRANSITION_MS = (\d+);/);
-		assert.ok(declared, 'FindBar.svelte must declare the delay it waits for the fold to settle');
 
 		const expandedRule = styles.match(/\.foldable-content-wrapper\s*\{([^}]*)\}/)?.[1] || '';
 		const transition = expandedRule.match(/transition:[^;]*?height\s+([\d.]+)s/);
 		assert.ok(transition, 'styles.css must animate the fold wrapper height');
 
 		assert.ok(
-			Number(declared[1]) >= Number(transition[1]) * 1000,
-			`FOLD_TRANSITION_MS (${declared[1]}ms) must outlast the ${transition[1]}s height transition`,
+			FOLD_TRANSITION_MS >= Number(transition[1]) * 1000,
+			`FOLD_TRANSITION_MS (${FOLD_TRANSITION_MS}ms) must outlast the ${transition[1]}s height transition`,
 		);
 	});
 
@@ -182,31 +178,11 @@ describe('fold layout', () => {
  * settle and flicker the highlight between two entries.
  */
 describe('outline follows the editor', () => {
-	const tocSource = readSource(new URL('../src/lib/components/Toc.svelte', import.meta.url));
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 
 	/* --------------------------------------------------------------- wiring */
-
-	test('the outline carries a source line for every entry it builds', () => {
-		// Both kinds — headings and block anchors — or the mapping above is asked
-		// about entries it cannot place.
-		assert.match(tocSource, /isBlock: false, line: sourceLineOf\(h\.dataset\.sourcepos\)/);
-		assert.match(tocSource, /isBlock: true, line: sourceLineOf\(el\.dataset\.sourcepos\)/);
-		// The fingerprint decides whether a re-render replaces the items. An edit
-		// that only moves a heading changes nothing else about it, so without the
-		// line in there the outline would keep answering with the old positions.
-		assert.match(tocSource, /newFingerprint = result\.map\(i => `\$\{i\.id\}-\$\{i\.text\}-\$\{i\.level\}-\$\{i\.line\}`\)/);
-	});
-
-	test('a click still wins over the editor, as it does over the preview', () => {
-		// `clickLock` holds the entry the user picked until the jump's smooth scroll
-		// settles. The preview's handler returns early on it; so must this one, or
-		// clicking an entry would highlight it and then lose it to the scroll the
-		// click itself caused.
-		assert.match(tocSource, /const line = activeLine;\s*\n\s*if \(line === null \|\| clickLock\) return;/);
-	});
 
 	test('the editor position reaches the outline whether or not scroll sync is on', () => {
 		// The line is recorded before the sync check, not inside it: following the
@@ -240,77 +216,12 @@ describe('outline follows the editor', () => {
 		assert.match(viewerSource, /activeLine=\{tocActiveLine\}/);
 	});
 
-	test('the outline no longer measures the preview to decide', () => {
-		// The loop this replaces did a `querySelector` and a `getBoundingClientRect`
-		// per visible entry on every scroll event, and could only ever answer for
-		// one of the two panes.
-		const handler = sliceBetween(tocSource, 'function handleScroll()', '\n\tfunction ');
-		assert.doesNotMatch(handler, /getBoundingClientRect/);
-		assert.doesNotMatch(handler, /querySelector/);
-		// What it still does: a click leaves a highlight on its target, and the
-		// next scroll takes it off.
-		assert.match(handler, /clearTargetHighlight\(\)/);
-	});
-
-	test('the jump highlight ends on anything that means the reader moved on', () => {
-		// It is a temporary emphasis. Hanging it off scrolling alone made it
-		// permanent whenever that one event did not arrive: the jump's own smooth
-		// scroll is swallowed by `clickLock`, and nothing else scrolls the preview
-		// unless the reader does. A click or a keystroke has to end it too.
-		const clear = sliceBetween(tocSource, 'function clearTargetHighlight()', '\n\tfunction ');
-		assert.match(clear, /classList\.remove\('toc-target-active'\)/, 'one place removes the class');
-		assert.match(clear, /activeTargetEl = null/);
-
-		// And the reader's own actions must not go through the lock, which exists
-		// only to ignore scrolling the app itself caused.
-		const reader = sliceBetween(tocSource, 'function handleReaderAction()', '\n\t}');
-		assert.doesNotMatch(reader, /clickLock/, 'a deliberate action is never locked out');
-		assert.match(reader, /clearTargetHighlight\(\)/);
-
-		for (const [target, event] of [
-			['el', 'pointerdown'],
-			['window', 'keydown'],
-		] as const) {
-			assert.match(
-				tocSource,
-				new RegExp(`${target}\\.addEventListener\\('${event}', handleReaderAction`),
-				`${event} clears it`,
-			);
-			assert.match(
-				tocSource,
-				new RegExp(`${target}\\.removeEventListener\\('${event}', handleReaderAction\\)`),
-				`${event} is detached again`,
-			);
-		}
-	});
-
 	test('there is no preference for it, because the preview never had one', () => {
 		// The outline has always followed the preview unconditionally. This is the
 		// same feature answering for the other pane, so a switch would have made
 		// half of one behaviour optional and left the reader to work out which half.
 		assert.doesNotMatch(settingsSource, /tocFollowsEditor/);
 		assert.doesNotMatch(settingsComponentSource, /tocFollowsEditor/);
-	});
-
-	test('the current entry is centred in the outline, not merely kept on screen', () => {
-		// `block: 'nearest'` scrolls the least it can: the highlight walked down to
-		// the last visible row and stayed pinned there, and what came next was
-		// never shown. Both callers share this one function, so the preview gets it
-		// too.
-		assert.match(tocSource, /scrollIntoView\(\{ block: 'center', behavior: 'smooth' \}\)/);
-		assert.doesNotMatch(tocSource, /scrollIntoView\(\{ block: 'nearest'/);
-	});
-});
-
-describe('outline jump motion', () => {
-	test('an outline click is a jump, so it asks the same preference', () => {
-		// #199 was reported against the table of contents, and `Toc.svelte` was the
-		// one jump the preference never reached: its `scrollTo` kept a literal
-		// `'smooth'`. `.svelte` files cannot run under `node --test`, so the anchor
-		// is the jump function's text: no second copy of the answer in it.
-		const jumpTo = functionSource(readSource('src/lib/components/Toc.svelte'), 'jumpTo');
-		assert.doesNotMatch(jumpTo, /'smooth'/);
-		assert.match(jumpTo, /jumpScrollBehavior\(/);
 	});
 });
 

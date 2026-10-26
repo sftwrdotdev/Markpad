@@ -206,6 +206,13 @@ export function isTabPosition(value: unknown): value is TabPosition {
 	return value === 'top' || value === 'left' || value === 'right';
 }
 
+/** The Settings select for the tab position, in order. */
+export const TAB_POSITION_OPTIONS: readonly { value: TabPosition; labelKey: string }[] = [
+	{ value: 'top', labelKey: 'settings.tabPositionTop' },
+	{ value: 'left', labelKey: 'settings.tabPositionLeft' },
+	{ value: 'right', labelKey: 'settings.tabPositionRight' },
+];
+
 /**
  * The allowed range of a numeric setting. Single source of truth: the settings
  * UI renders `min`/`max`/`step` from it and every write path (typing, spin

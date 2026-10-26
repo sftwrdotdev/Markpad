@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type * as Monaco from 'monaco-editor';
+	import { openDiffView } from '../utils/diffView.js';
 
 	/**
 	 * Side-by-side view of what is on disk against what the buffer holds.
@@ -35,14 +35,11 @@
 	} = $props();
 
 	let host = $state<HTMLDivElement | null>(null);
-	let editor: Monaco.editor.IStandaloneDiffEditor | null = null;
-	let models: Monaco.editor.ITextModel[] = [];
+	let closeView: (() => void) | null = null;
 
 	function dispose() {
-		editor?.dispose();
-		editor = null;
-		for (const model of models) model.dispose();
-		models = [];
+		closeView?.();
+		closeView = null;
 	}
 
 	$effect(() => {
@@ -60,21 +57,7 @@
 			const monaco = await import('monaco-editor');
 			if (cancelled) return;
 			dispose();
-			// Models of its own rather than the tab's: this view must not be
-			// able to touch the document, and handing it the live model would
-			// put a second editor on a buffer that `Editor.svelte` owns.
-			const left = monaco.editor.createModel(original, languageId);
-			const right = monaco.editor.createModel(modified, languageId);
-			models = [left, right];
-			editor = monaco.editor.createDiffEditor(element, {
-				readOnly: true,
-				originalEditable: false,
-				automaticLayout: true,
-				renderSideBySide: true,
-				scrollBeyondLastLine: false,
-				minimap: { enabled: false },
-			});
-			editor.setModel({ original: left, modified: right });
+			closeView = openDiffView(monaco, element, original, modified, languageId);
 		})();
 
 		return () => {
