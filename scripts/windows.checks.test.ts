@@ -2,12 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
-import ts from 'typescript';
 
-import { reviewDirtyTabs } from '../src/lib/sessions/closeReview.js';
-import { isHomePath } from '../src/lib/utils/homeTab.js';
-import { openPinnedTagWindow, pinnedTagFromWindowLabel, pinnedWindowToken } from '../src/lib/utils/pinnedTagWindow.js';
-import { hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
 import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import {
 	filesMatching,
@@ -26,77 +21,8 @@ import {
 // single tab close shows (canCloseTab). Cancel stops the walk; the window
 // stays open with the remaining tabs.
 describe('the window close handler', () => {
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const documentSessionPath = 'src/lib/sessions/documentSession.svelte.ts';
 	const documentSession = existsSync(documentSessionPath) ? readSource(documentSessionPath) : '';
-
-	function closeHandler(): string {
-		return sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
-	}
-
-	/** The walk and the snapshot, which the in-app update runs too (#761). */
-	function settle(): string {
-		return functionSource(viewer, 'settleForExit');
-	}
-
-	test('the aggregate unsaved-files modal is gone from the close handler', () => {
-		for (const scope of [closeHandler(), settle()]) {
-			assert.doesNotMatch(scope, /youHaveUnsavedFiles/);
-			// and the old "clear all dirty flags then close" discard path with it.
-			// Pinned as the assignment rather than as the `forEach` one-liner it was
-			// written in: the same silent discard spelled `for (const t of
-			// tabManager.tabs) t.isDirty = false;` passed the old regex, and the walk
-			// below then found nothing to review.
-			assert.doesNotMatch(scope, /\.isDirty\s*=\s*false/);
-		}
-	});
-
-	test('the close is prevented synchronously before the walk starts', () => {
-		const handler = closeHandler();
-		// Not the re-entry guard's `preventDefault`: the one between that guard and
-		// the walk.
-		const guardEnd = offsetOf(handler, 'return;', offsetOf(handler, 'if (isCloseWalkActive)'));
-		const walk = offsetOf(handler, 'await settleForExit(');
-		const prevent = handler.lastIndexOf('event.preventDefault()', walk);
-		assert.ok(guardEnd < prevent, 'the close is prevented before the walk starts');
-		assert.match(settle(), /reviewDirtyTabs\(\{/, 'and the walk is what settleForExit runs');
-	});
-
-	test('the window closes only after every dirty tab is resolved', () => {
-		const handler = closeHandler();
-		const walk = offsetOf(handler, 'await settleForExit(');
-		const close = offsetOf(handler, 'appWindow.close()', walk);
-		assert.ok(walk < close, 'the window closes after the walk, not during it');
-	});
-
-	test('a cancelled walk stops the handler before it persists or closes', () => {
-		const body = settle();
-		const walk = offsetOf(body, 'reviewDirtyTabs({');
-		const bail = offsetOf(body, 'return false;', offsetOf(body, 'if (!resolved)', walk));
-		assert.ok(bail < offsetOf(body, 'persistWindowState(', walk), 'cancel returns before the snapshot');
-
-		const handler = closeHandler();
-		const stop = offsetOf(handler, 'return;', offsetOf(handler, 'if (!(await settleForExit(endsSession))) {'));
-		assert.ok(stop < offsetOf(handler, 'appWindow.close()', stop), 'and before the close is re-triggered');
-	});
-
-	test('a second close request cannot start a competing walk', () => {
-		// The native red button bypasses the dialog overlay; re-entry must be
-		// swallowed while a walk is active, or two walks fight over setActive
-		// and the highlighted tab stops matching the dialog.
-		assert.match(closeHandler(), /if \(isCloseWalkActive\) \{\s*event\.preventDefault\(\);\s*return;\s*\}/);
-		// and the flag is always released, even when the user cancels mid-walk
-		assert.match(settle(), /finally \{\s*isCloseWalkActive = false;\s*\}/);
-	});
-
-	test('the walk proceeds in strict tab-strip order', () => {
-		// Which tab is next is the component's half of the walk: the order comes
-		// from the tab array, and an active-first shortcut made the sequence look
-		// random to the reader. The walking itself is covered above.
-		const body = settle();
-		assert.match(body, /nextDirtyTab: \(\) => tabManager\.tabs\.find\(\(t\) => t\.isDirty\)/);
-		assert.doesNotMatch(body, /active\?\.isDirty/);
-	});
 
 	test('the untitled save dialog prefills the numbered tab title', () => {
 		const scope = sliceBetween(documentSession, 'async function saveContent', 'async function saveContentAs');
@@ -111,11 +37,6 @@ describe('the window close handler', () => {
 		assert.match(fn, /const snapshot = tab\.rawContent;/);
 	});
 
-	test('the restore-on-reopen branch persists window state via the shared helper', () => {
-		assert.match(settle(), /persistWindowState\(await remember\(\)\);/);
-		// no durable-write experiment left behind
-		assert.doesNotMatch(viewer, /saveSessionState|sessionState\.js/);
-	});
 });
 
 // The window-state plugin saves only on a clean exit, so after a crash every
@@ -263,223 +184,6 @@ describe('windows are equal views of one session', () => {
 	});
 });
 
-/*
- * A pinned tag's file list is written when its window ends. Every way of ending
- * a window closes tabs on the way — the last tab's ×, the close review with
- * restore off, a merge into another window — and the pin used to be written
- * after they were gone, so Home showed the group with no files.
- *
- * The window-ending functions are lifted out of MarkdownViewer.svelte and RUN
- * against a stub window; what is asserted is the last list sent to
- * `update_pinned_tag`.
- */
-
-describe('a pinned tag keeps its files when its window ends', () => {
-	const LIFTED = [
-		'openFilePaths',
-		'savePinnedTagIfNeeded',
-		'closeTabAndWindowIfLast',
-		'destroyWindowAfterTabsClosed',
-		'settleForExit',
-		'settleForUpdate',
-		'mergeSelfInto',
-		'openPinnedTag',
-	];
-
-	type Tab = { id: string; path: string; isDirty: boolean };
-
-	function pinnedWindow(tabs: Tab[], settings: { closeWindowWithLastTab?: boolean; restoreStateOnReopen?: boolean } = {}) {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const source = LIFTED.map((name) => functionSource(viewer, name)).join('\n');
-		const js = ts.transpileModule(source, {
-			compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-		}).outputText;
-
-		const saves: string[][] = [];
-		// Whether the pin file still has this window's entry. Another window can
-		// unpin the tag from Home while this one holds it.
-		const pin = { exists: true };
-		const calls: string[] = [];
-		const loaded: string[] = [];
-		let destroyed = false;
-		const closeTab = (id: string) => {
-			const at = tabs.findIndex((tab) => tab.id === id);
-			if (at !== -1) tabs.splice(at, 1);
-		};
-		const tabManager = {
-			tabs,
-			windowTag: { name: 'work', color: '#f00', pinned: true } as object | null,
-			closeTab,
-			setActive: () => {},
-			setWindowTag: (tag: object | null) => void (tabManager.windowTag = tag),
-		};
-		const known: Record<string, unknown> = {
-			tabManager,
-			settings: { closeWindowWithLastTab: true, restoreStateOnReopen: false, autoSave: false, language: 'en', ...settings },
-			invoke: async (command: string, args?: { files?: string[]; token?: string }) => {
-				if (command === 'update_pinned_tag') {
-					saves.push([...args!.files!]);
-					return pin.exists;
-				}
-				if (command === 'save_pinned_tag') throw new Error('a closing window recreated its pin');
-				calls.push(args?.token ? `${command}:${pinnedTagFromWindowLabel(`window-${args.token}`)}` : command);
-			},
-			pinnedTagHolder: async () => undefined,
-			pinnedWindowToken,
-			loadMarkdown: async (file: string) => void loaded.push(file),
-			appWindow: { label: 'main', destroy: async () => void (destroyed = true) },
-			canCloseTab: async (id: string) => {
-				const tab = tabs.find((item) => item.id === id);
-				if (tab) tab.isDirty = false;
-				return true;
-			},
-			moveTabToWindow: async (id: string) => (closeTab(id), true),
-			persistWindowState: async () => {},
-			tick: async () => {},
-			reviewDirtyTabs,
-			hasRealFilePath,
-			isHomePath,
-			liveMode: false,
-			isCloseWalkActive: false,
-		};
-		// Anything else the functions keep between calls lands here, as it would
-		// on the component.
-		const scope = new Proxy(known, {
-			has: () => true,
-			get: (target, key) => (key in target ? target[key as string] : (globalThis as any)[key]),
-		});
-		const build = new Function('scope', `with (scope) { ${js}\nreturn { ${LIFTED.join(', ')} }; }`);
-		const fns = build(scope) as Record<string, (...args: any[]) => Promise<unknown>>;
-		return { fns, tabs, saves, pin, calls, loaded, tabManager, isDestroyed: () => destroyed };
-	}
-
-	const twoFiles = (): Tab[] => [
-		{ id: 'a', path: '/notes/a.md', isDirty: false },
-		{ id: 'b', path: '/notes/b.md', isDirty: false },
-	];
-
-	test('closing every tab with × keeps the last file in the pin', async () => {
-		const w = pinnedWindow(twoFiles());
-		await w.fns.closeTabAndWindowIfLast('a');
-		await w.fns.closeTabAndWindowIfLast('b');
-		assert.equal(w.isDestroyed(), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/b.md']);
-	});
-
-	test('with the window kept open, closing the empty window later does not empty the pin', async () => {
-		const w = pinnedWindow(twoFiles(), { closeWindowWithLastTab: false });
-		await w.fns.closeTabAndWindowIfLast('a');
-		await w.fns.closeTabAndWindowIfLast('b');
-		assert.equal(w.isDestroyed(), false);
-		assert.equal(await w.fns.settleForExit(async () => true), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/b.md']);
-	});
-
-	test('the close review with restore off keeps the dirty tabs it closes in the pin', async () => {
-		const tabs = twoFiles();
-		tabs[0].isDirty = true;
-		const w = pinnedWindow(tabs);
-		assert.equal(await w.fns.settleForExit(async () => true), true);
-		assert.deepEqual(w.tabs.map((tab) => tab.id), ['b'], 'the review closed the dirty tab');
-		// The handler re-triggers the close after a review, and settles again.
-		assert.equal(await w.fns.settleForExit(async () => true), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
-
-		// A window that lives on after that (an update that failed to install)
-		// saves what it has open, not the list the review started from.
-		w.tabs.push({ id: 'c', path: '/notes/c.md', isDirty: false });
-		assert.equal(await w.fns.settleForExit(async () => true), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/b.md', '/notes/c.md']);
-	});
-
-	test('an update whose install fails leaves no stale review list behind', async () => {
-		// The update settles like a close but is not followed by one: when the
-		// install fails the window stays, and a later last-tab close saved the
-		// list the update's review started from.
-		const tabs = twoFiles();
-		tabs[0].isDirty = true;
-		const w = pinnedWindow(tabs);
-		assert.equal(await w.fns.settleForUpdate(), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
-
-		w.tabs.push({ id: 'c', path: '/notes/c.md', isDirty: false });
-		await w.fns.closeTabAndWindowIfLast('b');
-		await w.fns.closeTabAndWindowIfLast('c');
-		assert.deepEqual(w.saves.at(-1), ['/notes/c.md']);
-	});
-
-	test('merging a pinned window into another keeps its files in the pin', async () => {
-		const w = pinnedWindow(twoFiles());
-		await w.fns.mergeSelfInto('other');
-		assert.equal(w.isDestroyed(), true);
-		assert.deepEqual(w.saves.at(-1), ['/notes/a.md', '/notes/b.md']);
-	});
-
-	test('a pin another window removed stays removed when this window closes', async () => {
-		const w = pinnedWindow(twoFiles());
-		w.pin.exists = false;
-		assert.equal(await w.fns.settleForExit(async () => true), true);
-		assert.deepEqual(w.tabManager.windowTag, { name: 'work', color: '#f00', pinned: false }, 'the window still claims the pin');
-	});
-
-	const research = { name: 'research', color: '#0a0', files: ['/papers/x.md', '/papers/y.md'] };
-
-	test('opening a pinned group in a window with tabs opens a new window for it', async () => {
-		const w = pinnedWindow(twoFiles());
-		await w.fns.openPinnedTag(research);
-		assert.deepEqual(w.calls, ['create_transfer_window:research'], 'the new window reads the group from its label');
-		assert.deepEqual(w.loaded, [], 'no file of the group joins this window');
-		assert.deepEqual(w.tabs.map((tab) => tab.id), ['a', 'b']);
-		assert.deepEqual(w.tabManager.windowTag, { name: 'work', color: '#f00', pinned: true });
-	});
-
-	test('an empty window adopts the pinned group in place', async () => {
-		const w = pinnedWindow([]);
-		w.tabManager.windowTag = null;
-		await w.fns.openPinnedTag(research);
-		assert.deepEqual(w.calls, []);
-		assert.deepEqual(w.loaded, research.files);
-		assert.deepEqual(w.tabManager.windowTag, { ...research, pinned: true });
-	});
-});
-
-describe('a pinned group opens in a window that holds it', () => {
-	test('a window opened for a pinned group is created as the group\'s holder', async () => {
-		// The window reports its tag only once it has mounted and read the group.
-		// Until then the registry knew nothing of it, so a second click on the same
-		// group opened a second window. `tagName` has the backend record the holder
-		// as it creates the window.
-		const calls: { cmd: string; args: any }[] = [];
-		(globalThis as any).window = {
-			__TAURI_INTERNALS__: {
-				invoke: async (cmd: string, args: any) => {
-					calls.push({ cmd, args });
-					return cmd === 'list_viewer_windows' ? [] : null;
-				},
-			},
-		};
-		try {
-			await openPinnedTagWindow('Work');
-		} finally {
-			delete (globalThis as any).window;
-		}
-		const create = calls.find((call) => call.cmd === 'create_transfer_window');
-		assert.equal(create?.args.tagName, 'Work');
-		assert.equal(pinnedTagFromWindowLabel(`window-${create?.args.token}`), 'Work');
-
-		// The other route that opens a pinned group in a new window says the same.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const pinnedCreates = viewer.match(/invoke\('create_transfer_window', \{[^}]*pinnedWindowToken[^}]*\}\)/g) ?? [];
-		assert.ok(pinnedCreates.length > 0, 'MarkdownViewer no longer opens a pinned group in a new window');
-		for (const call of pinnedCreates) {
-			assert.match(call, /tagName:/, call);
-		}
-		// And the window does not report itself, clearing that name, before it has
-		// adopted the group.
-		assert.match(viewer, /\$effect\(\(\) => \{\n\t\tif \(!windowMetaReady\) return;\n\t\tinvoke\('set_window_meta'/);
-	});
-});
-
 describe('a cold start does not steal focus', () => {
 	const backend = readRustBackend();
 
@@ -597,11 +301,6 @@ describe('window state restore', () => {
 	// always lives on disk — the snapshot never carries rawContent, so unsaved
 	// changes are handled exclusively by the per-tab close dialogs.
 
-	/** What the close handler and the in-app update run before the window goes away. */
-	function settleForExit(): string {
-		return functionSource(viewer, 'settleForExit');
-	}
-
 	test('startup restore reads content from disk, not from the snapshot', () => {
 		const restore = sliceBetween(session, 'async function restore', 'async function claimTransferredTab');
 		// The tab on screen is read the way an open reads it, through the document
@@ -632,13 +331,6 @@ describe('window state restore', () => {
 		assert.match(viewer, /readOnly=\{tabManager\.activeTab\.isTruncated === true\}/);
 		const editor = readSource('src/lib/components/Editor.svelte');
 		assert.match(editor, /editor\.updateOptions\(\{ \.\.\.editorOptionsFromSettings\(settings, zoomLevel, fontIsMonospace\), readOnly \}\)/);
-	});
-
-	test('the close flow resolves dirty tabs before serializing window state', () => {
-		const body = settleForExit();
-		const walk = offsetOf(body, 'reviewDirtyTabs({');
-		const persist = offsetOf(body, 'persistWindowState(');
-		assert.ok(walk < persist, 'dirty tabs must be resolved before the snapshot is written');
 	});
 
 	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
@@ -674,47 +366,16 @@ describe('window state restore', () => {
 		assert.match(discardScope, /removeItem\(options\.legacyStateKey\)/);
 	});
 
-	test('quitting writes the session instead of discarding it', () => {
-		// ⌘Q used to discard the snapshot, so it and the red button disagreed
-		// about whether the session came back — silently, because the dialog that
-		// explained the difference only appeared when a tab was dirty (#390).
-		// Quitting now closes every window and each one persists through its own
-		// close handler.
-		const exitScope = sliceBetween(viewer, 'async function appExit', '\n\t}');
-		assert.doesNotMatch(exitScope, /discardPersistedWindowState/);
-		assert.match(exitScope, /await getAllWindows\(\)/, 'every window is asked, not just the focused one');
-		assert.match(exitScope, /other\.label !== appWindow\.label/, 'this window closes last');
-		// Nothing may skip the close handler's review and persist step any more.
-		assert.doesNotMatch(viewer, /isForceExiting/);
-	});
-
-	test('with restore enabled resolved titled tabs stay open for the snapshot', () => {
-		const handler = settleForExit();
-		// tabs are closed one-by-one only when restore is off (or untitled).
-		// The walk itself is covered by windowClosePerTab, which runs it; what is
-		// asserted here is the policy the component hands it.
-		assert.match(handler, /!settings\.restoreStateOnReopen \|\| tab\.path === ''/);
-	});
-
-	test('auto-save fast path silently saves titled tabs before the walk', () => {
-		const handler = settleForExit();
-		const fastPath = offsetOf(handler, 'if (settings.autoSave) {');
-		const walk = offsetOf(handler, 'reviewDirtyTabs({');
-		assert.ok(fastPath < walk, 'the silent save runs before the per-tab walk');
-	});
 });
 
 describe('window tags and pinned sessions', () => {
 	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const titleBar = readSource('src/lib/components/TitleBar.svelte');
 	const home = readSource('src/lib/components/HomePage.svelte');
 
 	test('only explicitly pinned tags create reusable sessions', () => {
 		assert.match(runtime, /pub fn save_pinned_tag/);
 		assert.match(runtime, /pub fn remove_pinned_tag/);
-		assert.match(viewer, /if \(!tag\?\.pinned\) return;/);
-		assert.match(viewer, /savePinnedTagIfNeeded/);
 		assert.match(home, /onopenPinnedTag/);
 	});
 

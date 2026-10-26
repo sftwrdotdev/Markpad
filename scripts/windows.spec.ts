@@ -38,6 +38,9 @@ const { promoteRecentFile, updateStoredRecentFiles } = await import('../src/lib/
 const { FolderManager, folderName, isInside, snapshotFolder } = await import('../src/lib/stores/folder.svelte.js');
 const { HOME_TAB_PATH, isHomePath, showsHomeScreen } = await import('../src/lib/utils/homeTab.js');
 const { hasRealFilePath } = await import('../src/lib/utils/tabFileActions.js');
+const { openPinnedTagWindow, pinnedTagFromWindowLabel } = await import('../src/lib/utils/pinnedTagWindow.js');
+const { reportWindowMeta } = await import('../src/lib/sessions/windowMeta.svelte.js');
+const { runeEffect } = await import('./runeEffect.svelte.js');
 const { getSupportedLanguages, t } = await import('../src/lib/utils/i18n.js');
 
 function useTauri(next: Partial<Bridge> = {}) {
@@ -1110,5 +1113,46 @@ describe('the home tab renders the home screen', () => {
 		tabManager.setActive(file);
 
 		assert.equal(showsDocumentContainer(), true, 'the document container must come back');
+	});
+});
+
+describe('a pinned group opens in a window that holds it', () => {
+	const calls: { cmd: string; args: any }[] = [];
+	useTauri({
+		invoke: async (cmd: string, args: any) => {
+			calls.push({ cmd, args });
+			if (cmd === 'get_os_type') return 'macos';
+			return cmd === 'list_viewer_windows' ? [] : null;
+		},
+	});
+
+	test("a window opened for a pinned group is created as the group's holder", async () => {
+		// The window reports its tag only once it has mounted and read the group.
+		// Until then the registry knew nothing of it, so a second click on the same
+		// group opened a second window. `tagName` has the backend record the holder
+		// as it creates the window. (The viewer's own route, `openPinnedTag`, is
+		// asserted in windows.exit.test.ts.)
+		await openPinnedTagWindow('Work');
+		const create = calls.find((call) => call.cmd === 'create_transfer_window');
+		assert.equal(create?.args.tagName, 'Work');
+		assert.equal(pinnedTagFromWindowLabel(`window-${create?.args.token}`), 'Work');
+
+		// And the new window does not report itself, clearing that name, before it
+		// has adopted the group.
+		tabManager.addTab('/notes/a.md');
+		calls.length = 0;
+		const metaCalls = () => calls.filter((call) => call.cmd === 'set_window_meta');
+		let meta!: { markReady: () => void };
+		const dispose = runeEffect(() => void (meta = reportWindowMeta(tabManager, false)));
+		try {
+			flushSync();
+			assert.deepEqual(metaCalls(), [], 'reported before the group was adopted');
+			tabManager.setWindowTag({ name: 'Work', color: '#f00', pinned: true });
+			meta.markReady();
+			flushSync();
+			assert.equal(metaCalls().at(-1)?.args.tagName, 'Work');
+		} finally {
+			dispose();
+		}
 	});
 });

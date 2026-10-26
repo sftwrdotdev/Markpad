@@ -17,6 +17,7 @@ import { callbackBodies, functionSource, offsetOf, readSource, sliceBetween, sli
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
+const { createWindowExit } = await import('../src/lib/sessions/windowExit.js');
 
 // An unanswered external-change conflict is a question only the user can
 // answer. The viewer's saves that nobody asked for — leaving the editor or
@@ -55,7 +56,6 @@ describe('silent saves keep conflicts', () => {
 		'saveContent',
 		'saveSilently',
 		'flushBeforeLeavingEditableMode',
-		'settleForExit',
 	];
 
 	function makeViewer() {
@@ -110,6 +110,23 @@ describe('silent saves keep conflicts', () => {
 		const fns = new Function('scope', `with (scope) { ${js}\nreturn { ${LIFTED.join(', ')} }; }`)(
 			new Proxy(scope, { has: (target, key) => key in target }),
 		) as Record<string, (...args: any[]) => Promise<unknown>>;
+		const exit = createWindowExit({
+			tabManager,
+			settings: { autoSave: true, restoreStateOnReopen: false, closeWindowWithLastTab: true, persistOpenEditors: false },
+			appWindow: { label: 'main', close: async () => {}, destroy: async () => {} },
+			allWindows: async () => [],
+			recovery: { isReady: () => false, keep: async () => true, drop: async () => true },
+			persistWindowState: async () => {},
+			canCloseTab: (id) => session.canCloseTab(id),
+			saveSilently: (id) => fns.saveSilently(id) as Promise<boolean>,
+			hasExternalChangeConflict: (id) => fns.hasExternalChangeConflict(id) as unknown as boolean,
+			onAutoSaveFailed: () => void toasts.push('toast.autoSaveFailed'),
+			settle: async () => {},
+			loadMarkdown: async () => {},
+			setShowHome: () => {},
+			moveTabToWindow: async () => {},
+		});
+		fns.settleForExit = () => exit.settleForExit(async () => true);
 		return { fns, scope, closeQuestions, toasts };
 	}
 
@@ -744,19 +761,6 @@ describe('view mode without saving', () => {
 		assert.deepEqual(fakes.askCustomCalls, []);
 		assert.equal(tab.isSplit, false);
 		assert.equal(tab.content, rendered(IN_BUFFER));
-	});
-
-	test('closing the window still reviews unsaved tabs', () => {
-		// The close handler is where the buffer is really at stake: it dies with
-		// the window. Source-level, because it is wired to a Tauri window event.
-		// Quit goes through the same handler now — `appExit` closes windows and
-		// decides nothing about their buffers (#390).
-		const exit = pluck('appExit');
-		assert.doesNotMatch(exit, /askCustom/, 'quit asks nothing of its own; the close handler does the asking');
-
-		const closeHandler = sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
-		assert.match(closeHandler, /await settleForExit\(/, 'the close still runs the review');
-		assert.match(pluck('settleForExit'), /canCloseTab,\n/, 'the walk still runs the per-tab dialog');
 	});
 
 	test('the view toggles no longer re-read the file to leave an editable pane', () => {

@@ -21,12 +21,12 @@
 	import Toc from './components/Toc.svelte';
 	import Toast from './components/Toast.svelte';
 	import FindBar from './components/FindBar.svelte';
-	import { reviewDirtyTabs } from './sessions/closeReview.js';
+	import { createWindowExit } from './sessions/windowExit.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath, showsHomeScreen } from './utils/homeTab.js';
 	import { copyableFlavours } from './utils/previewCopy.js';
-	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
+	import { hasExportableDocument } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
@@ -109,7 +109,7 @@ import {
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
-	import { openNewWindow, pinnedTagFromWindowLabel, pinnedTagHolder, pinnedWindowToken } from './utils/pinnedTagWindow.js';
+	import { openNewWindow, pinnedTagFromWindowLabel } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
@@ -128,6 +128,7 @@ import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
+import { reportWindowMeta } from './sessions/windowMeta.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
 import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
@@ -641,10 +642,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		}
 	}
 
-	// True while the window-close walk is showing per-tab dialogs; the native
-	// red button is not blocked by the dialog overlay, so this keeps a second
-	// close request from starting a competing walk.
-	let isCloseWalkActive = false;
 	let identifyFlash = $state('');
 	let identifyFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -698,29 +695,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		}
 	}
 
-	/**
-	 * Hot exit: keep unsaved buffers instead of asking. Pending auto-saves write
-	 * their files first; a refused or failed save stays dirty and is kept. False
-	 * when the backup cannot be written or `applies` says no, and the caller asks
-	 * as usual. `applies` runs inside the walk guard, so a second close is refused meanwhile.
-	 */
-	async function keepUnsavedForExit(applies = async () => true): Promise<boolean> {
-		if (!recoveryReady) return false;
-		isCloseWalkActive = true;
-		try {
-			if (!(await applies())) return false;
-			if (settings.autoSave) {
-				for (const tab of tabManager.tabs.filter((t) => t.isDirty && t.path !== '')) await saveSilently(tab.id);
-			}
-			if (!(await unsavedRecovery.flush(recoverySnapshot(tabManager.tabs)))) return false;
-		} finally {
-			isCloseWalkActive = false;
-		}
-		await savePinnedTagIfNeeded();
-		await persistWindowState(true);
-		return true;
-	}
-
 	// The snapshot: window shape only, never document content. `folderRoot`
 	// rides along so each window gets its own folder back.
 	const windowStateJson = () => tabManager.serializeState({ folderRoot: folderManager.root });
@@ -756,11 +730,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// complete the buffer first; these predicates are the backstop.
 		canTransfer: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !isCloseWalkActive && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated;
+			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated;
 		},
 		canDetach: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !isCloseWalkActive && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated && tabManager.tabs.length >= 2;
+			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated && tabManager.tabs.length >= 2;
 		},
 		transferPayload: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
@@ -864,19 +838,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		windowSession.record(untrack(windowStateJson));
 	});
 
-	// A window opened for a pinned group is entered in the registry under the
-	// group's name when it is created. Reporting before it has adopted the
-	// group would clear that name and let a second click open the group again.
-	let windowMetaReady = $state(pinnedTagFromWindowLabel(appWindow.label) === null);
-	$effect(() => {
-		if (!windowMetaReady) return;
-		invoke('set_window_meta', {
-			tagName: tabManager.windowTag?.name ?? null,
-			tagColor: tabManager.windowTag?.color ?? null,
-			activeTabTitle: tabManager.activeTab?.title ?? '',
-			tabCount: tabManager.tabs.length,
-		}).catch(() => {});
-	});
+	const windowMeta = reportWindowMeta(tabManager, pinnedTagFromWindowLabel(appWindow.label) === null);
 
 	$effect(() => {
 		const tag = tabManager.windowTag;
@@ -887,46 +849,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 
 	async function refreshPinnedTags() {
 		pinnedTags = (await invoke('list_pinned_tags')) as typeof pinnedTags;
-	}
-
-	// The files the close review started from. It can close tabs, and the
-	// close it re-triggers settles again, so both saves use this list.
-	let pinFilesAtClose: string[] | null = null;
-
-	function openFilePaths() {
-		return tabManager.tabs.filter((tab) => hasRealFilePath(tab.path)).map((tab) => tab.path);
-	}
-
-	/**
-	 * Every path that ends a window saves the pin before it closes tabs. An
-	 * empty window says nothing about the group, so it never overwrites it.
-	 * It only refreshes the entry: another window may have unpinned the tag.
-	 */
-	async function savePinnedTagIfNeeded() {
-		const tag = tabManager.windowTag;
-		if (!tag?.pinned) return;
-		const files = pinFilesAtClose ?? openFilePaths();
-		if (files.length === 0) return;
-		const pinned = await invoke('update_pinned_tag', { name: tag.name, color: tag.color, files });
-		if (!pinned) tabManager.setWindowTag({ ...tag, pinned: false });
-	}
-
-	async function openPinnedTag(tag: { name: string; color: string; files: string[] }) {
-		// Two windows sharing a tag share one pin entry, and the last to save wins.
-		const holder = await pinnedTagHolder(tag.name, appWindow.label);
-		if (holder) {
-			await invoke('focus_window', { label: holder });
-			return;
-		}
-		// Tabs already here belong to this window's own group. The pinned one
-		// opens in a window of its own, which adopts it from its label.
-		if (tabManager.tabs.some((tab) => !isHomePath(tab.path))) {
-			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()), tagName: tag.name });
-			return;
-		}
-		tabManager.setWindowTag({ ...tag, pinned: true });
-		for (const file of tag.files) await loadMarkdown(file);
-		showHome = false;
 	}
 
 	async function unpinTagFromHome(name: string) {
@@ -1008,132 +930,35 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		else if (settings.restoreStateOnReopen) await windowSession.persistState(true);
 	}
 
-	/**
-	 * The save/discard close, used when "Restore unsaved changes on launch" is off, when
-	 * closing one of several windows, or when the backup cannot be written
-	 * (`keepUnsavedForExit` runs first otherwise).
-	 * Resolve this window's unsaved tabs, then write the restore snapshot: the
-	 * work that has to happen before the window goes away. False when the reader
-	 * cancelled, and nothing has been written.
-	 *
-	 * The close button and the in-app update both run it. An update ends the
-	 * process without closing a window — the Windows updater exits inside
-	 * `downloadAndInstall`, `relaunch()` requests an exit elsewhere — so
-	 * CloseRequested never fires, and both jobs used to go down with it (#761).
-	 */
-	async function settleForExit(remember: () => Promise<boolean>): Promise<boolean> {
-		// Unsaved content and session restore are separate concerns: dirty tabs
-		// are resolved FIRST through the per-tab dialogs, then the restore
-		// snapshot records window state only (open files, active tab, edit mode,
-		// split, scroll) — it never carries document content.
-		const dirtyTabs = tabManager.tabs.filter((t) => t.isDirty);
-		if (dirtyTabs.length > 0) {
-			isCloseWalkActive = true;
-			pinFilesAtClose ??= openFilePaths();
-			// The walk's dialogs are in-app modals inside THIS window: with
-			// multiple windows, another window may be covering it and the review
-			// would be invisible. Bring the reviewing window to the front first.
-			invoke('show_window').catch(console.error);
-			try {
-				// Auto-save without confirmation: silently save every dirty tab
-				// that has a real path. Untitled tabs need a Save dialog, so the
-				// walk below handles them. A failed silent save is surfaced and its
-				// tab also goes to the walk. `saveContent` cancels each tab's pending
-				// timer itself, so no writer here can be raced by its own debounce.
-				// A tab whose file changed underneath is refused rather than
-				// overwritten, and the walk asks the changed-on-disk question.
-				if (settings.autoSave) {
-					for (const tab of dirtyTabs.filter((t) => t.path !== '')) {
-						const ok = await saveSilently(tab.id);
-						if (!ok && hasExternalChangeConflict(tab.id)) continue;
-						if (!ok) {
-							addToast(t('toast.autoSaveFailed', settings.language), 'error');
-							break;
-						}
-					}
-				}
-
-				// Close review (issue #189): walk the remaining dirty tabs one at a
-				// time — activate each and run the same localized unsaved-changes
-				// dialog a single tab close shows. Cancel stops the walk and keeps
-				// the window open. Strict tab-strip order (left to right) so the
-				// sequence is predictable; numbered untitled titles let the dialog
-				// name each tab. Re-find every round — a save can leave a tab dirty
-				// again (TOCTOU) and tabs can change while a dialog is up.
-				const resolved = await reviewDirtyTabs({
-					nextDirtyTab: () => tabManager.tabs.find((t) => t.isDirty),
-					setActive: (id) => tabManager.setActive(id),
-					settle: tick,
-					canCloseTab,
-					closeTab: (id) => tabManager.closeTab(id),
-					// Resolved tabs (saved, or reverted by Don't Save) stay open for
-					// the window-state snapshot when restore is enabled; untitled
-					// tabs have nothing to restore, and with restore off the red
-					// button closes tabs one by one.
-					shouldCloseAfterResolving: (tab) =>
-						!settings.restoreStateOnReopen || tab.path === '',
-				});
-				if (!resolved) {
-					pinFilesAtClose = null;
-					return false;
-				}
-			} finally {
-				isCloseWalkActive = false;
-			}
-		}
-
-		// Session is clean now; record the window state for restore. Awaited:
-		// the caller holds the exit until the Rust write returns, so the process
-		// cannot exit under the snapshot.
-		await savePinnedTagIfNeeded();
-		// The re-triggered close finds nothing to review and uses the list last.
-		if (dirtyTabs.length === 0) pinFilesAtClose = null;
-		// Asked now, not when the close began: the review above can take minutes.
-		await persistWindowState(await remember());
-		return true;
-	}
-
-	/**
-	 * The update's settle. No re-triggered close follows it: the process exits,
-	 * or the install fails and the window stays. Either way the review's list
-	 * has been saved, and kept it would outlive a failed install into the next
-	 * last-tab close, merge or Close Tag.
-	 */
-	async function settleForUpdate(): Promise<boolean> {
-		if (settings.persistOpenEditors && (await keepUnsavedForExit())) return true;
-		try {
-			// The process exits with every window, so this one is remembered.
-			return await settleForExit(async () => true);
-		} finally {
-			pinFilesAtClose = null;
-		}
-	}
-
-	/**
-	 * Quit is the red button applied to every window. Each one runs its own
-	 * `onCloseRequested`: reviews its unsaved tabs, writes its own restore
-	 * snapshot, and closes.
-	 *
-	 * It used to discard the snapshot instead, so ⌘Q and the red button
-	 * disagreed about whether the session came back — and the dialog that
-	 * explained the difference only appeared when a tab was dirty, which is
-	 * not the path most people take (#390). It also closed nothing but the
-	 * focused window, so quitting with two windows open did not quit.
-	 *
-	 * Every other window is asked at once rather than one after another:
-	 * `close()` resolves when the request is sent, not when the window is
-	 * gone, and there is no reply saying whether the reader cancelled. Two
-	 * windows with unsaved work therefore show their own dialogs side by side,
-	 * each still guarding its own buffers.
-	 */
-	async function appExit() {
-		// Quit keeps unsaved changes in every window, not only the last one.
-		await invoke('set_quitting', { quitting: true }).catch(console.error);
-		for (const other of await getAllWindows()) {
-			if (other.label !== appWindow.label) await other.close();
-		}
-		await appWindow.close();
-	}
+	const windowExit = createWindowExit({
+		tabManager,
+		settings,
+		appWindow,
+		allWindows: getAllWindows,
+		recovery: {
+			isReady: () => recoveryReady,
+			keep: () => unsavedRecovery.flush(recoverySnapshot(tabManager.tabs)),
+			drop: () => unsavedRecovery.flush('[]'),
+		},
+		persistWindowState,
+		canCloseTab,
+		saveSilently,
+		hasExternalChangeConflict,
+		onAutoSaveFailed: () => addToast(t('toast.autoSaveFailed', settings.language), 'error'),
+		settle: tick,
+		loadMarkdown,
+		setShowHome: (value) => (showHome = value),
+		moveTabToWindow,
+	});
+	const {
+		savePinnedTagIfNeeded,
+		openPinnedTag,
+		settleForUpdate,
+		appExit,
+		destroyWindowAfterTabsClosed,
+		closeTabAndWindowIfLast,
+		mergeSelfInto,
+	} = windowExit;
 
 	/**
 	 * A tab switch must not animate. Switching to a tab in another mode changes
@@ -2988,18 +2813,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		await closeTabAndWindowIfLast(tabManager.activeTabId);
 	}
 
-	async function closeTabAndWindowIfLast(tabId: string) {
-		if (!(await canCloseTab(tabId))) return;
-
-		if (tabManager.tabs.length === 1) await savePinnedTagIfNeeded();
-		tabManager.closeTab(tabId);
-		if (tabManager.tabs.length > 0) return;
-
-		invoke('unwatch_file').catch(console.error);
-		// Off, the empty window stays and renders Home.
-		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
-	}
-
 	async function closeTabsWithConfirmation(tabIds: string[]) {
 		for (const tabId of tabIds) {
 			if (!(await canCloseTab(tabId))) return;
@@ -3016,14 +2829,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		await savePinnedTagIfNeeded();
 		await closeTabsWithConfirmation(tabManager.tabs.map((tab) => tab.id));
 		if (tabManager.tabs.length === 0) tabManager.setWindowTag(null);
-	}
-
-	async function destroyWindowAfterTabsClosed() {
-		// No tabs left: drop this window's backup so a discarded buffer stays gone.
-		if (recoveryReady) await unsavedRecovery.flush('[]');
-		await persistWindowState(false);
-
-		await appWindow.destroy();
 	}
 
 	async function openFileLocation() {
@@ -3763,23 +3568,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		await Promise.all(others.map((window) => emitTo(window.label, 'merge-into', appWindow.label)));
 	}
 
-	async function mergeSelfInto(targetLabel: string) {
-		if (isCloseWalkActive) return;
-		await savePinnedTagIfNeeded();
-		for (const tab of [...tabManager.tabs]) {
-			if (isHomePath(tab.path)) {
-				tabManager.closeTab(tab.id);
-				continue;
-			}
-			await moveTabToWindow(tab.id, targetLabel);
-		}
-		if (tabManager.tabs.length === 0) {
-			if (recoveryReady) await unsavedRecovery.flush('[]');
-			await persistWindowState(false);
-			await appWindow.destroy();
-		}
-	}
-
 	function startDrag(e: MouseEvent, tabId: string | null) {
 		if (!tabId) return;
 		e.preventDefault();
@@ -3888,7 +3676,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 					if (tag) await openPinnedTag(tag);
 				}
 			}
-			windowMetaReady = true;
+			windowMeta.markReady();
 			if (isDisposed) return;
 
 			const urlParams = new URLSearchParams(window.location.search);
@@ -3968,7 +3756,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 					moveTabToWindow(tabId, targetLabel).catch((error) => console.error('Failed to move tab', error));
 				}],
 				['tab-transfer-offer', (event) => {
-					if (isCloseWalkActive) return;
+					if (windowExit.isCloseWalkActive()) return;
 					windowSession.acceptOfferedTransfer(event.payload);
 				}],
 				['merge-into', (event) => {
@@ -3995,42 +3783,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			];
 			for (const [event, handler] of listeners) unlisteners.push(await appWindow.listen(event, handler));
 			unlisteners.push(
-				await appWindow.onCloseRequested(async (event) => {
-					// The red button is a native control, so it is NOT blocked
-					// by the in-app dialog overlay: a second click while the
-					// walk below is showing a dialog would re-enter this handler
-					// and start a competing walk whose setActive calls fight the
-					// first one — the highlighted tab stops matching the dialog.
-					// One walk at a time.
-					if (isCloseWalkActive) {
-						event.preventDefault();
-						return;
-					}
-
-					// Hot exit on quit or when the app exits with this window: the
-					// backup is written, nothing to ask, close proceeds. Closing one
-					// of several windows asks below. Decided before `hadDirtyTabs`:
-					// the buffers stay dirty, and a re-triggered close would only
-					// find them again. If unsure, ask.
-					const keepsUnsaved = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => false);
-					if (settings.persistOpenEditors && (await keepUnsavedForExit(keepsUnsaved))) return;
-
-					// With tabs to review the close is held open while their
-					// dialogs are up, then re-triggered: the handler re-enters,
-					// finds nothing dirty, and the close proceeds.
-					const hadDirtyTabs = tabManager.tabs.some((t) => t.isDirty);
-					if (hadDirtyTabs) event.preventDefault();
-					// Closing one of several windows forgets it; quit or the last window remembers.
-					const endsSession = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => true);
-					if (!(await settleForExit(endsSession))) {
-						// A cancelled close cancels the quit, so the windows left ask again.
-						invoke('set_quitting', { quitting: false }).catch(console.error);
-						return;
-					}
-					// Resolved: drop the backup, so a discarded buffer stays gone.
-					if (recoveryReady) await unsavedRecovery.flush('[]');
-					if (hadDirtyTabs) appWindow.close();
-				}),
+				await appWindow.onCloseRequested(windowExit.handleCloseRequested),
 			);
 
 			unlisteners.push(
