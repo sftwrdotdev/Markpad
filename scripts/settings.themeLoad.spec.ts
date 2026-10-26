@@ -91,3 +91,27 @@ describe('stale theme load', () => {
 		expect(monaco.setTheme).toHaveBeenCalledWith('vscode-custom');
 	});
 });
+
+describe('theme CSS validation', () => {
+	test('[P1-C-3] the injected style tag is built only from validated values', async () => {
+		monaco.release();
+		const hostile = JSON.stringify({
+			type: 'dark',
+			colors: {
+				'editor.background': 'red; } body { display: none } :root {',
+				'editor.foreground': '#abcdef</style><img src=x onerror=alert(1)>',
+				'textLink.foreground': '#123456',
+			},
+		});
+
+		expect(await loadVscodeTheme('Hostile', async () => hostile)).toBe(true);
+
+		const style = document.getElementById('vscode-theme-style')!;
+		expect(style.children.length).toBe(0);
+		expect(style.textContent).not.toMatch(/display: none|onerror|<img|<\/style>/);
+		// A rejected value is a missing one: the default stands in for it.
+		expect(style.textContent).toContain('--color-canvas-default: #1e1e1e;');
+		expect(style.textContent).toContain('--color-fg-default: #d4d4d4;');
+		expect(style.textContent).toContain('--color-accent-fg: #123456;');
+	});
+});

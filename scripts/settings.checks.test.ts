@@ -5,7 +5,6 @@ import { parse } from 'svelte/compiler';
 
 import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
-import { isSafeCssColor, sanitizeThemeColors } from '../src/lib/utils/theme.js';
 import { translations } from './allTranslations.js';
 import { functionSource, readSource, walkSourceFiles } from './sourceTree.js';
 
@@ -127,15 +126,11 @@ describe('font family values', () => {
 });
 
 describe('theme CSS validation', () => {
-	test('[P1-C-3] the injected style tag is built only from validated values', () => {
+	// The validation itself is run in settings.themeLoad.spec.ts. What stays here is
+	// the convention that the tag is never assigned as markup (lint-candidate).
+	test('the theme style tag is filled as text, never as markup', () => {
 		const source = readSource('src/lib/utils/theme.ts');
 
-		assert.match(source, /const colors = sanitizeThemeColors\(theme\.colors\)/);
-		assert.match(
-			source,
-			/\.filter\(\(\[, v\]\) => isSafeCssColor\(v\)\)/,
-			'the final interpolation must re-check each value',
-		);
 		assert.doesNotMatch(
 			source,
 			/styleTag\.innerHTML\s*=/,
