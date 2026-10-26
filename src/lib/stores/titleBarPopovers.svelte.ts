@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { tabManager } from './tabs.svelte.js';
 import { settings } from './settings.svelte.js';
 import { t } from '../utils/i18n.js';
@@ -66,7 +66,7 @@ export class TitleBarPopovers {
 	 */
 	private async tagNameTakenElsewhere(name: string): Promise<boolean> {
 		try {
-			return (await invoke('is_window_tag_taken', { name })) === true;
+			return (await commands.isWindowTagTaken(name)) === true;
 		} catch (error) {
 			console.error('Failed to check window tag exclusivity', error);
 			return false;
@@ -103,7 +103,7 @@ export class TitleBarPopovers {
 		// rename has to reach the pin file first or the window unpins at close.
 		// A colour change needs nothing here: the closing save carries it.
 		if (tag?.pinned && name !== tag.name) {
-			const renamed = await invoke('rename_pinned_tag', { oldName: tag.name, name, color: this.tagDraftColor }).catch((error) => {
+			const renamed = await commands.renamePinnedTag(tag.name, name, this.tagDraftColor).catch((error) => {
 				console.error('Failed to rename the pinned tag', error);
 				return 'failed';
 			});
@@ -176,7 +176,7 @@ export class TitleBarPopovers {
 
 	clearTag() {
 		const tag = tabManager.windowTag;
-		if (tag?.pinned) invoke('remove_pinned_tag', { name: tag.name }).catch(console.error);
+		if (tag?.pinned) commands.removePinnedTag(tag.name).catch(console.error);
 		tabManager.setWindowTag(null);
 		this.tagEditorOpen = false;
 	}
@@ -185,14 +185,14 @@ export class TitleBarPopovers {
 		const tag = tabManager.windowTag;
 		if (!tag) return;
 		if (tag.pinned) {
-			invoke('remove_pinned_tag', { name: tag.name }).catch(console.error);
+			commands.removePinnedTag(tag.name).catch(console.error);
 			tabManager.setWindowTag({ ...tag, pinned: false });
 			return;
 		}
 		const files = tabManager.tabs.filter((tab) => hasRealFilePath(tab.path)).map((tab) => tab.path);
 		// A pinned group whose window is closed still holds its name, and
 		// pinning over it would replace its files. Refused the way a rename is.
-		const created = await invoke('save_pinned_tag', { name: tag.name, color: tag.color, files }).catch(console.error);
+		const created = await commands.savePinnedTag(tag.name, tag.color, files).catch(console.error);
 		if (created === false) {
 			this.tagError = t('menu.pinnedTagTaken', settings.language);
 			return;

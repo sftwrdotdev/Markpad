@@ -9,7 +9,8 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Manager, Runtime, State};
+use tauri_specta::Event;
 
 pub struct WatcherState {
     pub(crate) watchers: Mutex<HashMap<String, RecommendedWatcher>>,
@@ -167,7 +168,19 @@ impl AppState {
     }
 }
 
-#[derive(Clone, serde::Serialize)]
+/// `file-path`: a file the OS asked this window to open.
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct FilePath(pub String);
+
+/// `file-changed`: the file this window watches changed on disk.
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct FileChanged(pub String);
+
+/// `tab-transfer-offer`: another window offers this one a staged tab (its token).
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct TabTransferOffer(pub String);
+
+#[derive(Clone, serde::Serialize, specta::Type)]
 struct WindowMeta {
     number: u64,
     tag_name: Option<String>,
@@ -176,14 +189,14 @@ struct WindowMeta {
     tab_count: usize,
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, specta::Type)]
 pub struct WindowListEntry {
     label: String,
     #[serde(flatten)]
     meta: WindowMeta,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PinnedTag {
     pub name: String,
     pub color: String,
@@ -292,7 +305,7 @@ fn save_pinned_tag_at(
     Ok(found)
 }
 
-#[derive(Debug, PartialEq, serde::Serialize)]
+#[derive(Debug, PartialEq, serde::Serialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum PinnedTagRename {
     Renamed,
@@ -338,12 +351,14 @@ fn remove_pinned_tag_at(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn list_pinned_tags(app: AppHandle) -> Vec<PinnedTag> {
     read_pinned_tags(&app)
 }
 
 /// `false` when another pin already holds the name.
 #[tauri::command]
+#[specta::specta]
 pub fn save_pinned_tag(
     app: AppHandle,
     name: String,
@@ -358,6 +373,7 @@ pub fn save_pinned_tag(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn update_pinned_tag(
     app: AppHandle,
     name: String,
@@ -370,6 +386,7 @@ pub fn update_pinned_tag(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn rename_pinned_tag(
     app: AppHandle,
     old_name: String,
@@ -382,6 +399,7 @@ pub fn rename_pinned_tag(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn remove_pinned_tag(app: AppHandle, name: String) -> Result<(), String> {
     let path = pinned_tags_path(&app)?;
     let state = app.state::<AppState>();
@@ -389,6 +407,7 @@ pub fn remove_pinned_tag(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn set_window_meta(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -434,6 +453,7 @@ fn tag_held_by_another_window(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn is_window_tag_taken(
     window: tauri::Window,
     state: State<'_, AppState>,
@@ -444,6 +464,7 @@ pub fn is_window_tag_taken(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn list_viewer_windows(state: State<'_, AppState>) -> Vec<WindowListEntry> {
     state.viewer_windows()
 }
@@ -466,6 +487,7 @@ fn update_quit(quit: &Mutex<Option<Vec<String>>>, quitting: bool) -> Vec<String>
 /// ponytail: a window whose close was already under way when the quit was
 /// cancelled, and is destroyed after, is still remembered.
 #[tauri::command]
+#[specta::specta]
 pub fn set_quitting(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -497,6 +519,7 @@ fn keeps_unsaved_on_close_for<'a>(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn keeps_unsaved_on_close(
     window: tauri::WebviewWindow,
     app: AppHandle,
@@ -513,6 +536,7 @@ pub fn keeps_unsaved_on_close(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn offer_tab_to_window(
     app: AppHandle,
     broker: State<'_, crate::tab_transfer::TabTransferBroker>,
@@ -523,11 +547,13 @@ pub fn offer_tab_to_window(
         return Err(format!("no such window: {target_label}"));
     }
     broker.set_target_label(&token, target_label.clone())?;
-    app.emit_to(target_label.as_str(), "tab-transfer-offer", token)
+    TabTransferOffer(token)
+        .emit_to(&app, target_label.as_str())
         .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn focus_window(app: AppHandle, label: String) -> Result<(), String> {
     let window = app
         .get_webview_window(&label)
@@ -563,6 +589,7 @@ fn is_cold_start_show(label: &str, shown: &AtomicBool) -> bool {
 /// bringing its window up so the dialog is not hidden behind another — and each
 /// of those must still come to the front.
 #[tauri::command]
+#[specta::specta]
 pub async fn show_window(window: tauri::Window) {
     let is_cold_start = is_cold_start_show(window.label(), &MAIN_WINDOW_SHOWN);
 
@@ -695,6 +722,7 @@ fn remembered_window_labels_in(config: &Path) -> Vec<String> {
 /// Off the main thread: the two fsyncs cost ~8 ms, and on it every window
 /// freezes for that long. The caller still awaits the write.
 #[tauri::command]
+#[specta::specta]
 pub async fn save_window_state(
     window: tauri::Window,
     app: AppHandle,
@@ -706,16 +734,19 @@ pub async fn save_window_state(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn load_window_state(window: tauri::Window, app: AppHandle) -> Option<String> {
     load_window_state_in(&config_dir(&app).ok()?, window.label())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn forget_window_state(window: tauri::Window, app: AppHandle) -> Result<(), String> {
     forget_window_state_in(&config_dir(&app)?, window.label())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
     clear_window_state_in(&config_dir(&app)?)
 }
@@ -727,6 +758,7 @@ pub fn clear_window_state(app: AppHandle) -> Result<(), String> {
 ///
 /// Async for the reason `create_transfer_window` is.
 #[tauri::command]
+#[specta::specta]
 pub async fn reopen_remembered_windows(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -890,6 +922,7 @@ fn clear_unsaved_recovery_at(dir: &Path, labels: &[String]) -> Result<(), String
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn save_unsaved_recovery(
     window: tauri::WebviewWindow,
     app: AppHandle,
@@ -919,6 +952,7 @@ fn claim_recovery_records(
 /// Whichever window asks first gets the orphans, once: two windows starting
 /// together must not both restore the same unsaved buffer.
 #[tauri::command]
+#[specta::specta]
 pub async fn claim_unsaved_recovery(
     window: tauri::WebviewWindow,
     app: AppHandle,
@@ -941,6 +975,7 @@ pub async fn claim_unsaved_recovery(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn clear_unsaved_recovery(app: AppHandle, labels: Vec<String>) -> Result<(), String> {
     let dir = unsaved_recovery_dir(&app)?;
     crate::commands::blocking(move || clear_unsaved_recovery_at(&dir, &labels)).await
@@ -1000,6 +1035,7 @@ fn write_restore_progress(path: &Path, json: &str) -> std::io::Result<()> {
 
 /// Each window guards its own restore: the breadcrumb is keyed by the caller's label.
 #[tauri::command]
+#[specta::specta]
 pub fn save_restore_progress(
     window: tauri::Window,
     app: AppHandle,
@@ -1010,11 +1046,13 @@ pub fn save_restore_progress(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn load_restore_progress(window: tauri::Window, app: AppHandle) -> Option<String> {
     fs::read_to_string(restore_progress_path_in(&config_dir(&app).ok()?, window.label()).ok()?).ok()
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_restore_progress(window: tauri::Window, app: AppHandle) -> Result<(), String> {
     remove_if_exists(&restore_progress_path_in(
         &config_dir(&app)?,
@@ -1101,7 +1139,7 @@ pub fn deliver_opened_path<R: Runtime>(app: &AppHandle<R>, path: String) {
         }
     };
     if let Some(window) = target {
-        let _ = app.emit_to(window.label(), "file-path", path);
+        let _ = FilePath(path).emit_to(app, window.label());
         bring_to_front(&window);
     }
 }
@@ -1186,6 +1224,7 @@ pub fn handle_single_instance<R: Runtime>(app: &AppHandle<R>, args: Vec<String>,
 /// Async on purpose: a sync command runs on the main thread, and WebView2
 /// deadlocks building a window there (tauri-apps/tauri#12521).
 #[tauri::command]
+#[specta::specta]
 pub async fn create_transfer_window(
     app: AppHandle,
     token: String,
@@ -1357,7 +1396,7 @@ pub fn watch_file(
     // reported for the rest of the session. `install` swaps them in one step —
     // the map drops the previous watcher, which unregisters it.
     let emit = coalesced(Duration::from_millis(150), move || {
-        let _ = handle.emit_to(event_label.as_str(), "file-changed", watched_path.clone());
+        let _ = FileChanged(watched_path.clone()).emit_to(&handle, event_label.as_str());
     });
     let mut watcher = RecommendedWatcher::new(
         move |result: Result<notify::Event, notify::Error>| {
@@ -1379,6 +1418,7 @@ pub fn watch_file(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn unwatch_file(window: tauri::Window, state: State<'_, WatcherState>) -> Result<(), String> {
     state.unwatch(window.label());
     Ok(())
@@ -1388,6 +1428,7 @@ pub fn unwatch_file(window: tauri::Window, state: State<'_, WatcherState>) -> Re
 /// the others, and any later ask, get nothing, so a new window never reopens
 /// the files the app was started with.
 #[tauri::command]
+#[specta::specta]
 pub fn send_markdown_path(window: tauri::Window, state: State<'_, AppState>) -> Vec<String> {
     if window.label() != LAUNCH_LABEL {
         return Vec::new();

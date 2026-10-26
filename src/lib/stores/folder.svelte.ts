@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands, events } from '../bindings.js';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -45,7 +45,7 @@ export class FolderManager {
 		await this.close();
 		this.root = path;
 		this.error = null;
-		this.#unlisten ??= await getCurrentWindow().listen<string>('folder-changed', (event) => {
+		this.#unlisten ??= await events.folderChanged(getCurrentWindow()).listen((event) => {
 			if (this.isLoaded(event.payload)) void this.#read(event.payload);
 		});
 		await this.#load(path);
@@ -57,7 +57,7 @@ export class FolderManager {
 		this.expanded = [];
 		this.entries = {};
 		this.error = null;
-		await invoke('unwatch_all_folders').catch(console.error);
+		await commands.unwatchAllFolders().catch(console.error);
 	}
 
 	/** Reopens this window's folder from its snapshot, if it is still there. */
@@ -91,7 +91,7 @@ export class FolderManager {
 		const kept: Record<string, FolderEntry[]> = {};
 		for (const [dir, list] of Object.entries(this.entries)) {
 			if (dir === path || isInside(dir, path)) {
-				invoke('unwatch_folder', { path: dir }).catch(console.error);
+				commands.unwatchFolder(dir).catch(console.error);
 			} else {
 				kept[dir] = list;
 			}
@@ -106,14 +106,14 @@ export class FolderManager {
 
 	async #load(path: string) {
 		await this.#read(path);
-		if (this.isLoaded(path)) await invoke('watch_folder', { path }).catch(console.error);
+		if (this.isLoaded(path)) await commands.watchFolder(path).catch(console.error);
 	}
 
 	async #read(path: string) {
 		const mine = ++this.#nextRead;
 		this.#reads.set(path, mine);
 		try {
-			const list = await invoke<FolderEntry[]>('read_folder_entries', { path });
+			const list = await commands.readFolderEntries(path);
 			if (!this.#landed(path, mine)) return;
 			// The folder may have been collapsed or closed while the read was in flight.
 			if (path !== this.root && !this.isExpanded(path)) return;

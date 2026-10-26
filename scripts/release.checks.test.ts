@@ -16,15 +16,6 @@ describe('a package-managed install is not offered an update', () => {
 	const store = readSource('src/lib/stores/update.svelte.ts');
 	const rust = readRustBackend();
 
-	test('the command exists on the Rust side and is reachable', () => {
-		// A Tauri command is addressed by a string, so nothing in the type system
-		// connects the two halves: an unregistered command fails at runtime, and
-		// this flow's runtime is a Linux package nobody on this project runs daily.
-		assert.match(rust, /fn self_update_supported\(app: AppHandle\) -> bool/);
-		const handler = sliceBetween(rust, 'tauri::generate_handler![', '])');
-		assert.match(handler, /self_update_supported/);
-	});
-
 	test('the AppImage is detected through tauri\'s Env, not a raw variable', () => {
 		// Which platforms are gated is `only_linux_gates_self_update` in
 		// commands.rs. What stays here is the convention that the AppImage is
@@ -56,8 +47,8 @@ describe('Tauri command registration', () => {
 	function registeredCommands(): Set<string> {
 		// `sliceBetween` keeps its start anchor, so the first comma-separated entry
 		// would otherwise be `generate_handler![\n  clipboard_write_text`.
-		const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'generate_handler![', '])').replace(
-			'generate_handler![',
+		const handler = sliceBetween(readSource('src-tauri/src/app.rs'), 'collect_commands![', '])').replace(
+			'collect_commands![',
 			'',
 		);
 		return new Set(
@@ -169,23 +160,25 @@ describe('single implementations', () => {
 		{
 			name: 'the markdown extension list has one implementation in src',
 			why:
-				'There were five copies of `md | markdown | mdown | mkd | txt` in the frontend. #611 collapsed four of them into markdownLinks.ts; the fifth was an inline array in TitleBar.svelte deciding whether the outline and full-width buttons belong on the toolbar, which is exactly the kind of copy that goes stale when an extension is added. The Rust renderer keeps its own, pinned against this one by editing.test.ts, because no import crosses that boundary.',
+				'There were five copies of `md | markdown | mdown | mkd | txt` in the frontend. #611 collapsed four of them into markdownLinks.ts; the fifth was an inline array in TitleBar.svelte deciding whether the outline and full-width buttons belong on the toolbar, which is exactly the kind of copy that goes stale when an extension is added. The list itself is the Rust renderer\'s, generated into bindings.ts, which markdownLinks.ts re-exports.',
 			// `mdown` rather than `md`: it is distinctive enough that prose and other
 			// identifiers cannot match it by accident.
 			//
 			// The editor's language table holds no copy: it derives its Markdown
 			// entries from this list (utils/editorLanguage.ts).
 			marker: /['"]mdown['"]/g,
-			allowed: ['src/lib/utils/markdownLinks.ts'],
+			// bindings.ts: generated from the Rust renderer's list.
+			allowed: ['src/lib/bindings.ts'],
 		},
 		{
 			name: 'the list-marker grammar has one implementation in src',
 			why:
-				"\"What a list item's marker looks like\" had three spellings: the Rust renderer's TASK_SOURCE_RE, the preview's checkbox rewrite in documentSession.svelte.ts, and the toolbar's line-marker toggles. The first two agreed; the toolbar's copy accepted neither an indented item nor the `1)` delimiter, so a click on a nested bullet answered `-     - sub` and a click on `1) item` answered `- 1) item` — issue #451 verbatim, one delimiter over. utils/listSyntax.ts holds the vocabulary now. What each site wraps around it — the anchors, the separator, and whether the leading indentation is consumed or preserved — stays at the call site on purpose: the renderer throws that prefix away, the toolbar has to put it back, and sharing *that* would flatten every nested list item on the first click. The Rust copy is pinned against this one by documents.checks.test.ts \"task toggle line endings\", because no import crosses that boundary.",
+				"\"What a list item's marker looks like\" had three spellings: the Rust renderer's TASK_SOURCE_RE, the preview's checkbox rewrite in documentSession.svelte.ts, and the toolbar's line-marker toggles. The first two agreed; the toolbar's copy accepted neither an indented item nor the `1)` delimiter, so a click on a nested bullet answered `-     - sub` and a click on `1) item` answered `- 1) item` — issue #451 verbatim, one delimiter over. utils/listSyntax.ts holds the vocabulary now. What each site wraps around it — the anchors, the separator, and whether the leading indentation is consumed or preserved — stays at the call site on purpose: the renderer throws that prefix away, the toolbar has to put it back, and sharing *that* would flatten every nested list item on the first click. The marker and task-box fragments are the Rust renderer\'s, generated into bindings.ts, which listSyntax.ts re-exports.",
 			// The two fragments distinctive enough that prose cannot match them: the
 			// task box's character class and the ordered delimiter pair.
 			marker: /\[ xX\]|\\d\+\[\.\)\]/g,
-			allowed: ['src/lib/utils/listSyntax.ts'],
+			// bindings.ts: generated from TASK_SOURCE_RE's fragments in markdown.rs.
+			allowed: ['src/lib/bindings.ts'],
 		},
 		{
 			name: 'YouTube links never become embedded frames',
@@ -213,7 +206,7 @@ describe('single implementations', () => {
 			// The viewer half — that its one occurrence sits inside
 			// renderMarkdownPreview rather than merely in the same file — is pinned by
 			// preview.checks.test.ts.
-			marker: /invoke\(\s*'render_markdown'/g,
+			marker: /commands\.renderMarkdown\(/g,
 			allowed: ['src/lib/MarkdownViewer.svelte', 'src/lib/utils/export.ts'],
 		},
 		{
@@ -375,7 +368,8 @@ describe('single implementations', () => {
 			// spelling — the same loop's else-branch, which is how 20 locales got a
 			// `toc` section they did not previously have.
 			marker: /Object\.assign\(|\btranslations\b(?:\s*\[[^\]]*\])+\s*=(?!=)/g,
-			allowed: [],
+			// bindings.ts: tauri-specta's generated event helper, not a table.
+			allowed: ['src/lib/bindings.ts'],
 		},
 		{
 			name: 'this suite reads a file through one function',

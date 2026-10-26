@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildExportDocument } from '../src/lib/utils/export.ts';
 import { DEFAULT_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
 import { plainAppearance } from './exportFixtures.ts';
-import { offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
+import { offsetOf, readSource } from './sourceTree.js';
 import { useShimDom } from './preview.domShim.ts';
 
 /**
@@ -528,34 +528,6 @@ describe('folds in print and export', () => {
 });
 
 describe('native PDF printing', () => {
-	// A Tauri command name is a bare string on the JS side and an identifier inside a macro on the Rust
-	// side, so nothing — not tsc, not `svelte-check`, not `cargo check` — notices
-	// when one moves and the other does not. The failure is silent at build time
-	// and total at runtime: "Export PDF" does nothing at all.
-	test('both PDF commands the exporter invokes are registered with Tauri', () => {
-		const exporter = readSource('src/lib/utils/export.ts');
-		const tauriLib = readRustBackend();
-
-		const registered = new Set(
-			sliceBetween(tauriLib, 'tauri::generate_handler![', ']')
-				.split(',')
-				.map((entry) => entry.trim().replace(/^.*::/, '')),
-		);
-
-		// Read the names off the exporter rather than restating them, so a renamed
-		// command is checked at its new name instead of quietly passing.
-		const invoked = [...exporter.matchAll(/invoke\('([a-z_]*pdf[a-z_]*)'/g)].map((m) => m[1]);
-		assert.deepEqual(invoked.sort(), ['export_pdf_windows', 'print_pdf']);
-
-		for (const command of invoked) {
-			assert.ok(registered.has(command), `export.ts invokes '${command}', which lib.rs must register`);
-			assert.match(
-				tauriLib,
-				new RegExp(`#\\[tauri::command\\]\\n(?:pub )?(?:async )?fn ${command}\\(`),
-				`${command} must be defined as a Tauri command`,
-			);
-		}
-	});
 });
 
 describe('oversized media in print', () => {

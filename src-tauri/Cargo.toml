@@ -53,11 +53,21 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 chardetng = "1"
 encoding_rs = "0.8"
+# Typed Rust<->TS bindings (src/lib/bindings.ts, written by the
+# `export_bindings` test). Release candidates, so every specta crate is pinned
+# exactly: tauri-specta rc.26 requires specta =rc.26, which in turn holds
+# specta-serde and specta-util at 0.0.13 through their own exact pins.
+specta = { version = "=2.0.0-rc.26", features = ["derive"] }
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 
 [target.'cfg(not(windows))'.dev-dependencies]
 # Mock runtime (`tauri::test`) for tests that need an AppHandle or a window.
 # Not on Windows: see `setup_tests` in app.rs.
 tauri = { version = "2", features = ["test"] }
+# The TypeScript exporter, for the `export_bindings` test only: a release build
+# carries the commands and events, never the code that writes bindings.ts.
+specta-typescript = "=0.0.13"
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 
 
 

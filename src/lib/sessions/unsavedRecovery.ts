@@ -78,7 +78,7 @@ export function restoreRecords(
  * it is not written again. `update(() => json)` only marks the file stale: the
  * snapshot is built when the delayed write fires or on flush, not per keystroke. */
 export function createBoundedWriter(options: {
-	write: (json: string) => Promise<void>;
+	write: (json: string) => Promise<unknown>;
 	onError: (error: unknown) => void;
 	initial?: string;
 }) {

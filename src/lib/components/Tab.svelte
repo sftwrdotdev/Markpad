@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { type Tab, tabManager } from '../stores/tabs.svelte.js';
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
-	import { invoke } from '@tauri-apps/api/core';
+	import { commands } from '../bindings.js';
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { t } from '../utils/i18n.js';
@@ -71,12 +71,12 @@
 
 	function copyTabPath() {
 		if (!hasRealFilePath(tab.path)) return;
-		invoke('clipboard_write_text', { text: tab.path }).catch(console.error);
+		commands.clipboardWriteText(tab.path).catch(console.error);
 	}
 
 	function openTabFileLocation() {
 		if (!hasRealFilePath(tab.path)) return;
-		invoke('open_file_folder', { path: tab.path }).catch(console.error);
+		commands.openFileFolder(tab.path).catch(console.error);
 	}
 
 	async function handleContextMenu(e: MouseEvent) {
@@ -92,7 +92,7 @@
 		const selfLabel = getCurrentWindow().label;
 		let moveToWindowItems: ContextMenuItem[] = [];
 		try {
-			const windows = (await invoke('list_viewer_windows')) as ViewerWindowEntry[];
+			const windows = (await commands.listViewerWindows()) as ViewerWindowEntry[];
 			moveToWindowItems = windows
 				.filter((window) => window.label !== selfLabel)
 				.map((window) => ({

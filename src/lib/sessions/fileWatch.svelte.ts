@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 /**
  * Keeps this window's file watcher on the file `path` returns, and gives it up
@@ -15,9 +15,9 @@ export function followActiveFile(path: () => string) {
 	$effect(() => {
 		const currentFile = path();
 		if (currentFile) {
-			invoke('watch_file', { path: currentFile }).catch(console.error);
+			commands.watchFile(currentFile).catch(console.error);
 		} else {
-			invoke('unwatch_file').catch(console.error);
+			commands.unwatchFile().catch(console.error);
 		}
 	});
 }

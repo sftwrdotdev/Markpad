@@ -71,6 +71,7 @@ fn validate_vsix_archive_limits<R: std::io::Read + std::io::Seek>(
 /// frontend refuses to write a `lossy` buffer back over its file, and saves a
 /// faithful one as the `encoding` it came in.
 #[tauri::command]
+#[specta::specta]
 pub async fn open_markdown_preview(
     path: String,
     max_bytes: usize,
@@ -92,6 +93,7 @@ pub async fn open_markdown_preview(
 /// frontend decides (`frontMatterFenceLines`); the same for the one below.
 /// Off the main thread like `markdown_semantic_spans`: Monaco asks on every edit.
 #[tauri::command]
+#[specta::specta]
 pub async fn markdown_outline(
     markdown: String,
     front_matter_lines: usize,
@@ -105,6 +107,7 @@ pub async fn markdown_outline(
 /// document and 24 ms for a 1.7 MB one, which is small but not nothing, and
 /// Monaco asks for this on every edit.
 #[tauri::command]
+#[specta::specta]
 pub async fn markdown_semantic_spans(
     content: String,
     front_matter_lines: usize,
@@ -121,6 +124,7 @@ pub async fn markdown_semantic_spans(
 /// `split_blocks`: the preview's form, with `BLOCK_SEPARATOR` between
 /// top-level blocks. The export asks for the plain document.
 #[tauri::command]
+#[specta::specta]
 pub async fn render_markdown(
     content: String,
     split_blocks: Option<bool>,
@@ -143,6 +147,7 @@ pub async fn render_markdown(
 /// Async so a read from a slow volume (SMB, iCloud) waits on the blocking
 /// pool, not on the main thread that every window shares.
 #[tauri::command]
+#[specta::specta]
 pub async fn read_file_content_checked(path: String) -> Result<(String, bool, String), String> {
     blocking(move || {
         crate::asset_protocol::trust_document_host(&path);
@@ -187,6 +192,7 @@ fn file_bytes_to_data_url(mime_type: &str, bytes: &[u8]) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn read_file_as_data_url(path: String) -> Result<String, String> {
     blocking(move || {
         // Only image types: the HTML export is the only caller, and inlining
@@ -216,6 +222,7 @@ pub async fn read_file_as_data_url(path: String) -> Result<String, String> {
 /// On a network or removable volume that is seconds of blocking I/O, and on
 /// the main thread it would stall every window until the save completes.
 #[tauri::command]
+#[specta::specta]
 pub async fn save_file_content(
     path: String,
     content: String,
@@ -243,6 +250,7 @@ pub async fn save_file_content(
 /// Async because `realpath` walks the path component by component and can hit
 /// a network volume that is slow or unreachable.
 #[tauri::command]
+#[specta::specta]
 pub async fn canonicalize_path(path: String) -> Result<String, String> {
     blocking(move || {
         canonical_identity(Path::new(&path))
@@ -253,11 +261,13 @@ pub async fn canonicalize_path(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn print_pdf(window: tauri::WebviewWindow) -> Result<(), String> {
     window.print().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn export_pdf_windows(window: tauri::WebviewWindow, path: String) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -343,6 +353,7 @@ pub async fn export_pdf_windows(window: tauri::WebviewWindow, path: String) -> R
 /// volume makes that wait the share's, and on the main thread it would stall
 /// every window until it returns.
 #[tauri::command]
+#[specta::specta]
 pub async fn open_file_folder(path: String) -> Result<(), String> {
     blocking(move || opener::reveal(path).map_err(|e| e.to_string())).await
 }
@@ -425,6 +436,7 @@ fn is_extensionless_executable(_path: &Path) -> bool {
 /// target is revealed in the file manager instead of run. Async because the
 /// metadata read waits on whatever volume holds the path.
 #[tauri::command]
+#[specta::specta]
 pub async fn is_launchable_path(path: String) -> bool {
     tauri::async_runtime::spawn_blocking(move || is_launchable(Path::new(&path)))
         .await
@@ -435,6 +447,7 @@ pub async fn is_launchable_path(path: String) -> bool {
 /// network or removable volume, seconds of blocking I/O for a metadata
 /// operation that looks instant on a local disk.
 #[tauri::command]
+#[specta::specta]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<(), String> {
     blocking(move || rename_file_blocking(Path::new(&old_path), Path::new(&new_path))).await
 }
@@ -475,6 +488,7 @@ fn is_same_file(a: &Path, b: &Path) -> bool {
 /// blocking task. It is injected by Tauri either way, so the command's
 /// frontend-facing arguments are unchanged.
 #[tauri::command]
+#[specta::specta]
 pub async fn watch_file(
     window: tauri::Window,
     handle: AppHandle,
@@ -498,9 +512,38 @@ pub async fn watch_file(
 /// file by the time it applies the theme, so it sends the answer instead.
 /// `app.rs` is the only reader — see the background colour it picks at startup.
 #[tauri::command]
-pub fn save_theme(app: AppHandle, theme: String) -> Result<(), String> {
+#[specta::specta]
+pub fn save_theme(app: AppHandle, theme: Appearance) -> Result<(), String> {
     let theme_path = window_runtime::config_file(&app, "theme.txt")?;
-    atomic_write(&theme_path, theme.as_bytes()).map_err(|e| e.to_string())
+    atomic_write(&theme_path, theme.as_str().as_bytes()).map_err(|e| e.to_string())
+}
+
+/// What `save_theme` writes to `theme.txt` and `app.rs` reads back, one word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    fn as_str(self) -> &'static str {
+        match self {
+            Appearance::System => "system",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+
+    /// `theme.txt` as written. Anything else — no file, or the raw theme name
+    /// older builds wrote — asks the OS.
+    pub fn from_saved(saved: &str) -> Self {
+        [Appearance::Light, Appearance::Dark]
+            .into_iter()
+            .find(|appearance| appearance.as_str() == saved)
+            .unwrap_or(Appearance::System)
+    }
 }
 
 fn themes_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -518,6 +561,7 @@ fn theme_slug(value: &str) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn fetch_vscode_theme(app: AppHandle, url: String) -> Result<String, String> {
     use std::io::Cursor;
     // Parse URL: e.g. https://vscodethemes.com/e/teabyii.ayu/ayu-dark-bordered
@@ -652,6 +696,7 @@ pub async fn fetch_vscode_theme(app: AppHandle, url: String) -> Result<String, S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_saved_vscode_themes(app: AppHandle) -> Result<Vec<String>, String> {
     let themes_dir = themes_dir(&app)?;
     let mut themes = Vec::new();
@@ -670,6 +715,7 @@ pub fn get_saved_vscode_themes(app: AppHandle) -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn read_vscode_theme(app: AppHandle, name: String) -> Result<String, String> {
     let themes_dir = themes_dir(&app)?;
     let name = safe_path_component(&name, "theme name")?;
@@ -682,6 +728,7 @@ pub fn read_vscode_theme(app: AppHandle, name: String) -> Result<String, String>
 /// The file may come from anyone: the name is one path component and the JSON
 /// is held to the same size limit as a downloaded theme.
 #[tauri::command]
+#[specta::specta]
 pub fn install_vscode_theme(app: AppHandle, name: String, json: String) -> Result<(), String> {
     write_vscode_theme(&themes_dir(&app)?, &name, &json)
 }
@@ -698,6 +745,7 @@ fn write_vscode_theme(themes_dir: &Path, name: &str, json: &str) -> Result<(), S
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn delete_vscode_theme(app: AppHandle, name: String) -> Result<(), String> {
     let themes_dir = themes_dir(&app)?;
     let name = safe_path_component(&name, "theme name")?;
@@ -706,6 +754,7 @@ pub fn delete_vscode_theme(app: AppHandle, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn is_win11() -> bool {
     #[cfg(target_os = "windows")]
     {
@@ -731,6 +780,7 @@ pub fn is_win11() -> bool {
 /// CoreText on macOS) and the settings dialog invokes it on open. On the main
 /// thread it stalls every window for the duration.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_system_fonts() -> Vec<String> {
     tauri::async_runtime::spawn_blocking(|| {
         use font_kit::source::SystemSource;
@@ -770,6 +820,7 @@ pub async fn get_system_fonts() -> Vec<String> {
 /// installer rather than overwriting anything in place, and macOS is the one
 /// platform where `bundle_type()` answers without the patch.
 #[tauri::command]
+#[specta::specta]
 pub fn self_update_supported(app: AppHandle) -> bool {
     #[cfg(target_os = "linux")]
     let is_appimage = app.env().appimage.is_some();
@@ -787,6 +838,7 @@ fn self_update_supported_for(is_appimage: bool) -> bool {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_os_type() -> String {
     match std::env::consts::OS {
         os @ ("macos" | "windows" | "linux") => os,
@@ -841,6 +893,7 @@ fn retain_forever<T>(retained: &std::sync::atomic::AtomicBool, make: impl FnOnce
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clipboard_write_text(text: String) -> Result<(), String> {
     #[cfg(all(unix, not(target_os = "macos")))]
     retain_clipboard_ownership();
@@ -850,6 +903,7 @@ pub fn clipboard_write_text(text: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clipboard_read_text() -> Result<String, String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.get_text().map_err(|e| e.to_string())
@@ -859,6 +913,7 @@ pub fn clipboard_read_text() -> Result<String, String> {
 /// their pixels (#768). A path that is not valid UTF-8 is skipped, since the
 /// frontend could not hand it back to `copy_file_to_img`.
 #[tauri::command]
+#[specta::specta]
 pub fn clipboard_read_file_list() -> Result<Vec<String>, String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     let paths = clipboard.get().file_list().map_err(|e| e.to_string())?;
@@ -871,6 +926,7 @@ pub fn clipboard_read_file_list() -> Result<Vec<String>, String> {
 /// Async so the resize and PNG encode of a screenshot-sized image run on the
 /// blocking pool: a sync command runs on the main thread and freezes the window.
 #[tauri::command]
+#[specta::specta]
 pub async fn clipboard_read_image(macos_image_scaling: bool) -> Result<String, String> {
     blocking(move || clipboard_read_image_blocking(macos_image_scaling)).await
 }
@@ -919,6 +975,7 @@ fn clipboard_read_image_blocking(macos_image_scaling: bool) -> Result<String, St
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn save_image(
     parent_dir: String,
     filename: String,
@@ -967,6 +1024,7 @@ fn image_rel_path(image_directory: &str, name: &str) -> String {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn copy_file_to_img(
     src_path: String,
     parent_dir: String,
@@ -1061,6 +1119,7 @@ fn copy_file_to_img_blocking(
 /// stall every window until the copy completes — the same reason its sibling
 /// `copy_file_to_img` already runs on the blocking pool.
 #[tauri::command]
+#[specta::specta]
 pub async fn copy_file(src: String, dest: String) -> Result<(), String> {
     blocking(move || copy_file_blocking(Path::new(&src), Path::new(&dest))).await
 }
@@ -1075,6 +1134,7 @@ fn copy_file_blocking(src: &Path, dest: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_directory_contents(path: String) -> Result<Vec<String>, String> {
     blocking(move || {
         let dir = Path::new(&path);
@@ -1112,6 +1172,22 @@ pub(crate) mod tests {
     fn clipboard_read_image_runs_off_the_main_thread() {
         // The resize and PNG encode of a screenshot-sized image. Built, never run.
         let _ = || runs_off_the_main_thread(clipboard_read_image(false));
+    }
+
+    // The window colour at startup comes from the word `save_theme` wrote, so
+    // the reader has to know every word the writer can send, and the words
+    // already in users' theme.txt files keep their meaning.
+    #[test]
+    fn the_startup_reader_reads_back_every_appearance_save_theme_writes() {
+        for appearance in [Appearance::System, Appearance::Light, Appearance::Dark] {
+            assert_eq!(Appearance::from_saved(appearance.as_str()), appearance);
+        }
+        assert_eq!(Appearance::from_saved("dark"), Appearance::Dark);
+        assert_eq!(Appearance::from_saved("light"), Appearance::Light);
+        assert_eq!(
+            Appearance::from_saved("vscode:Ayu Dark"),
+            Appearance::System
+        );
     }
 
     #[test]

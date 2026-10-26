@@ -4,7 +4,8 @@
 use crate::window_runtime::{AppState, WatcherState};
 use crate::{asset_protocol, commands, tab_transfer, window_runtime};
 use std::fs;
-use tauri::{Emitter, Manager, Runtime};
+use tauri::{Manager, Runtime};
+use tauri_specta::{collect_commands, collect_events, Event};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -22,6 +23,8 @@ pub fn run() {
         );
     }
 
+    let specta = bindings_builder();
+    let invoke_handler = specta.invoke_handler();
     tauri::Builder::default()
         // The frontend installs the menu; Tauri's default would answer ⌘W and
         // friends natively until it does.
@@ -70,8 +73,31 @@ pub fn run() {
                 // before the plugin loads if that ever matters.
                 .build(),
         )
-        .setup(setup)
-        .invoke_handler(tauri::generate_handler![
+        .setup(move |app| {
+            specta.mount_events(app);
+            setup(app)
+        })
+        .invoke_handler(invoke_handler)
+        .on_window_event(window_runtime::handle_window_event)
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, _event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Opened { urls } = _event {
+                for path in opened_file_paths(urls) {
+                    window_runtime::deliver_opened_path(_app_handle, path);
+                }
+            }
+        });
+}
+
+/// Every command and Rust-emitted event the frontend can reach. Tauri dispatches
+/// through it, and the `export_bindings` test writes the same list to
+/// `src/lib/bindings.ts`, so a command or event renamed or retyped on one side
+/// is a TypeScript error on the other.
+fn bindings_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
             commands::clipboard_write_text,
             commands::clipboard_read_text,
             commands::clipboard_read_image,
@@ -139,19 +165,30 @@ pub fn run() {
             window_runtime::keeps_unsaved_on_close,
             window_runtime::save_restore_progress,
             window_runtime::load_restore_progress,
-            window_runtime::clear_restore_progress
+            window_runtime::clear_restore_progress,
         ])
-        .on_window_event(window_runtime::handle_window_event)
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|_app_handle, _event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Opened { urls } = _event {
-                for path in opened_file_paths(urls) {
-                    window_runtime::deliver_opened_path(_app_handle, path);
-                }
-            }
-        });
+        .events(collect_events![
+            crate::folder::FolderChanged,
+            window_runtime::FileChanged,
+            window_runtime::FilePath,
+            window_runtime::TabTransferOffer,
+            tab_transfer::TabTransferClaimed,
+        ])
+        // Vocabulary the frontend matches against, so it has one definition.
+        .constant("UNMAPPABLE_CODE", crate::fs_safety::UNMAPPABLE_CODE)
+        .constant("BULLET_MARKER", crate::markdown::BULLET_MARKER)
+        .constant("ORDERED_MARKER", crate::markdown::ORDERED_MARKER)
+        .constant("TASK_BOX", crate::markdown::TASK_BOX)
+        .constant(
+            "MARKDOWN_LINK_EXTENSIONS",
+            crate::markdown::MARKDOWN_LINK_EXTENSIONS,
+        )
+        // Commands reject with their error string, as `invoke` always did.
+        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
+        // One type per Rust type: a command type is either only returned or
+        // round-trips unchanged, so separate serialize/deserialize shapes add
+        // nothing.
+        .disable_serde_phases()
 }
 
 /// Builds the launch window and hands it the launch's first file.
@@ -203,10 +240,10 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
     // dark VS Code theme on a light desktop flashed a white window on
     // every launch. A file left over from that older format still lands
     // there, and self-corrects as soon as the frontend applies its theme.
-    let bg_color = match theme_pref.as_str() {
-        "dark" => Some(tauri::window::Color(24, 24, 24, 255)),
-        "light" => Some(tauri::window::Color(253, 253, 253, 255)),
-        _ => {
+    let bg_color = match commands::Appearance::from_saved(&theme_pref) {
+        commands::Appearance::Dark => Some(tauri::window::Color(24, 24, 24, 255)),
+        commands::Appearance::Light => Some(tauri::window::Color(253, 253, 253, 255)),
+        commands::Appearance::System => {
             if let Ok(t) = window.theme() {
                 match t {
                     tauri::Theme::Dark => Some(tauri::window::Color(24, 24, 24, 255)),
@@ -229,7 +266,7 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
         window_runtime::startup_paths(&args, &std::env::current_dir().unwrap_or_default());
 
     if let Some(path) = startup_files.first() {
-        let _ = window.emit("file-path", path.as_str());
+        let _ = window_runtime::FilePath(path.clone()).emit(&window);
         window_runtime::bring_to_front(&window);
     }
 
@@ -282,5 +319,22 @@ mod setup_tests {
         #[allow(deprecated)]
         app.run_iteration(|_, _| {});
         assert!(app.try_state::<window_runtime::GeometrySaver>().is_some());
+    }
+}
+
+#[cfg(test)]
+mod bindings_tests {
+    /// Writes `src/lib/bindings.ts`. CI runs `cargo test` and then fails on any
+    /// diff in that file, so a Rust change without regenerated bindings is red.
+    #[test]
+    fn export_bindings() {
+        super::bindings_builder()
+            // `usize`/`u64` lengths and counts, all far below 2^53.
+            .dangerously_cast_bigints_to_number()
+            .export(
+                specta_typescript::Typescript::default(),
+                "../src/lib/bindings.ts",
+            )
+            .expect("export TypeScript bindings");
     }
 }

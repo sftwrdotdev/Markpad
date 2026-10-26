@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import {
 	DEFAULT_EDITOR_TOOLBAR_ORDER,
 	applyEditorToolbarMove,
@@ -869,7 +869,7 @@ export class SettingsStore {
 
 	async initOSType() {
 		try {
-			const osType = await invoke<unknown>('get_os_type');
+			const osType = await commands.getOsType();
 			this.osType = isOSType(osType) ? osType : 'unknown';
 		} catch (e) {
 			console.error('Failed to get OS type:', e);

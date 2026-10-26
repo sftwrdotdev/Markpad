@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import { invoke } from '@tauri-apps/api/core';
+import { commands, events } from '../bindings.js';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tabManager } from '../stores/tabs.svelte.js';
 import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
@@ -101,7 +101,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 * still in flight cannot land after the window is forgotten.
 	 */
 	const snapshots = createBoundedWriter({
-		write: (json) => invoke('save_window_state', { json }),
+		write: (json) => commands.saveWindowState(json),
 		// A background write that fails retries on its own; only the one a
 		// close waits for is put in front of the user, by `persistState`.
 		onError: (error) => options.onWarning('Failed to save window state', error),
@@ -125,7 +125,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		localStorage.removeItem(WINDOW_STATE_KEY);
 		localStorage.removeItem(LEGACY_STATE_KEY);
 		try {
-			await invoke('clear_window_state');
+			await commands.clearWindowState();
 		} catch (error) {
 			options.onError('Failed to clear window state', error);
 		}
@@ -148,7 +148,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 */
 	async function readProgress(): Promise<RestoreProgress | null> {
 		const raw =
-			((await invoke('load_restore_progress').catch(() => null)) as string | null) ??
+			(await commands.loadRestoreProgress().catch(() => null)) ??
 			localStorage.getItem(options.restoreInProgressKey);
 		if (!raw) return null;
 		try {
@@ -176,8 +176,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 		// which is what keeps the record absent in the ordinary case.
 		const clearing = !progress.running && progress.deferred.length === 0;
 		try {
-			if (clearing) await invoke('clear_restore_progress');
-			else await invoke('save_restore_progress', { json: JSON.stringify(progress) });
+			if (clearing) await commands.clearRestoreProgress();
+			else await commands.saveRestoreProgress(JSON.stringify(progress));
 		} catch (error) {
 			// No localStorage fallback on purpose: two copies that can disagree
 			// is how a stale record gets preferred over a fresh one. A backend
@@ -218,7 +218,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		if (!remember) {
 			await snapshots.dispose();
 			try {
-				await invoke('forget_window_state');
+				await commands.forgetWindowState();
 			} catch (error) {
 				options.onError('Failed to forget window state on close', error);
 			}
@@ -302,7 +302,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		const savedData =
 			localStorage.getItem(WINDOW_STATE_KEY) ??
 			localStorage.getItem(LEGACY_STATE_KEY) ??
-			((await invoke('load_window_state').catch(() => null)) as string | null);
+			(await commands.loadWindowState().catch(() => null));
 		if (savedData) {
 			try {
 				options.restoreState(savedData);
@@ -371,7 +371,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 */
 	async function releaseClaim(token: string) {
 		try {
-			await invoke('cancel_detached_tab', { token });
+			await commands.cancelDetachedTab(token);
 		} catch (error) {
 			options.onError('Failed to release tab transfer claim', error);
 		}
@@ -380,7 +380,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	async function acceptOfferedTransfer(token: string): Promise<boolean> {
 		let claimed = false;
 		try {
-			const payload = (await invoke('claim_detached_tab', { token })) as string | null;
+			const payload = await commands.claimDetachedTab(token);
 			// Distinguish "no such token" from a claim that succeeded: only the
 			// latter leaves something to release.
 			if (payload === null) {
@@ -400,7 +400,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 				return false;
 			}
 			try {
-				await invoke('complete_detached_tab', { token });
+				await commands.completeDetachedTab(token);
 			} catch (error) {
 				// The source withdrew the transfer (it kept editing, or its
 				// claim grace ran out) and still has the tab. Keeping this copy
@@ -432,7 +432,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	// each copy with its own auto-save timer.
 	const transfersInFlight = new Set<string>();
 
-	async function transfer(tabId: string, deliver: (token: string) => Promise<void>): Promise<boolean> {
+	async function transfer(tabId: string, deliver: (token: string) => Promise<unknown>): Promise<boolean> {
 		if (!options.canTransfer(tabId)) return false;
 		if (transfersInFlight.has(tabId)) return false;
 		transfersInFlight.add(tabId);
@@ -453,7 +453,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		return tab ? JSON.stringify([tab.path, tab.encoding, tab.rawContent, tab.originalContent]) : '';
 	}
 
-	async function stageTransfer(tabId: string, deliver: (token: string) => Promise<void>): Promise<boolean> {
+	async function stageTransfer(tabId: string, deliver: (token: string) => Promise<unknown>): Promise<boolean> {
 		// The payload is a snapshot, and the source tab stays live until the
 		// destination completes -- one to two seconds for a new window to
 		// boot. Typing there, or an auto-save resetting `originalContent`,
@@ -462,9 +462,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		// change is pushed to the broker as it happens: before the claim it
 		// replaces the payload, after it the broker withdraws the transfer.
 		let sent = transferRevision(tabId);
-		const token = (await invoke('stage_detached_tab', {
-			payload: options.transferPayload(tabId),
-		})) as string;
+		const token = await commands.stageDetachedTab(options.transferPayload(tabId));
 		let settled = false;
 		let resolveTransfer: (moved: boolean) => void;
 		const settle = (moved: boolean) => {
@@ -474,7 +472,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 			stopWatching();
 			resolveTransfer(moved);
 		};
-		const unlisten = await appWindow.listen<string>('tab-transfer-claimed', (event) => {
+		const unlisten = await events.tabTransferClaimed(appWindow).listen((event) => {
 			if (settled || event.payload !== token) return;
 			// A change whose refresh reached the broker after the completion:
 			// the destination has the older copy. Keeping this tab too leaves
@@ -496,7 +494,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 				const payload = untrack(() => options.transferPayload(tabId));
 				void (async () => {
 					try {
-						const outcome = (await invoke('refresh_detached_tab', { token, payload })) as
+						const outcome = (await commands.refreshDetachedTab(token, payload)) as
 							'updated' | 'revoked' | 'gone';
 						if (outcome === 'updated') sent = revision;
 						else if (outcome === 'revoked') settle(false);
@@ -521,7 +519,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 			const cancel = async () => {
 				if (settled) return;
 				try {
-					const outcome = (await invoke('cancel_detached_tab', { token })) as {
+					const outcome = (await commands.cancelDetachedTab(token)) as {
 						cancelled: boolean;
 						claimed: boolean;
 					};
@@ -544,7 +542,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 
 	async function detach(tabId: string) {
 		if (!options.canDetach(tabId)) return false;
-		return transfer(tabId, (token) => invoke('create_transfer_window', { token }));
+		return transfer(tabId, (token) => commands.createTransferWindow(token, null));
 	}
 
 	return { discardPersistedState, persistState, record, checkpoint, restore, claimTransferredTab, acceptOfferedTransfer, detach, transfer };

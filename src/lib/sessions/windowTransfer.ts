@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 import { tabManager, type Tab } from '../stores/tabs.svelte.js';
 import { outgoingTabAnchorLine } from '../utils/editorPosition.js';
@@ -124,7 +124,7 @@ export function createTabMovers(options: {
 	onPartialDocument: () => void;
 	session: {
 		detach: (tabId: string) => Promise<boolean>;
-		transfer: (tabId: string, deliver: (token: string) => Promise<void>) => Promise<boolean>;
+		transfer: (tabId: string, deliver: (token: string) => Promise<unknown>) => Promise<boolean>;
 	};
 }) {
 	return {
@@ -140,8 +140,8 @@ export function createTabMovers(options: {
 				options.onPartialDocument();
 				return false;
 			}
-			const moved = await options.session.transfer(tabId, (token) => invoke('offer_tab_to_window', { targetLabel, token }));
-			if (moved && focusAfter) await invoke('focus_window', { label: targetLabel });
+			const moved = await options.session.transfer(tabId, (token) => commands.offerTabToWindow(targetLabel, token));
+			if (moved && focusAfter) await commands.focusWindow(targetLabel);
 			return moved;
 		},
 	};

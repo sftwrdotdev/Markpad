@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 import type { ViewerWindowEntry } from './viewerWindows.js';
 
@@ -21,7 +21,7 @@ export function pinnedTagFromWindowLabel(label: string): string | null {
 
 /** The window already holding `name` as its tag, other than `self`. */
 export async function pinnedTagHolder(name: string, self?: string): Promise<string | undefined> {
-	const windows = await invoke<ViewerWindowEntry[]>('list_viewer_windows');
+	const windows = await commands.listViewerWindows();
 	return windows.find((window) => window.tag_name === name && window.label !== self)?.label;
 }
 
@@ -32,8 +32,8 @@ export async function pinnedTagHolder(name: string, self?: string): Promise<stri
  */
 export async function openPinnedTagWindow(name: string): Promise<void> {
 	const holder = await pinnedTagHolder(name);
-	if (holder) await invoke('focus_window', { label: holder });
-	else await invoke('create_transfer_window', { token: pinnedWindowToken(name, Date.now()), tagName: name });
+	if (holder) await commands.focusWindow(holder);
+	else await commands.createTransferWindow(pinnedWindowToken(name, Date.now()), name);
 }
 
 /** New Window stages no tab, so its window must not try to claim one. */
@@ -42,5 +42,5 @@ export function isNewWindowLabel(label: string): boolean {
 }
 
 export async function openNewWindow(): Promise<void> {
-	await invoke('create_transfer_window', { token: `new-${Date.now()}` });
+	await commands.createTransferWindow(`new-${Date.now()}`, null);
 }

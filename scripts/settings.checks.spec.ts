@@ -54,24 +54,20 @@ describe('settings persistence', async () => {
 		writeStoredSetting,
 	} = settingsModule;
 
-	test('the startup background command and its vocabulary match app.rs', () => {
+	test('the startup background command has one caller', () => {
 		// What the frontend sends runs in settings.themeEffect.spec.ts ("the startup
-		// background is told the appearance, not the theme name"). What stays here
-		// is the contract: the command name, and the two words, are literals in
-		// two languages with no compiler between them.
+		// background is told the appearance, not the theme name"). The command name
+		// and its words are the generated `commands.saveTheme(theme: Appearance)`,
+		// and Rust's reader is commands.rs
+		// `the_startup_reader_reads_back_every_appearance_save_theme_writes`.
 		const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
-		assert.match(viewerSource, /invoke\('save_theme', \{ theme: appearance \}\)/);
 		assert.equal(
-			(viewerSource.match(/invoke\('save_theme'/g) ?? []).length,
+			(viewerSource.match(/commands\.saveTheme\(/g) ?? []).length,
 			1,
 			'save_theme has one caller, so nothing can send it a raw theme name',
 		);
 		// The viewer keeps no theme of its own beside the store's.
 		assert.doesNotMatch(viewerSource, /let theme = \$state/);
-
-		const appRs = readSource('src-tauri/src/app.rs');
-		assert.match(appRs, /"dark" => Some\(tauri::window::Color/);
-		assert.match(appRs, /"light" => Some\(tauri::window::Color/);
 	});
 
 	/*

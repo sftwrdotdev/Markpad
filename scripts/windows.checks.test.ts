@@ -91,32 +91,3 @@ describe('the recent-file list is written through one helper', () => {
 		assert.doesNotMatch(functionSource(viewer, 'removeRecentFile'), /closeTab/);
 	});
 });
-
-describe('window state restore', () => {
-	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
-
-	// Session restore persists WINDOW state only: which files are open, the
-	// active tab, and per-tab UI (edit mode, split, scroll). Document content
-	// always lives on disk — the snapshot never carries rawContent, so unsaved
-	// changes are handled exclusively by the per-tab close dialogs.
-
-	test('v2 snapshots are held by the Rust commands', () => {
-		// Behaviour, including the localStorage keys older builds read:
-		// windows.sessionRestore.spec.ts. What stays here is the command names.
-		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
-		assert.match(session, /invoke\('load_window_state'\)/);
-		assert.match(session, /invoke\('clear_window_state'\)/);
-	});
-
-});
-
-describe('window tags and pinned sessions', () => {
-	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const home = readSource('src/lib/components/HomePage.svelte');
-
-	test('only explicitly pinned tags create reusable sessions', () => {
-		assert.match(runtime, /pub fn save_pinned_tag/);
-		assert.match(runtime, /pub fn remove_pinned_tag/);
-		assert.match(home, /onopenPinnedTag/);
-	});
-});

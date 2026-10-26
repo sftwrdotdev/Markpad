@@ -206,7 +206,6 @@ function createComponent(backend: Backend, editor: unknown): Component {
 	const deps = {
 		editor: () => editor as any,
 		monaco: () => monacoStub as any,
-		invoke: backend.invoke,
 		tabs: tabManager,
 		settings: { imageDirectory: 'img', macosImageScaling: false },
 	};

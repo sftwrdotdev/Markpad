@@ -5,6 +5,7 @@ import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { readSource } from './sourceTree.js';
+import { stubTauriInvoke } from './tauriInvoke.js';
 
 /*
  * `"+` and `"*` against the real monaco-vim package (#775). Every yank, delete
@@ -126,12 +127,16 @@ describe('vim clipboard registers', () => {
 		assert.equal(installVimClipboardRegisters({ Vim: { defineRegister() {}, getRegisterController: () => undefined } }, () => {}), false);
 	});
 
-	test('Editor.svelte installs the commands on the module it just imported', async () => {
+	test('Editor.svelte installs the commands on the module it just imported', async (t) => {
 		// `attachVimMode` is what the editor's `import("monaco-vim").then` runs. It
 		// has to install before `initVimMode` attaches the adapter, and it has to
 		// install even on the disposed path, because the tables it writes to are
 		// the package's and outlive this editor.
 		const { attachVimMode } = await import('../src/lib/utils/vimAttach.js');
+		let written: unknown[] = [];
+		stubTauriInvoke(t, async (command, args) => {
+			written.push([command, args]);
+		});
 		for (const disposed of [false, true]) {
 			const { VimMode, controller } = await freshVim();
 			const events: string[] = [];
@@ -140,18 +145,14 @@ describe('vim clipboard registers', () => {
 				events.push(`map ${String(args[0])}`);
 				return realMapCommand.apply(this, args);
 			};
-			const written: unknown[] = [];
-			const invoke = (command: string, args: unknown) => {
-				written.push([command, args]);
-				return Promise.resolve();
-			};
+			written = [];
 			const adapter = { dispose() {} };
 			const initVimMode = () => {
 				events.push(controller.isValidRegister('+') ? 'attach with "+' : 'attach without "+');
 				return adapter;
 			};
 
-			const vim = attachVimMode({ initVimMode, VimMode }, {}, {}, invoke, () => disposed);
+			const vim = attachVimMode({ initVimMode, VimMode }, {}, {}, () => disposed);
 			if (disposed) {
 				assert.equal(vim, null, 'a disposed effect attaches nothing');
 				assert.deepEqual(events, ['map zb', 'map z-'], 'a disposed effect still patches the package');

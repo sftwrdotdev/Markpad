@@ -5,7 +5,8 @@ use std::hash::{BuildHasher, Hasher};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, State};
+use tauri_specta::Event;
 
 /// Maximum number of staged transfers kept in memory; oldest entries are
 /// evicted first so an abandoned drag can never grow the map unbounded.
@@ -31,7 +32,7 @@ pub struct PendingTransfer {
 /// means the destination already took the payload and is still finishing:
 /// the source must keep waiting for `tab-transfer-claimed`, and ask again
 /// later, instead of restoring its tab.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct CancelOutcome {
     pub cancelled: bool,
@@ -41,7 +42,7 @@ pub struct CancelOutcome {
 /// Result of `refresh_detached_tab`. `Gone` means the transfer already
 /// ended: completed (the source is about to hear `tab-transfer-claimed`) or
 /// cancelled.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum RefreshOutcome {
     Updated,
@@ -359,7 +360,13 @@ impl TabTransferBroker {
     }
 }
 
+/// `tab-transfer-claimed`: the destination finished taking the tab, so the
+/// source window may drop it.
+#[derive(Clone, serde::Serialize, serde::Deserialize, specta::Type, tauri_specta::Event)]
+pub struct TabTransferClaimed(pub String);
+
 #[tauri::command]
+#[specta::specta]
 pub fn stage_detached_tab(
     window: tauri::Window,
     state: State<'_, TabTransferBroker>,
@@ -369,6 +376,7 @@ pub fn stage_detached_tab(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn claim_detached_tab(
     window: tauri::Window,
     state: State<'_, TabTransferBroker>,
@@ -378,6 +386,7 @@ pub fn claim_detached_tab(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn complete_detached_tab(
     app: AppHandle,
     window: tauri::Window,
@@ -385,15 +394,13 @@ pub fn complete_detached_tab(
     token: String,
 ) -> Result<(), String> {
     let transfer = state.complete_as(window.label(), &token)?;
-    app.emit_to(
-        transfer.source_label.as_str(),
-        "tab-transfer-claimed",
-        token,
-    )
-    .map_err(|e| format!("TRANSFER_HANDOFF_FAILED: {e}"))
+    TabTransferClaimed(token)
+        .emit_to(&app, transfer.source_label.as_str())
+        .map_err(|e| format!("TRANSFER_HANDOFF_FAILED: {e}"))
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn cancel_detached_tab(
     window: tauri::Window,
     state: State<'_, TabTransferBroker>,
@@ -403,6 +410,7 @@ pub fn cancel_detached_tab(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn refresh_detached_tab(
     window: tauri::Window,
     state: State<'_, TabTransferBroker>,
@@ -587,6 +595,26 @@ mod tests {
             }
         );
         assert!(broker.peek(&token).is_none());
+    }
+
+    // The source drops its tab when it hears `tab-transfer-claimed`, which
+    // `complete_detached_tab` sends to the source label `complete_as` hands back.
+    // A claim is only a reservation: it hands back the payload and no source to
+    // announce to, and the completion after it still finds the transfer.
+    #[test]
+    fn only_completion_hands_back_the_source_to_announce_to() {
+        let broker = TabTransferBroker::new();
+        let token = broker.stage("tab".to_string(), "main".to_string());
+        let destination = destination_label(&token);
+
+        assert_eq!(
+            broker.claim_as(&destination, &token, Instant::now()),
+            Ok(Some("tab".to_string()))
+        );
+        let transfer = broker
+            .complete_as(&destination, &token)
+            .expect("the claim must leave the transfer for completion");
+        assert_eq!(transfer.source_label, "main");
     }
 
     // The source kept typing while the new window booted: the destination

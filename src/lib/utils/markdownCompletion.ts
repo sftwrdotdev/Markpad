@@ -3,8 +3,8 @@ import type * as Monaco from 'monaco-editor';
 import { frontMatterFenceLines } from './frontMatter.js';
 import { headingLinkContext, headingQueryStart, type HeadingAnchor } from './headingCompletion.js';
 import { resolveImageDirectory } from './imageEmbed.js';
+import { commands } from '../bindings.js';
 
-type Invoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 type OutlineModel = Pick<Monaco.editor.ITextModel, 'getVersionId' | 'getValue'>;
 
 /**
@@ -27,7 +27,7 @@ type OutlineModel = Pick<Monaco.editor.ITextModel, 'getVersionId' | 'getValue'>;
  * folding and symbol providers asking at once share one call.
  */
 export type Outline = { anchors: HeadingAnchor[]; folds: Monaco.languages.FoldingRange[] };
-export function createDocumentOutline(invoke: Invoke) {
+export function createDocumentOutline() {
 	let outlineCache: { model: OutlineModel; version: number; outline: Promise<Outline> } | null = null;
 
 	function documentOutline(model: OutlineModel): Promise<Outline> {
@@ -36,10 +36,7 @@ export function createDocumentOutline(invoke: Invoke) {
 
 		const markdown = model.getValue();
 		const outline = (
-			invoke("markdown_outline", {
-				markdown,
-				frontMatterLines: frontMatterFenceLines(markdown),
-			}) as Promise<Outline>
+			commands.markdownOutline(markdown, frontMatterFenceLines(markdown)) as Promise<Outline>
 		).catch(() => ({ anchors: [], folds: [] }));
 		outlineCache = { model, version, outline };
 		return outline;
@@ -58,7 +55,6 @@ export const MARKDOWN_COMPLETION_TRIGGERS = ["(", "/", "\\", '"', "#"];
 export type MarkdownCompletionDeps = {
 	monaco: Pick<typeof Monaco, 'Range'> & { languages: Pick<typeof Monaco.languages, 'CompletionItemKind'> };
 	headingAnchors: (model: Monaco.editor.ITextModel) => Promise<HeadingAnchor[]>;
-	invoke: Invoke;
 	/** The active tab's path, if it has one. */
 	activeTabPath: () => string | null | undefined;
 	/** The image-directory setting. */
@@ -130,10 +126,10 @@ export async function provideMarkdownCompletionItems(
 
 	try {
 		const [currentEntries, imgEntries] = await Promise.all([
-			deps.invoke("list_directory_contents", { path: parentDir })
+			commands.listDirectoryContents(parentDir)
 				.then((r) => r as string[])
 				.catch(() => []),
-			deps.invoke("list_directory_contents", { path: `${parentDir}/${imgDirName}` })
+			commands.listDirectoryContents(`${parentDir}/${imgDirName}`)
 				.then((r) => r as string[])
 				.catch(() => []),
 		]);
