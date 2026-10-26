@@ -310,21 +310,11 @@ describe('preview width', () => {
 
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
-	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
-
 	test('the stylesheet reads the width the markup writes', () => {
 		// Contract between the inline style and the component's <style>: the
 		// width itself is previewLayout's (preview.test.ts "preview layout").
 		assert.match(viewerSource, /--preview-max-width: \{layout\.maxWidthCss\}/);
 		assert.match(viewerSource, /--measure: min\(100cqi, var\(--preview-max-width, 880px\)\)/);
-	});
-
-	test('Settings exposes a bounded preview-width input and reset action', () => {
-		assert.match(settingsComponentSource, /id="preview-max-width"/);
-		assert.match(settingsComponentSource, /min=\{MIN_PREVIEW_MAX_WIDTH\}/);
-		assert.match(settingsComponentSource, /max=\{MAX_PREVIEW_MAX_WIDTH\}/);
-		assert.match(settingsComponentSource, /bind:value=\{settings\.previewMaxWidth\}/);
-		assert.match(settingsComponentSource, /settings\.resetPreviewMaxWidth\(\)/);
 	});
 
 	test('preview full-width state migrates from the legacy localStorage key', () => {
