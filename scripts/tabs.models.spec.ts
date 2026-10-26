@@ -1,27 +1,19 @@
 import assert from 'node:assert/strict';
 import { beforeAll, describe, test, vi } from 'vitest';
 
-import ts from 'typescript';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
-import { callbackBodies, functionSource, readSource } from './sourceTree.js';
 
 // Importing the store boots the settings singleton, which asks for the OS type,
-// so a backend answering it has to be in place before the imports below. Each
-// describe installs its own backend in `beforeAll`.
+// so a backend answering it has to be in place before the imports below.
 (window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 };
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
-const {
-	getTabModel,
-	lineEndingLabel,
-	tabModelUri,
-	trackedTabModelIds,
-} = await import('../src/lib/utils/tabModels.js');
+const { tabModelUri, trackedTabModelIds } = await import('../src/lib/utils/tabModels.js');
 const { buildTransferredTab } = await import('../src/lib/utils/tabTransfer.js');
-const { countWords } = await import('../src/lib/utils/wordCount.js');
+const { EditorDocument } = await import('../src/lib/utils/editorDocument.svelte.js');
 
 /*
  * Undo history has to survive a tab switch (#391), and every model that is
@@ -41,78 +33,21 @@ const { countWords } = await import('../src/lib/utils/wordCount.js');
  * registered, so a model whose tab is gone leaks its buffer, its tokenization
  * state and its worker-side copy for the life of the window.
  *
- * WHAT RUNS HERE. The component's own tab-activation `$effect`, its
- * `acquireTabModel`, its `onDidChangeModelContent` listener and its exported
- * `undo` are lifted out of Editor.svelte and evaluated over one scope, against
- * the REAL `TabManager` and the REAL model registry (`utils/tabModels.ts`).
- * Only Monaco itself is a fake — a `.svelte` file cannot be imported by the Node
- * test runner and Monaco needs a DOM — and the fake reproduces the two
- * semantics the whole question turns on, both read out of the bundled 0.55.1
- * source and cited at `FakeModel` below: `setValue` clears the undo stack,
- * `setModel` does not.
- *
- * WHAT IT DOES NOT ESTABLISH: rendering, focus, Svelte's scheduling, or that
- * Monaco's real undo stack behaves as its source says. It establishes what the
- * component does when its handlers run.
+ * WHAT RUNS HERE. The editor's `EditorDocument` (tab activation, the per-tab
+ * model, the content listener, the status readings) against the REAL
+ * `TabManager` and the REAL model registry (`utils/tabModels.ts`). Only Monaco
+ * is a fake, and the fake reproduces the two semantics the whole question turns
+ * on, both read out of the bundled 0.55.1 source and cited at `FakeModel`
+ * below: `setValue` clears the undo stack, `setModel` does not.
  */
 
-// ---------------------------------------------------------------- environment
-// Svelte runes and the Tauri bridge, faked as windowTagEditor.ts does, so
-// `tabs.svelte.ts` imports under plain node.
 describe('undo history per tab', () => {
 	beforeAll(() => {
-		// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
-		// Svelte plugin, so the store and the session run under real reactivity, and jsdom
-		// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 			invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
 		};
 	});
-
-	// ------------------------------------------------- the component, as written
-
-	const EDITOR = 'src/lib/components/Editor.svelte';
-	const source = readSource(EDITOR);
-
-	/**
-	 * The tab-activation effect — the one that files a view state under the tab it
-	 * is leaving. Identified by what it does rather than by its position in the
-	 * file, and pinned to exactly one so a split or a merge fails here loudly
-	 * instead of quietly running half the code.
-	 */
-	const activationEffectBody = (() => {
-		const bodies = callbackBodies(source, '$effect').filter((body) => body.includes('updateTabEditorState'));
-		assert.equal(bodies.length, 1, `expected exactly one tab-activation $effect in ${EDITOR}, found ${bodies.length}`);
-		return bodies[0];
-	})();
-
-	const contentChangeBody = (() => {
-		const bodies = callbackBodies(source, 'editor.onDidChangeModelContent');
-		assert.equal(bodies.length, 1, `expected exactly one model-content listener in ${EDITOR}, found ${bodies.length}`);
-		return bodies[0];
-	})();
-
-	/**
-	 * The one function bound to `name`, or `fallback` when the component has no
-	 * such function.
-	 *
-	 * The fallback exists for the falsification run, and it is what makes that run
-	 * worth anything. Reverting the fix deletes `acquireTabModel`; asserting on its
-	 * presence here would turn every test in this file red with the same structural
-	 * message, and none of them would then be evidence about undo. A component that
-	 * never acquires a per-tab model behaves exactly like one whose acquire does
-	 * nothing — so that is what it is given, and each test fails on its own claim.
-	 * Same reasoning as `runnable` in windowTagEditor.ts.
-	 */
-	function lifted(name: string, fallback: string): string {
-		try {
-			return functionSource(source, name);
-		} catch {
-			return fallback;
-		}
-	}
-
 	// ------------------------------------------------------------------ the fakes
 
 	/**
@@ -307,98 +242,40 @@ describe('undo history per tab', () => {
 
 	type Editor = ReturnType<typeof createEditorStub>;
 
+
 	type Component = {
-		/** The tab-activation effect, run the way Svelte would run it. */
+		/** The tab-activation effect, run the way the component's effect runs it. */
 		activate: () => void;
-		/** The `onDidChangeModelContent` listener. */
-		contentChanged: () => void;
-		/** The component's exported undo. */
+		/** Cmd+Z, as the component's exported undo sends it. */
 		undo: () => void;
-		acquireTabModel: (tabId: string, seed: string, language: string) => FakeModel | null;
 		setLanguage: (language: string) => void;
-		currentTabId: () => string | null;
 		currentLanguage: () => string;
 		wordCount: () => number;
 		settings: { wordCount: boolean };
 	};
 
-	/**
-	 * The lifted code is TypeScript (`function acquireTabModel(tabId: string, …)`)
-	 * and `new Function` only parses JavaScript, so it goes through `tsc` first —
-	 * as imageUndoKeepsFile.spec.ts and foldStatePerDocument.spec.ts already do.
-	 * Types are erased, nothing else: the statements that run are the component's.
-	 */
-	const factorySource = ts.transpileModule(
-		`const __component = (tabManager, monaco, editor, getTabModel, tabModelUri, lineEndingLabel, countWords) => {
-		let currentTabId = null;
+	function createComponent(editor: Editor): Component {
 		let language = 'markdown';
-		let currentLanguage = 'markdown';
-		let wordCount = 0;
-		let wordCountTimer;
-		let emittedText = null;
 		const settings = { wordCount: true };
-		let lineEnding = 'LF';
-		const editorReady = true;
-
-		${lifted('syncStatusFromModel', 'function syncStatusFromModel() {}')}
-		${lifted('acquireTabModel', 'function acquireTabModel() { return null; }')}
-		// The component binds undo to an arrow function, so what comes back is
-		// the expression rather than a declaration: it needs its own binding.
-		const undo = ${lifted('undo', '() => {}')};
+		// `value` is the prop `value={tabManager.activeTab.rawContent}`: read, never copied.
+		const value = () => tabManager.activeTab?.rawContent ?? '';
+		const doc = new EditorDocument({
+			monaco: () => monacoStub as any,
+			editor: () => editor as any,
+			tabs: tabManager,
+			value,
+			showWordCount: () => settings.wordCount,
+		});
+		editor.onContentChange(() => doc.contentChanged());
 
 		return {
-			activate: () => ${activationEffectBody},
-			contentChanged: () => ${contentChangeBody},
-			undo,
-			acquireTabModel,
-			setLanguage: (next) => { language = next; },
-			currentTabId: () => currentTabId,
-			currentLanguage: () => currentLanguage,
-			wordCount: () => wordCount,
+			activate: () => doc.activate(tabManager.activeTabId, value(), language),
+			undo: () => editor.trigger('keyboard', 'undo'),
+			setLanguage: (next) => void (language = next),
+			currentLanguage: () => doc.language,
+			wordCount: () => doc.wordCount,
 			settings,
 		};
-	};`,
-		{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
-	).outputText;
-
-	/**
-	 * The `value` prop, modelled as what Svelte compiles a dynamic prop to: a
-	 * getter over the parent's expression, which is
-	 * `value={tabManager.activeTab.rawContent}`. It used to be `bind:value`, and
-	 * this harness used to mirror it with a local the tests re-synced by hand —
-	 * which is the same second copy of the buffer, and the same chance for the two
-	 * to disagree, that the component itself no longer keeps.
-	 *
-	 * A null-prototype object so `with` captures this one name and not
-	 * `toString`, `constructor` and the rest of Object.prototype.
-	 */
-	const propsScope = Object.defineProperty(Object.create(null), 'value', {
-		get: () => tabManager.activeTab?.rawContent ?? '',
-	});
-
-	function createComponent(editor: Editor): Component {
-		const factory = new Function(
-			'__props',
-			`with (__props) { ${factorySource}\nreturn __component; }`,
-		)(propsScope) as (
-			tabManager: unknown,
-			monaco: unknown,
-			editor: unknown,
-			getTabModel: unknown,
-			tabModelUri: unknown,
-			lineEndingLabel: unknown,
-			countWords: unknown,
-		) => Component;
-
-		return factory(
-			tabManager,
-			monacoStub,
-			editor,
-			getTabModel,
-			tabModelUri,
-			lineEndingLabel,
-			countWords,
-		);
 	}
 
 	type Harness = {
@@ -422,7 +299,6 @@ describe('undo history per tab', () => {
 
 		const editor = createEditorStub();
 		const component = createComponent(editor);
-		editor.onContentChange(component.contentChanged);
 
 		const show = (tabId: string) => {
 			tabManager.setActive(tabId);
@@ -865,5 +741,49 @@ describe('undo history per tab', () => {
 		const uris = [a, untitledOne, untitledTwo].map((id) => h.modelOf(id)?.uri);
 		assert.equal(new Set(uris).size, 3, 'two tabs resolved to the same model URI');
 		assert.ok(uris.every((uri) => typeof uri === 'string'), 'a tab was shown without acquiring a model');
+	});
+});
+
+describe('editor reading position flush', () => {
+	test('the flush refuses a tab the editor is not holding', () => {
+		// One Editor per window, swapping models between tabs: an unguarded flush
+		// would copy the active tab's position onto the record the caller named.
+		tabManager.closeAll();
+		tabManager.addTab('/docs/held.md', 'one\ntwo\nthree');
+		const held = tabManager.activeTabId!;
+		tabManager.addTab('/docs/other.md', 'other');
+		const other = tabManager.activeTabId!;
+		tabManager.setActive(held);
+
+		const model = { getValue: () => 'one\ntwo\nthree' };
+		const editor = {
+			getModel: () => model,
+			saveViewState: () => ({ marker: 'held' }),
+			getVisibleRanges: () => [{ startLineNumber: 2 }],
+			getScrollTop: () => 100,
+			getScrollHeight: () => 400,
+			getLayoutInfo: () => ({ height: 200 }),
+		};
+		const doc = new EditorDocument({
+			monaco: () => {
+				throw new Error('no model is built here');
+			},
+			editor: () => editor as any,
+			tabs: tabManager,
+			value: () => tabManager.activeTab?.rawContent ?? '',
+			showWordCount: () => false,
+		});
+		const record = (id: string) => {
+			const tab = tabManager.tabs.find((t) => t.id === id)!;
+			return { view: tab.editorViewState, scroll: tab.scrollPercentage, anchor: tab.anchorLine };
+		};
+		const before = record(other);
+
+		doc.flushPositionTo(other);
+		assert.deepEqual(record(other), before, "the flush wrote the held tab's position onto another tab");
+
+		doc.flushPositionTo(held);
+		assert.deepEqual(record(held).view, { marker: 'held' }, 'precondition: the held tab is flushed');
+		assert.equal(record(held).scroll, 0.5);
 	});
 });

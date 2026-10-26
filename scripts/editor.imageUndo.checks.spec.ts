@@ -62,6 +62,7 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { lineEndingLabel } = await import('../src/lib/utils/tabModels.js');
 const { countWords } = await import('../src/lib/utils/wordCount.js');
+const { EditorDocument } = await import('../src/lib/utils/editorDocument.svelte.js');
 // The real module, not a stub: the embed these tests match against is the one
 // it writes, and its escaping is pinned separately in imageEmbed.test.ts.
 const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
@@ -101,6 +102,8 @@ const pasteCommandBody = (() => {
  * none, one, or five, and the claim under test is about all of them together.
  */
 const contentChangeBodies = callbackBodies(source, 'editor.onDidChangeModelContent');
+// The component's one listener hands the change to `EditorDocument`, which runs below for real.
+assert.deepEqual(contentChangeBodies, ['doc.contentChanged()']);
 
 // ------------------------------------------------------------------ the fakes
 
@@ -270,12 +273,6 @@ const factorySource = ts.transpileModule(
 		let currentLanguage = 'markdown';
 		let lineEnding = 'LF';
 
-		// The status-bar refresh the content-change listener calls. Lifted from
-		// the component rather than stubbed, so the listener under test runs
-		// exactly the statements it runs in the app; nothing here asserts on
-		// what it writes.
-		${functionSource(source, 'syncStatusFromModel')}
-
 		// Reached only by the text-paste path, which no test here exercises.
 		const insertTextAtCursor = () => { throw new Error('text paste path not modelled'); };
 		const isLinkifyPasteTarget = () => false;
@@ -289,7 +286,6 @@ const factorySource = ts.transpileModule(
 			paste: pasteFromClipboard,
 			drop: handleDroppedFile,
 			cut: cutToClipboard,
-			contentChange: [${contentChangeBodies.map((body) => `(e) => ${body}`).join(', ')}],
 		};
 	};`,
 	{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
@@ -345,7 +341,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		routeDroppedFile: unknown,
 	) => Component;
 
-	return factory(
+	const component = factory(
 		backend.invoke,
 		{ imageDirectory: 'img', macosImageScaling: false },
 		tabManager,
@@ -358,6 +354,14 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		imageEmbed,
 		routeDroppedFile,
 	);
+	const doc = new EditorDocument({
+		monaco: () => monacoStub as any,
+		editor: () => editor as any,
+		tabs: tabManager,
+		value: () => tabManager.activeTab?.rawContent ?? '',
+		showWordCount: () => true,
+	});
+	return { ...component, contentChange: [() => doc.contentChanged()] };
 }
 
 const PASTED_IMAGE = 'iVBORw0KGgo=';

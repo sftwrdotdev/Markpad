@@ -12,6 +12,8 @@ import {
 } from '../src/lib/utils/tabHistory.js';
 import { getMarkdownLinkTarget, isOpenInNewTabMarkdownTarget, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 import { jumpScrollBehavior } from '../src/lib/utils/motion.js';
+import { EditorJumps, type JumpEditor } from '../src/lib/utils/editorJumps.js';
+import { asBufferLine } from '../src/lib/utils/lineCoordinates.js';
 
 describe('file history and markdown link targets', () => {
 	test('new file tabs start history with their path', () => {
@@ -159,5 +161,87 @@ describe('jump scroll motion', () => {
 		assert.equal(jumpScrollBehavior.length, 1);
 		assert.equal(jumpScrollBehavior(true), 'smooth');
 		assert.equal(jumpScrollBehavior(false), 'auto');
+	});
+});
+
+describe('jump to the selected fragment', () => {
+	/** A Monaco editor over `lines`, recording what a jump does to it. */
+	function fakeEditor(lines: string[]) {
+		const log: unknown[] = [];
+		const model = {
+			getLineCount: () => lines.length,
+			getLineMaxColumn: (line: number) => {
+				// Monaco throws here too, for a line past the end of the model.
+				if (line < 1 || line > lines.length) throw new Error(`Illegal value for lineNumber: ${line}`);
+				return lines[line - 1].length + 1;
+			},
+			findNextMatch: () => null,
+		};
+		const editor = {
+			getModel: () => model,
+			revealLineNearTop: (line: number) => log.push(['top', line]),
+			revealLineInCenterIfOutsideViewport: (line: number) => log.push(['center', line]),
+			setSelection: (selection: unknown) => log.push(['select', selection]),
+			focus: () => log.push(['focus']),
+		} as unknown as JumpEditor;
+		return { editor, log };
+	}
+
+	function jumps(editor: JumpEditor, state = { ready: true }) {
+		return new EditorJumps({
+			monaco: () => ({ editor: { ScrollType: { Smooth: 0, Immediate: 1 } } }) as never,
+			editor: () => editor,
+			ready: () => state.ready,
+			scrollTo: () => {},
+		});
+	}
+
+	const lines = ['# One', 'text', '## Two'];
+
+	test('the outline and the context menu share one line-to-editor jump', () => {
+		// `revealHeader` used to reveal and select the line itself. A second copy
+		// next to #90's would scroll differently, focus differently, and only one
+		// of them would clamp.
+		for (const line of [3, 40]) {
+			const outline = fakeEditor(lines);
+			const contextMenu = fakeEditor(lines);
+			jumps(outline.editor).revealHeader(asBufferLine(line), 'Two');
+			jumps(contextMenu.editor).revealSourceRange(line, line, 'top');
+			assert.deepEqual(outline.log, contextMenu.log, `line ${line}`);
+		}
+	});
+
+	test('the jump clamps to the buffer before asking Monaco for a column', () => {
+		// The preview can hand over a stale line: its HTML is the render of a
+		// buffer that may have been replaced by a shorter one since.
+		const { editor, log } = fakeEditor(lines);
+		jumps(editor).revealSourceRange(50, 60);
+		assert.deepEqual(log, [
+			['center', 3],
+			['select', { startLineNumber: 3, startColumn: 1, endLineNumber: 3, endColumn: 7 }],
+			['focus'],
+		]);
+	});
+
+	test('a jump asked for before Monaco has loaded is queued, not dropped', () => {
+		// `monaco-editor` is imported dynamically, so the editor is ready several
+		// frames after the component exists, and the preview calls in right after
+		// flipping into edit mode.
+		const { editor, log } = fakeEditor(lines);
+		const state = { ready: false };
+		const pane = jumps(editor, state);
+		pane.revealSourceRange(2, 2);
+		assert.deepEqual(log, []);
+
+		state.ready = true;
+		pane.spendPending();
+		assert.deepEqual(log, [
+			['center', 2],
+			['select', { startLineNumber: 2, startColumn: 1, endLineNumber: 2, endColumn: 5 }],
+			['focus'],
+		]);
+
+		pane.spendPending();
+		assert.equal(log.length, 3, 'a queued jump is spent once');
 	});
 });

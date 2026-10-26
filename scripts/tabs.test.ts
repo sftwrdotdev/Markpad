@@ -16,6 +16,8 @@ import {
 } from '../src/lib/utils/tabTransfer.js';
 import { nextUntitledTitle } from '../src/lib/utils/untitledTitle.js';
 import { outgoingTabAnchorLine, type StoredTabPosition, editorReadingPosition } from '../src/lib/utils/editorPosition.js';
+import { EditorJumps, type JumpEditor } from '../src/lib/utils/editorJumps.js';
+import type { ScrollSyncPosition } from '../src/lib/utils/scrollSync.js';
 
 describe('duplicate tab names', () => {
 	function suffixes(...paths: string[]): (string | undefined)[] {
@@ -502,5 +504,43 @@ describe('editor reading position flush', () => {
 			text: 'body',
 		});
 		assert.equal(anchorLine, null);
+	});
+
+	test('a sync asked for while Monaco is loading is kept, and spent after the restore', () => {
+		// #799: Ctrl+E from the preview asks before the editor exists. Dropping the
+		// request left the editor wherever its old view state put it. The editor
+		// spends it after its view-state restore, and before a queued "edit this
+		// fragment", which has to win over both.
+		const log: unknown[] = [];
+		const model = { getLineCount: () => 3, getLineMaxColumn: () => 5 };
+		const editor = {
+			getModel: () => model,
+			revealLineNearTop: () => {},
+			revealLineInCenterIfOutsideViewport: (line: number) => log.push(['reveal', line]),
+			setSelection: () => {},
+			focus: () => {},
+		} as unknown as JumpEditor;
+		const state = { ready: false };
+		const jumps = new EditorJumps({
+			monaco: () => ({ editor: { ScrollType: { Smooth: 0, Immediate: 1 } } }) as never,
+			editor: () => editor,
+			ready: () => state.ready,
+			scrollTo: (position, options) => log.push(['scroll', position, options]),
+		});
+		const position: ScrollSyncPosition = { section: 'body', ratio: 0.4, line: 12 };
+
+		jumps.syncScrollToPosition(position, { cursorIntoView: true });
+		jumps.revealSourceRange(2, 2);
+		assert.deepEqual(log, []);
+
+		state.ready = true;
+		jumps.spendPending();
+		assert.deepEqual(log, [
+			['scroll', position, { cursorIntoView: true }],
+			['reveal', 2],
+		]);
+
+		jumps.syncScrollToPosition(position);
+		assert.deepEqual(log.at(-1), ['scroll', position, { cursorIntoView: false }], 'once ready, a sync is not queued');
 	});
 });

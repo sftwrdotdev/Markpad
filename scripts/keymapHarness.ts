@@ -10,6 +10,7 @@ import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
+import { editorActions, editorKeyCommands, type EditorActionDeps, type EditorKeyCommand } from '../src/lib/utils/editorActions.js';
 import { readSource, functionSource } from './sourceTree.js';
 
 /*
@@ -21,13 +22,12 @@ import { readSource, functionSource } from './sourceTree.js';
  * same extraction, so there is no way for one of them to be checked against a
  * more forgiving model of the app than the other.
  *
- * `registerLocalizedActions` is lifted out of Editor.svelte and RUN; the
- * document-level dispatcher is simply imported, having been moved to
- * `src/lib/utils/viewerKeymap.ts` for that reason. Keybinding numbers come from
- * Monaco's real `KeyMod` and `KeyCode` and are turned back into chords by
- * Monaco's real `decodeKeybinding`, once per operating system. Nothing here
- * matches the components as text, so renaming a local, reordering the actions or
- * rewriting the branch structure changes nothing; changing a KEY does.
+ * Both layers are imported and run: the editor's keymap from
+ * `src/lib/utils/editorActions.ts`, the document-level dispatcher from
+ * `src/lib/utils/viewerKeymap.ts`. Keybinding numbers come from Monaco's real
+ * `KeyMod` and `KeyCode` and are turned back into chords by Monaco's real
+ * `decodeKeybinding`, once per operating system. Changing a KEY changes the
+ * answer; renaming a local does not.
  *
  * WHAT IT DOES NOT ESTABLISH
  *
@@ -89,78 +89,36 @@ type ActionDescriptor = {
 	id: string;
 	label: string;
 	keybindings?: number[];
+	keybindingContext?: string;
 	run: (ed?: unknown) => unknown;
 };
 
 /**
- * Every action `registerLocalizedActions` registers, for one platform.
+ * Every action `editorActions` (utils/editorActions.ts) declares, for one
+ * platform, labelled in English.
  *
- * The function is extracted by name (not by a `sliceBetween` anchor pair, which
- * widens as neighbours are added) and evaluated inside a `with` block whose
- * scope object answers for EVERY free identifier. A dependency the function
- * grows later resolves to a recording stub instead of a ReferenceError, so this
- * harness does not have to be edited every time the component gains a callback
- * — and a stub cannot fake a keybinding, because the keybinding numbers come
- * from the real `KeyMod`/`KeyCode` handed in below.
+ * The keybinding numbers come from Monaco's real `KeyMod`/`KeyCode`. Everything
+ * an action's `run` reaches — the component's editing primitives, `oncommand`,
+ * the settings store — is a recording stub, so `calls` says what running an
+ * action did: `oncommand("new-file")`, `toggleLineMarkerTool("fmt-quote")`,
+ * `settings.toggleWordWrap`.
  */
 export function registeredActions(mac: boolean): { actions: ActionDescriptor[]; calls: string[] } {
-	const source = functionSource(readSource('src/lib/components/Editor.svelte'), 'registerLocalizedActions');
-	const js = ts.transpileModule(source, {
-		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-	}).outputText;
-
-	const actions: ActionDescriptor[] = [];
 	const calls: string[] = [];
 	const record = (name: string) =>
 		(...args: unknown[]) => {
 			calls.push(args.length ? `${name}(${args.map((a) => JSON.stringify(a)).join(',')})` : name);
 			return undefined;
 		};
+	const recorder = (prefix: string) =>
+		new Proxy({}, { get: (_target, key) => record(`${prefix}${String(key)}`) });
 
-	const known: Record<string, unknown> = {
-		monaco: { KeyMod, KeyCode },
-		editor: {
-			addAction(descriptor: ActionDescriptor) {
-				actions.push(descriptor);
-				return { dispose() {} };
-			},
-			getSelection: () => null,
-			executeEdits: record('executeEdits'),
-			trigger: record('trigger'),
-		},
-		isMacPlatform: () => mac,
-		// `t` is not the real translator on purpose: this file is about keys, and
-		// editorContextMenuI18n.test.ts already asserts that every one of these
-		// labels comes from the dictionary.
-		t: (key: string) => key,
-		localizedActions: [],
-		disposeLocalizedActions: () => {},
-	};
+	const deps = new Proxy(
+		{ monaco: { KeyMod, KeyCode }, isMac: mac, settings: recorder('settings.') } as Record<string, unknown>,
+		{ get: (target, key) => (typeof key === 'string' && key in target ? target[key] : record(String(key))) },
+	) as unknown as EditorActionDeps;
 
-	const scope = new Proxy(known, {
-		has: () => true,
-		get: (target, property) => {
-			if (typeof property !== 'string') return undefined;
-			if (property in target) return target[property];
-			const stub = record(property);
-			// Callbacks are read as `oncommand?.(…)` and settings as
-			// `settings.toggleWordWrap()`, so the stub has to be callable AND
-			// indexable.
-			return new Proxy(stub, {
-				get: (fn, key) => (key in fn ? (fn as never)[key] : record(`${property}.${String(key)}`)),
-			});
-		},
-	});
-
-	const build = new Function('scope', `with (scope) { ${js}\nreturn registerLocalizedActions; }`) as (
-		s: unknown,
-	) => (lang: string) => void;
-	build(scope)('en');
-
-	assert.ok(
-		actions.length > 20,
-		`registerLocalizedActions registered ${actions.length} actions; the harness is not running the real function`,
-	);
+	const actions = editorActions(deps, 'en') as unknown as ActionDescriptor[];
 	return { actions, calls };
 }
 
@@ -340,79 +298,20 @@ export function viewerCommandTable(): Record<ViewerCommand, string> {
 
 // ------------------------------------- the nameless commands, and their handlers
 
-const EDITOR = 'src/lib/components/Editor.svelte';
 
 /** One `editor.addCommand(binding, handler, when)` call, as Monaco is handed it. */
-export type BareCommand = { binding: number; handler: string; when: string };
+export type BareCommand = EditorKeyCommand;
 
 /**
- * Every bare `addCommand` the editor registers: a keybinding number, the name of
- * the handler, and the `when` clause.
+ * Every bare `addCommand` the editor registers (`editorKeyCommands`): a
+ * keybinding number from Monaco's real `KeyMod`/`KeyCode`, the name of the
+ * handler, and the `when` clause.
  *
  * These are the keys with no action id — Enter, Tab, Shift+Tab, the clipboard
- * chords — so `registeredActions` above cannot see them at all, and neither can
- * anything built on it. Two files need them for different reasons
- * (`listContinuation.test.ts` checks the guards, `shortcutRegistry.test.ts`
- * checks the panel's claims), which is why the extraction lives here rather than
- * in either of them.
- *
- * The arguments are EVALUATED, not matched as text: the keybinding numbers come
- * from Monaco's real `KeyMod`/`KeyCode` and the `when` expression is the string
- * the component computes, template literal and shared constant included. So
- * renaming the constant or reflowing the call changes nothing; changing a key or
- * dropping a guard changes everything.
+ * chords — so `registeredActions` above cannot see them.
  */
 export function bareCommands(): BareCommand[] {
-	const text = readSource(EDITOR);
-	const script = text.slice(text.indexOf('>', text.indexOf('<script')) + 1, text.indexOf('</script>'));
-	const file = ts.createSourceFile('editor.ts', script, ts.ScriptTarget.ES2022, true);
-
-	const constants: Record<string, string> = {};
-	const calls: BareCommand[] = [];
-
-	const evaluate = (expression: string): unknown =>
-		new Function('monaco', 'constants', `with (constants) { return (${expression}); }`)(
-			{ KeyMod, KeyCode },
-			constants,
-		);
-
-	const visit = (node: ts.Node) => {
-		if (
-			ts.isVariableDeclaration(node) &&
-			ts.isIdentifier(node.name) &&
-			node.initializer &&
-			(ts.isStringLiteral(node.initializer) || ts.isTemplateExpression(node.initializer))
-		) {
-			// Best effort: the component is full of template literals built from
-			// component state (`${label}px`), and none of them is a `when` clause.
-			// One that fails to evaluate here is simply not a constant the calls
-			// below can be reading, and an argument that turns out to need it fails
-			// loudly at its own `evaluate`.
-			try {
-				constants[node.name.text] = String(evaluate(node.initializer.getText()));
-			} catch {
-				/* not a constant */
-			}
-		}
-
-		if (
-			ts.isCallExpression(node) &&
-			node.expression.getText() === 'editor.addCommand' &&
-			node.arguments.length === 3
-		) {
-			calls.push({
-				binding: evaluate(node.arguments[0].getText()) as number,
-				handler: node.arguments[1].getText(),
-				when: String(evaluate(node.arguments[2].getText())),
-			});
-		}
-
-		ts.forEachChild(node, visit);
-	};
-	visit(file);
-
-	assert.ok(calls.length >= 5, `found ${calls.length} addCommand calls; the extraction is not running`);
-	return calls;
+	return editorKeyCommands({ KeyMod, KeyCode } as never);
 }
 
 /** What a handler did to the stub editor it was handed. */
@@ -509,7 +408,7 @@ export function runEditorHandler(
 		},
 	};
 
-	const source = readSource(EDITOR);
+	const source = readSource('src/lib/components/Editor.svelte');
 	const declarations = names.map((name) => `const ${name} = ${functionSource(source, name)};`).join('\n');
 	const js = ts.transpileModule(declarations, {
 		compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
