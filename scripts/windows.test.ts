@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { reviewDirtyTabs, type ReviewTab } from '../src/lib/sessions/closeReview.js';
 import { pinnedTagFromWindowLabel, pinnedWindowToken } from '../src/lib/utils/pinnedTagWindow.js';
+import { readSource } from './sourceTree.js';
 
 // Window close (issue #189): instead of one aggregate "you have N unsaved
 // files" modal, the red close button walks the dirty tabs one at a time —
@@ -108,5 +109,15 @@ describe('a pinned group travels in its window label', () => {
 		for (const label of ['main', 'window-3f2a9c', 'window-pinned--1', 'window-pinned-abc-1', 'window-pinned-6869']) {
 			assert.equal(pinnedTagFromWindowLabel(label), null, label);
 		}
+	});
+});
+
+describe('window title capability', () => {
+	test('all Markpad windows may update their native title', () => {
+		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as { permissions: unknown[] };
+		assert.ok(
+			capability.permissions.includes('core:window:allow-set-title'),
+			'window tags and active document names call appWindow.setTitle(), which requires this permission',
+		);
 	});
 });

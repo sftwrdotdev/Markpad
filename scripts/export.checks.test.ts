@@ -738,19 +738,6 @@ describe('exported theme', () => {
 });
 
 describe('native PDF printing', () => {
-	test('all Markpad webviews may invoke Tauri native printing', () => {
-		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
-			windows: string[];
-			permissions: string[];
-		};
-
-		assert.deepEqual(capability.windows, ['main', 'window-*']);
-		assert.ok(
-			capability.permissions.includes('core:webview:allow-print'),
-			'macOS replaces window.print() with Tauri native printing, which requires this permission',
-		);
-	});
-
 	// A Tauri command name is a bare string on the JS side and an identifier inside a macro on the Rust
 	// side, so nothing — not tsc, not `svelte-check`, not `cargo check` — notices
 	// when one moves and the other does not. The failure is silent at build time

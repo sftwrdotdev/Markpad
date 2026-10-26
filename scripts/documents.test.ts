@@ -28,6 +28,9 @@ import { MARKDOWN_OPEN_FILTERS } from '../src/lib/utils/markdownLinks.js';
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { dispatchViewerKey, viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
+import { translations } from './allTranslations.js';
+import { readSource } from './sourceTree.js';
+import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 
 describe('lossy decode save guard', () => {
 	// --- Behavioural: the flag survives a cross-window move ------------------
@@ -696,5 +699,82 @@ describe('the Open dialog', () => {
 		const [markdown, all] = MARKDOWN_OPEN_FILTERS;
 		assert.deepEqual([...markdown.extensions].sort(), ['markdown', 'md', 'mdown', 'mkd', 'txt']);
 		assert.deepEqual(all.extensions, ['*']);
+	});
+});
+
+// Config and dictionary data: tauri.conf.json is parsed, locales are imported.
+
+/** Every value stored under `key` anywhere in a dictionary. */
+function valuesOf(dictionary: unknown, key: string): unknown[] {
+	if (!dictionary || typeof dictionary !== 'object') return [];
+	return Object.entries(dictionary).flatMap(([k, v]) => [...(k === key ? [v] : []), ...valuesOf(v, key)]);
+}
+
+describe('file associations', () => {
+	const config = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
+		bundle: {
+			fileAssociations: Array<{ ext: string[]; contentTypes?: string[]; mimeType?: string; name: string }>;
+		};
+	};
+
+	// Every extension Markpad treats as a Markdown document is associated, except
+	// `.txt`: claiming it takes the Text Document association away from Notepad
+	// (#179). An extension added to either list fails here until the other follows.
+	test('installer associates every Markdown extension except txt', () => {
+		const extensions = config.bundle.fileAssociations.flatMap((association) => association.ext);
+		assert.deepEqual(
+			extensions,
+			MARKDOWN_LINK_EXTENSIONS.filter((ext) => ext !== 'txt'),
+		);
+	});
+
+	// macOS ignores `ext` once an association has a content type, and its
+	// Markdown type (net.daringfireball.markdown, owned by the system) only tags
+	// .md and .markdown. Any other extension must sit in an association with no
+	// content type or MIME type, or it gets a dynamic UTI that no association
+	// claims and Markpad drops out of Finder's Open With. One name keeps a single
+	// Windows ProgID, which hooks.nsi registers under.
+	test('macOS claims extensions outside the system Markdown type by extension', () => {
+		for (const association of config.bundle.fileAssociations) {
+			if (association.contentTypes) {
+				assert.deepEqual(association.ext, ['md', 'markdown']);
+			} else {
+				assert.equal(association.mimeType, undefined);
+			}
+			assert.equal(association.name, 'Markdown File');
+		}
+	});
+});
+
+describe('encoding refusals in every language', () => {
+	test('no locale still translates a hardcoded UTF-8 label', () => {
+		// A dead key reads like a supported feature to whoever finds it next.
+		for (const [code, dictionary] of Object.entries(translations)) {
+			assert.deepEqual(valuesOf(dictionary, 'utf8'), [], `${code} still has a utf8 key`);
+		}
+	});
+
+	test('every locale can say which encoding refused the save', () => {
+		const having = (key: string) =>
+			Object.entries(translations)
+				.filter(([, dictionary]) => valuesOf(dictionary, key).length > 0)
+				.map(([code]) => code);
+		const languages = having('lossySaveBlocked');
+		assert.ok(languages.length >= 5, 'precondition: the sibling refusal is translated');
+		assert.deepEqual(having('encodingUnmappable'), languages, 'both refusals reach the same languages');
+		for (const code of languages) {
+			const [message] = valuesOf(translations[code as keyof typeof translations], 'encodingUnmappable');
+			// The encoding is named, not implied: "some characters cannot be saved"
+			// leaves the user with nothing to search for.
+			assert.match(String(message), /\{\{encoding\}\}/, `${code} does not name the encoding`);
+		}
+	});
+
+	test('the refusal names Save As, the only exit', () => {
+		// That the session raises this message once per tab is driven in
+		// documents.session.spec.ts.
+		const [message] = valuesOf(translations.en, 'lossySaveBlocked');
+		assert.match(String(message), /^Not saved: parts of this file could not be read in any encoding/);
+		assert.match(String(message), /use "Save As" to write a copy/);
 	});
 });

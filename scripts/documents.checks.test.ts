@@ -113,14 +113,6 @@ describe('lossy decode save guard', () => {
 		assert.match(rust, /async fn read_file_content_checked\(path: String\) -> Result<\(String, bool, String\), String>/);
 		assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
 	});
-
-	test('the refusal names Save As, the only exit', () => {
-		// i18n wording. That the session raises this message once per tab is
-		// driven in documents.session.spec.ts.
-		const i18n = readDictionarySource();
-		assert.match(i18n, /lossySaveBlocked: 'Not saved: parts of this file could not be read in any encoding/);
-		assert.match(i18n, /use "Save As" to write a copy/);
-	});
 });
 
 describe('unsaved recovery', () => {
@@ -155,44 +147,11 @@ describe('live mode watched path', () => {
 });
 
 describe('file associations', () => {
-	const config = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
-		bundle: {
-			fileAssociations: Array<{ ext: string[]; contentTypes?: string[]; mimeType?: string; name: string }>;
-		};
-	};
-
-	// Every extension Markpad treats as a Markdown document is associated, except
-	// `.txt`. An extension added to either list fails here until the other follows.
-	test('installer associates every Markdown extension except txt', () => {
-		const extensions = config.bundle.fileAssociations.flatMap((association) => association.ext);
-		assert.deepEqual(
-			extensions,
-			MARKDOWN_LINK_EXTENSIONS.filter((ext) => ext !== 'txt'),
-		);
-	});
-
-	// macOS ignores `ext` once an association has a content type, and its
-	// Markdown type (net.daringfireball.markdown, owned by the system) only tags
-	// .md and .markdown. Any other extension must sit in an association with no
-	// content type or MIME type, or it gets a dynamic UTI that no association
-	// claims and Markpad drops out of Finder's Open With. One name keeps a single
-	// Windows ProgID, which hooks.nsi registers under.
-	test('macOS claims extensions outside the system Markdown type by extension', () => {
-		for (const association of config.bundle.fileAssociations) {
-			if (association.contentTypes) {
-				assert.deepEqual(association.ext, ['md', 'markdown']);
-			} else {
-				assert.equal(association.mimeType, undefined);
-			}
-			assert.equal(association.name, 'Markdown File');
-		}
-	});
-
-	// The other half of the same policy, kept in this file so neither side moves
-	// without the reader seeing both. Claiming `.txt` in the installer takes the
-	// Text Document association away from Notepad (#179), which is why the test
-	// above exists — but Markpad does open, render and save `.txt` like any other
-	// note, so the Open dialog has to offer them.
+	// The other half of the policy in documents.test.ts "installer associates
+	// every Markdown extension except txt". Claiming `.txt` in the installer takes
+	// the Text Document association away from Notepad (#179), but Markpad does
+	// open, render and save `.txt` like any other note, so the Open dialog has to
+	// offer them.
 	test('the Open dialog offers every extension Markpad treats as a document', () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
@@ -264,11 +223,6 @@ describe('file drop routing', () => {
 });
 
 describe('document encoding round trip', () => {
-	test('no locale still translates a hardcoded UTF-8 label', () => {
-		// A dead key reads like a supported feature to whoever finds it next.
-		assert.doesNotMatch(readDictionarySource(), /utf8:/);
-	});
-
 	// ------------------------------------------- saying why a save was refused
 	//
 	// Refusing is only half of it. The user pasted an emoji into a GBK document
@@ -289,21 +243,6 @@ describe('document encoding round trip', () => {
 		// The sentence it replaced must not come back: a translated toast and an
 		// English one saying the same thing is worse than either alone.
 		assert.doesNotMatch(rust, /cannot represent every character it now contains/);
-	});
-
-	test('every locale can say which encoding refused the save', () => {
-		const i18n = readDictionarySource();
-		const locales = i18n.match(/lossySaveBlocked:/g) ?? [];
-		const translated = i18n.match(/encodingUnmappable:/g) ?? [];
-
-		assert.ok(locales.length >= 5, 'precondition: the sibling refusal is translated');
-		assert.equal(translated.length, locales.length, 'both refusals reach the same languages');
-
-		// The encoding is named, not implied — "some characters cannot be saved"
-		// leaves the user with nothing to search for.
-		for (const line of i18n.split('\n').filter((l) => l.includes('encodingUnmappable:'))) {
-			assert.match(line, /\{\{encoding\}\}/, `no encoding placeholder: ${line.trim().slice(0, 60)}`);
-		}
 	});
 });
 

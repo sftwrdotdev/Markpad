@@ -13,6 +13,7 @@ import { previewLayout } from '../src/lib/utils/previewLayout.ts';
 import { processMarkdownHtml } from '../src/lib/utils/markdown.ts';
 import { parseHtml, type ShimElement } from './renderProtocolDom.ts';
 import { useShimDom } from './preview.domShim.ts';
+import { readSource } from './sourceTree.js';
 
 describe('footnote and heading anchor ids', () => {
 	/*
@@ -930,5 +931,40 @@ describe('preview layout', () => {
 		assert.deepEqual([wide.maxWidthCss, wide.isOverhanging], ['1240px', true]);
 		const full = previewLayout({ ...base, previewFullWidth: true }, reading);
 		assert.deepEqual([full.maxWidthCss, full.isOverhanging], ['100%', true]);
+	});
+});
+
+describe('webview permissions the preview depends on', () => {
+	const tauriConf = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
+		app: { security: { csp: Record<string, string> } };
+	};
+	const csp = tauriConf.app.security.csp;
+
+	test('the capability still grants the command this depends on', () => {
+		// `open_path` needs both the command grant and a path scope. Granting the
+		// command alone leaves the plugin resolving
+		// `fs_scope.is_allowed(path) && allowed.any(matches_path_program)` against
+		// URL-only scope entries, which answer false to the second: that is how
+		// `openPath` came to be refused with ForbiddenPath everywhere, including in
+		// `askToOpenExportedFile` (#399, fixed in #403). The scope's shape is
+		// deliberately not asserted, so narrowing it later is not a test failure.
+		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
+			permissions: Array<string | { identifier: string }>;
+		};
+		const identifiers = capability.permissions.map((p) => (typeof p === 'string' ? p : p.identifier));
+		assert.ok(identifiers.includes('opener:allow-open-path'));
+	});
+
+	test('the CSP that makes the remote case impossible is still the one described', () => {
+		// `saveImageAs` refuses a remote image instead of fetching it because
+		// `connect-src 'self'` refuses a cross-origin fetch from the webview (the
+		// function runs in preview.spec.ts, "save image as"). If `connect-src` is
+		// widened, that explanation stops being true.
+		assert.equal(csp['connect-src'], "'self'");
+	});
+
+	test('the app no longer permits YouTube frames', () => {
+		// A `frame-src` that outlived the iframe is permission granted for no feature.
+		assert.equal(csp['frame-src'], undefined);
 	});
 });

@@ -16,6 +16,7 @@ import { ALLOWED_MARKDOWN_URI_REGEXP } from '../src/lib/utils/sanitize.js';
 import { MERMAID_PRINT_THEME, readDiagramSource, rememberDiagramSource, resolveMermaidTheme } from '../src/lib/utils/mermaidPrint.js';
 import { useShimDom } from './preview.domShim.ts';
 import DOMPurify from 'dompurify';
+import { readSource } from './sourceTree.js';
 
 /**
  * #467: "Is there a way how to change the width of exported HTML?" — there was
@@ -1532,5 +1533,19 @@ describe('export context', () => {
 			// And that is the value the live preview wears as `--preview-max-width`.
 			assert.equal(preview.maxWidthCss, exported === null ? '100%' : `${exported}px`);
 		}
+	});
+});
+
+describe('native PDF printing', () => {
+	test('all Markpad webviews may invoke Tauri native printing', () => {
+		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
+			windows: string[];
+			permissions: unknown[];
+		};
+		assert.deepEqual(capability.windows, ['main', 'window-*']);
+		assert.ok(
+			capability.permissions.includes('core:webview:allow-print'),
+			'macOS replaces window.print() with Tauri native printing, which requires this permission',
+		);
 	});
 });
