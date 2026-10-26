@@ -18,7 +18,7 @@
 	import { editorKeyHandlers } from '../utils/editorKeyHandlers.js';
 	import type { TableOperation } from '../utils/tableEditing.js';
 	import { createdEditorOptions, updatedEditorOptions } from '../utils/editorOptions.js';
-	import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../utils/editorTheme.js';
+	import { defineAppThemes, monacoThemeName } from '../utils/editorTheme.js';
 	import { paragraphAround } from '../utils/focusParagraph.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
@@ -272,47 +272,7 @@
 			return originalOpen.apply(this, arguments as any);
 		};
 
-		const defineThemes = () => {
-			monaco.editor.defineTheme("app-theme-dark", {
-				base: "vs-dark",
-				inherit: true,
-				rules: [...markdownTokenRules('dark'), ...semanticTokenRules('dark')],
-				colors: {
-					"editor.background": "#181818",
-					"menu.background": "#181818",
-					"menu.foreground": "#cccccc",
-					"menu.selectionBackground": "#2a2d2e",
-					"menu.selectionForeground": "#ffffff",
-					"menu.separatorBackground": "#454545",
-					"editorWidget.background": "#181818",
-					"editorWidget.border": "#454545",
-					"scrollbarSlider.background": "#78787859",
-					"scrollbarSlider.hoverBackground": "#7878788c",
-					"scrollbarSlider.activeBackground": "#7878788c",
-				},
-			});
-
-			monaco.editor.defineTheme("app-theme-light", {
-				base: "vs",
-				inherit: true,
-				rules: [...markdownTokenRules('light'), ...semanticTokenRules('light')],
-				colors: {
-					"editor.background": "#FDFDFD",
-					"menu.background": "#FDFDFD",
-					"menu.foreground": "#333333",
-					"menu.selectionBackground": "#eeeeee",
-					"menu.selectionForeground": "#000000",
-					"menu.separatorBackground": "#cccccc",
-					"editorWidget.background": "#FDFDFD",
-					"editorWidget.border": "#cccccc",
-					"scrollbarSlider.background": "#78787859",
-					"scrollbarSlider.hoverBackground": "#7878788c",
-					"scrollbarSlider.activeBackground": "#7878788c",
-				},
-			});
-		};
-
-		defineThemes();
+		defineAppThemes(monaco);
 
 		// The active tab can change while the Monaco chunk is downloading (open a
 		// document in edit mode, then Ctrl+Tab before it lands). The effect that

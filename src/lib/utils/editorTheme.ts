@@ -1,3 +1,5 @@
+import type { editor as MonacoEditor } from 'monaco-editor';
+
 /**
  * What the editor paints Markdown with.
  *
@@ -182,6 +184,9 @@ export function semanticTokenRules(appearance: 'light' | 'dark'): EditorTokenRul
 	);
 }
 
+/** The name `utils/theme.ts` defines an imported VS Code theme under. */
+export const VSCODE_THEME_NAME = 'vscode-custom';
+
 /**
  * The name of the Monaco theme a settings value asks for.
  *
@@ -210,7 +215,48 @@ export function semanticTokenRules(appearance: 'light' | 'dark'): EditorTokenRul
  * and leaves the theme-change write to whoever did the defining.
  */
 export function monacoThemeName(theme: string, systemPrefersDark: boolean): string {
-	if (theme.startsWith('vscode:')) return 'vscode-custom';
+	if (theme.startsWith('vscode:')) return VSCODE_THEME_NAME;
 	const dark = theme === 'system' ? systemPrefersDark : theme === 'dark';
 	return dark ? 'app-theme-dark' : 'app-theme-light';
+}
+
+/** Defines the two themes the app ships, the ones `monacoThemeName` names for light and dark. */
+export function defineAppThemes(monaco: { editor: { defineTheme: typeof MonacoEditor.defineTheme } }): void {
+	monaco.editor.defineTheme("app-theme-dark", {
+		base: "vs-dark",
+		inherit: true,
+		rules: [...markdownTokenRules('dark'), ...semanticTokenRules('dark')],
+		colors: {
+			"editor.background": "#181818",
+			"menu.background": "#181818",
+			"menu.foreground": "#cccccc",
+			"menu.selectionBackground": "#2a2d2e",
+			"menu.selectionForeground": "#ffffff",
+			"menu.separatorBackground": "#454545",
+			"editorWidget.background": "#181818",
+			"editorWidget.border": "#454545",
+			"scrollbarSlider.background": "#78787859",
+			"scrollbarSlider.hoverBackground": "#7878788c",
+			"scrollbarSlider.activeBackground": "#7878788c",
+		},
+	});
+
+	monaco.editor.defineTheme("app-theme-light", {
+		base: "vs",
+		inherit: true,
+		rules: [...markdownTokenRules('light'), ...semanticTokenRules('light')],
+		colors: {
+			"editor.background": "#FDFDFD",
+			"menu.background": "#FDFDFD",
+			"menu.foreground": "#333333",
+			"menu.selectionBackground": "#eeeeee",
+			"menu.selectionForeground": "#000000",
+			"menu.separatorBackground": "#cccccc",
+			"editorWidget.background": "#FDFDFD",
+			"editorWidget.border": "#cccccc",
+			"scrollbarSlider.background": "#78787859",
+			"scrollbarSlider.hoverBackground": "#7878788c",
+			"scrollbarSlider.activeBackground": "#7878788c",
+		},
+	});
 }

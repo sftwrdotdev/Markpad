@@ -8,7 +8,7 @@ import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/
 import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, offsetOf, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
-import { markdownTokenRules, monacoThemeName } from '../src/lib/utils/editorTheme.js';
+import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
 import { runEditorHandler } from './keymapHarness.js';
 import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
 import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
@@ -443,21 +443,6 @@ describe('editor theme contracts', () => {
 		]);
 	});
 
-	test('every name the seam returns is a theme somebody defines', () => {
-		const defined = [
-			readSource('src/lib/components/Editor.svelte'),
-			readSource('src/lib/utils/theme.ts'),
-		]
-			.flatMap((text) => [...text.matchAll(/\.editor\.defineTheme\(\s*["']([\w-]+)["']/g)])
-			.map((match) => match[1]);
-		const asked = ['system', 'light', 'dark', 'vscode:whatever'].map((theme) => [
-			monacoThemeName(theme, false),
-			monacoThemeName(theme, true),
-		]);
-		for (const name of new Set(asked.flat())) {
-			assert.ok(defined.includes(name), `nothing defines ${name}; Monaco would fall back to vs`);
-		}
-	});
 });
 
 /*

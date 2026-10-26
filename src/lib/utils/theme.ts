@@ -1,4 +1,4 @@
-import { semanticTokenRules } from './editorTheme.js';
+import { semanticTokenRules, VSCODE_THEME_NAME } from './editorTheme.js';
 
 // Values taken from an imported VS Code theme end up concatenated into a global
 // `<style>` block. Anything that is not a colour literal could close the rule and
@@ -371,14 +371,14 @@ export async function parseAndApplyVscodeTheme(themeJsonStr: string, name: strin
 				if (isHexColor(value)) monacoColors[key] = value;
 			}
 
-			monaco.editor.defineTheme('vscode-custom', {
+			monaco.editor.defineTheme(VSCODE_THEME_NAME, {
 				base: isDark ? 'vs-dark' : 'vs',
 				inherit: true,
 				rules: rules,
 				colors: monacoColors,
 			});
 
-			monaco.editor.setTheme('vscode-custom');
+			monaco.editor.setTheme(VSCODE_THEME_NAME);
 		}
 	} catch (e) {
 		console.error('Monaco theme application failed:', e);
