@@ -22,10 +22,9 @@
 	import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../utils/editorTheme.js';
 	import { paragraphAround } from '../utils/focusParagraph.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
-	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
+	import { EditorDocument } from '../utils/editorDocument.svelte.js';
 	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
 	import { installVimClipboardRegisters } from '../utils/vimClipboardRegisters.js';
-	import { countWords } from '../utils/wordCount.js';
 	import {
 		headingLinkContext,
 		headingQueryStart,
@@ -45,7 +44,6 @@
 		lineCoordinates,
 		type BufferLine,
 	} from '../utils/lineCoordinates.js';
-	import { editorReadingPosition } from '../utils/editorPosition.js';
 	import {
 		documentParentDir,
 		imageEmbed,
@@ -129,18 +127,15 @@
 	let cursorPosition = $state<Monaco.Position | null>(null);
 	let selectionCount = $state(0);
 	let cursorCount = $state(0);
-	let wordCount = $state(0);
-	let wordCountTimer: ReturnType<typeof setTimeout> | undefined;
-	/** The attached model's text as the content listener last read it; null after a model swap. */
-	let emittedText: string | null = null;
-	let currentLanguage = $state("markdown");
-	let lineEnding = $state<"LF" | "CRLF">("LF");
-	/**
-	 * The file's encoding, which a save writes back (#372). Read from the tab,
-	 * not the Monaco model: it belongs to the file, not the buffer.
-	 */
-	let encoding = $derived(tabManager.activeTab?.encoding ?? 'UTF-8');
-	let currentTabId = tabManager.activeTabId;
+	// Which document the editor shows, the keystroke-to-tab route, and the
+	// status-bar readings of the document; see `utils/editorDocument.svelte.ts`.
+	const doc = new EditorDocument({
+		monaco: () => monaco,
+		editor: () => editor,
+		tabs: tabManager,
+		value: () => value,
+		showWordCount: () => settings.wordCount,
+	});
 
 	// A Monaco action captures its label when it is registered, so actions built
 	// once at mount keep whatever language they were built with — switching the
@@ -165,55 +160,6 @@
 	// `platformOf` for why its fallback cannot disagree with `settings.osType`.
 	function isMacPlatform(): boolean {
 		return platformOf(settings.osType) === 'macos';
-	}
-
-	/**
-	 * The `ITextModel` belonging to a tab — Monaco's document object, and the
-	 * thing that owns the undo stack.
-	 *
-	 * One per tab, created here because this component holds the dynamically
-	 * imported Monaco namespace, and reaped by `TabManager` because that is
-	 * what knows a tab is gone; see `utils/tabModels.ts` for both halves.
-	 *
-	 * The language is re-applied on every call rather than only at creation.
-	 * `language` is derived from the ACTIVE TAB'S PATH, and a tab can be
-	 * repointed at a file of another type without being recreated — following a
-	 * link, back/forward, Save As. The model outlives all of those, so a
-	 * language fixed at creation would be the extension of whatever file the tab
-	 * held the first time it was edited. `setModelLanguage` is a no-op when the
-	 * id already matches.
-	 */
-	function acquireTabModel(tabId: string, seed: string, languageId: string) {
-		const model = getTabModel(tabId, () =>
-			monaco.editor.createModel(seed, languageId, monaco.Uri.parse(tabModelUri(tabId))),
-		);
-		if (model.getLanguageId() !== languageId) monaco.editor.setModelLanguage(model, languageId);
-		return model;
-	}
-
-	/**
-	 * The status-bar readings that are properties of the DOCUMENT rather than of
-	 * an edit: the language, the word count and the line ending.
-	 *
-	 * They used to be refreshed only by `onDidChangeModelContent`, which was
-	 * enough while a tab switch went through `setValue` — that fires a content
-	 * change (a flush) as a side effect. `setModel` does not, because no content
-	 * changed: a different document arrived. So switching tabs has to ask for
-	 * these explicitly, or the status bar keeps the previous document's numbers.
-	 */
-	function syncStatusFromModel(deferWordCount = false) {
-		const model = editor.getModel();
-		if (!model) return;
-		currentLanguage = model.getLanguageId();
-		lineEnding = lineEndingLabel(model);
-		// `countWords` is several full-text regex passes, ~400 ms on a 1 MB
-		// document: skipped while the status bar hides it, and on a keystroke
-		// left for a pause in typing.
-		clearTimeout(wordCountTimer);
-		if (!settings.wordCount) return;
-		const count = () => (wordCount = countWords(model.getValue()));
-		if (deferWordCount) wordCountTimer = setTimeout(count, 300);
-		else count();
 	}
 
 	self.MonacoEnvironment = {
@@ -322,7 +268,7 @@
 		// re-read the id here: the view state saved on unmount has to be filed
 		// against the tab the editor is really showing, not the one that was
 		// active when this component was created.
-		currentTabId = tabManager.activeTabId;
+		doc.currentTabId = tabManager.activeTabId;
 
 		const getTheme = () =>
 			monacoThemeName(
@@ -343,8 +289,8 @@
 		// is not reachable from the markup (the pane renders under
 		// `tabManager.activeTab`); it is the honest fallback for the window
 		// between the Monaco chunk resolving and this function running.
-		const documentOptions = currentTabId
-			? { model: acquireTabModel(currentTabId, value, language) }
+		const documentOptions = doc.currentTabId
+			? { model: doc.acquireTabModel(doc.currentTabId, value, language) }
 			: { value, language };
 
 		editor = monaco.editor.create(container, {
@@ -529,29 +475,7 @@
 
 		editor.focus();
 
-		// The one route from a keystroke to the document. `value` is a plain
-		// prop — it reads the active tab's `rawContent` and nothing here writes
-		// it back — so this call is not a second opinion about the buffer, it is
-		// the only opinion. It used to be a `bind:value` writing the field
-		// directly PLUS this call, and the tab only stayed dirty-tracked because
-		// Svelte's assignment happened to run first: deleting this line left the
-		// text on screen correct and the dirty flag, the auto-save trigger and
-		// the close prompt silently dead. Delete it now and the editor stops
-		// editing the document at all, which is a bug you can see.
-		//
-		// The guard is what stops the loop: the effect below pushes an external
-		// buffer replacement in with `setValue`, which fires this listener with
-		// text `value` already holds, and writing that back to the store would
-		// be a write the user did not make.
-		editor.onDidChangeModelContent(() => {
-			const newValue = editor.getValue();
-			emittedText = newValue;
-			if (value !== newValue && tabManager.activeTabId) {
-				tabManager.updateTabRawContent(tabManager.activeTabId, newValue);
-			}
-
-			syncStatusFromModel(true);
-		});
+		editor.onDidChangeModelContent(() => doc.contentChanged());
 
 		editor.onDidChangeCursorPosition((e) => {
 			cursorPosition = e.position;
@@ -586,7 +510,7 @@
 			}
 		});
 
-		syncStatusFromModel();
+		doc.syncStatus();
 
 		const wheelListener = (e: WheelEvent) => {
 			if (e.ctrlKey || e.metaKey) {
@@ -812,7 +736,7 @@
 
 		return () => {
 			editorReady = false;
-			clearTimeout(wordCountTimer);
+			doc.cancelPendingWordCount();
 			window.open = originalOpen;
 			mediaQuery.removeEventListener("change", updateTheme);
 			container.removeEventListener("wheel", wheelListener, { capture: true });
@@ -821,39 +745,10 @@
 			documentSymbols.dispose();
 			foldingRanges.dispose();
 
-			if (editor && currentTabId) writeEditorPosition(currentTabId);
+			if (editor && doc.currentTabId) doc.writePosition(doc.currentTabId);
 
 			editor.dispose();
 		};
-	}
-
-	/**
-	 * Record on `tabId` where the editor is: the Monaco view state, and the two
-	 * position fields `editorReadingPosition` derives from one reading.
-	 *
-	 * Three layout reads (`getScrollHeight`, `getLayoutInfo`,
-	 * `getVisibleRanges`), so this belongs at moments and never on the hot path
-	 * — the teardown above is one such moment, `flushPositionTo` below is the
-	 * other, and there are no others.
-	 *
-	 * The caller has already established that `editor` is up and that `tabId` is
-	 * the tab it is holding.
-	 */
-	function writeEditorPosition(tabId: string) {
-		tabManager.updateTabEditorState(tabId, editor.saveViewState());
-
-		const ranges = editor.getVisibleRanges();
-		const model = editor.getModel();
-		const { scrollPercentage, anchorLine } = editorReadingPosition({
-			scrollTop: editor.getScrollTop(),
-			contentHeight: editor.getScrollHeight(),
-			viewportHeight: editor.getLayoutInfo().height,
-			topLine: ranges.length > 0 && model ? ranges[0].startLineNumber : null,
-			text: model?.getValue() ?? '',
-		});
-
-		if (scrollPercentage !== null) tabManager.updateTabScrollPercentage(tabId, scrollPercentage);
-		if (anchorLine !== null) tabManager.updateTabAnchorLine(tabId, anchorLine);
 	}
 
 	// Editing primitives used by the context-menu actions. They live at
@@ -1774,45 +1669,7 @@
 
 		if (!editorReady || !editor) return;
 
-		const switched = activeTabId !== currentTabId;
-
-		if (switched && currentTabId) {
-			const state = editor.saveViewState();
-			tabManager.updateTabEditorState(currentTabId, state);
-		}
-
-		currentTabId = activeTabId;
-
-		if (activeTabId) {
-			const model = acquireTabModel(activeTabId, content, languageId);
-			if (editor.getModel() !== model) {
-				editor.setModel(model);
-				emittedText = null;
-			}
-		}
-
-		// The keystroke that changed `value` came from this editor, and the
-		// model already holds it: no need to copy the buffer out to compare.
-		if (content !== emittedText && editor.getValue() !== content) {
-			editor.setValue(content);
-		}
-
-		if (switched) {
-			// The view state is the editor's, not the model's — cursor, scroll,
-			// selections and the folding contribution — so it still has to be
-			// restored by hand, and only after the model it describes is
-			// attached.
-			if (tabManager.activeTab?.editorViewState) {
-				editor.restoreViewState(tabManager.activeTab.editorViewState);
-			} else {
-				editor.setScrollTop(0);
-				editor.setPosition({ lineNumber: 1, column: 1 });
-			}
-		}
-
-		// Cheap on the hot path: this effect re-runs on every keystroke (it
-		// reads `value`), and on a keystroke neither test holds.
-		if (switched || currentLanguage !== languageId) syncStatusFromModel();
+		doc.activate(activeTabId, content, languageId);
 	});
 
 	/** The one place the settings, and `readOnly`, reach Monaco after creation: the effect below, and `onMount` once the font is measured. */
@@ -1826,7 +1683,7 @@
 
 	// The count is not kept while hidden, so showing it has to take one.
 	$effect(() => {
-		if (editorReady && editor && settings.wordCount) syncStatusFromModel();
+		if (editorReady && editor && settings.wordCount) doc.syncStatus();
 	});
 
 	// Focus Mode (#819): the paragraph the cursor is in keeps full strength and
@@ -2156,8 +2013,8 @@
 	 * the caller named — a wrong position on two tabs instead of one.
 	 */
 	export function flushPositionTo(tabId: string) {
-		if (!editorReady || !editor || currentTabId !== tabId) return;
-		writeEditorPosition(tabId);
+		if (!editorReady || !editor) return;
+		doc.flushPositionTo(tabId);
 	}
 </script>
 
@@ -2205,20 +2062,20 @@
 		{/if}
 		{#if settings.wordCount}
 			<div class="status-item">
-				{t('editor.status.words', settings.language).replace('{{count}}', wordCount.toString())}
+				{t('editor.status.words', settings.language).replace('{{count}}', doc.wordCount.toString())}
 			</div>
 		{/if}
 		<div class="status-item">
 			{zoomLevel}%
 		</div>
 		<div class="status-item">
-			{currentLanguage}
+			{doc.language}
 		</div>
 		<!-- Not translated, like the language id and the zoom level above it:
 		     "LF" and "CRLF" are acronyms, and the `crlf` key they replace held
 		     the same ASCII in all five locales that bothered to define it. -->
-		<div class="status-item">{lineEnding}</div>
-		<div class="status-item">{encoding}</div>
+		<div class="status-item">{doc.lineEnding}</div>
+		<div class="status-item">{doc.encoding}</div>
 	</div>
 {/if}
 
