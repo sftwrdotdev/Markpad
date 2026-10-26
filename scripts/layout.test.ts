@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import postcss, { type Rule } from 'postcss';
 
 import { asBufferLine, asRendererLine, lineCoordinates, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
 import { outwardSign, planPaneSlide } from '../src/lib/utils/paneSlide.js';
@@ -8,6 +9,8 @@ import { splitRatioAfterDrag, splitRatioAfterKey, splitRatioAfterMove } from '..
 import { activeTocIdForLine, sourceLineOf, type TocLineEntry } from '../src/lib/utils/tocFollow.js';
 import { isTocOverhanging, isTocOverPreview } from '../src/lib/utils/tocOverlay.ts';
 import { bindScrollSync } from '../src/lib/utils/editorJumps.js';
+import { FOLD_TRANSITION_MS } from '../src/lib/utils/foldLayout.js';
+import { readSource } from './sourceTree.js';
 
 describe('scroll sync section mapping', () => {
 	// These tests import and run the mapping. The previous scroll-sync tests read
@@ -743,5 +746,44 @@ describe('scroll sync input', () => {
 
 		binding.dispose();
 		assert.deepEqual(listeners, { scroll: [], cursor: [] });
+	});
+});
+
+describe('fold transition in the stylesheet', () => {
+	const styles = postcss.parse(readSource('src/styles.css'));
+
+	/** The screen rule (top level, not inside `@media print`) whose selector is exactly `selector`. */
+	function screenRule(selector: string): Rule {
+		const rule = styles.nodes.find((node): node is Rule => node.type === 'rule' && node.selector === selector);
+		assert.ok(rule, `styles.css must define ${selector}`);
+		return rule;
+	}
+
+	function declaration(rule: Rule, property: string): string | undefined {
+		let value: string | undefined;
+		rule.walkDecls(property, (decl) => {
+			value = decl.value;
+		});
+		return value;
+	}
+
+	test('fold wrapper animates an explicit measured height instead of a fractional grid track', () => {
+		const expanded = screenRule('.foldable-content-wrapper');
+		assert.match(declaration(expanded, 'height') ?? '', /^var\(--fold-content-height\b/);
+		assert.equal(declaration(expanded, 'grid-template-rows'), undefined);
+		assert.equal(declaration(screenRule('.foldable-content-wrapper.is-collapsed'), 'height'), '0');
+	});
+
+	// This couples a TypeScript constant to a CSS duration. When FindBar's re-aim
+	// timer fires before the height transition settles, the scroll lands on a
+	// target that is still moving: "find sometimes scrolls to the wrong place".
+	test('the find-bar fold re-aim delay outlasts the CSS fold transition', () => {
+		const transition = declaration(screenRule('.foldable-content-wrapper'), 'transition') ?? '';
+		const height = transition.split(',').map((entry) => entry.trim()).find((entry) => entry.startsWith('height '));
+		assert.ok(height, 'styles.css must animate the fold wrapper height');
+		const duration = height.match(/(?<![\w.])([\d.]+)(ms|s)\b/);
+		assert.ok(duration, `no duration in "${height}"`);
+		const ms = Number(duration[1]) * (duration[2] === 's' ? 1000 : 1);
+		assert.ok(FOLD_TRANSITION_MS >= ms, `FOLD_TRANSITION_MS (${FOLD_TRANSITION_MS}ms) must outlast the ${ms}ms height transition`);
 	});
 });

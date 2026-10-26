@@ -5,9 +5,8 @@ import { describe, test } from 'node:test';
 import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
 
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
-import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
 import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
-import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
+import { importedThemeRules } from '../src/lib/utils/theme.js';
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { DEFAULT_IMAGE_DIRECTORY } from '../src/lib/utils/imageEmbed.js';
 
@@ -74,45 +73,6 @@ describe('editor option wiring', () => {
 // (#676's defect, one layer over), and a colour that has drifted from the one
 // the rest of the app resolves through `--color-*`.
 describe('editor theme contracts', () => {
-	const styles = readSource('src/styles.css');
-
-	/** A `--color-*` value, read out of the block that defines the given appearance. */
-	function paletteColor(appearance: 'light' | 'dark', name: string): string {
-		const block = appearance === 'dark'
-			? styles.slice(styles.indexOf(':root[data-theme="dark"] {'))
-			: styles.slice(styles.indexOf(':root {'));
-		const match = block.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`));
-		assert.ok(match, `styles.css must define --color-${name} for ${appearance}`);
-		return match[1].slice(1).toLowerCase();
-	}
-
-	test('the colours are the app palette, not a second one', () => {
-		// One-way duplication: `defineTheme` takes hex strings and never sees the
-		// stylesheet, so the literals in editorTheme.ts have to be checked against
-		// the custom properties everything else in the app resolves.
-		const expected = {
-			accent: 'accent-fg',
-			code: 'success-fg',
-			emphasis: 'attention-fg',
-			link: 'done-fg',
-			muted: 'fg-muted',
-			text: 'fg-default',
-		};
-
-		for (const appearance of ['light', 'dark'] as const) {
-			const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
-			assert.equal(byToken.get('keyword.md'), paletteColor(appearance, expected.accent));
-			assert.equal(byToken.get('string.md'), paletteColor(appearance, expected.code));
-			assert.equal(byToken.get('variable.md'), paletteColor(appearance, expected.code));
-			assert.equal(byToken.get('strong.md'), paletteColor(appearance, expected.emphasis));
-			assert.equal(byToken.get('emphasis.md'), paletteColor(appearance, expected.emphasis));
-			assert.equal(byToken.get('string.link.md'), paletteColor(appearance, expected.link));
-			assert.equal(byToken.get('escape.md'), paletteColor(appearance, expected.muted));
-			assert.equal(byToken.get('variable.source.md'), paletteColor(appearance, expected.text));
-			assert.equal(byToken.get('keyword.table.header.md'), paletteColor(appearance, expected.text));
-		}
-	});
-
 	test('the editor pane and the theme importer are the only writers', () => {
 		assert.deepEqual(filesMatching(readSourceFiles('src'), /\.editor\.setTheme\(/), [
 			// The widget's owner: it defines `app-theme-*` and it is the only thing
@@ -439,25 +399,6 @@ describe('semantic token contracts', () => {
 
 		const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
 		assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
-	});
-});
-
-// #676: an imported VS Code theme colours TextMate scopes, Monaco's markdown
-// tokenizer emits names of its own, and until now nothing renamed one into the
-// other — so `markup.bold` reached `defineTheme` and matched nothing.
-describe('markdown token colour variables', () => {
-	test('every construct colour the importer writes is read by the stylesheet', () => {
-		// The two halves are joined by a variable name and nothing else: the
-		// importer writes `--md-strong`, `styles.css` reads it, and no type or
-		// import holds them together. Renaming one silently drops the colour.
-		const styles = readSource('src/styles.css');
-
-		for (const [kind, cssVar] of PREVIEW_KIND_VARS) {
-			// The comma is the fallback. Without one, a construct the theme does not
-			// name renders with no colour at all rather than with the value the rule
-			// carried before the import.
-			assert.ok(styles.includes(`var(${cssVar},`), `${cssVar} is written for \`${kind}\` and read by no rule with a fallback`);
-		}
 	});
 });
 

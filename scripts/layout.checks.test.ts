@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { FOLD_TRANSITION_MS } from '../src/lib/utils/foldLayout.js';
 import { readSource } from './sourceTree.js';
 
 describe('split pane ratio', () => {
@@ -24,33 +23,6 @@ describe('split pane ratio', () => {
 });
 
 describe('fold layout', () => {
-
-	test('fold wrapper animates an explicit measured height instead of a fractional grid track', () => {
-		const styles = readSource('src/styles.css');
-		const expandedRule = styles.match(/\.foldable-content-wrapper\s*\{([^}]*)\}/)?.[1] || '';
-
-		assert.match(expandedRule, /height:\s*var\(--fold-content-height/);
-		assert.doesNotMatch(expandedRule, /grid-template-rows:\s*1fr/);
-		assert.match(styles, /foldable-content-wrapper\.is-collapsed[\s\S]*height:\s*0/);
-	});
-
-	// This assertion couples a TypeScript constant to a CSS duration in another file. Nothing else compares the two, and when
-	// FindBar's re-aim timer fires before the height transition settles the scroll
-	// lands on a target that is still moving — a defect that only shows up as "find
-	// sometimes scrolls to the wrong place".
-	test('the find-bar fold re-aim delay outlasts the CSS fold transition', () => {
-		const styles = readSource('src/styles.css');
-
-		const expandedRule = styles.match(/\.foldable-content-wrapper\s*\{([^}]*)\}/)?.[1] || '';
-		const transition = expandedRule.match(/transition:[^;]*?height\s+([\d.]+)s/);
-		assert.ok(transition, 'styles.css must animate the fold wrapper height');
-
-		assert.ok(
-			FOLD_TRANSITION_MS >= Number(transition[1]) * 1000,
-			`FOLD_TRANSITION_MS (${FOLD_TRANSITION_MS}ms) must outlast the ${transition[1]}s height transition`,
-		);
-	});
-
 	// The direction the previous spelling could not state. `observeFoldLayout` used
 	// to be handed `markdownBody`, and that was right while the article held one
 	// document; it now holds one `.markdown-blocks` host per open tab, all but one

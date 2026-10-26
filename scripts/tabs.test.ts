@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import postcss from 'postcss';
 
 import { duplicateNameSuffixes } from '../src/lib/utils/duplicateTabNames.js';
 import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
@@ -15,6 +16,7 @@ import {
 	type TransferableTab,
 } from '../src/lib/utils/tabTransfer.js';
 import { commitWithoutTransitions } from '../src/lib/utils/motion.js';
+import { readSource } from './sourceTree.js';
 import { nextUntitledTitle } from '../src/lib/utils/untitledTitle.js';
 import { outgoingTabAnchorLine, type StoredTabPosition, editorReadingPosition } from '../src/lib/utils/editorPosition.js';
 import { EditorJumps, type JumpEditor } from '../src/lib/utils/editorJumps.js';
@@ -568,5 +570,20 @@ describe('tab switch is not a render', () => {
 
 		assert.deepEqual(log, ['add tab-switching', 'recalc with tab-switching', 'remove tab-switching']);
 		assert.equal(classes.size, 0, 'the class does not stay on');
+	});
+
+	test('styles.css switches transitions off under .tab-switching', () => {
+		// The class only means something because of this rule, and jsdom has no
+		// style recalculation to observe it in. The outline wrapper's shadow
+		// follows the tab's mode, so the rule must reach it.
+		const styles = postcss.parse(readSource('src/styles.css'));
+		const transitions: string[] = [];
+		styles.walkRules((rule) => {
+			if (!rule.selectors.includes('.layout-container.tab-switching .toc-overlay-wrapper')) return;
+			rule.walkDecls('transition', (decl) => {
+				transitions.push(`${decl.value}${decl.important ? ' !important' : ''}`);
+			});
+		});
+		assert.deepEqual(transitions, ['none !important']);
 	});
 });

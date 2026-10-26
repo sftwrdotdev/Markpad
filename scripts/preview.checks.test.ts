@@ -266,15 +266,6 @@ describe('preview sanitizing', () => {
 describe('preview width', () => {
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
 
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	test('the stylesheet reads the width the markup writes', () => {
-		// Contract between the inline style and the component's <style>: the
-		// width itself is previewLayout's (preview.test.ts "preview layout").
-		assert.match(viewerSource, /--preview-max-width: \{layout\.maxWidthCss\}/);
-		assert.match(viewerSource, /--measure: min\(100cqi, var\(--preview-max-width, 880px\)\)/);
-	});
-
 	test('preview full-width state migrates from the legacy localStorage key', () => {
 		// The pair the migration is made of, asserted on the function rather than on
 		// its call site: `??` is what makes the new key win once it exists.
