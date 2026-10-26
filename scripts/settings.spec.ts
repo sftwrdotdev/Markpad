@@ -879,6 +879,15 @@ describe('settings persistence', async () => {
 		assert.equal(fallback.sidebarSplit, SIDEBAR_SPLIT_RANGE.min);
 	});
 
+	test('the tab position select offers exactly the values the store accepts', () => {
+		const offered = settingsModule.TAB_POSITION_OPTIONS.map((option) => option.value);
+		assert.deepEqual(offered, ['top', 'left', 'right']);
+		for (const value of offered) {
+			resetStorage({ 'editor.tabPosition': value });
+			assert.equal(createStore().tabPosition, value, `${value} is offered but not kept`);
+		}
+	});
+
 	test('the setting is one control, defaulting to preview', async () => {
 		const { OPEN_FILE_MODE_OPTIONS, isOpenFileMode } = await import('../src/lib/utils/openFileMode.js');
 		resetStorage();

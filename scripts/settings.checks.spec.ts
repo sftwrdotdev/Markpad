@@ -349,11 +349,4 @@ describe('settings persistence', async () => {
 		const buried = rows.flatMap((row) => row.nested.map((found) => `${row.label}: ${found}`));
 		assert.deepEqual(buried, [], 'a sized control must be a direct child of its .setting-item');
 	});
-
-	test('the tab position select offers exactly the values the store accepts', () => {
-		const select = sliceBetween(componentSource, 'id="appearance-tab-position"', '</select>');
-		const offered = [...select.matchAll(/<option value="([^"]+)"/g)].map((m) => m[1]);
-		assert.deepEqual(offered, ['top', 'left', 'right']);
-		for (const value of offered) assert.ok(settingsModule.isTabPosition(value), value);
-	});
 });
