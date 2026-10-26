@@ -32,7 +32,12 @@ export function isHomePath(path: string): boolean {
  * Whether the window draws the home screen instead of a document: an empty
  * window, the home tab, or the Home button's overlay over any tab. Decided by
  * tab kind, never by the localised title (#392).
+ *
+ * `activeTab` is a getter, read only when `showHome` is false: an effect that
+ * calls this must not re-run on a tab switch while the Home overlay is up.
  */
-export function showsHomeScreen(activeTab: { path: string } | undefined, showHome: boolean): boolean {
-	return showHome || !activeTab || isHomePath(activeTab.path);
+export function showsHomeScreen(activeTab: () => { path: string } | undefined, showHome: boolean): boolean {
+	if (showHome) return true;
+	const tab = activeTab();
+	return !tab || isHomePath(tab.path);
 }

@@ -1,3 +1,5 @@
+import { untrack } from 'svelte';
+
 import { applyFolds, processBlockMarkup, wrapHeadings, type FoldIds } from './markdown.js';
 import { invalidateAnchorMemos } from './previewAnchor.js';
 import { replacedBy } from './richContent.js';
@@ -382,6 +384,9 @@ const patchedHtml = new WeakMap<HTMLElement, string>();
  * registration delivers an initial observation — so handing it the whole host
  * would put back the per-keystroke re-measure of every fold that keeping the
  * observation alive removed.
+ *
+ * The patch runs untracked, `readTab` included: a fold toggle or a rename is
+ * not a new document, so nothing it reads may re-run the caller's effect.
  */
 export function patchHost(
 	host: HTMLElement,
@@ -394,10 +399,10 @@ export function patchHost(
 	if (unchanged) invalidateAnchorMemos();
 	const patch = unchanged
 		? { inserted: [], wrappers: [] }
-		: (() => {
+		: untrack(() => {
 				const { filePath, foldOverrides } = readTab();
 				return patchPreview(host, html, filePath, foldOverrides);
-			})();
+			});
 	for (const block of patch.inserted) observe(block);
 	for (const wrapper of patch.wrappers) observe(wrapper);
 	return patch;

@@ -377,7 +377,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	 * sidebar, and one sitting in the margin is not in anybody's way.
 	 */
 	$effect(() => {
-		if (!settings.showToc || !tocAutoCollapses(isOverhanging, settings.pinnedToc)) return;
+		if (!settings.showToc || !tocAutoCollapses(() => isOverhanging, settings.pinnedToc)) return;
 		const dismiss = (e: PointerEvent) => {
 			if (dismissesToc(e.target as Node | null, tocWrapperEl, tocToggleEl)) settings.showToc = false;
 		};
@@ -655,7 +655,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	// The pin's IPC is sent first and sync commands run in order, so the list sees it.
 	$effect(() => {
 		void tabManager.windowTag?.pinned;
-		if (showsHomeScreen(tabManager.activeTab, showHome)) refreshPinnedTags().catch(console.error);
+		if (showsHomeScreen(() => tabManager.activeTab, showHome)) refreshPinnedTags().catch(console.error);
 	});
 
 	const documentSession = createDocumentSession({
@@ -1098,14 +1098,14 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		// ./utils/sanitize.ts for the policy itself, and renderMarkdownPreview
 		// for why this path sanitizes last.
 		//
-		// Untracked: a fold toggle or a rename is not a new document.
+		// Untracked inside patchHost: a fold toggle or a rename is not a new document.
 		const patch = patchHost(
 			host,
 			htmlContent,
-			() => untrack(() => {
+			() => {
 				const tab = tabManager.activeTab;
 				return { filePath: tab?.path ?? '', foldOverrides: tab?.foldOverrides ?? NO_FOLD_OVERRIDES };
-			}),
+			},
 			(scope) => foldLayout.current?.observe(scope),
 		);
 		// A host's first enrichment is the cold start above: see `coldRestore`.
@@ -1877,7 +1877,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			save,
 			copyFile: (from, dest) => invoke('copy_file', { src: from, dest }),
 			toast: addToast,
-			language: settings.language,
+			language: () => settings.language,
 		});
 	}
 
@@ -2085,7 +2085,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	$effect(() => {
 		const tab = tabManager.activeTab;
 		const renderRevision = ++previewRenderRevision;
-		if (tab && refreshesPreviewCache(tab, isEditing, settings.showToc)) {
+		if (tab && refreshesPreviewCache(tab, () => isEditing, () => settings.showToc)) {
 			const tabId = tab.id;
 			const rawContent = tab.rawContent;
 			if (tab.previewedRawContent === rawContent) return;
@@ -2739,7 +2739,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			</button>
 		</div>
 	{/if}
-	{#if tabManager.activeTab && !showsHomeScreen(tabManager.activeTab, showHome)}
+	{#if tabManager.activeTab && !showsHomeScreen(() => tabManager.activeTab, showHome)}
 			<div
 				class="markdown-container"
 				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize}px; --highlight-color: {previewAppearance.highlightColor};"
@@ -3036,7 +3036,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 											// sidebar and stays; not overhanging it is sitting in the
 											// margin harming nothing, and closing it would take away a
 											// behaviour that was already fine.
-											if (tocAutoCollapses(isOverhanging, settings.pinnedToc)) settings.showToc = false;
+											if (tocAutoCollapses(() => isOverhanging, settings.pinnedToc)) settings.showToc = false;
 											if (hasEditorPane && editorPane) {
 												// Same renderer-to-buffer shift as the context menu: the
 												// outline reads `data-sourcepos` too, and has been landing

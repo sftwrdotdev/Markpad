@@ -77,7 +77,8 @@ export interface SaveImageDeps {
 	save(options: { defaultPath: string; filters: { name: string; extensions: string[] }[] }): Promise<string | null>;
 	copyFile(src: string, dest: string): Promise<unknown>;
 	toast(message: string, type?: 'info' | 'error'): void;
-	language: LanguageCode;
+	/** Read when the toast is shown, after the Save dialog closes. */
+	language(): LanguageCode;
 }
 
 /**
@@ -97,7 +98,7 @@ export async function saveImageAs(src: string, deps: SaveImageDeps): Promise<voi
 		// display.) The download has to happen in Rust, and there is no
 		// command for it yet, so say that rather than reporting a network
 		// failure that never happened.
-		deps.toast(t('toast.remoteImageNotSupported', deps.language), 'error');
+		deps.toast(t('toast.remoteImageNotSupported', deps.language()), 'error');
 		return;
 	}
 
@@ -109,9 +110,9 @@ export async function saveImageAs(src: string, deps: SaveImageDeps): Promise<voi
 	if (dest) {
 		try {
 			await deps.copyFile(realPath, dest);
-			deps.toast(t('toast.imageSavedSuccessfully', deps.language));
+			deps.toast(t('toast.imageSavedSuccessfully', deps.language()));
 		} catch (e) {
-			deps.toast(`${t('toast.failedToSaveImage', deps.language)}: ${e}`, 'error');
+			deps.toast(`${t('toast.failedToSaveImage', deps.language())}: ${e}`, 'error');
 		}
 	}
 }

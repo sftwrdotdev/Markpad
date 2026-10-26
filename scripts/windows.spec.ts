@@ -1005,7 +1005,7 @@ describe('the home tab renders the home screen', () => {
 	useTauri();
 
 	/** True when the app draws the document container; false when it draws HomePage. */
-	const showsDocumentContainer = (showHome = false) => !showsHomeScreen(tabManager.activeTab, showHome);
+	const showsDocumentContainer = (showHome = false) => !showsHomeScreen(() => tabManager.activeTab, showHome);
 
 	function reset() {
 		tabManager.closeAll();

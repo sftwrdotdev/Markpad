@@ -14,6 +14,8 @@ import { followFoldLayout, previewPaneShown } from '../src/lib/utils/foldLayoutE
 import { runeEffect } from './runeEffect.svelte.js';
 import { patchHost } from '../src/lib/utils/previewPatch.js';
 import { followPreviewPatch } from '../src/lib/utils/previewPatchEffect.svelte.js';
+import { refreshesPreviewCache } from '../src/lib/utils/previewRefresh.js';
+import { showsHomeScreen } from '../src/lib/utils/homeTab.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -997,6 +999,66 @@ describe('outline document passes', () => {
 	});
 });
 
+/*
+ * The viewer's effects call these helpers. Each skips a reactive read the way
+ * the inline condition it replaced did, so the effect does not subscribe to a
+ * value that cannot change its outcome.
+ */
+describe('viewer effect helpers read only what decides them', () => {
+	/** Runs `read` in an effect; returns how many times it has run. */
+	function runs(read: () => void) {
+		let count = 0;
+		const stop = runeEffect(() => {
+			count++;
+			read();
+		});
+		onTestFinished(stop);
+		flushSync();
+		assert.equal(count, 1, 'the effect ran');
+		return () => count;
+	}
+
+	test('split view does not read the outline toggle', () => {
+		const s = runeProps({ isSplit: true, isEditing: true, showToc: false, rawContent: 'x' });
+		const count = runs(() => refreshesPreviewCache(s, () => s.isEditing, () => s.showToc));
+		s.showToc = true;
+		flushSync();
+		assert.equal(count(), 1);
+		s.isSplit = false;
+		flushSync();
+		s.showToc = false;
+		flushSync();
+		assert.equal(count(), 3, 'out of split view the toggle is read');
+	});
+
+	test('the Home overlay does not read the active tab', () => {
+		const s = runeProps({ showHome: true, tab: { path: '/a.md' } as { path: string } | undefined });
+		const count = runs(() => showsHomeScreen(() => s.tab, s.showHome));
+		s.tab = { path: '/b.md' };
+		flushSync();
+		assert.equal(count(), 1);
+	});
+
+	test('a pinned outline does not read the overhang', () => {
+		const s = runeProps({ pinned: true, overhanging: false });
+		const count = runs(() => tocAutoCollapses(() => s.overhanging, s.pinned));
+		s.overhanging = true;
+		flushSync();
+		assert.equal(count(), 1);
+	});
+
+	test('the preview patch does not subscribe to what it reads', () => {
+		const host = document.createElement('div');
+		const s = runeProps({ folds: new Set<string>() });
+		let html = '<p data-sourcepos="1:1-1:1">a</p>';
+		const count = runs(() => patchHost(host, html, () => ({ filePath: '/a.md', foldOverrides: s.folds }), () => {}));
+		html = '<p data-sourcepos="1:1-1:1">b</p>';
+		s.folds = new Set(['x']);
+		flushSync();
+		assert.equal(count(), 1);
+	});
+});
+
 describe('outline render signal', () => {
 	/**
 	 * The outline reads the preview's DOM, so it has to be told when that DOM holds
@@ -1209,10 +1271,10 @@ describe('outline overlay placement', () => {
 		const wide = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1400 });
 		const narrow = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1000 });
 		// A window wide enough to hold the outline beside the text keeps it open.
-		assert.equal(tocAutoCollapses(wide.isOverhanging, false), false);
-		assert.equal(tocAutoCollapses(narrow.isOverhanging, false), true);
+		assert.equal(tocAutoCollapses(() => wide.isOverhanging, false), false);
+		assert.equal(tocAutoCollapses(() => narrow.isOverhanging, false), true);
 		// Pinned, it is a sidebar and stays.
-		assert.equal(tocAutoCollapses(narrow.isOverhanging, true), false);
+		assert.equal(tocAutoCollapses(() => narrow.isOverhanging, true), false);
 
 		// Click-outside must not fight the toggle button, which owns its own click.
 		const panel = document.createElement('nav');

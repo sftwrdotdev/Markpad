@@ -53,7 +53,7 @@ describe('rendered HTML field', () => {
 		tabManager.updateTabRawContent(tab.id, '# notes\n\nsomething worth exporting\n');
 
 		assert.equal(tab.isSplit, false);
-		assert.equal(refreshesPreviewCache(tab, tab.isEditing, settings.showToc), false, 'nothing re-renders tab.content in this state');
+		assert.equal(refreshesPreviewCache(tab, () => tab.isEditing, () => settings.showToc), false, 'nothing re-renders tab.content in this state');
 		assert.equal(tab.content, '', 'so the rendered-HTML cache is still empty');
 		assert.notEqual(tab.rawContent, '', 'while the document itself is not');
 	});

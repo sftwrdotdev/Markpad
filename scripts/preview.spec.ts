@@ -12,6 +12,7 @@ import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { copyableFlavours, copyableHtml, handleCopy } from '../src/lib/utils/previewCopy.js';
 import { linkTooltipFor } from '../src/lib/utils/previewLinks.js';
 import { imageMenuItems, saveImageAs, type SaveImageDeps } from '../src/lib/utils/viewerContextMenu.js';
+import { loadLocale } from '../src/lib/utils/i18n.js';
 import { type DomPoint, pointAtSource, sourceAtPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, sanitizeMarkdownFragment, sanitizeMarkdownHtml } from '../src/lib/utils/sanitize.js';
 import blocks from './fixtures/markdown-syntax.blocks.json';
@@ -1496,7 +1497,7 @@ describe('save image as', () => {
 			},
 			copyFile: async (src, to) => void calls.push(`copy:${src}->${to}`),
 			toast: (message, type = 'info') => void calls.push(`toast:${type}:${message}`),
-			language: 'en',
+			language: () => 'en',
 		};
 		return { deps, calls };
 	}
@@ -1539,6 +1540,20 @@ describe('save image as', () => {
 		await saveImageAs('https://example.test/a.png', remote.deps);
 		assert.equal(remote.calls.length, 1);
 		assert.match(remote.calls[0], /^toast:error:/);
+	});
+
+	test('the saved toast uses the language chosen while the dialog was open', async () => {
+		await loadLocale('de');
+		let language: 'en' | 'de' = 'en';
+		const { deps, calls } = recordingDeps();
+		const save = deps.save;
+		deps.save = async (options) => {
+			language = 'de';
+			return save(options);
+		};
+		deps.language = () => language;
+		await saveImageAs('asset://localhost/%2Fpics%2Fcat.jpg', deps);
+		assert.equal(calls.at(-1), 'toast:info:Bild erfolgreich gespeichert');
 	});
 
 	test('the preview offers Save Image As only for a local image', () => {

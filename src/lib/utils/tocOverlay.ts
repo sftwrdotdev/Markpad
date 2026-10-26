@@ -77,9 +77,12 @@ export function isTocOverhanging(input: TocOverhangInput): boolean {
  * A floating outline gets out of the way (an outside click, a picked entry)
  * only while it IS covering something: pinned it is a sidebar, and one sitting
  * in the margin is not in anybody's way.
+ *
+ * `isOverhanging` is a getter, read only when not pinned: an effect that calls
+ * this must not re-run on a layout change while the outline is pinned.
  */
-export function tocAutoCollapses(isOverhanging: boolean, isPinned: boolean): boolean {
-	return isOverhanging && !isPinned;
+export function tocAutoCollapses(isOverhanging: () => boolean, isPinned: boolean): boolean {
+	return !isPinned && isOverhanging();
 }
 
 /**
