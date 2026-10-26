@@ -106,7 +106,6 @@ describe('the recent-file list is written through one helper', () => {
 });
 
 describe('window state restore', () => {
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
 
 	// Session restore persists WINDOW state only: which files are open, the
@@ -114,11 +113,9 @@ describe('window state restore', () => {
 	// always lives on disk — the snapshot never carries rawContent, so unsaved
 	// changes are handled exclusively by the per-tab close dialogs.
 
-	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
-		// Behaviour: windows.sessionRestore.spec.ts. What stays here is the
-		// contract: the localStorage key older builds read, and the Rust commands
-		// that hold the snapshot now.
-		assert.match(viewer, /const WINDOW_STATE_KEY = 'savedTabsDataV2';/);
+	test('v2 snapshots are held by the Rust commands', () => {
+		// Behaviour, including the localStorage keys older builds read:
+		// windows.sessionRestore.spec.ts. What stays here is the command names.
 		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
 		assert.match(session, /invoke\('load_window_state'\)/);
 		assert.match(session, /invoke\('clear_window_state'\)/);

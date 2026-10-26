@@ -384,8 +384,6 @@ describe('a new window starts with no tag', () => {
 
 	function makeSession() {
 		return createWindowSession({
-			windowStateKey: WINDOW_STATE_KEY,
-			legacyStateKey: LEGACY_STATE_KEY,
 			restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
 			serializeState: () => tabManager.serializeState(),
 			shouldRestoreState: () => true,
@@ -510,8 +508,6 @@ describe('each window keeps its own snapshot', () => {
 
 	function makeSession() {
 		return createWindowSession({
-			windowStateKey: 'savedTabsDataV2',
-			legacyStateKey: 'savedTabsData',
 			restoreInProgressKey: 'markpad-window-restore-in-progress',
 			serializeState: () => tabManager.serializeState(),
 			shouldRestoreState: () => true,
@@ -619,8 +615,6 @@ describe('a new window claims nothing', () => {
 	test('a new window claims nothing and opens with no tabs', async () => {
 		const errors: unknown[] = [];
 		const session = createWindowSession({
-			windowStateKey: 'savedTabsDataV2',
-			legacyStateKey: 'savedTabsData',
 			restoreInProgressKey: 'markpad-window-restore-in-progress',
 			serializeState: () => '',
 			shouldRestoreState: () => false,

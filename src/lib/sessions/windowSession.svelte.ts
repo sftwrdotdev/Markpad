@@ -58,9 +58,13 @@ const MAX_DEFERRED = 8;
  */
 const MAX_INTERRUPTIONS = 3;
 
+// Old localStorage snapshot keys. The snapshot is written through Rust now;
+// these are read once for migration and removed after the first Rust write, so
+// an older build that reads them finds nothing to misread.
+const WINDOW_STATE_KEY = 'savedTabsDataV2';
+const LEGACY_STATE_KEY = 'savedTabsData';
+
 type WindowSessionOptions = {
-	windowStateKey: string;
-	legacyStateKey: string;
 	restoreInProgressKey: string;
 	serializeState: () => string;
 	shouldRestoreState: () => boolean;
@@ -118,8 +122,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 	}
 
 	async function discardPersistedState() {
-		localStorage.removeItem(options.windowStateKey);
-		localStorage.removeItem(options.legacyStateKey);
+		localStorage.removeItem(WINDOW_STATE_KEY);
+		localStorage.removeItem(LEGACY_STATE_KEY);
 		try {
 			await invoke('clear_window_state');
 		} catch (error) {
@@ -225,8 +229,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 			options.onError('Failed to save window state on close', 'the write was refused');
 			return;
 		}
-		localStorage.removeItem(options.windowStateKey);
-		localStorage.removeItem(options.legacyStateKey);
+		localStorage.removeItem(WINDOW_STATE_KEY);
+		localStorage.removeItem(LEGACY_STATE_KEY);
 	}
 
 	/**
@@ -296,8 +300,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 		// launch window starts first and removes them below, before it reopens
 		// any other window, so only it can read them.
 		const savedData =
-			localStorage.getItem(options.windowStateKey) ??
-			localStorage.getItem(options.legacyStateKey) ??
+			localStorage.getItem(WINDOW_STATE_KEY) ??
+			localStorage.getItem(LEGACY_STATE_KEY) ??
 			((await invoke('load_window_state').catch(() => null)) as string | null);
 		if (savedData) {
 			try {
@@ -353,8 +357,8 @@ export function createWindowSession(options: WindowSessionOptions) {
 		// set of snapshots is the list of windows the next launch reopens.
 		recording = true;
 		await persistState(true);
-		localStorage.removeItem(options.windowStateKey);
-		localStorage.removeItem(options.legacyStateKey);
+		localStorage.removeItem(WINDOW_STATE_KEY);
+		localStorage.removeItem(LEGACY_STATE_KEY);
 		return Boolean(savedData);
 	}
 

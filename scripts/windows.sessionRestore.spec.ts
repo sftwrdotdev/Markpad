@@ -143,8 +143,6 @@ describe('startup restore keeps the session', () => {
 	function makeSession() {
 		documents = makeDocuments();
 		return createWindowSession({
-			windowStateKey: WINDOW_STATE_KEY,
-			legacyStateKey: LEGACY_STATE_KEY,
 			restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
 			serializeState: () => tabManager.serializeState(),
 			shouldRestoreState: () => restoreEnabled,
