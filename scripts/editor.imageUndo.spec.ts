@@ -2,10 +2,6 @@ import assert from 'node:assert/strict';
 
 import { test } from 'vitest';
 
-import ts from 'typescript';
-
-import { callbackBodies, functionSource, readSource } from './sourceTree.js';
-
 /*
  * Undoing an image insert used to delete the copied file from disk (#368).
  * `delete_file` is `fs::remove_file` — no Trash, no Recycle Bin — and the file
@@ -19,92 +15,39 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
  * rather than corrected. These tests hold that: an undo may move text and
  * nothing else.
  *
- * They RUN the code rather than reading it. A `.svelte` file cannot be
- * imported by the Node test runner, so — following windows.tagEditor.checks.test.ts
- * and windows.checks.spec.ts — the Ctrl+V command callback, the exported
- * `handleDroppedFile`, and EVERY `onDidChangeModelContent` listener the
- * component registers are lifted out of the parsed component and evaluated
- * over one shared scope, one fake Monaco document with a real undo stack, and
- * the real `TabManager`. Nothing below asserts how any of it is spelled.
- *
- * "Every listener" is the load-bearing part. The check is not "the file no
- * longer contains `delete_file`" — that is the assertion shape this suite has
- * been burned by twice — it is "dispatch an undo at whatever the component
- * listens with, and see what reaches the backend". A deletion re-added in any
- * listener, under any command name, is caught.
+ * They run the editor's real paste, drop and cut handlers
+ * (`utils/editorClipboard.ts`) and the real content listener
+ * (`EditorDocument.contentChanged`, the one listener Editor.svelte registers)
+ * over one fake Monaco document with a real undo stack and the real
+ * `TabManager`. The Tauri bridge is a recording double: "dispatch an undo and
+ * see what reaches the backend" catches a deletion re-added under any command
+ * name.
  *
  * Each undo test also asserts that the undo *arrived* — the buffer reverted
  * and the tab's raw content followed it. Without that, "no backend call" would
  * also be satisfied by a harness that dispatched into thin air.
  *
- * Falsified before landing, both ways round: with the original handler put
- * back, and with a bare `invoke("delete_file")` on `e.isUndoing`. All three
- * regression tests go red ("an undo after a pasted image reached the backend:
- * delete_file") and all three fences stay green.
- *
  * What this does not establish: that Monaco groups an image insert into one
  * undo step, or anything about the real clipboard. It establishes what the
- * component's own handlers do when an undo reaches them.
+ * editor's own handlers do when an undo reaches them.
  */
 
 // ---------------------------------------------------------------- environment
-// Svelte runes and the Tauri bridge, faked as homeSentinelSnapshot.ts does, so
-// `tabs.svelte.ts` imports under plain node.
-
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
 // Svelte plugin, so the store and the session run under real reactivity, and jsdom
-// supplies `window` and `localStorage`. Only the Tauri backend is stubbed.
+// supplies `window` and `localStorage`. Only the Tauri backend is stubbed, and
+// a module that imports `invoke` itself reaches the same recording backend the
+// handlers are handed, so a deletion re-added anywhere on the undo path is seen.
+let backendInUse: Backend | null = null;
 (window as any).__TAURI_INTERNALS__ = {
 	metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
-	invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
+	invoke: (cmd: string, args?: Record<string, any>) =>
+		cmd === 'get_os_type' ? Promise.resolve('macos') : backendInUse ? backendInUse.invoke(cmd, args) : Promise.resolve(null),
 };
 
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
-const { lineEndingLabel } = await import('../src/lib/utils/tabModels.js');
-const { countWords } = await import('../src/lib/utils/wordCount.js');
 const { EditorDocument } = await import('../src/lib/utils/editorDocument.svelte.js');
-// The real module, not a stub: the embed these tests match against is the one
-// it writes, and its escaping is pinned separately in editor.test.ts.
-const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
-	'../src/lib/utils/imageEmbed.js'
-);
-const { routeDroppedFile } = await import('../src/lib/utils/fileDrop.js');
-const { clipboardTextForSelection } = await import('../src/lib/utils/editorEdits.js');
-
-// ------------------------------------------------- the component, as written
-
-const EDITOR = 'src/lib/components/Editor.svelte';
-const source = readSource(EDITOR);
-
-/**
- * Everything a paste does — including the branch that reads a clipboard image.
- *
- * It was the body of the one `editor.addCommand` for ⌘V until the editor's
- * context menu started running it too (#207), at which point it was named. The
- * lookup is by name now, and the second assertion is what keeps that from
- * being a downgrade: no inline paste may appear beside it, because two paste
- * implementations would drift and only one of them would be tested here.
- */
-const pasteCommandBody = (() => {
-	const body = functionSource(source, 'pasteFromClipboard');
-	assert.ok(body.includes('clipboard_read_image'), 'pasteFromClipboard no longer reads the clipboard image');
-	assert.equal(
-		callbackBodies(source, 'editor.addCommand').filter((b) => b.includes('clipboard_read_image')).length,
-		0,
-		'a second, inline paste implementation has appeared beside the named one',
-	);
-	return body;
-})();
-
-/**
- * Every model-content listener the component installs.
- *
- * Deliberately not "the one that handles undo": the component is free to have
- * none, one, or five, and the claim under test is about all of them together.
- */
-const contentChangeBodies = callbackBodies(source, 'editor.onDidChangeModelContent');
-// The component's one listener hands the change to `EditorDocument`, which runs below for real.
-assert.deepEqual(contentChangeBodies, ['doc.contentChanged()']);
+const clipboard = await import('../src/lib/utils/editorClipboard.js');
 
 // ------------------------------------------------------------------ the fakes
 
@@ -259,103 +202,14 @@ type Component = {
 	contentChange: ((e: ChangeEvent) => void)[];
 };
 
-/**
- * The lifted code is TypeScript — `handleDroppedFile(path: string, …)`, `as
- * string | null`, `(editor as any)` — and `new Function` only takes JavaScript,
- * so it goes through `tsc` first, as layout.spec.ts and
- * documents.checks.spec.ts already do. Types are erased, nothing else:
- * the statements that run are the component's own.
- */
-const factorySource = ts.transpileModule(
-	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed, routeDroppedFile, clipboardTextForSelection) => {
-		let wordCount = 0;
-		let wordCountTimer;
-		let emittedText = null;
-		let currentLanguage = 'markdown';
-		let lineEnding = 'LF';
-
-		// Reached only by the text-paste path, which no test here exercises.
-		const insertTextAtCursor = () => { throw new Error('text paste path not modelled'); };
-		const isLinkifyPasteTarget = () => false;
-
-		${functionSource(source, 'handleDroppedFile')}
-		${pasteCommandBody}
-		${functionSource(source, 'cutToClipboard')}
-
-		return {
-			paste: pasteFromClipboard,
-			drop: handleDroppedFile,
-			cut: cutToClipboard,
-		};
-	};`,
-	{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
-).outputText;
-
-/**
- * Anything the lifted code reads that is neither declared above nor a global
- * lands here — component-level state this harness does not model.
- *
- * Without it, re-adding the undo deletion would fail these tests with
- * `managedImages is not defined` and blame the harness. The whole reason such
- * state existed was to decide which file to delete, so the error says so.
- *
- * It sits in a `with` scope wrapped around the factory, which is *outside* the
- * lifted functions — so their own parameters and `let`s still shadow it, and
- * only genuinely unresolved names reach the proxy.
- */
-const unmodelledScope = new Proxy(Object.create(null), {
-	has: (_target, key) => typeof key === 'string' && !(key in globalThis),
-	get: (_target, key) => {
-		// The `value` prop, modelled as what Svelte compiles a dynamic prop to:
-		// a getter over the parent's expression, which is
-		// `value={tabManager.activeTab.rawContent}`. A local copy would be a
-		// second buffer with its own staleness — the very thing the component
-		// stopped keeping when `bind:value` went — and the listener's
-		// `value !== newValue` guard would then mean "changed since this copy
-		// was last assigned" instead of "the editor changed the document".
-		if (key === 'value') return tabManager.activeTab?.rawContent ?? '';
-		if (typeof key !== 'string') return undefined;
-		throw new Error(
-			`the editor reads component state \`${String(key)}\` that this harness does not model. ` +
-				'If it is per-image bookkeeping: undo must not track which file to delete (#368) — ' +
-				'the copy stays on disk, where the user can see and remove it.',
-		);
-	},
-});
-
 function createComponent(backend: Backend, editor: unknown): Component {
-	const factory = new Function(
-		'__scope',
-		`with (__scope) { ${factorySource}\nreturn __component; }`,
-	)(unmodelledScope) as (
-		invoke: unknown,
-		settings: unknown,
-		tabManager: unknown,
-		monaco: unknown,
-		editor: unknown,
-		lineEndingLabel: unknown,
-		countWords: unknown,
-		resolveImageDir: unknown,
-		parentDir: unknown,
-		embed: unknown,
-		routeDroppedFile: unknown,
-		clipboardTextForSelection: unknown,
-	) => Component;
-
-	const component = factory(
-		backend.invoke,
-		{ imageDirectory: 'img', macosImageScaling: false },
-		tabManager,
-		monacoStub,
-		editor,
-		lineEndingLabel,
-		countWords,
-		resolveImageDirectory,
-		documentParentDir,
-		imageEmbed,
-		routeDroppedFile,
-		clipboardTextForSelection,
-	);
+	const deps = {
+		editor: () => editor as any,
+		monaco: () => monacoStub as any,
+		invoke: backend.invoke,
+		tabs: tabManager,
+		settings: { imageDirectory: 'img', macosImageScaling: false },
+	};
 	const doc = new EditorDocument({
 		monaco: () => monacoStub as any,
 		editor: () => editor as any,
@@ -363,7 +217,12 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		value: () => tabManager.activeTab?.rawContent ?? '',
 		showWordCount: () => true,
 	});
-	return { ...component, contentChange: [() => doc.contentChanged()] };
+	return {
+		paste: () => clipboard.pasteFromClipboard(deps),
+		drop: (path, x, y) => clipboard.handleDroppedFile(deps, path, x, y),
+		cut: () => clipboard.cutToClipboard(deps),
+		contentChange: [() => doc.contentChanged()],
+	};
 }
 
 const PASTED_IMAGE = 'iVBORw0KGgo=';
@@ -373,6 +232,7 @@ function setup(
 ) {
 	tabManager.closeAll();
 	const backend = createBackend(options.clipboardImage ?? null, options.clipboardFiles ?? null);
+	backendInUse = backend;
 	const doc = createDocument(options.initial ?? '');
 	const component = createComponent(backend, doc.editor);
 	doc.listeners.push(...component.contentChange);

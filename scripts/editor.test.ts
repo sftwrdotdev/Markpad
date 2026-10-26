@@ -27,6 +27,7 @@ import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
 import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, isLinkifyPasteTarget, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
 import { clipboardTextForSelection, type EditingEditor, insertLink, insertTextAtCursor, wrapAsCodeBlock } from '../src/lib/utils/editorEdits.js';
 import { mountAfterLoad } from '../src/lib/utils/editorMount.js';
+import { pasteFromClipboard } from '../src/lib/utils/editorClipboard.js';
 import { paragraphAround } from '../src/lib/utils/focusParagraph.js';
 
 // WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
@@ -1153,10 +1154,8 @@ describe('image embed', () => {
 // types, the fence state machine, and the caret lookup are genuinely exercised,
 // not mocked.
 //
-// Not covered: that Editor.svelte calls this code on the Ctrl+V path with the
-// right arguments. Editor.svelte is a Svelte component and cannot be imported
-// here, so that wiring is pinned by a source-text assertion at the bottom of
-// the file, which proves only that the code reads a certain way.
+// The paste handler itself (utils/editorClipboard.ts) runs too: "the paste path
+// consults the context guard before building a link" below.
 //
 // Also not covered: Monaco's async tokenizer bootstrap. In the app,
 // `monaco.editor.tokenize()` falls back to null tokens if the language has not
@@ -1251,6 +1250,56 @@ describe('paste URL context', () => {
 		// Only the lines up to the caret count: a fence opened below it is not one the caret is in.
 		assert.equal(isLinkifyPasteTarget(model(['prose ', '```', 'code']), { startLineNumber: 1, startColumn: 7 }, monacoEditor), true);
 		assert.ok(languages.length > 0 && languages.every((id) => id === 'markdown'), `tokenized as ${languages}`);
+	});
+
+	test('the paste path consults the context guard before building a link', async () => {
+		// The editor's own paste handler, with the clipboard holding a URL and the
+		// caret in a fence, then in prose: the guard decides between the bare URL
+		// and `[label](url)`.
+		const url = 'https://example.com/a';
+		const pasteInto = async (lines: string[], line: number, column: number) => {
+			const edits: { source: string; text: string }[] = [];
+			const selection = {
+				startLineNumber: line,
+				startColumn: column,
+				endLineNumber: line,
+				endColumn: column,
+				isEmpty: () => true,
+			};
+			const editor = {
+				focus: () => {},
+				getModel: () => ({
+					getLanguageId: () => 'markdown',
+					getValue: () => lines.join('\n'),
+					getLinesContent: () => lines,
+				}),
+				getSelections: () => [selection],
+				pushUndoStop: () => true,
+				executeEdits: (source: string, ops: { text: string }[]) => {
+					for (const op of ops) edits.push({ source, text: op.text });
+					return true;
+				},
+				setSelections: () => {},
+			};
+			await pasteFromClipboard({
+				editor: () => editor as never,
+				monaco: () =>
+					({
+						editor: { tokenize: (text: string) => tokenize(text) },
+						Selection: class {},
+					}) as never,
+				invoke: async (cmd) => (cmd === 'clipboard_read_text' ? url : null),
+				// No document path: the image branch is skipped, as for an untitled tab.
+				tabs: { activeTab: { path: undefined } },
+				settings: { imageDirectory: 'img', macosImageScaling: false },
+			});
+			return edits;
+		};
+
+		assert.deepEqual(await pasteInto(['```', 'const a = ', '```'], 2, 11), [{ source: 'paste-text', text: url }], 'a URL pasted in code stays bare');
+		assert.deepEqual(await pasteInto(['```', 'code', '```', 'prose '], 4, 7), [
+			{ source: 'paste-link', text: `[example.com/a](${url})` },
+		]);
 	});
 
 	test('a URL pasted into prose still becomes a markdown link', () => {

@@ -142,8 +142,10 @@ describe('editor option wiring', () => {
 		// implemented twice with two different answers. Vim's `"+` register (#775)
 		// writes the text monaco-vim already chose, so it never derives text from a
 		// selection and cannot disagree.
+		// The handlers live in utils/editorClipboard.ts since the paste/drop/cut move.
+		const clipboard = readSource('src/lib/utils/editorClipboard.ts');
 		assert.equal(
-			count(editor, /invoke\('clipboard_write_text'/g),
+			count(editor + clipboard, /invoke\('clipboard_write_text'/g),
 			2,
 			'clipboard_write_text is called from copyToClipboard and cutToClipboard, nowhere else in the editor',
 		);
@@ -152,8 +154,8 @@ describe('editor option wiring', () => {
 			/installVimClipboardRegisters\(VimMode, \(text\) => \{\s*invoke\('clipboard_write_text', \{ text \}\)/,
 			'the third writer is the Vim register',
 		);
-		assert.match(functionSource(editor, 'copyToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
-		assert.match(functionSource(editor, 'cutToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
+		assert.match(functionSource(clipboard, 'copyToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
+		assert.match(functionSource(clipboard, 'cutToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
 	});
 
 });
@@ -236,15 +238,18 @@ describe('editor undo stops', () => {
 		// Paste, cut and the drop handler read the clipboard or the disk through
 		// Tauri first, so they cannot be run here; what is pinned for them, and for
 		// every site added later, is that the stop comes before the edit.
-		const source = readSource(EDITOR);
 		const missing: string[] = [];
-		let at = -1;
-		while ((at = source.indexOf('editor.executeEdits(', at + 1)) !== -1) {
-			const name = enclosingFunctionName(source, at);
-			assert.ok(name, `an executeEdits outside any named function at offset ${at}`);
-			const start = source.lastIndexOf(name, at);
-			if (!source.slice(start, at).includes('editor.pushUndoStop()')) {
-				missing.push(`${name} (line ${source.slice(0, at).split('\n').length})`);
+		// Paste, cut and drop moved to utils/editorClipboard.ts and keep the rule there.
+		for (const file of [EDITOR, 'src/lib/utils/editorClipboard.ts']) {
+			const source = readSource(file);
+			let at = -1;
+			while ((at = source.indexOf('editor.executeEdits(', at + 1)) !== -1) {
+				const name = enclosingFunctionName(source, at);
+				assert.ok(name, `an executeEdits outside any named function at offset ${at}`);
+				const start = source.lastIndexOf(name, at);
+				if (!source.slice(start, at).includes('editor.pushUndoStop()')) {
+					missing.push(`${file}: ${name} (line ${source.slice(0, at).split('\n').length})`);
+				}
 			}
 		}
 		assert.deepEqual(missing, []);
@@ -718,7 +723,8 @@ describe('image embed wiring', () => {
 		// escape had to be fixed in both. release.checks.test.ts
 		// keeps the embed string itself single; this keeps the pre-fix escape from
 		// coming back next to it.
-		const source = readSource('src/lib/components/Editor.svelte');
+		// Paste and drop live in utils/editorClipboard.ts; the completion stays in the component.
+		const source = readSource('src/lib/components/Editor.svelte') + readSource('src/lib/utils/editorClipboard.ts');
 		assert.equal(source.includes('%20'), false, 'a hand-rolled space escape is back');
 		assert.match(source, /imageEmbed\(relPath\)/);
 		assert.equal(source.includes(`|| "${DEFAULT_IMAGE_DIRECTORY}"`), false);
@@ -730,40 +736,6 @@ describe('image embed wiring', () => {
 			source.includes('settings.imageDirectory ||'),
 			false,
 			'a call site resolves the image directory itself',
-		);
-	});
-});
-
-// WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
-//
-// Covered for real: every classification below runs Monaco's *actual* markdown
-// Monarch grammar — the same `language` definition monaco-editor ships and the
-// same `MonarchTokenizer` that `monaco.editor.tokenize()` drives — over real
-// markdown, and asserts on the decision `pasteContext.ts` reaches. So the token
-// types, the fence state machine, and the caret lookup are genuinely exercised,
-// not mocked.
-//
-// Not covered: that Editor.svelte calls this code on the Ctrl+V path with the
-// right arguments. Editor.svelte is a Svelte component and cannot be imported
-// here, so that wiring is pinned by a source-text assertion at the bottom of
-// the file, which proves only that the code reads a certain way.
-//
-// Also not covered: Monaco's async tokenizer bootstrap. In the app,
-// `monaco.editor.tokenize()` falls back to null tokens if the language has not
-// finished loading; that degrades to "no code token found", i.e. to the old
-// linkify-everything behaviour, and is not reproduced here.
-describe('paste URL guard wiring', () => {
-	test('the paste path consults the context guard before building a link', () => {
-		// Source-text only: this proves Editor.svelte reads this way, not that it
-		// behaves this way at runtime.
-		const editor = readSource('src/lib/components/Editor.svelte');
-
-		// The guard itself, its tokenizer and the lines it reads: editor.test.ts
-		// "the paste path consults the context guard before building a link".
-		assert.match(
-			editor,
-			/if \(!isUrl \|\| isMultiLine \|\| !isLinkifyPasteTarget\(model, selections\[0\], monaco\.editor\)\) \{/,
-			'the raw-text paste branch is taken when the caret is not in prose',
 		);
 	});
 });
