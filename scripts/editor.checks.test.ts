@@ -9,7 +9,6 @@ import { getSupportedLanguages, type LanguageCode, t, type Translation } from '.
 import { translations } from './allTranslations.js';
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, offsetOf, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
 import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
-import { runEditorHandler } from './keymapHarness.js';
 import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
 import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
@@ -314,50 +313,25 @@ describe('editor option wiring', () => {
 		);
 	});
 
-	test('custom copy keeps Monaco\'s whole-line copy on an empty selection', () => {
-		// Reference frame: Monaco ships `emptySelectionClipboard` (documented as
-		// "Copying without a selection copies the current line") on by default, and
-		// its viewmodel builds that text as getLineContent(line) + EOL. VS Code
-		// (editor.emptySelectionClipboard) and Sublime Text behave the same. Since
-		// custom-copy overrides the native copy action, bailing out on an empty
-		// selection deleted the behaviour outright.
-		// The rule moved out of the copy action when cut, copy and the context
-		// menu were collapsed onto one implementation (#207): all of them need it,
-		// and a cut has to remove exactly what a copy would have taken.
-		const forSelection = functionSource(editor, 'clipboardTextForSelection');
-
-		assert.doesNotMatch(
-			forSelection,
-			/if \(!selection \|\| selection\.isEmpty\(\)\) return/,
-			'an empty selection is no longer an early return',
-		);
-		assert.match(
-			forSelection,
-			/model\.getLineContent\(line\) \+ model\.getEOL\(\)/,
-			'empty selection takes the current line plus its line ending',
-		);
-		assert.match(
-			forSelection,
-			/model\.getValueInRange\(selection\)/,
-			'a real selection takes just the selection',
-		);
-
-		// One writer, so cut and copy cannot drift apart, and the whole-line rule
-		// above cannot be implemented twice with two different answers. The third
-		// call is Vim's `"+` register (#775): it writes the text monaco-vim already
-		// chose, so it never derives text from a selection and cannot disagree.
+	test('cut, copy and the Vim clipboard register are the only clipboard writers', () => {
+		// The whole-line rule itself is editor.test.ts "custom copy keeps Monaco's
+		// whole-line copy on an empty selection". This keeps it single: one writer
+		// each, so cut and copy cannot drift apart, and the rule cannot be
+		// implemented twice with two different answers. Vim's `"+` register (#775)
+		// writes the text monaco-vim already chose, so it never derives text from a
+		// selection and cannot disagree.
 		assert.equal(
 			count(editor, /invoke\('clipboard_write_text'/g),
-			3,
-			'clipboard_write_text is called from copyToClipboard, cutToClipboard and the Vim clipboard register, nowhere else',
+			2,
+			'clipboard_write_text is called from copyToClipboard and cutToClipboard, nowhere else in the editor',
 		);
 		assert.match(
-			editor,
+			readSource('src/lib/utils/vimAttach.ts'),
 			/installVimClipboardRegisters\(VimMode, \(text\) => \{\s*invoke\('clipboard_write_text', \{ text \}\)/,
-			'the third call is the Vim register writer',
+			'the third writer is the Vim register',
 		);
-		assert.match(functionSource(editor, 'copyToClipboard'), /clipboardTextForSelection\(\)/);
-		assert.match(functionSource(editor, 'cutToClipboard'), /clipboardTextForSelection\(\)/);
+		assert.match(functionSource(editor, 'copyToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
+		assert.match(functionSource(editor, 'cutToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);
 	});
 
 });
@@ -460,14 +434,6 @@ describe('editor theme contracts', () => {
  */
 describe('editor undo stops', () => {
 	const EDITOR = 'src/lib/components/Editor.svelte';
-
-	test('the format tools each push an undo stop before they edit', () => {
-		for (const name of ['insertTextAtCursor', 'wrapAsCodeBlock', 'insertLink']) {
-			const run = runEditorHandler([name], { lines: ['hello'], selections: [[1, 1, 1, 6]] });
-			assert.equal(run.edits.length, 1, name);
-			assert.equal(run.undoStops, 1, `${name} edits inside the undo step typing left open`);
-		}
-	});
 
 	test('no executeEdits in the editor runs without an undo stop ahead of it in its function', () => {
 		// Paste, cut and the drop handler read the clipboard or the disk through
@@ -716,7 +682,8 @@ describe('Monaco startup graph', () => {
 		// returned function as the unmount cleanup, so an `async` callback would
 		// hand it a promise and leak the editor and its listeners.
 		assert.doesNotMatch(editor, /onMount\(async/, 'onMount is not async');
-		assert.match(editor, /cancelled = true;/, 'an in-flight import is cancellable on unmount');
+		// Cancellation on unmount: editor.test.ts "unmounting while Monaco is still
+		// loading creates no editor".
 	});
 
 	test('every effect that drives the editor waits for editorReady', () => {
@@ -824,90 +791,6 @@ describe('Monaco startup graph', () => {
 			[],
 			"monaco-editor's exports map sends a monaco-vim import somewhere that does not exist; vim mode will be dead",
 		);
-	});
-});
-
-/*
- * Vim's scroll-cursor family — `zz`, `zt`, `zb`, `z.`, `z-`, `z<CR>` — does
- * nothing in monaco-vim 0.4.4 (#104, #393), and `zb`/`z-` are additionally
- * swapped with respect to `:help scroll-cursor`. `utils/vimScrollCommands.ts`
- * repairs both through the package's own `Vim.defineAction`/`Vim.mapCommand`.
- *
- * WHAT RUNS HERE. The keys are *pressed*. Every test below drives real
- * keystrokes into `Vim.handleKey` on a real `CMAdapter` built from the real
- * `monaco-vim` package — the same `dist/index.mjs` Vite hands the app — and
- * then asks the editor which reveal it was told to perform. Nothing in this
- * file asserts that a source file contains a string; the closest it comes is
- * lifting Editor.svelte's own `import("monaco-vim").then` callback out of the
- * component and *running* it.
- *
- * Only `monaco-editor` is faked, and only because it cannot be imported under
- * Node: it is 4 MB of code that reaches for `document` at module scope.
- * monaco-vim imports it as two ordinary externals (`Range`, `Selection`,
- * `KeyCode`, …) rather than bundling it, so a module hook can answer those two
- * specifiers with the handful of value classes the adapter actually constructs.
- * Everything downstream of that — the keymap, the command dispatcher, the
- * action registry, `CMAdapter` itself — is upstream's own shipped code.
- *
- * WHAT IT DOES NOT ESTABLISH: that Monaco's `revealRangeInCenter` puts the line
- * where a human would call the centre, that focus and key routing reach Vim
- * mode in the running app, or anything about rendering. It establishes which
- * reveal each key sequence asks the editor for, and where the cursor ends up.
- */
-describe('vim scroll commands install', () => {
-	test('Editor.svelte installs the commands on the module it just imported', async () => {
-		// The component's own callback, lifted and run — not read. It has to install
-		// before `initVimMode` attaches the adapter, and it has to install even on
-		// the disposed path, because the tables it writes to are the package's and
-		// outlive this editor.
-		const source = readSource('src/lib/components/Editor.svelte');
-		const bodies = callbackBodies(source, 'import("monaco-vim").then');
-		assert.equal(bodies.length, 1, `expected exactly one monaco-vim import callback, found ${bodies.length}`);
-
-		const run = new Function(
-			'installVimScrollCommands',
-			'installVimClipboardRegisters',
-			'invoke',
-			'initVimMode',
-			'VimMode',
-			'currentEditor',
-			'currentStatusNode',
-			'disposed',
-			`let vim = null; ${bodies[0]} return vim;`,
-		) as (...args: unknown[]) => unknown;
-
-		const calls: string[] = [];
-		const VimMode = { marker: 'the module export' };
-		const install = (mode: unknown) => {
-			assert.equal(mode, VimMode, 'the VimMode from the same import must be the one patched');
-			calls.push('install');
-			return true;
-		};
-		const initVimMode = () => {
-			calls.push('initVimMode');
-			return { dispose() {} };
-		};
-
-		const written: unknown[] = [];
-		const installClipboard = (mode: unknown, write: (text: string) => void) => {
-			assert.equal(mode, VimMode, 'the clipboard registers go on the same module');
-			calls.push('clipboard');
-			write('yanked');
-			return true;
-		};
-		const invoke = (command: string, args: unknown) => {
-			written.push([command, args]);
-			return Promise.resolve();
-		};
-
-		const vim = run(install, installClipboard, invoke, initVimMode, VimMode, {}, {}, false);
-		assert.deepEqual(calls, ['install', 'clipboard', 'initVimMode'], 'the commands must be in place before the adapter attaches');
-		assert.ok(vim, 'the adapter is still handed back for disposal');
-		assert.deepEqual(written, [['clipboard_write_text', { text: 'yanked' }]], '"+ writes through the Rust clipboard');
-
-		calls.length = 0;
-		assert.ok(!run(install, installClipboard, invoke, initVimMode, VimMode, {}, {}, true), 'a disposed effect attaches nothing');
-		assert.deepEqual(calls, ['install', 'clipboard'], 'a disposed effect still patches the package');
 	});
 });
 
@@ -1078,20 +961,12 @@ describe('paste URL guard wiring', () => {
 		// behaves this way at runtime.
 		const editor = readSource('src/lib/components/Editor.svelte');
 
+		// The guard itself, its tokenizer and the lines it reads: editor.test.ts
+		// "the paste path consults the context guard before building a link".
 		assert.match(
 			editor,
-			/if \(!isUrl \|\| isMultiLine \|\| !isLinkifyPasteTarget\(model, selections\[0\]\)\) \{/,
+			/if \(!isUrl \|\| isMultiLine \|\| !isLinkifyPasteTarget\(model, selections\[0\], monaco\.editor\)\) \{/,
 			'the raw-text paste branch is taken when the caret is not in prose',
-		);
-		assert.match(
-			editor,
-			/tokenize: \(text\) => monaco\.editor\.tokenize\(text, MARKDOWN_LANGUAGE_ID\)/,
-			'classification runs Monaco\'s own tokenizer, not a hand-rolled scan',
-		);
-		assert.match(
-			editor,
-			/linesUpToCaret: model\.getLinesContent\(\)\.slice\(0, selection\.startLineNumber\)/,
-			'only the lines above the caret are tokenized',
 		);
 	});
 });

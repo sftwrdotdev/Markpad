@@ -155,3 +155,27 @@ export function shouldLinkifyPastedUrl(context: PasteCaretContext): boolean {
 	const tokens = context.tokenize(probe.text);
 	return !isCodeAtOffset(tokens[probe.lineIndex] ?? [], probe.offset);
 }
+
+/**
+ * Pasting a URL only turns into `[label](url)` where markdown links mean
+ * something. Inside a fenced or indented code block, inside inline code, or
+ * inside YAML front matter, the user wants the bare URL they copied.
+ *
+ * The decision is taken once per paste, from the primary selection: a paste
+ * is a single user action, and re-tokenizing for every cursor of a large
+ * multi-cursor selection would cost far more than the edge case is worth.
+ * `monacoEditor` is `monaco.editor`, whose `tokenize` runs the grammar.
+ */
+export function isLinkifyPasteTarget(
+	model: { getLanguageId(): string; getValue(): string; getLinesContent(): string[] },
+	selection: { startLineNumber: number; startColumn: number },
+	monacoEditor: { tokenize(text: string, languageId: string): readonly (readonly PasteContextToken[])[] },
+): boolean {
+	return shouldLinkifyPastedUrl({
+		languageId: model.getLanguageId(),
+		content: model.getValue(),
+		linesUpToCaret: model.getLinesContent().slice(0, selection.startLineNumber),
+		column: selection.startColumn,
+		tokenize: (text) => monacoEditor.tokenize(text, MARKDOWN_LANGUAGE_ID),
+	});
+}

@@ -3,7 +3,9 @@
 	import { tabManager } from "../stores/tabs.svelte.js";
 	import { settings, wheelZoomFactor } from "../stores/settings.svelte.js";
 	import { t, type LanguageCode } from '../utils/i18n.js';
-	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
+	import { isLinkifyPasteTarget, MARKDOWN_LANGUAGE_ID } from '../utils/pasteContext.js';
+	import * as editorEdits from '../utils/editorEdits.js';
+	import { clipboardTextForSelection } from '../utils/editorEdits.js';
 	import {
 		INLINE_WRAP_LOOKAROUND,
 		inlineWrapEdit,
@@ -22,8 +24,8 @@
 	import { paragraphAround } from '../utils/focusParagraph.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { getTabModel, lineEndingLabel, tabModelUri } from '../utils/tabModels.js';
-	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
-	import { installVimClipboardRegisters } from '../utils/vimClipboardRegisters.js';
+	import { attachVimMode } from '../utils/vimAttach.js';
+	import { mountAfterLoad } from '../utils/editorMount.js';
 	import { countWords } from '../utils/wordCount.js';
 	import {
 		createDocumentOutline,
@@ -232,28 +234,8 @@
 		},
 	};
 
-	onMount(() => {
-		let cancelled = false;
-		let teardown: (() => void) | null = null;
-
-		// `onMount` itself stays synchronous: Svelte only treats a *synchronously*
-		// returned function as the unmount cleanup, so an `async` callback would
-		// hand it a promise and silently leak the editor, its listeners and the
-		// `window.open` patch. The await lives in this inner task instead, and the
-		// synchronous return closes over both the cancel flag (the component can
-		// be destroyed while the chunk is still in flight — Ctrl+E then Ctrl+E
-		// again) and whatever cleanup `createEditor` produced.
-		void (async () => {
-			monaco = await import("monaco-editor");
-			if (cancelled) return;
-			teardown = createEditor();
-		})();
-
-		return () => {
-			cancelled = true;
-			teardown?.();
-		};
-	});
+	// `onMount` itself stays synchronous; see utils/editorMount.ts.
+	onMount(() => mountAfterLoad(async () => (monaco = await import("monaco-editor")), createEditor));
 
 	function createEditor() {
 		const originalOpen = window.open;
@@ -629,13 +611,7 @@
 	// component scope, not inside `onMount`, because the actions that call them
 	// are torn down and rebuilt whenever the UI language changes.
 
-	const insertTextAtCursor = (text: string) => {
-		const selection = editor.getSelection();
-		if (!selection) return;
-		const op = { range: selection, text: text, forceMoveMarkers: true };
-		editor.pushUndoStop();
-		editor.executeEdits("my-source", [op]);
-	};
+	const insertTextAtCursor = (text: string) => editorEdits.insertTextAtCursor(editor, text);
 
 	// Which markers each of these tools writes and which it accepts back lives in
 	// `utils/editorToolbar.ts`, beside the line-marker table and keyed by the same
@@ -776,56 +752,9 @@
 	const handleModEnterKey = () => keyHandlers().handleModEnterKey();
 	const handleModShiftEnterKey = () => keyHandlers().handleModShiftEnterKey();
 
-	const wrapAsCodeBlock = () => {
-		const selection = editor.getSelection();
-		const model = editor.getModel();
-		if (!selection || !model) return;
-
-		const text = model.getValueInRange(selection);
-		const block = text.startsWith("```\n") && text.endsWith("\n```")
-			? text.slice(4, -4).replace(/\n$/, "")
-			: `\`\`\`\n${text}\n\`\`\``;
-		editor.pushUndoStop();
-		editor.executeEdits("fmt-code-block", [
-			{ range: selection, text: block, forceMoveMarkers: true },
-		]);
-	};
-
-	const insertLink = () => {
-		const selection = editor.getSelection();
-		const model = editor.getModel();
-		if (!selection || !model) return;
-
-		const text = model.getValueInRange(selection);
-		const label = text || "link text";
-		const link = `[${label}](url)`;
-		editor.pushUndoStop();
-		editor.executeEdits("fmt-link", [
-			{ range: selection, text: link, forceMoveMarkers: true },
-		]);
-	};
-
-	/**
-	 * Pasting a URL only turns into `[label](url)` where markdown links mean
-	 * something. Inside a fenced or indented code block, inside inline code, or
-	 * inside YAML front matter, the user wants the bare URL they copied.
-	 *
-	 * The decision is taken once per paste, from the primary selection: a paste
-	 * is a single user action, and re-tokenizing for every cursor of a large
-	 * multi-cursor selection would cost far more than the edge case is worth.
-	 */
-	function isLinkifyPasteTarget(
-		model: Monaco.editor.ITextModel,
-		selection: Monaco.Selection,
-	): boolean {
-		return shouldLinkifyPastedUrl({
-			languageId: model.getLanguageId(),
-			content: model.getValue(),
-			linesUpToCaret: model.getLinesContent().slice(0, selection.startLineNumber),
-			column: selection.startColumn,
-			tokenize: (text) => monaco.editor.tokenize(text, MARKDOWN_LANGUAGE_ID),
-		});
-	}
+	// utils/editorEdits.ts.
+	const wrapAsCodeBlock = () => editorEdits.wrapAsCodeBlock(editor);
+	const insertLink = () => editorEdits.insertLink(editor);
 
 	function disposeLocalizedActions() {
 		for (const action of localizedActions) action.dispose();
@@ -1418,35 +1347,9 @@
 	 * menu items were Monaco's — of which Paste could not work in a webview at
 	 * all (#207) and Cut and Copy are dead on Linux, where the same wry default
 	 * gates `set_javascript_can_access_clipboard`.
+	 *
+	 * What cut and copy take: `clipboardTextForSelection` in utils/editorEdits.ts.
 	 */
-	function clipboardTextForSelection(): { text: string; range: Monaco.Range | null } {
-		const selection = editor?.getSelection();
-		const model = editor?.getModel();
-		if (!selection || !model) return { text: '', range: null };
-
-		if (!selection.isEmpty()) {
-			return { text: model.getValueInRange(selection), range: selection };
-		}
-
-		// Nothing selected copies the whole line, line ending included —
-		// Monaco's `emptySelectionClipboard` default, and VS Code's and Sublime
-		// Text's. Kept because it is what this editor has always done; whether
-		// an app that calls itself the Notepad equivalent should do it at all
-		// is a separate question (#393).
-		const line = selection.startLineNumber;
-		const lastLine = model.getLineCount();
-		return {
-			text: model.getLineContent(line) + model.getEOL(),
-			// Cutting that line has to take its line ending with it, so the
-			// range runs to the start of the next one. The last line has no
-			// next, and the range stops at its end.
-			range:
-				line < lastLine
-					? new monaco.Range(line, 1, line + 1, 1)
-					: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)),
-		};
-	}
-
 	export async function pasteFromClipboard() {
 		// Focus first, as `runEditorAction` does, and for the same reason: this
 		// runs from the context menu as well as from ⌘V, and a menu item leaves
@@ -1551,7 +1454,7 @@
 				const hasSelection = selections.some((s) => !s.isEmpty());
 				const isMultiLine = selections.some((s) => s.startLineNumber !== s.endLineNumber);
 
-				if (!isUrl || isMultiLine || !isLinkifyPasteTarget(model, selections[0])) {
+				if (!isUrl || isMultiLine || !isLinkifyPasteTarget(model, selections[0], monaco.editor)) {
 					const edits = selections.map(s => ({
 						range: s,
 						text: rawText,
@@ -1630,13 +1533,13 @@
 
 	export async function copyToClipboard() {
 		editor?.focus();
-		const { text } = clipboardTextForSelection();
+		const { text } = clipboardTextForSelection(editor, monaco);
 		if (text) await invoke('clipboard_write_text', { text }).catch(console.error);
 	}
 
 	export async function cutToClipboard() {
 		editor?.focus();
-		const { text, range } = clipboardTextForSelection();
+		const { text, range } = clipboardTextForSelection(editor, monaco);
 		if (!text || !range || !editor) return;
 		const model = editor.getModel();
 		await invoke('clipboard_write_text', { text }).catch(console.error);
@@ -1889,18 +1792,8 @@
 			let vim: { dispose: () => void } | null = null;
 			const currentEditor = editor;
 			const currentStatusNode = vimStatusNode;
-			import("monaco-vim").then(({ initVimMode, VimMode }) => {
-				// Before the adapter is attached, and unconditionally: it patches
-				// monaco-vim's own module-level command tables, which outlive this
-				// effect, and it is idempotent. See vimScrollCommands.ts for what
-				// 0.4.4 does to `zz`, `zt`, `zb`, `z.`, `z-` and `z<CR>` (#104).
-				installVimScrollCommands(VimMode);
-				// Same reason, for `"+` and `"*` (#775).
-				installVimClipboardRegisters(VimMode, (text) => {
-					invoke('clipboard_write_text', { text }).catch(console.error);
-				});
-				if (disposed) return;
-				vim = initVimMode(currentEditor, currentStatusNode);
+			import("monaco-vim").then((module) => {
+				vim = attachVimMode(module, currentEditor, currentStatusNode, invoke, () => disposed);
 			});
 			return () => {
 				disposed = true;

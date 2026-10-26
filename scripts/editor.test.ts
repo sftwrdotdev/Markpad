@@ -24,7 +24,9 @@ import { encodeSemanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/u
 import { resolveExportImagePath } from '../src/lib/utils/exportHtml.js';
 import { DEFAULT_IMAGE_DIRECTORY, documentParentDir, encodeImageDestination, imageEmbed, resolveImageDirectory } from '../src/lib/utils/imageEmbed.js';
 import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
-import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
+import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, isLinkifyPasteTarget, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
+import { clipboardTextForSelection, type EditingEditor, insertLink, insertTextAtCursor, wrapAsCodeBlock } from '../src/lib/utils/editorEdits.js';
+import { mountAfterLoad } from '../src/lib/utils/editorMount.js';
 import { paragraphAround } from '../src/lib/utils/focusParagraph.js';
 
 // WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
@@ -1204,6 +1206,29 @@ describe('paste URL context', () => {
 		});
 	}
 
+	test('the paste path consults the context guard before building a link', () => {
+		// The guard the paste path calls, over a model and the primary selection:
+		// the lines above the caret go through Monaco's tokenizer for markdown.
+		const languages: string[] = [];
+		const model = (lines: string[]) => ({
+			getLanguageId: () => 'markdown',
+			getValue: () => lines.join('\n'),
+			getLinesContent: () => lines,
+		});
+		const monacoEditor = {
+			tokenize: (text: string, languageId: string) => {
+				languages.push(languageId);
+				return tokenize(text);
+			},
+		};
+		const fenced = ['```', 'const a = ', '```'];
+		assert.equal(isLinkifyPasteTarget(model(fenced), { startLineNumber: 2, startColumn: 11 }, monacoEditor), false, 'a URL pasted in code stays bare');
+		assert.equal(isLinkifyPasteTarget(model(['```', 'code', '```', 'prose ']), { startLineNumber: 4, startColumn: 7 }, monacoEditor), true);
+		// Only the lines up to the caret count: a fence opened below it is not one the caret is in.
+		assert.equal(isLinkifyPasteTarget(model(['prose ', '```', 'code']), { startLineNumber: 1, startColumn: 7 }, monacoEditor), true);
+		assert.ok(languages.length > 0 && languages.every((id) => id === 'markdown'), `tokenized as ${languages}`);
+	});
+
 	test('a URL pasted into prose still becomes a markdown link', () => {
 		assert.equal(linkifiesAt('some prose |here'), true);
 		assert.equal(linkifiesAt('# A heading |'), true);
@@ -1325,5 +1350,129 @@ describe('focus paragraph', () => {
 		assert.deepEqual(paragraphAround(read, LINES.length, 3), { start: 3, end: 4 }, 'from its first line');
 		assert.deepEqual(paragraphAround(read, LINES.length, 6), { start: 6, end: 6 }, 'a whitespace-only line ends a paragraph');
 		assert.deepEqual(paragraphAround(read, LINES.length, 2), { start: 2, end: 2 }, 'a blank line is its own');
+	});
+});
+
+describe('editor clipboard and format tools', () => {
+	class FakeRange {
+		constructor(
+			readonly startLineNumber: number,
+			readonly startColumn: number,
+			readonly endLineNumber: number,
+			readonly endColumn: number,
+		) {}
+		isEmpty() {
+			return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
+		}
+	}
+
+	/** An editor over `lines` with one selection, recording the calls the tools make. */
+	function fakeEditor(lines: string[], selection: number[], eol = '\n') {
+		const calls: string[] = [];
+		const edits: Array<{ text: string }> = [];
+		const model = {
+			getLineContent: (line: number) => lines[line - 1],
+			getLineCount: () => lines.length,
+			getLineMaxColumn: (line: number) => lines[line - 1].length + 1,
+			getEOL: () => eol,
+			getValueInRange: (r: FakeRange) => {
+				const span = lines.slice(r.startLineNumber - 1, r.endLineNumber);
+				span[span.length - 1] = span[span.length - 1].slice(0, r.endColumn - 1);
+				span[0] = span[0].slice(r.startColumn - 1);
+				return span.join(eol);
+			},
+		};
+		const editor = {
+			getModel: () => model,
+			getSelection: () => new FakeRange(selection[0], selection[1], selection[2], selection[3]),
+			pushUndoStop: () => {
+				calls.push('pushUndoStop');
+				return true;
+			},
+			executeEdits: (_source: string, ops: Array<{ text: string }>) => {
+				calls.push('executeEdits');
+				edits.push(...ops);
+				return true;
+			},
+		};
+		return { editor: editor as unknown as EditingEditor, calls, edits };
+	}
+
+	const monaco = { Range: FakeRange } as unknown as Parameters<typeof clipboardTextForSelection>[1];
+	const numbers = (r: unknown) => {
+		const range = r as FakeRange;
+		return [range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn];
+	};
+
+	test("custom copy keeps Monaco's whole-line copy on an empty selection", () => {
+		// Monaco's `emptySelectionClipboard` default, VS Code's and Sublime Text's:
+		// nothing selected copies the caret's line with its line ending.
+		const { editor } = fakeEditor(['first', 'second', 'last'], [2, 3, 2, 3], '\r\n');
+		const line = clipboardTextForSelection(editor, monaco);
+		assert.equal(line.text, 'second\r\n');
+		assert.deepEqual(numbers(line.range), [2, 1, 3, 1], 'a cut takes the line ending with the line');
+
+		const last = clipboardTextForSelection(fakeEditor(['first', 'last'], [2, 1, 2, 1]).editor, monaco);
+		assert.equal(last.text, 'last\n');
+		assert.deepEqual(numbers(last.range), [2, 1, 2, 5], 'the last line has no next line to run to');
+
+		const selected = clipboardTextForSelection(fakeEditor(['hello world'], [1, 1, 1, 6]).editor, monaco);
+		assert.equal(selected.text, 'hello', 'a real selection takes just the selection');
+		assert.deepEqual(numbers(selected.range), [1, 1, 1, 6]);
+
+		assert.deepEqual(clipboardTextForSelection(undefined, monaco), { text: '', range: null }, 'no editor yet, nothing to copy');
+	});
+
+	test('the format tools each push an undo stop before they edit', () => {
+		const tools: Record<string, (editor: EditingEditor) => void> = {
+			insertTextAtCursor: (editor) => insertTextAtCursor(editor, 'x'),
+			wrapAsCodeBlock,
+			insertLink,
+		};
+		for (const [name, run] of Object.entries(tools)) {
+			const { editor, calls, edits } = fakeEditor(['hello'], [1, 1, 1, 6]);
+			run(editor);
+			assert.equal(edits.length, 1, name);
+			assert.deepEqual(calls, ['pushUndoStop', 'executeEdits'], `${name} edits inside the undo step typing left open`);
+		}
+	});
+});
+
+describe('editor mount', () => {
+	/** A load the test resolves by hand. */
+	function deferred() {
+		let resolve!: () => void;
+		const promise = new Promise<void>((r) => (resolve = r));
+		return { promise, resolve };
+	}
+	const settle = () => new Promise((r) => setImmediate(r));
+
+	test('unmounting while Monaco is still loading creates no editor', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.equal(typeof cleanup, 'function', 'the cleanup is returned synchronously, not as a promise');
+		cleanup();
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, []);
+	});
+
+	test('the editor is created once Monaco lands, and torn down on unmount', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.deepEqual(events, [], 'nothing is created before the module arrives');
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, ['create']);
+		cleanup();
+		assert.deepEqual(events, ['create', 'teardown']);
 	});
 });
