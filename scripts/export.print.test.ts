@@ -28,15 +28,26 @@ type Media = 'screen' | 'print';
 
 function prepare(css: string, media: Media): string {
 	const root = postcss.parse(css);
+	// jsdom applies screen rules itself and never print ones, so for print the
+	// print blocks are unwrapped in place and the screen ones dropped.
 	if (media === 'print') {
 		root.walkAtRules('media', (rule) => {
 			if (/\bprint\b/.test(rule.params)) rule.replaceWith(rule.nodes ?? []);
+			else if (/\bscreen\b/.test(rule.params)) rule.remove();
 		});
 	}
 	// ponytail: jsdom 30 keeps `overflow` and `overflow-x/-y` as unrelated
 	// properties, so a longhand anywhere beats an `overflow: … !important`
 	// (measured). Expanding the one shorthand these tests read restores the
 	// cascade. Expand others here if a test starts reading them.
+	// jsdom computes a `var()` length as 0, so each one becomes the root's value.
+	const vars = new Map<string, string>();
+	root.walkRules(':root', (rule) => rule.walkDecls(/^--/, (decl) => void vars.set(decl.prop, decl.value)));
+	root.walkDecls((decl) => {
+		decl.value = decl.value.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^)]*))?\)/g, (match, name: string, fallback?: string) =>
+			vars.get(name) ?? fallback?.trim() ?? match,
+		);
+	});
 	root.walkDecls('overflow', (decl) => {
 		const [x, y = x] = decl.value.split(/\s+/);
 		decl.replaceWith(
@@ -71,20 +82,51 @@ function computed(window: Window, selector: string, property: string): string {
 	return window.getComputedStyle(element).getPropertyValue(property);
 }
 
+describe('printing an exported HTML file', () => {
+	const pdf = () => appPage('<div id="app"><div id="print-root"><article class="markdown-body"></article></div></div>', 'print');
+
+	test('prints the article instead of a blank page', () => {
+		// The copied print sheet hides everything outside #app, which an exported
+		// file does not have, so the article itself was hidden on paper.
+		assert.notEqual(computed(exportPage('print', '<p>body</p>'), '.markdown-body', 'display'), 'none');
+	});
+
+	test('gets the same paper margins as the app’s own PDF', () => {
+		// The export used to keep its 40px screen padding on paper.
+		const paper = computed(pdf(), '.markdown-body', 'padding-top');
+		assert.ok(parseFloat(paper) > 0, `the PDF has no page margin: ${paper}`);
+		const printed = exportPage('print', '<p>body</p>');
+		assert.equal(computed(printed, '.markdown-body', 'padding-top'), paper);
+		assert.equal(computed(printed, '.markdown-body', 'padding-left'), paper);
+	});
+
+	test('looks the same on screen as on paper', () => {
+		// One page margin for both, so the file does not change shape when printed.
+		const screen = computed(exportPage('screen', '<p>body</p>'), '.markdown-body', 'padding-top');
+		assert.ok(parseFloat(screen) > 0, `no margin on screen: ${screen}`);
+		assert.equal(screen, computed(exportPage('print', '<p>body</p>'), '.markdown-body', 'padding-top'));
+		assert.equal(
+			computed(exportPage('screen', '<p>body</p>'), '.markdown-body', 'padding-left'),
+			computed(exportPage('print', '<p>body</p>'), '.markdown-body', 'padding-left'),
+		);
+	});
+});
+
 describe('exported content width', () => {
 	test('the export cap loses to the print block, so the PDF route is unchanged', () => {
 		// `@media print` in styles.css forces `.markdown-body` to `max-width: 100%`
-		// with its own .75in padding, and that block travels into the export with
+		// with its own page-margin padding, and that block travels into the export with
 		// the rest of the sheet. Printing an exported file never saw the width
 		// setting and must not start seeing it.
 		const printed = exportPage('print', '<p>body</p>', MIN_PREVIEW_MAX_WIDTH);
 		assert.equal(computed(printed, '.markdown-body', 'max-width'), '100%');
 		// The PDF route itself prints the live viewer's `#print-root`, not an export.
-		// 0.75in, computed to px.
+		// 1cm, computed to px the way jsdom computes it.
 		const viewer = appPage('<div id="app"><div id="print-root"><article class="markdown-body"></article></div></div>', 'print');
+		const oneCm = computed(page('<!DOCTYPE html><html><body><article class="markdown-body" style="padding: 1cm"></article></body></html>', 'screen'), '.markdown-body', 'padding-top');
 		assert.equal(computed(viewer, '.markdown-body', 'max-width'), '100%');
-		assert.equal(computed(viewer, '.markdown-body', 'padding-top'), '72px');
-		assert.equal(computed(viewer, '.markdown-body', 'padding-left'), '72px');
+		assert.equal(computed(viewer, '.markdown-body', 'padding-top'), oneCm);
+		assert.equal(computed(viewer, '.markdown-body', 'padding-left'), oneCm);
 	});
 
 	test('the app stylesheet copied into an export does not out-rank the cap', () => {
@@ -198,9 +240,10 @@ describe('folds in print and export', () => {
 
 describe('oversized media in print', () => {
 	// `@page { margin: 0 }` makes the page box the whole sheet, and `.markdown-body`
-	// pads 0.75in top and bottom, so the printable column is the sheet minus 1.5in.
-	const LETTER_PRINTABLE_IN = 11 - 1.5;
-	const A4_PRINTABLE_IN = 11.69 - 1.5;
+	// pads 1cm top and bottom, so the printable column is the sheet minus 2cm.
+	const MARGINS_IN = 2 / 2.54;
+	const LETTER_PRINTABLE_IN = 11 - MARGINS_IN;
+	const A4_PRINTABLE_IN = 11.69 - MARGINS_IN;
 
 	const body = `<div id="app"><div id="print-root"><article class="markdown-body">
 		<img id="image" src="data:,">

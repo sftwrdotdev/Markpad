@@ -210,7 +210,7 @@ describe('exported content width', () => {
 			buildExportDocument({ theme: 'light', title: 'Notes', styles: '', articleHtml: '<p>body</p>', contentWidth: null, appearance: plainAppearance }),
 		);
 		assert.deepEqual(declarationsFor(css, 'margin', 'screen'), [{ value: '0 auto', important: false }]);
-		assert.deepEqual(declarationsFor(css, 'padding', 'screen'), [{ value: '40px', important: true }]);
+		assert.deepEqual(declarationsFor(css, 'padding', 'screen'), [{ value: 'var(--page-margin, 1cm)', important: true }]);
 	});
 
 	test('a corrupted stored width is clamped instead of reaching the stylesheet raw', () => {
