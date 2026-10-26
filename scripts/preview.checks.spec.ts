@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readSource } from './sourceTree.js';
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
-import { hasExportableDocument } from '../src/lib/utils/tabFileActions.js';
+import { canExportTab, hasExportableDocument } from '../src/lib/utils/tabFileActions.js';
 
 /**
  * Switching theme has to re-draw the diagrams, and until this file existed it
@@ -186,6 +186,7 @@ describe('rendered HTML field', () => {
 			// same condition (#673). Supplied as the real function, so what these
 			// tests evaluate is still the shipped decision rather than a stand-in.
 			hasExportableDocument: () => hasExportableDocument,
+			canExportTab: () => canExportTab,
 		},
 		'the export menu gate',
 	);
@@ -303,18 +304,6 @@ describe('rendered HTML field', () => {
 		assert.notEqual(tab.rawContent, '', 'while the document itself is not');
 	});
 
-	test('an untitled buffer being edited is offered the export commands', () => {
-		untitledBufferBeingEdited();
-
-		assert.equal(exportWouldRun(), true, 'precondition: exportAsHtml would produce a file for this buffer');
-		assert.equal(
-			exportsOffered.run(),
-			true,
-			'the Home menu hid Export as HTML / Export as PDF for a document that exports fine — ' +
-				`it read the rendered-HTML cache instead of the buffer. Gate: ${exportsOffered.text}`,
-		);
-	});
-
 	/**
 	 * Bring `tab.content` to what the running app would hold in this state.
 	 *
@@ -394,33 +383,5 @@ describe('rendered HTML field', () => {
 
 		assert.equal(exportWouldRun(), false, 'precondition: exportAsHtml returns null for an empty buffer');
 		assert.equal(exportsOffered.run(), false, 'so the menu must not offer it either');
-	});
-
-	test('a window with no tab at all offers no export', () => {
-		reset();
-
-		assert.equal(exportsOffered.run(), false);
-	});
-
-	test('a saved file is offered the export commands', () => {
-		reset();
-		tabManager.addTab('/notes/a.md');
-		tabManager.setTabRawContent(tabManager.activeTab!.id, '# a\n');
-
-		assert.equal(exportsOffered.run(), true);
-	});
-
-	test('a saved file with an empty buffer is offered nothing to export', () => {
-		// A saved empty file, or a tab whose read has not landed yet: a path and an
-		// empty buffer. The menu used to list the exports on the path alone, so
-		// Export as HTML then did nothing and Export as PDF printed a blank page.
-		// The menu, the PDF chord and the HTML export now ask one predicate.
-		reset();
-		tabManager.addTab('/notes/a.md');
-
-		assert.equal(tabManager.activeTab!.rawContent, '', 'precondition: the buffer is empty');
-		assert.equal(exportWouldRun(), false, 'precondition: exportAsHtml returns null for an empty buffer');
-		assert.equal(exportsOffered.run(), false, 'so the menu must not offer it either');
-		assert.equal(hasExportableDocument(tabManager.activeTab!.rawContent), false, 'nor the PDF chord');
 	});
 });

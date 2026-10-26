@@ -11,9 +11,10 @@
 	import { getConfiguredTitlebarToolbarIds, visibleTitlebarActionIds, type ViewMode, viewModeOf } from '../utils/titlebarToolbar.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
-	import { hasExportableDocument, hasRealFilePath } from '../utils/tabFileActions.js';
+	import { canExportTab } from '../utils/tabFileActions.js';
 	import { openNewWindow, openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
 	import { getVersion } from '@tauri-apps/api/app';
+	import { TAG_COLORS, TitleBarPopovers, containClick, scopeLine } from '../stores/titleBarPopovers.svelte.js';
 
 	let currentLanguage = $derived(settings.language);
 
@@ -128,138 +129,10 @@
 	let modifier = $derived(modifierFor(platform));
 
 	let isWin11 = $state(false);
-	const tagColors = ['#5f6368', '#1a73e8', '#d93025', '#f9ab00', '#188038', '#d01884', '#a142f4', '#007b83'];
-	let tagEditorOpen = $state(false);
-	let tagDraftName = $state('');
-	let tagDraftColor = $state(tagColors[1]);
-	let tagError = $state('');
+	const popovers = new TitleBarPopovers();
 
 	export function openTagEditor() {
-		tagDraftName = tabManager.windowTag?.name ?? '';
-		tagDraftColor = tabManager.windowTag?.color ?? tagColors[1];
-		tagError = '';
-		tagEditorOpen = true;
-	}
-
-	/**
-	 * Whether a *different* live window already carries this name.
-	 *
-	 * Asked here — when the popover commits, the moment the user names the window — and
-	 * nowhere else. In particular not at session restore: a snapshot written by
-	 * an older build can legitimately contain two windows under one name, and
-	 * refusing it there would clear a tag the user set, silently, at a moment
-	 * they are not even looking at the popover. Leaving a restored duplicate
-	 * alone costs at most a confusing pair of chips; rejecting it costs state
-	 * the user cannot get back.
-	 *
-	 * A backend that cannot answer means the user's own save goes through. The
-	 * check exists to stop one window from quietly overwriting another's pinned
-	 * documents, and an IPC failure is not evidence that it would.
-	 */
-	async function tagNameTakenElsewhere(name: string): Promise<boolean> {
-		try {
-			return (await invoke('is_window_tag_taken', { name })) === true;
-		} catch (error) {
-			console.error('Failed to check window tag exclusivity', error);
-			return false;
-		}
-	}
-
-	/**
-	 * Commit the draft and close. There is no Save button: Enter, a click
-	 * elsewhere and the chip all land here, so leaving the popover is what
-	 * saves it. Escape is the one exit that discards.
-	 *
-	 * An empty name keeps the stored tag. Clearing the field used to remove
-	 * the tag, which was harmless behind an explicit Save but would make a
-	 * stray click outside a way to delete a pinned session. Remove Tag is the
-	 * only exit that removes a tag.
-	 */
-	async function applyTag() {
-		const name = tagDraftName.trim();
-		const tag = tabManager.windowTag;
-		if (!name || (tag && name === tag.name && tagDraftColor === tag.color)) {
-			tagEditorOpen = false;
-			tagError = '';
-			return;
-		}
-		if (await tagNameTakenElsewhere(name)) {
-			// Refused in place, with the popover still open on the name that was
-			// refused: this is a correction the user makes in the field they are
-			// already in, not news to be delivered somewhere else.
-			tagError = t('menu.windowTagTaken', currentLanguage);
-			return;
-		}
-		let pinned = tag?.pinned;
-		// The closing save refreshes the pin by the window's current name, so a
-		// rename has to reach the pin file first or the window unpins at close.
-		// A colour change needs nothing here: the closing save carries it.
-		if (tag?.pinned && name !== tag.name) {
-			const renamed = await invoke('rename_pinned_tag', { oldName: tag.name, name, color: tagDraftColor }).catch((error) => {
-				console.error('Failed to rename the pinned tag', error);
-				return 'failed';
-			});
-			if (renamed === 'taken') {
-				tagError = t('menu.pinnedTagTaken', currentLanguage);
-				return;
-			}
-			pinned = renamed === 'renamed';
-		}
-		tabManager.setWindowTag({ name, color: tagDraftColor, pinned });
-		tagEditorOpen = false;
-		tagError = '';
-	}
-
-	/**
-	 * Right-click the chip: the same popover left-click opens.
-	 *
-	 * The chip borrows Chrome's tab-group chip visually, but not the state that
-	 * makes Chrome's left/right division necessary. There, left-click collapses
-	 * and expands the group, so the commands need somewhere else to live. A
-	 * window tag has nothing to collapse — it scopes the whole window — so
-	 * left-click has no second job, and putting Pin/Remove behind a right-click
-	 * would only hide them behind a gesture with no affordance advertising it.
-	 * The one thing right-click does owe the user is not raising the platform
-	 * menu over the title bar, hence `preventDefault`.
-	 *
-	 * It opens but never closes, unlike the left-click toggle. `openTagEditor`
-	 * re-seeds the draft from the stored tag, so re-opening an open popover
-	 * would throw away a name the user is in the middle of typing; and a
-	 * gesture whose whole purpose is "show me the tag's controls" should not
-	 * sometimes hide them. `stopPropagation` for the same reason the chip's
-	 * left-click has one: `handleGlobalDismiss` is wired to window
-	 * `contextmenu`, and would otherwise dismiss the popover this just opened.
-	 */
-	function openTagEditorFromContextMenu(event: MouseEvent) {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!tagEditorOpen) openTagEditor();
-	}
-
-	function clearTag() {
-		const tag = tabManager.windowTag;
-		if (tag?.pinned) invoke('remove_pinned_tag', { name: tag.name }).catch(console.error);
-		tabManager.setWindowTag(null);
-		tagEditorOpen = false;
-	}
-
-	async function togglePinnedTag() {
-		const tag = tabManager.windowTag;
-		if (!tag) return;
-		if (tag.pinned) {
-			invoke('remove_pinned_tag', { name: tag.name }).catch(console.error);
-			tabManager.setWindowTag({ ...tag, pinned: false });
-			return;
-		}
-		const files = tabManager.tabs.filter((tab) => hasRealFilePath(tab.path)).map((tab) => tab.path);
-		// A pinned group whose window is closed still holds its name, and
-		// pinning over it would replace its files. Refused the way a rename is.
-		const created = await invoke('save_pinned_tag', { name: tag.name, color: tag.color, files }).catch(console.error);
-		if (created === false) {
-			tagError = t('menu.pinnedTagTaken', currentLanguage);
-			return;
-		}
-		tabManager.setWindowTag({ ...tag, pinned: true });
+		popovers.openTagEditor();
 	}
 
 	$effect(() => {
@@ -295,7 +168,7 @@
 	});
 
 	function showTooltip(e: MouseEvent, text: string, shortcut: string | undefined = '', force: boolean = false) {
-		if (!force && (kebabMenuOpen || homeMenuOpen)) return;
+		if (!force && (popovers.kebabMenuOpen || popovers.homeMenuOpen)) return;
 		const target = e.currentTarget as HTMLElement;
 		const rect = target.getBoundingClientRect();
 		const windowWidth = window.innerWidth;
@@ -337,7 +210,7 @@
 			}
 
 			const kebabBtn = document.querySelector('.kebab-btn') as HTMLElement;
-			if (kebabBtn && !kebabMenuOpen && !homeMenuOpen && !themeMenuOpen) {
+			if (kebabBtn && !popovers.kebabMenuOpen && !popovers.homeMenuOpen && !popovers.themeMenuOpen) {
 				const rect = kebabBtn.getBoundingClientRect();
 				tooltip.text = `${zoomLevel}%`;
 				tooltip.shortcut = '';
@@ -384,13 +257,10 @@
 		),
 	);
 
-	let themeMenuOpen = $state(false);
-	let kebabMenuOpen = $state(false);
-	let homeMenuOpen = $state(false);
 	let pinnedTags = $state<Array<{ name: string; color: string }>>([]);
 
 	$effect(() => {
-		if (!homeMenuOpen) return;
+		if (!popovers.homeMenuOpen) return;
 		invoke<Array<{ name: string; color: string }>>('list_pinned_tags')
 			.then((tags) => (pinnedTags = tags))
 			.catch(console.error);
@@ -399,7 +269,7 @@
 	let savedVscodeThemes = $state<string[]>([]);
 	
 	$effect(() => {
-		if (themeMenuOpen) {
+		if (popovers.themeMenuOpen) {
 			invoke('get_saved_vscode_themes')
 				.then((themes) => {
 					savedVscodeThemes = themes as string[];
@@ -418,28 +288,10 @@
 
 	function handleSetTheme(t: string) {
 		if (onSetTheme) onSetTheme(t);
-		themeMenuOpen = false;
+		popovers.themeMenuOpen = false;
 	}
 
-	function handleGlobalDismiss() {
-		themeMenuOpen = false;
-		kebabMenuOpen = false;
-		homeMenuOpen = false;
-		if (tagEditorOpen) applyTag();
-	}
-
-	$effect(() => {
-		if (themeMenuOpen || kebabMenuOpen || homeMenuOpen || tagEditorOpen) {
-			window.addEventListener('click', handleGlobalDismiss);
-			window.addEventListener('contextmenu', handleGlobalDismiss);
-			window.addEventListener('blur', handleGlobalDismiss);
-		}
-		return () => {
-			window.removeEventListener('click', handleGlobalDismiss);
-			window.removeEventListener('contextmenu', handleGlobalDismiss);
-			window.removeEventListener('blur', handleGlobalDismiss);
-		};
-	});
+	$effect(() => popovers.listenForDismiss(window));
 </script>
 
 <svelte:window bind:innerWidth />
@@ -451,19 +303,19 @@
 	<div class="window-controls-left" data-tauri-drag-region>
 		<div class="home-menu-container" role="presentation">
 			<button
-				class="icon-home-btn {homeMenuOpen ? 'active' : ''}"
+				class="icon-home-btn {popovers.homeMenuOpen ? 'active' : ''}"
 				onclick={(e) => {
 					e.stopPropagation();
-					homeMenuOpen = !homeMenuOpen;
-					if (homeMenuOpen) {
-						themeMenuOpen = false;
-						kebabMenuOpen = false;
+					popovers.homeMenuOpen = !popovers.homeMenuOpen;
+					if (popovers.homeMenuOpen) {
+						popovers.themeMenuOpen = false;
+						popovers.kebabMenuOpen = false;
 						hideTooltip();
 					}
 				}}
 				aria-label={t('tooltip.menu', currentLanguage)}
 			onmouseenter={(e) => {
-							if (!homeMenuOpen) showTooltip(e, t('tooltip.menu', currentLanguage));
+							if (!popovers.homeMenuOpen) showTooltip(e, t('tooltip.menu', currentLanguage));
 						}}
 				onmousedown={(e) => e.preventDefault()}
 				onmouseleave={hideTooltip}>
@@ -473,20 +325,20 @@
 					class="window-icon"
 					style:filter={theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'none' : 'invert(0.7)'} />
 			</button>
-			{#if homeMenuOpen}
+			{#if popovers.homeMenuOpen}
 				<div
 					class="home-dropdown-menu"
 					role="menu"
 					tabindex="-1"
 					transition:fly={{ y: 5, duration: 150 }}
-					onclick={(e) => e.stopPropagation()}
+					onclick={containClick}
 					onkeydown={(e) => {
-						if (e.key === 'Escape') homeMenuOpen = false;
+						if (e.key === 'Escape') popovers.homeMenuOpen = false;
 					}}>
 					<button
 				class="home-menu-item"
 				onclick={() => {
-					homeMenuOpen = false;
+					popovers.homeMenuOpen = false;
 					ontoggleHome();
 				}}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -497,7 +349,7 @@
 					<button
 				class="home-menu-item"
 				onclick={() => {
-					homeMenuOpen = false;
+					popovers.homeMenuOpen = false;
 					onnewFile?.();
 				}}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -513,7 +365,7 @@
 			<button
 				class="home-menu-item"
 				onclick={() => {
-					homeMenuOpen = false;
+					popovers.homeMenuOpen = false;
 					openNewWindow().catch(console.error);
 				}}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -524,7 +376,7 @@
 			<button
 				class="home-menu-item"
 				onclick={() => {
-					homeMenuOpen = false;
+					popovers.homeMenuOpen = false;
 					onopenFile?.();
 				}}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -540,7 +392,7 @@
 			<button
 				class="home-menu-item"
 				onclick={() => {
-					homeMenuOpen = false;
+					popovers.homeMenuOpen = false;
 					onopenFolder?.();
 				}}>
 				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -551,7 +403,7 @@
 						<button
 						class="home-menu-item"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							onsaveFile?.();
 						}}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -564,7 +416,7 @@
 					<button
 						class="home-menu-item"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							onsaveFileAs?.();
 						}}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -578,7 +430,7 @@
 						<button
 							class="home-menu-item"
 							onclick={() => {
-								homeMenuOpen = false;
+								popovers.homeMenuOpen = false;
 								onreloadFromDisk?.();
 							}}>
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -588,21 +440,12 @@
 						</button>
 					{/if}
 					{/if}
-					<!--
-						`rawContent`, not `content`: the exports read the Markdown buffer
-						(`exportAsHtml` returns null on an empty `ctx.rawContent`), while
-						`content` is the rendered-preview HTML, refreshed only while the
-						preview is on screen. In plain edit mode with the TOC closed —
-						the default state of a new file — `content` is still empty for a
-						buffer that has never been rendered, so gating on it hid an export
-						that would have produced a file.
-					-->
-					{#if hasExportableDocument(tabManager.activeTab?.rawContent)}
+					{#if canExportTab(tabManager.activeTab)}
 						<div class="home-menu-divider"></div>
 						<button
 						class="home-menu-item"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							onexportHtml?.();
 						}}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -612,7 +455,7 @@
 					<button
 						class="home-menu-item"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							onexportPdf?.();
 						}}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -624,16 +467,13 @@
 					<div class="home-menu-divider"></div>
 					<button
 						class="home-menu-item"
-						onclick={() => {
-							homeMenuOpen = false;
-							openTagEditor();
-						}}>
+						onclick={() => popovers.openTagEditorFromHomeMenu()}>
 						{t('menu.setWindowTag', currentLanguage)}
 					</button>
 					<button
 						class="home-menu-item"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							onmergeAllWindows?.();
 						}}>
 						{t('menu.mergeAllWindows', currentLanguage)}
@@ -644,7 +484,7 @@
 							<button
 								class="home-menu-item"
 								onclick={() => {
-									homeMenuOpen = false;
+									popovers.homeMenuOpen = false;
 									openPinnedTagWindow(tag.name).catch(console.error);
 								}}>
 								<span class="pinned-tag-dot" style:--tag-color={tag.color}></span>
@@ -656,7 +496,7 @@
 					<button
 					class="home-menu-item"
 					onclick={() => {
-						homeMenuOpen = false;
+						popovers.homeMenuOpen = false;
 						onexit?.();
 					}}>
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -668,7 +508,7 @@
 					<button
 						class="home-menu-footer"
 						onclick={() => {
-							homeMenuOpen = false;
+							popovers.homeMenuOpen = false;
 							openUrl('https://github.com/alecdotdev/Markpad')
 								.catch(() => window.open('https://github.com/alecdotdev/Markpad', '_blank'));
 						}}>
@@ -683,42 +523,35 @@
 			<button
 				class="window-tag-chip"
 				style:--tag-color={tabManager.windowTag.color}
-				oncontextmenu={openTagEditorFromContextMenu}
-				onclick={(event) => {
-					event.stopPropagation();
-					if (tagEditorOpen) applyTag();
-					else openTagEditor();
-				}}>
+				oncontextmenu={(event) => popovers.openTagEditorFromContextMenu(event)}
+				onclick={(event) => popovers.toggleTagEditor(event)}>
 				{tabManager.windowTag.name}
 			</button>
 		{/if}
-		{#if tagEditorOpen}
+		{#if popovers.tagEditorOpen}
 			<div
 				class="tag-editor"
 				role="dialog"
 				tabindex="-1"
-				onclick={(event) => event.stopPropagation()}
-				onkeydown={(event) => {
-					if (event.key === 'Escape') tagEditorOpen = false;
-					else if (event.key === 'Enter') applyTag();
-				}}>
+				onclick={containClick}
+				onkeydown={(event) => popovers.editorKeydown(event)}>
 				<!-- svelte-ignore a11y_autofocus -->
 				<input
 					autofocus
 					spellcheck="false"
 					placeholder={t('menu.windowTagPlaceholder', currentLanguage)}
-					bind:value={tagDraftName}
-					oninput={() => (tagError = '')} />
-				{#if tagError}<p class="tag-error" role="alert">{tagError}</p>{/if}
+					bind:value={popovers.tagDraftName}
+					oninput={() => popovers.nameEdited()} />
+				{#if popovers.tagError}<p class="tag-error" role="alert">{popovers.tagError}</p>{/if}
 				<div class="tag-colors">
-					{#each tagColors as color}
-						<button class:selected={tagDraftColor === color} style:--tag-color={color} onclick={() => (tagDraftColor = color)} aria-label={color}></button>
+					{#each TAG_COLORS as color}
+						<button class:selected={popovers.tagDraftColor === color} style:--tag-color={color} onclick={() => (popovers.tagDraftColor = color)} aria-label={color}></button>
 					{/each}
 				</div>
-				{#if tabManager.windowTag}
+				{#if popovers.tagActions}
 					<div class="home-menu-divider"></div>
-					<button class="home-menu-item" onclick={togglePinnedTag}>
-						{#if tabManager.windowTag.pinned}
+					<button class="home-menu-item" onclick={() => popovers.togglePinnedTag()}>
+						{#if popovers.tagActions.pinned}
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 								><path d="M12 17v5" /><path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" /><path d="m2 2 20 20" /><path
 									d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" /></svg>
@@ -727,18 +560,17 @@
 								><path d="M12 17v5" /><path
 									d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></svg>
 						{/if}
-						{t(tabManager.windowTag.pinned ? 'menu.unpinWindowTag' : 'menu.pinWindowTag', currentLanguage)}
+						{t(popovers.tagActions.pinned ? 'menu.unpinWindowTag' : 'menu.pinWindowTag', currentLanguage)}
 					</button>
-					<!-- Only a pinned tag can be closed: closing saves the pin and Home reopens it. An unpinned tag would be gone for good, which is Remove Tag's job. -->
-					{#if tabManager.windowTag.pinned}
-						<button class="home-menu-item" onclick={() => { tagEditorOpen = false; onclosetag?.(); }}>
+					{#if popovers.tagActions.canClose}
+						<button class="home-menu-item" onclick={() => { popovers.tagEditorOpen = false; onclosetag?.(); }}>
 							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 								><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><path d="m15 9-6 6" /><path d="m9 9 6 6" /></svg>
 							{t('menu.closeWindowTag', currentLanguage)}
 						</button>
 					{/if}
 					<div class="home-menu-divider"></div>
-					<button class="home-menu-item" onclick={clearTag}>
+					<button class="home-menu-item" onclick={() => popovers.clearTag()}>
 						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
 							><path d="M21 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h6" /><path d="m21 3-9 9" /><path d="M15 3h6v6" /></svg>
 						{t('menu.windowTagClear', currentLanguage)}
@@ -750,7 +582,7 @@
 
 	<!-- With the tabs in a side column (#884) the bar shows the window title, as it does with tabs hidden. -->
 	{#if tabManager.tabs.length > 0 && settings.tabPlacement === 'top'}
-		<div class="tab-area" class:tagged={tabManager.windowTag !== null} style:--tag-color={tabManager.windowTag?.color}>
+		<div class="tab-area" class:tagged={scopeLine(tabManager.windowTag).tagged} style:--tag-color={scopeLine(tabManager.windowTag).color}>
 			<TabList onnewTab={() => tabManager.addNewTab()} {showHome} {ontabclick} {oncloseTab} />
 		</div>
 	{:else}
@@ -766,17 +598,17 @@
 	<div class="title-actions-container {isCollapsed ? 'collapsed' : ''}" data-tauri-drag-region>
 		{#snippet kebabButton()}
 			<button
-				class="kebab-btn {kebabMenuOpen ? 'active' : ''}"
+				class="kebab-btn {popovers.kebabMenuOpen ? 'active' : ''}"
 				onclick={(e) => {
 					e.stopPropagation();
-					kebabMenuOpen = !kebabMenuOpen;
-					if (kebabMenuOpen) {
-						themeMenuOpen = false;
+					popovers.kebabMenuOpen = !popovers.kebabMenuOpen;
+					if (popovers.kebabMenuOpen) {
+						popovers.themeMenuOpen = false;
 						hideTooltip();
 					}
 				}}
 				onmouseenter={(e) => {
-							if (!kebabMenuOpen) showTooltip(e, t('tooltip.more', currentLanguage));
+							if (!popovers.kebabMenuOpen) showTooltip(e, t('tooltip.more', currentLanguage));
 						}}
 				onmousedown={(e) => e.preventDefault()}
 				onmouseleave={hideTooltip}
@@ -796,7 +628,7 @@
 						class="title-action-btn {showHome ? 'active' : ''}"
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							ontoggleHome();
 						}}
 						aria-label={t('menu.home', currentLanguage)}
@@ -815,7 +647,7 @@
 						disabled={!canGoBack}
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							onback?.();
 						}}
 						aria-label={t('tooltip.back', currentLanguage)}
@@ -835,7 +667,7 @@
 						disabled={!canGoForward}
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							onforward?.();
 						}}
 						aria-label={t('tooltip.forward', currentLanguage)}
@@ -854,7 +686,7 @@
 						class="title-action-btn"
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							onopenSettings?.();
 						}}
 						aria-label={t('tooltip.settings', currentLanguage)}
@@ -931,7 +763,7 @@
 						class="title-action-btn"
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							onfind?.();
 						}}
 						aria-label={t('tooltip.find', currentLanguage)}
@@ -972,7 +804,7 @@
 								aria-pressed={currentViewMode === mode.id}
 								onclick={() => {
 									hideTooltip();
-									kebabMenuOpen = false;
+									popovers.kebabMenuOpen = false;
 									onsetViewMode(mode.id);
 								}}
 								aria-label={mode.label}
@@ -1040,7 +872,7 @@
 						class="title-action-btn"
 						onclick={() => {
 							hideTooltip();
-							kebabMenuOpen = false;
+							popovers.kebabMenuOpen = false;
 							onreloadFromDisk?.();
 						}}
 						aria-label={t('tooltip.reloadFromDisk', currentLanguage)}
@@ -1083,15 +915,15 @@
 				{:else if id === 'theme'}
 					<div class="theme-dropdown-container">
 						<button
-							class="title-action-btn {themeMenuOpen ? 'active' : ''}"
+							class="title-action-btn {popovers.themeMenuOpen ? 'active' : ''}"
 							onclick={(e) => {
 								e.stopPropagation();
-								themeMenuOpen = !themeMenuOpen;
-								if (themeMenuOpen) hideTooltip();
+								popovers.themeMenuOpen = !popovers.themeMenuOpen;
+								if (popovers.themeMenuOpen) hideTooltip();
 							}}
 							aria-label={t('tooltip.changeTheme', currentLanguage)}
 														onmouseenter={(e) => {
-														if (!themeMenuOpen) showTooltip(e, t('tooltip.changeTheme', currentLanguage));
+														if (!popovers.themeMenuOpen) showTooltip(e, t('tooltip.changeTheme', currentLanguage));
 												}}
 							onmousedown={(e) => e.preventDefault()}
 							onmouseleave={hideTooltip}
@@ -1118,7 +950,7 @@
 							{/if}
 							<span class="action-label">{t('menu.changeTheme', currentLanguage)}</span>
 						</button>
-						{#if themeMenuOpen}
+						{#if popovers.themeMenuOpen}
 							<div
 								class="theme-menu"
 								role="menu"
@@ -1126,7 +958,7 @@
 								transition:fly={{ y: 5, duration: 150 }}
 								onclick={(e) => e.stopPropagation()}
 								onkeydown={(e) => {
-									if (e.key === 'Escape') themeMenuOpen = false;
+									if (e.key === 'Escape') popovers.themeMenuOpen = false;
 								}}>
 								<button class="theme-option {theme === 'system' ? 'selected' : ''}" onclick={() => handleSetTheme('system')}> {t('theme.followSystem', currentLanguage)} </button>
 								<button class="theme-option {theme === 'light' ? 'selected' : ''}" onclick={() => handleSetTheme('light')}> {t('theme.defaultLight', currentLanguage)} </button>
@@ -1149,7 +981,7 @@
 		{#snippet actionMenu(ids: string[])}
 			{#if ids.length > 0}
 				{@render kebabButton()}
-				{#if kebabMenuOpen}
+				{#if popovers.kebabMenuOpen}
 					<div
 						class="title-actions show-dropdown"
 						data-tauri-drag-region
@@ -1158,7 +990,7 @@
 						transition:fly={{ y: 5, duration: 150 }}
 						onclick={(e) => e.stopPropagation()}
 						onkeydown={(e) => {
-							if (e.key === 'Escape') kebabMenuOpen = false;
+							if (e.key === 'Escape') popovers.kebabMenuOpen = false;
 						}}>
 						{@render actionItems(ids)}
 					</div>

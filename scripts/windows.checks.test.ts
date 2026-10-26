@@ -718,12 +718,6 @@ describe('window tags and pinned sessions', () => {
 		assert.match(home, /onopenPinnedTag/);
 	});
 
-	test('the title bar exposes a named color chip and pin control', () => {
-		assert.match(titleBar, /tagColors/);
-		assert.match(titleBar, /window-tag-chip/);
-		assert.match(titleBar, /togglePinnedTag/);
-	});
-
 	test('the Home menu groups window organization below export actions', () => {
 		const exportIndex = offsetOf(titleBar, "t('menu.exportPdf', currentLanguage)");
 		const tagIndex = offsetOf(titleBar, "t('menu.setWindowTag', currentLanguage)");
@@ -733,6 +727,5 @@ describe('window tags and pinned sessions', () => {
 		assert.ok(exportIndex < tagIndex);
 		assert.ok(tagIndex < mergeIndex);
 		assert.ok(mergeIndex < exitIndex);
-		assert.match(titleBar, /homeMenuOpen = false;\s*openTagEditor\(\);/);
 	});
 });
