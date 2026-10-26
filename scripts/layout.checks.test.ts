@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { asBufferLine, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
 import { FOLD_TRANSITION_MS } from '../src/lib/utils/foldLayout.js';
-import { functionSource, readSource, sliceBetween } from './sourceTree.js';
+import { readSource } from './sourceTree.js';
 
 describe('split pane ratio', () => {
 	test('the bounds are not re-stated here', () => {
@@ -104,35 +103,11 @@ describe('outline follows the editor', () => {
 
 	/* --------------------------------------------------------------- wiring */
 
-	test('the editor position reaches the outline whether or not scroll sync is on', () => {
-		// The line is recorded before the sync check, not inside it: following the
-		// editor is not the same feature as moving the preview, and #169 asks for it
-		// in editor-only mode, where there is no preview to move.
-		//
-		// The line is converted on the way in: `position` is in the editor's
-		// numbering and the outline is built from `data-sourcepos`, which counts
-		// from the body. See navigation.checks.test.ts for that boundary.
-		// It goes through `tabAnchorForEditorTopLine`, the crossing the tab's own
-		// reading position takes, so the outline follows the line the reader is
-		// on rather than the one the viewport cuts in half (#744).
-		const handler = functionSource(readSource('src/lib/sessions/viewMode.svelte.ts'), 'handleEditorScrollSync');
-		const record = handler.indexOf("followToc('editor'");
-		const syncCheck = handler.indexOf('splitScrollSyncOn()');
-
-		assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
-		assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');
-		assert.match(handler, /followToc\('editor', tabAnchorForEditorTopLine\(o\.lineCoords, asBufferLine\(position\.line\)\)\)/);
-	});
-
-	test('the preview feeds the same state, off the line it already measures', () => {
-		// `getPreviewScrollAnchor` is computed on every preview scroll for the
-		// tab's reading position. Taking the outline's answer from it is what makes
-		// this one rule rather than two — and it costs nothing, because the descent
-		// it does was already happening on that event.
-		const handler = sliceBetween(viewerSource, 'function handleScroll(e: Event)', '\n\tfunction ');
-		assert.match(handler, /const anchorLine = getPreviewScrollAnchor\(target\);/);
-		assert.match(handler, /followToc\('preview', anchorLine\);/);
-		// One input. Which pane feeds it is `followToc`'s call.
+	test('the preview scroll and the outline are wired to the view mode', () => {
+		// Markup-only remainder: `followPreviewScroll` (documents.viewMode.spec.ts
+		// "the preview feeds the same state…") runs from the preview's scroll
+		// handler, and the outline draws `viewMode.tocActiveLine`.
+		assert.match(viewerSource, /\n\t\t\tfollowPreviewScroll\(target\);/);
 		assert.match(viewerSource, /activeLine=\{viewMode\.tocActiveLine\}/);
 	});
 

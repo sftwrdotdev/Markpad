@@ -757,10 +757,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		getPreviewScrollAnchor,
 	});
 	const {
-		followToc,
 		handleEditorCursor,
 		placePreviewCursor,
 		handleEditorScrollSync,
+		followPreviewScroll,
 		syncEditorToPreviewScroll,
 		toggleEdit,
 		toggleEditView,
@@ -1384,14 +1384,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 				tabManager.updateTabScrollPercentage(tabManager.activeTabId, percentage);
 			}
 
-			// One descent, two consumers: the tab's reading position, and the
-			// outline. Both want the line at the top of the preview, and this is
-			// already the only place it is measured.
-			const anchorLine = getPreviewScrollAnchor(target);
-			if (anchorLine !== null) {
-				tabManager.updateTabAnchorLine(tabManager.activeTabId, anchorLine);
-				followToc('preview', anchorLine);
-			}
+			followPreviewScroll(target);
 		}
 
 		syncEditorToPreviewScroll(target);
