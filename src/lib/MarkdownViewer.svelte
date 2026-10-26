@@ -2827,8 +2827,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		liveMode = !liveMode;
 	}
 
-	function saveImageAs(src: string) {
-		return saveImageAsFile(src, {
+	async function saveImageAs(src: string) {
+		await saveImageAsFile(src, {
 			save,
 			copyFile: (from, dest) => invoke('copy_file', { src: from, dest }),
 			toast: addToast,

@@ -112,8 +112,8 @@ describe('preview anchor restore wiring', () => {
 		// alone now (scripts/diagramThemeRefresh.spec.ts owns that question). What
 		// this test is for is the tracking.
 		assert.match(
-			viewer,
-			/untrack\(\(\) => \{? ?if \(markdownBody\) renderRichContent\(\);/,
+			readSource('src/lib/utils/themeEffect.svelte.ts'),
+			/untrack\(\(\) => deps\.recolourDiagrams\(\)\)/,
 			'the theme effect must depend on the theme, not on the libraries arriving',
 		);
 	});
