@@ -674,14 +674,7 @@ describe('one version across the manifests', () => {
 		const pkg = JSON.parse(readSource('package.json'));
 		assert.equal(pkg.scripts.release, 'node scripts/release.mjs');
 
-		// It has to touch all three, or it is a bump that reintroduces the skew.
-		const script = readSource('scripts/release.mjs');
-		for (const file of ['package.json', 'src-tauri/Cargo.toml', 'Cargo.lock']) {
-			assert.ok(script.includes(file), `scripts/release.mjs never mentions ${file}`);
-		}
-		// The lock is cargo's format; a hand-rolled rewrite of it is the bug, not the
-		// fix.
-		assert.match(script, /cargo['"],\s*\['update'/);
+		// That it writes all three is run in release.test.ts.
 
 		// And the runbook points at the command rather than at the two files.
 		assert.match(readSource('RELEASING.md'), /npm run release X\.Y\.Z/);
