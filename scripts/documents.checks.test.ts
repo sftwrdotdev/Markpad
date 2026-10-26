@@ -6,8 +6,6 @@ import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { DEFAULT_OPEN_FILE_MODE } from '../src/lib/utils/openFileMode.js';
 import { viewerCommandTable } from './keymapHarness.js';
 import {
-	callbackBodies,
-	filesMatching,
 	functionSource,
 	offsetOf,
 	readDictionarySource,
@@ -251,23 +249,9 @@ describe('live mode watched path', () => {
 		assert.match(session, /tabManager\.tabs\.find\(\(tab\) => tab\.path === changedPath\)/);
 	});
 
-	test('the watcher follows the active file instead of retaining a previous tab watcher', () => {
-		assert.match(viewer, /if \(currentFile\) \{\n\t\t\tinvoke\('watch_file', \{ path: currentFile \}\)/);
-
-		// The defect #296 fixed was `documentSession` re-issuing `watch_file` on
-		// every load, so the watcher followed whichever document loaded last rather
-		// than the active one. It used to be pinned as
-		// `/isLiveMode\(\)\) invoke\('watch_file'/` — the exact one-line spelling
-		// the defect happened to be written in, against a file where neither token
-		// occurs any more. Rewriting the same call as an ordinary `if (…) { … }`
-		// evaded it. What has to hold is who may call it: the effect above, alone.
-		const watchers = filesMatching(readSourceFiles('src'), /invoke\(\s*'watch_file'/);
-		assert.deepEqual(watchers, ['src/lib/MarkdownViewer.svelte'], 'one owner for the file watcher');
-
-		const watchingEffects = callbackBodies(viewer, '$effect').filter((body) => /'watch_file'/.test(body));
-		assert.equal(watchingEffects.length, 1, 'and one effect inside it');
-		assert.match(watchingEffects[0], /invoke\('unwatch_file'\)/, 'the same effect gives the watcher up');
-
+	test('toggling Live Mode does not reload the document', () => {
+		// The watcher half of this case is driven in documents.session.spec.ts
+		// (fileWatch.svelte.ts). The toggle is one assignment inside the viewer.
 		const toggleLiveMode = sliceBetween(viewer, 'function toggleLiveMode', 'async function saveImageAs');
 		assert.doesNotMatch(toggleLiveMode, /loadMarkdown\(/);
 	});

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 
 import { afterAll, beforeAll, beforeEach, describe, test } from 'vitest';
 
+import { flushSync, untrack } from 'svelte';
+
 import { runeEffect } from './runeEffect.svelte.js';
 import { t } from '../src/lib/utils/i18n.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
@@ -15,6 +17,7 @@ import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
+const { followActiveFile } = await import('../src/lib/sessions/fileWatch.svelte.js');
 
 /*
  * The document session driven end to end against a scripted disk: the store
@@ -455,5 +458,35 @@ describe('document session', () => {
 		}
 		assert.equal(tab.rawContent, '- [x] one\n', 'precondition: the box was ticked');
 		assert.deepEqual(stale, []);
+	});
+
+	// --- the file watcher ---------------------------------------------------------
+
+	test('the watcher follows the active file instead of retaining a previous tab watcher', async () => {
+		// #296: the session re-issued `watch_file` on every load, so the watcher
+		// followed whichever document loaded last rather than the active one.
+		const session = makeSession();
+		disk.set('/notes/a.md', { body: 'a' });
+		disk.set('/notes/b.md', { body: 'b' });
+		const watches = () =>
+			calls.filter((call) => call.cmd === 'watch_file' || call.cmd === 'unwatch_file').map((call) => call.args?.path ?? '-');
+
+		await session.loadMarkdown('/notes/a.md');
+		await session.loadMarkdown('/notes/b.md');
+		assert.deepEqual(watches(), [], 'a load asked for a watch of its own');
+
+		const first = tabManager.tabs[0].id;
+		// Untracked, so only the watcher's own effect re-runs, as in the component.
+		const stop = runeEffect(() => untrack(() => followActiveFile(() => tabManager.activeTab?.path ?? '')));
+		try {
+			flushSync();
+			tabManager.activeTabId = first;
+			flushSync();
+			tabManager.closeAll();
+			flushSync();
+		} finally {
+			stop();
+		}
+		assert.deepEqual(watches(), ['/notes/b.md', '/notes/a.md', '-']);
 	});
 });

@@ -130,6 +130,7 @@ import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
 import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
+import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
 	import 'katex/dist/katex.min.css';
@@ -1186,16 +1187,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		});
 	});
 
-	// Watched whether or not Auto-Reload is on: an edit made elsewhere under
-	// unsaved changes is reported when it happens, not at the next save.
-	// Auto-Reload only decides whether a clean tab reloads.
-	$effect(() => {
-		if (currentFile) {
-			invoke('watch_file', { path: currentFile }).catch(console.error);
-		} else {
-			invoke('unwatch_file').catch(console.error);
-		}
-	});
+	followActiveFile(() => currentFile);
 
 	// The preview and the export run the same filter in opposite orders, on
 	// purpose. The export sanitizes the renderer output first and processes
