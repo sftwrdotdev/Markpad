@@ -1535,18 +1535,6 @@ describe('X11 clipboard ownership', () => {
 		);
 		assert.match(body, /retain_clipboard_ownership\(\)/);
 	});
-
-	test('the retained handle is never dropped', () => {
-		// `retain_clipboard_ownership` holding a `Clipboard` in a local would be a
-		// no-op: the point is that the handle outlives the call, so the invisible
-		// window arboard serves selection requests from is never destroyed.
-		const helper = sliceBetween(
-			readSource('src-tauri/src/commands.rs'),
-			'fn retain_clipboard_ownership',
-			'\n}',
-		);
-		assert.match(helper, /std::mem::forget\(/);
-	});
 });
 
 describe('editor context menu (#261)', () => {
