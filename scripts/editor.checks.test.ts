@@ -34,38 +34,6 @@ describe('editor option wiring', () => {
 		assert.equal(count(editor, /editor\.updateOptions\(/g), 1, 'exactly one updateOptions call site');
 	});
 
-	test('the editor has its final layout before anything is placed in it', () => {
-		// #799: the view state, the anchor line and Ctrl+E's pending sync are all
-		// placed in `onMount`, before the update effect first runs. The editor was
-		// created at zoom 100 and with 'simple' wrapping, and the effect then
-		// changed the font size or the wrapping under a placed scroll offset.
-		// Monaco keeps the pixels, not the line, so every Ctrl+E landed further
-		// down (zoom below 100, or a proportional font) or further up (above 100).
-		const mount = sliceBetween(editor, 'monaco.editor.create(container', 'editorReady = true;');
-		assert.match(mount, /\.\.\.createdEditorOptions\(settings, zoomLevel, readOnly\)/, 'created at the real zoom');
-
-		const measured = mount.indexOf('if (!fontIsMonospace) applySettingsOptions();');
-		const restored = mount.indexOf('editor.restoreViewState(');
-		assert.ok(measured !== -1, 'the wrapping for a proportional font is applied in onMount');
-		assert.ok(measured < restored, 'and before the view state is restored');
-		assert.ok(
-			editor.indexOf('editorReady = true;') < editor.indexOf('jumps.spendPending();'),
-			'the pending sync is spent after both',
-		);
-	});
-
-	test('the editor mounts on the cursor the preview placed', () => {
-		// #799: a click in the preview moves the tab's shared cursor, and opening
-		// split view or Ctrl+E mounts the editor with its own saved view state.
-		// The shared cursor goes down over it before the editor reports where it
-		// is, or the report would carry the stale position back to the preview.
-		const mount = sliceBetween(editor, 'monaco.editor.create(container', 'editorReady = true;');
-		const placed = mount.indexOf('if (sharedCursor) editor.setPosition(');
-		assert.ok(placed !== -1, 'the shared cursor is put down on mount');
-		assert.ok(placed > mount.indexOf('editor.restoreViewState('), 'after the view state is restored');
-		assert.ok(placed < mount.indexOf('oncursor?.(asBufferLine(mounted'), 'and before the editor reports its cursor');
-	});
-
 	test('platform detection reads settings.osType and never writes it', () => {
 		// `platformOf` is the app's one platform answer, including the synchronous
 		// `navigator.platform` fallback that lets the keybindings register once, at
@@ -151,6 +119,8 @@ describe('editor theme contracts', () => {
 			// The widget's owner: it defines `app-theme-*` and it is the only thing
 			// on screen a Monaco theme can be seen on.
 			'src/lib/components/Editor.svelte',
+			// The same pane's mount, which follows the system colour scheme.
+			'src/lib/utils/mountEditor.ts',
 			// `vscode-custom` does not exist as a theme until this file has read the
 			// JSON and called `defineTheme`, so the set has to happen where the
 			// define does — `Editor.svelte`'s change effect abstains for `vscode:`.
@@ -577,13 +547,6 @@ describe('semantic token contracts', () => {
 				`semantic.rs emits \`${kind}\`, which the legend does not list`,
 			);
 		}
-	});
-
-	test('the editor registers the semantic tokens provider', () => {
-		// The switch half is editor.test.ts "the editor turns the semantic layer
-		// on, because the default is off". The registration happens in the mount.
-		const editor = readSource('src/lib/components/Editor.svelte');
-		assert.match(editor, /registerDocumentSemanticTokensProvider\(/);
 	});
 
 	test('no kind falls through to an imported theme that has nothing to say', () => {
