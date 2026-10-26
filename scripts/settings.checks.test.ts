@@ -3,48 +3,6 @@ import { describe, test } from 'node:test';
 
 import { readSource, walkSourceFiles } from './sourceTree.js';
 
-/**
- * Settings whose label did not describe what the code did.
- *
- * Three of them, found in one sweep of the panel, and all three are the same
- * failure: a control whose effect depends on another control, with nothing in
- * the UI saying so.
- *
- *   * "Auto-save edits" + "Ask for confirmation before saving" — four
- *     combinations, two behaviours, and one of them turned auto-save off while
- *     showing it on. Merged into the single switch every call site already
- *     evaluated. `autoSaveSetting.ts` holds the migration.
- *
- *   * "Wrap Column" — fed to Monaco as `wordWrapColumn`, which Monaco reads
- *     only in one of the three "Word Wrap" modes. It sat ABOVE that select and
- *     was always editable, so the two settings' relationship was invisible.
- *
- *   * "Word Count" — rendered inside the status bar. With the status bar off,
- *     turning it on shows nothing at all.
- *
- * A fourth — that "Restore windows on launch" also decides whether resolved tabs
- * stay open when a window closes — was left alone. Saying so needs a real
- * tooltip, and a `title` attribute is not one: it only changes the cursor and
- * waits a second before a browser chrome bubble the app does not control.
- *
- * The first is a behaviour change and is tested as one. The other two are the
- * UI admitting a dependency that was always there, so what is pinned is the
- * gate, plus the layout rule that the prerequisite is the row above. Both run
- * on the pane data: settings.spec.ts "settings panes".
- */
-describe('merged auto-save preference', () => {
-	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-
-	test('the merged preference is stored under its own key, and the old ones are read-only', () => {
-		assert.match(settingsSource, /key: 'editor\.autoSaveEdits'/);
-		assert.match(settingsSource, /const LEGACY_AUTO_SAVE_KEY = 'editor\.autoSave'/);
-		assert.match(settingsSource, /const LEGACY_CONFIRM_BEFORE_SAVE_KEY = 'editor\.confirmBeforeSave'/);
-		// A rollback finds both of the old keys where it left them.
-		assert.doesNotMatch(settingsSource, /key: 'editor\.autoSave'/);
-		assert.doesNotMatch(settingsSource, /key: 'editor\.confirmBeforeSave'/);
-	});
-});
-
 describe('font family values', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 	const editorOptionsSource = readSource(new URL('../src/lib/utils/editorOptions.ts', import.meta.url));

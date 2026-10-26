@@ -627,6 +627,52 @@ describe('settings persistence', async () => {
 		assert.equal(createStore().previewFullWidth, false);
 	});
 
+	// A rollback to the build before each rename reads the old key, so the store
+	// reads it once and never writes or removes it: the old build still finds the
+	// setting the user had.
+	test.each([
+		{
+			name: 'open file mode',
+			legacy: { 'editor.startInEditor': 'true' } as Record<string, string>,
+			read: (s: InstanceType<typeof SettingsStore>) => s.openFileMode,
+			loaded: 'editor',
+			change: (s: InstanceType<typeof SettingsStore>) => { s.openFileMode = 'split'; },
+			key: 'editor.openFileMode',
+			written: 'split',
+		},
+		{
+			name: 'preview full width',
+			legacy: { isFullWidth: 'true' } as Record<string, string>,
+			read: (s: InstanceType<typeof SettingsStore>) => s.previewFullWidth,
+			loaded: true,
+			change: (s: InstanceType<typeof SettingsStore>) => { s.previewFullWidth = false; },
+			key: 'preview.fullWidth',
+			written: 'false',
+		},
+		{
+			// Both switches on was the contradictory combination: auto-save shown on
+			// and vetoed by the confirmation. It loads as off.
+			name: 'merged auto-save',
+			legacy: { 'editor.autoSave': 'true', 'editor.confirmBeforeSave': 'true' } as Record<string, string>,
+			read: (s: InstanceType<typeof SettingsStore>) => s.autoSave,
+			loaded: false,
+			change: (s: InstanceType<typeof SettingsStore>) => { s.autoSave = true; },
+			key: 'editor.autoSaveEdits',
+			written: 'true',
+		},
+	])('the $name setting reads its old key and writes only its new one', ({ legacy, read, loaded, change, key, written }) => {
+		resetStorage(legacy);
+		const store = createStore();
+		assert.equal(read(store), loaded, 'an install upgrading from the old key keeps its setting');
+
+		change(store);
+		flushSync();
+		assert.equal(localStorage.getItem(key), written);
+		for (const [legacyKey, value] of Object.entries(legacy)) {
+			assert.equal(localStorage.getItem(legacyKey), value, `${legacyKey} is left for a rollback`);
+		}
+	});
+
 	/*
 	 * ---------------------------------------------------------------------------
 	 * Task 4 — language tag resolution.

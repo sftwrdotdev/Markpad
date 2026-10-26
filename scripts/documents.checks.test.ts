@@ -203,52 +203,6 @@ describe('file associations', () => {
 	});
 });
 
-/**
- * #183: "I'd like it to remember that I had the split screen option turned on
- * when opening a new session."
- *
- * Half of it already worked — a session restore replays each tab's saved
- * `isSplit` — but every newly opened document was created `isSplit: false`, so
- * the reporter pressed the split button again for each file. There was a
- * preference for the neighbouring case and none for this one.
- *
- * It is ONE preference with three answers rather than a second checkbox beside
- * the first, because `isEditing` and `isSplit` are independent flags on the tab:
- * two booleans can say "editor AND split", which is not a state the reader can
- * be in. That made the checkbox that already existed part of this change, and
- * an existing install must not notice — hence the migration below.
- *
- * The two implementation details pinned here are the ones that are quietly
- * expensive to get wrong:
- *
- *   1. Split must go through `setSplitEnabled`, not a bare `tab.isSplit = true`.
- *      A fresh tab is created `isScrollSynced: false`, and `setSplitEnabled` is
- *      what applies the remembered scroll-sync preference — assigning the flag
- *      directly opens split view with sync silently off.
- *
- *   2. Both must be applied BEFORE `initialIsSplit` is read. That variable is
- *      what sends the load down the full-read branch: `open_markdown_preview`
- *      returns only the first 50KB, and a split pane is an editor, so a document
- *      that opened split on a partial buffer would be one keystroke away from
- *      auto-saving the truncation back over the file.
- */
-describe('open file mode', () => {
-	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-
-	test('the old key is read, never written — a rollback still finds its setting', () => {
-		assert.match(settingsSource, /const LEGACY_START_IN_EDITOR_KEY = 'editor\.startInEditor'/);
-		assert.match(settingsSource, /read: \(s\) => s\.openFileMode/);
-		assert.match(
-			settingsSource,
-			/resolveOpenFileMode\(raw, readStoredKey\(LEGACY_START_IN_EDITOR_KEY\)\)/,
-		);
-		// One `key:` per persisted entry, and this entry's is the new one: the
-		// legacy name must not appear as a key this store writes back.
-		assert.doesNotMatch(settingsSource, /key: 'editor\.startInEditor'/);
-	});
-
-});
-
 describe('file drop routing', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
