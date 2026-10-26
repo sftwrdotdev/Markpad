@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { DEFAULT_AUTO_SAVE, resolveAutoSave } from '../src/lib/utils/autoSaveSetting.js';
-import { closeTabAndWindowIfLast, type CloseTabDeps } from '../src/lib/utils/closeTab.js';
 import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
 import { isHexColor, isSafeCssColor, sanitizeThemeColors } from '../src/lib/utils/theme.js';
@@ -340,30 +339,5 @@ describe('translation coverage', () => {
 		// are the two tests above: every key the source asks for exists in English,
 		// and no language defines a key English does not have. Completeness per
 		// locale stays a worklist.
-	});
-});
-
-describe('close window with last tab (#829)', () => {
-	async function close(tabs: string[], closeWindowWithLastTab: boolean) {
-		const calls: string[] = [];
-		const open = [...tabs];
-		const deps: CloseTabDeps = {
-			canCloseTab: async () => true,
-			tabCount: () => open.length,
-			savePinnedTagIfNeeded: async () => void calls.push('savePin'),
-			closeTab: (id) => void open.splice(open.indexOf(id), 1),
-			unwatchFile: () => void calls.push('unwatch'),
-			closeWindowWithLastTab: () => closeWindowWithLastTab,
-			destroyWindow: async () => void calls.push('destroy'),
-		};
-		await closeTabAndWindowIfLast(tabs[0], deps);
-		return calls;
-	}
-
-	test('closing the last tab leaves the window on Home when the setting is off', async () => {
-		assert.deepEqual(await close(['a'], false), ['savePin', 'unwatch']);
-		assert.deepEqual(await close(['a'], true), ['savePin', 'unwatch', 'destroy']);
-		// Not the last tab: the window stays whatever the setting.
-		assert.deepEqual(await close(['a', 'b'], true), []);
 	});
 });

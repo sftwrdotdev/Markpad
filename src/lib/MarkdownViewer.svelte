@@ -43,7 +43,6 @@ import { type FoldLayoutObservation } from './utils/foldLayout.js';
 import { followFoldLayout, previewPaneShown } from './utils/foldLayoutEffect.svelte.js';
 import { patchHost } from './utils/previewPatch.js';
 import { refreshesPreviewCache } from './utils/previewRefresh.js';
-import { closeTabAndWindowIfLast as closeTabAndWindowIfLastWith } from './utils/closeTab.js';
 import {
 	revealFold,
 	toggleFold,
@@ -2781,16 +2780,16 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		await closeTabAndWindowIfLast(tabManager.activeTabId);
 	}
 
-	function closeTabAndWindowIfLast(tabId: string) {
-		return closeTabAndWindowIfLastWith(tabId, {
-			canCloseTab,
-			tabCount: () => tabManager.tabs.length,
-			savePinnedTagIfNeeded,
-			closeTab: (id) => tabManager.closeTab(id),
-			unwatchFile: () => void invoke('unwatch_file').catch(console.error),
-			closeWindowWithLastTab: () => settings.closeWindowWithLastTab,
-			destroyWindow: destroyWindowAfterTabsClosed,
-		});
+	async function closeTabAndWindowIfLast(tabId: string) {
+		if (!(await canCloseTab(tabId))) return;
+
+		if (tabManager.tabs.length === 1) await savePinnedTagIfNeeded();
+		tabManager.closeTab(tabId);
+		if (tabManager.tabs.length > 0) return;
+
+		invoke('unwatch_file').catch(console.error);
+		// Off, the empty window stays and renders Home.
+		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
 	}
 
 	async function closeTabsWithConfirmation(tabIds: string[]) {
