@@ -1165,12 +1165,15 @@ pub(crate) mod tests {
     use std::path::PathBuf;
 
     // The window colour at startup comes from the word `save_theme` wrote, so
-    // the reader has to know every word the writer can send.
+    // the reader has to know every word the writer can send, and the words
+    // already in users' theme.txt files keep their meaning.
     #[test]
     fn the_startup_reader_reads_back_every_appearance_save_theme_writes() {
         for appearance in [Appearance::System, Appearance::Light, Appearance::Dark] {
             assert_eq!(Appearance::from_saved(appearance.as_str()), appearance);
         }
+        assert_eq!(Appearance::from_saved("dark"), Appearance::Dark);
+        assert_eq!(Appearance::from_saved("light"), Appearance::Light);
         assert_eq!(
             Appearance::from_saved("vscode:Ayu Dark"),
             Appearance::System
