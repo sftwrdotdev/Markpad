@@ -42,6 +42,8 @@ const { openPinnedTagWindow, pinnedTagFromWindowLabel } = await import('../src/l
 const { reportWindowMeta } = await import('../src/lib/sessions/windowMeta.svelte.js');
 const { runeEffect } = await import('./runeEffect.svelte.js');
 const { getSupportedLanguages, t } = await import('../src/lib/utils/i18n.js');
+const { viewerCommandFor } = await import('../src/lib/utils/viewerKeymap.js');
+const { viewerCommandTable } = await import('../src/lib/utils/viewerCommands.js');
 
 function useTauri(next: Partial<Bridge> = {}) {
 	beforeAll(() => {
@@ -1154,5 +1156,128 @@ describe('a pinned group opens in a window that holds it', () => {
 		} finally {
 			dispose();
 		}
+	});
+});
+
+describe('window organization', () => {
+	// jsdom has no Web Animations, and the Home menu flies in. An animation that
+	// never finishes is enough: the assertions read the menu, not the motion.
+	Element.prototype.animate ??= function () {
+		return { cancel() {}, playState: 'finished', effect: null, onfinish: null } as unknown as Animation;
+	};
+	const invoked: { cmd: string; args: any }[] = [];
+	useTauri({
+		invoke: (cmd: string, args: any) => {
+			invoked.push({ cmd, args });
+			if (cmd === 'get_os_type') return Promise.resolve('macos');
+			if (cmd === 'list_pinned_tags') return Promise.resolve([]);
+			if (cmd === 'list_viewer_windows') {
+				return Promise.resolve([
+					{ label: 'main', title: 'Main' },
+					{ label: 'window-2', title: 'Other' },
+				]);
+			}
+			return Promise.resolve(null);
+		},
+	});
+
+	function mounted(Component: any, props: Record<string, unknown>) {
+		const target = document.createElement('div');
+		document.body.append(target);
+		const instance = mount(Component, { target, props, intro: false });
+		flushSync();
+		return {
+			target,
+			[Symbol.dispose]() {
+				unmount(instance);
+				target.remove();
+			},
+		};
+	}
+
+	async function openHomeMenu(onmergeAllWindows: () => void) {
+		const { default: TitleBar } = await import('../src/lib/components/TitleBar.svelte');
+		tabManager.addTab('/notes/a.md', '# A document');
+		const view = mounted(TitleBar, {
+			isFocused: true,
+			isScrolled: false,
+			currentFile: '/notes/a.md',
+			liveMode: false,
+			windowTitle: 'a.md',
+			showHome: false,
+			isEditing: false,
+			ontoggleHome: () => {},
+			ononpenFileLocation: () => {},
+			ontoggleLiveMode: () => {},
+			onsetViewMode: () => {},
+			onmergeAllWindows,
+			theme: 'dark',
+		});
+		view.target.querySelector<HTMLButtonElement>('.icon-home-btn')!.click();
+		flushSync();
+		const items = [...view.target.querySelectorAll<HTMLButtonElement>('.home-menu-item')];
+		return { view, items, labels: items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim() ?? '') };
+	}
+
+	test('window organization exposes move, merge, and carry actions', async () => {
+		// Move: the tab's context menu offers every other window by name, and
+		// choosing one asks this window to move the tab there.
+		const { default: TabView } = await import('../src/lib/components/Tab.svelte');
+		tabManager.closeAll();
+		tabManager.addTab('/notes/a.md', 'text');
+		const tab = tabManager.activeTab!;
+		{
+			using view = mounted(TabView, { tab, isActive: true, onclick: () => {}, onclose: () => {} });
+			view.target.querySelector('.tab')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+			const moveLabel = t('menu.moveToWindow', 'en');
+			const moves = [...view.target.querySelectorAll<HTMLButtonElement>('.menu-item')].filter((item) => {
+				const label = item.textContent?.trim() ?? '';
+				return label.startsWith(`${moveLabel} `) && label !== t('menu.moveToNewWindow', 'en');
+			});
+			assert.equal(moves.length, 1, 'one entry per other window, none for this one');
+			invoked.length = 0;
+			moves[0].click();
+			const emitted = invoked.find((call) => call.cmd === 'plugin:event|emit_to');
+			assert.equal(emitted?.args.event, 'menu-tab-move');
+			assert.deepEqual(emitted?.args.payload, { tabId: tab.id, targetLabel: 'window-2' });
+		}
+
+		// Merge: the Home menu entry reaches the viewer's handler.
+		let merged = 0;
+		{
+			const { view, items, labels } = await openHomeMenu(() => merged++);
+			using _ = view;
+			items[labels.indexOf(t('menu.mergeAllWindows', 'en'))].click();
+			flushSync();
+			assert.equal(merged, 1);
+		}
+
+		// Carry: the chord names the command, and the command carries the tab.
+		const command = viewerCommandFor(
+			{ key: 'm', code: 'KeyM', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false },
+			{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
+		);
+		assert.equal(command, 'move-tab-to-next-window');
+		const calls: string[] = [];
+		const host = new Proxy({} as any, {
+			get: (_, prop) => (prop === 'settings' || prop === 'tabManager' ? {} : () => void calls.push(String(prop))),
+		});
+		viewerCommandTable(host)[command]();
+		assert.deepEqual(calls, ['carryActiveTabToNextWindow']);
+	});
+
+	test('the Home menu groups window organization below export actions', async () => {
+		const { view, labels } = await openHomeMenu(() => {});
+		using _ = view;
+		const at = (key: string) => {
+			const index = labels.findIndex((label) => label.startsWith(t(key, 'en')));
+			assert.notEqual(index, -1, `${key} is in the menu`);
+			return index;
+		};
+		assert.ok(at('menu.exportPdf') < at('menu.setWindowTag'));
+		assert.ok(at('menu.setWindowTag') < at('menu.mergeAllWindows'));
+		assert.ok(at('menu.mergeAllWindows') < at('menu.exit'));
 	});
 });
