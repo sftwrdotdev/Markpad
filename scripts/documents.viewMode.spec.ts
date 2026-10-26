@@ -107,7 +107,7 @@ describe('view mode without saving', () => {
 		const { flushBeforeLeavingEditableMode } = createExternalChange({
 			tabManager,
 			settings,
-			documentSession: { saveContent: saveSilently, allowOverwriteOnce: () => {} },
+			documentSession: { saveContent: saveSilently, allowOverwriteOnce: () => {}, resolveExternalChange: async () => ({ action: 'ignore' as const }) },
 			loadMarkdown: async () => {},
 			canCloseTab: async () => true,
 			readFile: async () => ['', false, 'UTF-8'],
