@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { asBufferLine, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
-import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
 import { sourceLineOf } from '../src/lib/utils/tocFollow.js';
 import { callbackBodies, functionSource, readSource, sliceBetween } from './sourceTree.js';
 
@@ -33,10 +32,9 @@ describe('scroll sync input', () => {
 describe('split pane ratio', () => {
 	test('the bounds are not re-stated here', () => {
 		// `TabManager.setSplitRatio` clamps. A second copy of 0.1/0.9 in this
-		// module would be the shape where the two answers drift apart.
-		assert.equal(splitRatioAfterMove(0.9, 0.5, 'left'), 1.4);
-		assert.equal(splitRatioAfterMove(0.1, -0.5, 'left'), -0.4);
-
+		// module would be the shape where the two answers drift apart. The drag
+		// against the store's bounds is run in layout.spec.ts; an identical copy is
+		// only visible in the text (lint-candidate).
 		const source = readSource(new URL('../src/lib/utils/splitPanes.ts', import.meta.url));
 		assert.equal(/Math\.(min|max)/.test(source), false);
 	});

@@ -7,6 +7,7 @@ import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
 import { observeFoldLayout } from '../src/lib/utils/foldLayout.js';
+import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -116,6 +117,23 @@ describe('split scroll-sync preference', async () => {
 		// Un-splitting keeps whatever the tab ended up with, as it always did.
 		tabManager.setSplitEnabled(id, false);
 		assert.equal(tabManager.splitScrollSyncPreference, true);
+	});
+
+	test('a splitter dragged past the end stops at the store bounds', () => {
+		// The move is unclamped and the store holds 0.1-0.9, so the two cannot
+		// disagree about where the bar stops.
+		reset();
+		const { id, tab } = splitTab('/notes/dragged.md');
+
+		assert.equal(splitRatioAfterMove(0.9, 0.5, 'left'), 1.4);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.9, 0.5, 'left'));
+		assert.equal(tab().splitRatio, 0.9);
+
+		assert.equal(splitRatioAfterMove(0.1, -0.5, 'left'), -0.4);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.1, -0.5, 'right'));
+		assert.equal(tab().splitRatio, 0.6);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.1, -0.5, 'left'));
+		assert.equal(tab().splitRatio, 0.1);
 	});
 });
 
