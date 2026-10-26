@@ -309,7 +309,7 @@ export function createViewMode(o: ViewModeOptions) {
 	 * toolbar, the title bar, and Monaco's own command.
 	 *
 	 * One function so the chord cannot mean two things depending on where the
-	 * caret happens to be (`formatShortcutKeymap.test.ts` holds the two layers
+	 * caret happens to be (`shortcuts.checks.test.ts` holds the two layers
 	 * together), and so "take me to the editor" behaves the same whether the
 	 * reader asked for it with a key or with a menu item.
 	 */

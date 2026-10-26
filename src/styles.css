@@ -1365,7 +1365,7 @@ body {
  *
  * Keep this in styles.css. The class is added through `classList`, so Svelte
  * would prune these selectors from the component's scoped `<style>` and every
- * transition would come back silently. `scripts/tabSwitchIsNotARender.test.ts`
+ * transition would come back silently. `scripts/tabs.checks.test.ts`
  * guards that. `!important` beats the scoped declarations.
  */
 .layout-container.tab-switching .toc-overlay-wrapper,

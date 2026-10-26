@@ -16,7 +16,7 @@
 // Both functions are pure arithmetic. They lived, byte for byte, in both
 // Editor.svelte and MarkdownViewer.svelte; neither copy could be imported by a
 // test, because `node --test` cannot load a `.svelte` file. Here they are
-// covered for real by scripts/scrollSync.test.ts.
+// covered for real by scripts/layout.test.ts.
 //
 // Splitting the range at the front matter is not enough on its own. Inside the
 // body a ratio is still wrong, for the same reason it is wrong across the

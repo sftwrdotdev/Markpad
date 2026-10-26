@@ -42,7 +42,7 @@ import { installShimDom, NODE_ELEMENT, NODE_TEXT, parseHtml, type ShimElement, t
  * WHAT IS MODELLED HERE
  *
  * `renderProtocolDom.ts` has no layout, so `layOut` below assigns the boxes a
- * browser would — and, unlike the one in `scrollSyncBlockMapping.test.ts`, it
+ * browser would — and, unlike the one in `layout.scrollSync.test.ts`, it
  * knows what a collapsed fold does to them: the wrapper contributes no height
  * to the flow, and its children keep the offsets they would have had inside it,
  * which is exactly what `height: 0; overflow: hidden` produces. The markup is
@@ -431,7 +431,7 @@ describe('scroll sync across folds', async () => {
 			assert.ok(back !== null);
 			// Inside a block the round trip is exact; in the margin between two it
 			// snaps to the nearer edge, which is the block mapping's own quantisation
-			// and is asserted in `scrollSyncBlockMapping.test.ts`.
+			// and is asserted in `layout.scrollSync.test.ts`.
 			assert.ok(
 				Math.abs(back - offset) <= BLOCK_GAP,
 				`expanded: ${offset}px -> line ${line.toFixed(2)} -> ${back}px`,

@@ -10,7 +10,7 @@ describe('editor toolbar', () => {
 	 * so an expected value written in terms of it says nothing about what is in the
 	 * catalogue: deleting the Underline tool outright left every assertion in this
 	 * file green. The two tests below are the ones that hold the catalogue still —
-	 * the same job `titlebarToolbar.test.ts` does with its literal id lists — and
+	 * the same job `shortcuts.toolbar.test.ts` does with its literal id lists — and
 	 * the derived expectations above are then free to describe the *reordering*,
 	 * which is what they are actually about.
 	 */
@@ -639,8 +639,8 @@ describe('title bar toolbar', () => {
 	 * to show it had.
 	 *
 	 * The answer is one condition, in one place, with the chord routed through
-	 * the same `toggleLiveMode` (`shortcutRegistry.test.ts` holds the chord end
-	 * up, `externalChangeReload.spec.ts` holds the reload end).
+	 * the same `toggleLiveMode` (`shortcuts.test.ts` holds the chord end
+	 * up, `documents.load.spec.ts` holds the reload end).
 	 */
 
 	const documentContext = {

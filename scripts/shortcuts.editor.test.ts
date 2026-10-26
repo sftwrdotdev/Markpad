@@ -19,7 +19,7 @@ describe('shortcut registry', () => {
 	 * A test that compared the registry against the panel would be worthless —
 	 * they are the same copy. So every row of `src/lib/utils/shortcuts.ts` is
 	 * checked against the code that implements it, using the same harness
-	 * `formatShortcutKeymap.test.ts` uses (`./keymapHarness.ts`): the editor's
+	 * `shortcuts.checks.test.ts` uses (`./keymapHarness.ts`): the editor's
 	 * actions are registered by really running `registerLocalizedActions`, and the
 	 * document-level chords are discovered by firing synthetic keystrokes at the
 	 * real `handleKeyDown`. Neither is a description of the handlers; both are the
@@ -464,7 +464,7 @@ describe('formatting shortcuts keymap', () => {
 			// they name the same key and the same number of modifiers — but NOT the same
 			// WORDS: `Alt` is `Opt` on macOS (#651). Asserting a string substitution here
 			// would be a second copy of that word map, which is the defect #651 removed;
-			// `shortcutRegistry.test.ts` owns the per-platform naming and this only has to
+			// `shortcuts.test.ts` owns the per-platform naming and this only has to
 			// prove the two renderings are still the same chord.
 			const asCmd = tool.shortcut('Cmd').split('+');
 			const asCtrl = tool.shortcut('Ctrl').split('+');
@@ -528,7 +528,7 @@ describe('formatting shortcuts keymap', () => {
 	 */
 	const KNOWN_LAYER_DIVERGENCES: Record<Chord, string> = {
 		// Monaco binds real Ctrl+Tab on macOS because Cmd+Tab is the system app
-		// switcher (see editorOptionWiring.test.ts); the document handler accepts
+		// switcher (see editor.checks.test.ts); the document handler accepts
 		// either modifier. Same action, different chord — not a meaning conflict.
 		'Ctrl+Tab': 'tab cycling: Monaco uses WinCtrl on macOS, the window handler accepts Ctrl or Cmd',
 		'Ctrl+Shift+Tab': 'tab cycling, as above',

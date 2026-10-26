@@ -20,12 +20,12 @@ import { useShimDom } from './preview.domShim.ts';
  * block of a built document, attached to a selector the exported `<article
  * class="markdown-body">` matches, and last in the cascade. The last two tests
  * run the real `exportAsHtml` end to end and read the bytes it hands to
- * `save_file_content`, on the harness `exportRichContent.test.ts` established.
+ * `save_file_content`, on the harness `export.test.ts` established.
  */
 describe('exported content width', () => {
 	// The shim stands in for the DOM `exportAsHtml` builds into. Without a real DOM
 	// DOMPurify is a no-op object; what it does and where it sits in the pipeline is
-	// `exportSanitize.test.ts`'s subject, not this one's.
+	// `export.checks.test.ts`'s subject, not this one's.
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' } }, { identitySanitize: true });
 
 	const appStyles = readSource(new URL('../src/styles.css', import.meta.url));
@@ -553,7 +553,7 @@ describe('folds in print and export', () => {
  *     up — and not the libraries' own output.
  *   - `DOMPurify.sanitize`, which is a no-op object without a real DOM. It is
  *     replaced by the identity function. What the filter does and where it sits
- *     in the pipeline is pinned by `exportSanitize.test.ts`; the relevant fact
+ *     in the pipeline is pinned by `export.checks.test.ts`; the relevant fact
  *     here is only that the diagram filter and the document filter are separate
  *     calls, which the diagram test below covers from the other side.
  */

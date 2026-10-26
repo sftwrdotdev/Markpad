@@ -64,7 +64,7 @@ describe('tab switch is not a render', () => {
 	 * document again, every fold re-measured, and the reading position was then
 	 * restored against a layout that was still settling.
 	 *
-	 * `tabSwitchKeepsPreviewDom.spec.ts` runs the mechanism that makes the switch
+	 * `tabs.spec.ts` runs the mechanism that makes the switch
 	 * free — re-patching a host that already holds that document changes nothing —
 	 * but it supplies its own two hosts, so it stays green against a viewer that
 	 * has gone back to sharing one. This is the half that does not: the host must

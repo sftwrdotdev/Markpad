@@ -202,7 +202,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	 *
 	 * The guard is here rather than repeated in fourteen branches so that a
 	 * branch added later INHERITS it by reaching for `mod`, instead of having
-	 * to remember three negations. `shortcutRegistry.test.ts` closes the other
+	 * to remember three negations. `shortcuts.test.ts` closes the other
 	 * half: any chord this function answers that the registry does not advertise
 	 * fails there, so a new branch cannot quietly grow a cross product again.
 	 *
@@ -254,7 +254,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// `file-new` binds Ctrl/Cmd+N as well, and this handler used to know
 	// about only one of the two, which left Ctrl+N doing nothing at all
 	// outside the editor. Both are listed here so the two paths cannot
-	// drift again; `formatShortcutKeymap.test.ts` holds them equal.
+	// drift again; `shortcuts.checks.test.ts` holds them equal.
 	if (mod && (key === 't' || key === 'n')) return 'new-file';
 	if (modShift && key === 'n') return 'new-window';
 	if (mod && key === 'o') return 'open-file';
@@ -298,7 +298,7 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 	// outright and leave Cmd+Shift+= — how a lot of people zoom in — dead. The
 	// guard is per-spelling instead: bare `=` wants no Shift, `+` brings its
 	// own. (The keymap harness only ever fires unshifted characters, so it sees
-	// the `=` half of this and never the `+` half; `viewerKeymap.spec.ts` fires
+	// the `=` half of this and never the `+` half; `shortcuts.spec.ts` fires
 	// the `+` half directly.)
 	if (cmdOrCtrl && !e.altKey && (key === '+' || (key === '=' && !e.shiftKey))) return 'zoom-in';
 	if (mod && key === '-') return 'zoom-out';

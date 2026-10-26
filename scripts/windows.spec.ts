@@ -215,7 +215,7 @@ describe('window tags in the snapshot', () => {
 // to "is this path a file" — every other caller already used it.
 //
 // These tests drive the real TabManager, so they lock the behaviour rather than
-// the wording. The restore-loop half lives in sessionRestoreResilience.spec.ts,
+// the wording. The restore-loop half lives in windows.sessionRestore.spec.ts,
 // which already has the window-session harness.
 
 describe('the home tab is not a file', () => {

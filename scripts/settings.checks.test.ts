@@ -355,7 +355,7 @@ describe('translation coverage', () => {
 	// `t(section.labelKey)` and `t(entry.labelKey)` over `src/lib/utils/shortcuts.ts`,
 	// whose rows spell their key as `labelKey: '…'` — so the harvest above already
 	// collects every one of them and checks it exists in English like any other key.
-	// `scripts/shortcutRegistry.test.ts` additionally measures their per-locale
+	// `scripts/shortcuts.test.ts` additionally measures their per-locale
 	// coverage, which this file only reports.
 	// ------------------------------------------------- toasts that carry no t()
 	//

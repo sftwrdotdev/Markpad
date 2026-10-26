@@ -18,9 +18,9 @@ describe('preview anchor restore wiring', () => {
 	 * The cascade itself moved out of the component and into
 	 * `restorePreviewReadingPosition`, next to the resolvers it runs, when the
 	 * arrival of a transferred tab needed to run the same one after its document
-	 * lands (see tabTransferHandoff.test.ts). So "it resolves through the measured
+	 * lands (see tabs.checks.test.ts). So "it resolves through the measured
 	 * helpers" is now a behavior claim, made by calling the function — every test
-	 * above this one, and the arrival tests in tabReadingPosition.spec.ts. What is
+	 * above this one, and the arrival tests in navigation.spec.ts. What is
 	 * left here is what a source assertion is for: that there is no second copy.
 	 */
 	test('the viewer restores through the measured resolver', async () => {
@@ -61,7 +61,7 @@ describe('preview anchor restore wiring', () => {
 		//
 		// Matched on the `untrack`, not on the guard beside it: the guard was
 		// `markdownBody && !isEditing` when this was written and is `markdownBody`
-		// alone now (scripts/diagramThemeRefresh.spec.ts owns that question). What
+		// alone now (scripts/preview.spec.ts owns that question). What
 		// this test is for is the tracking.
 		assert.match(
 			readSource('src/lib/utils/themeEffect.svelte.ts'),
@@ -124,7 +124,7 @@ describe('jump to the selected fragment wiring', () => {
 		// The hotkey, the toolbar, the title bar and Monaco's own command all route
 		// here, so the chord cannot mean one thing with the caret in the editor and
 		// another with it in the preview — which is what
-		// `formatShortcutKeymap.test.ts` pins from the other side.
+		// `shortcuts.checks.test.ts` pins from the other side.
 		// The chord is a call now, not a pattern: the branch structure moved to
 		// `viewerKeymap.ts` and #647 had already shown what the old spelling cost —
 		// five assertions of this shape went red for a renamed local.

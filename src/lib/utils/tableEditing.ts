@@ -11,7 +11,7 @@
  * uninteresting part is asking Monaco for the lines and handing it back an edit.
  *
  * Keeping the first part here means `node --test` runs it: every case in
- * `scripts/tableEditing.test.ts` is the real function rather than a description
+ * `scripts/editing.test.ts` is the real function rather than a description
  * of it, and `Editor.svelte` is left with a keybinding, a `when` clause and one
  * `executeEdits`. It is the shape `utils/listEditing.ts` already has for the
  * other half of #604, deliberately.

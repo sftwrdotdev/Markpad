@@ -506,7 +506,7 @@ export function getAnchorScrollTop(
  * and the scroll range as `scrollMax`, as everywhere else in this file — neither
  * the DOM shim nor jsdom has a layout, so a test supplies its own, and
  * `scrollHeight` is not a measurement `src/lib/utils` is allowed to take (see
- * the fold-height rule in singleImplementationConvention.test.ts).
+ * the fold-height rule in release.checks.test.ts).
  */
 export type PreviewScrollContainer = AnchorNode & {
 	scrollTop: number;
@@ -536,7 +536,7 @@ export type ReadingPosition = {
  *     descends, because `processMarkdownHtml` re-parents every block after a
  *     heading into a `.foldable-content-wrapper` with no `data-sourcepos`, so a
  *     scan of the container's children only ever matched an anchor sitting
- *     exactly on a top-level heading line (see previewAnchorRestore.test.ts).
+ *     exactly on a top-level heading line (see navigation.anchors.test.ts).
  *     Measured through `measure` — `measureAnchorBox` in the app — and not raw
  *     `offsetTop`: an anchor inside a table or a code block sits in that
  *     table's or that shell's space, and restoring to it would open the tab at

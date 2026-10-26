@@ -14,7 +14,7 @@ export type MarkdownLinkTarget = {
 // The Rust renderer keeps the only other copy, in `MARKDOWN_LINK_EXTENSIONS`
 // in src-tauri/src/markdown.rs, because no import crosses that boundary. It is
 // pinned against this one by `the extension list the rewriter mirrors still
-// matches markdownLinks.ts` in scripts/wikilinkFileTargets.test.ts.
+// matches markdownLinks.ts` in scripts/editing.test.ts.
 export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
 
 /**
@@ -110,7 +110,7 @@ export function getMarkdownLinkTarget(href: string): MarkdownLinkTarget | null {
  * An href is URL-shaped even when it names a local file, which is what makes
  * this a different function from `resolveDocumentRelativePath` in ./markdown.ts
  * rather than a copy of it — see that function's comment for the three
- * differences and scripts/exportHtml.test.ts for the test that pins them. Here:
+ * differences and scripts/export.test.ts for the test that pins them. Here:
  * only `/` separates in the relative half (a `\` in a URL is a character, and
  * `sub\note.md` names one file), empty segments collapse (`a//b.md` is
  * `a/b.md`), and the base is normalized to `/` before its directory is taken.

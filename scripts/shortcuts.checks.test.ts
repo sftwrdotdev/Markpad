@@ -13,7 +13,7 @@ describe('shortcut registry', () => {
 	 * A test that compared the registry against the panel would be worthless —
 	 * they are the same copy. So every row of `src/lib/utils/shortcuts.ts` is
 	 * checked against the code that implements it, using the same harness
-	 * `formatShortcutKeymap.test.ts` uses (`./keymapHarness.ts`): the editor's
+	 * `shortcuts.checks.test.ts` uses (`./keymapHarness.ts`): the editor's
 	 * actions are registered by really running `registerLocalizedActions`, and the
 	 * document-level chords are discovered by firing synthetic keystrokes at the
 	 * real `handleKeyDown`. Neither is a description of the handlers; both are the
@@ -36,7 +36,7 @@ describe('shortcut registry', () => {
 		// registry row left it green.
 		//
 		// The toolbar-vs-reality link is held where it belongs — by
-		// `formatShortcutKeymap.test.ts`, which compares the rendered hint against the
+		// `shortcuts.checks.test.ts`, which compares the rendered hint against the
 		// keybinding `Editor.svelte` really registers — and by the coverage test
 		// below, which is what caught the deleted row. What is left for this file is
 		// the migration itself: the fourteen hand-written chords are gone and cannot
@@ -230,7 +230,7 @@ describe('formatting shortcuts keymap', () => {
 	});
 
 
-	// Monaco's own default chords are checked in `monacoChordOwnership.spec.ts`.
+	// Monaco's own default chords are checked in `editor.checks.spec.ts`.
 
 	// ------------------------------------- a core Monaco binding, left alone
 
@@ -238,7 +238,7 @@ describe('formatting shortcuts keymap', () => {
 		// #652 took this key off as a guard against `Mod+K Shift+R` (Delete Row),
 		// one slip away. That chord and the whole `Mod+K` namespace are gone, so the
 		// guard protected nothing and cost users a key they asked for back (#821).
-		// Nothing of ours may claim the chord either; `monacoChordOwnership.spec.ts`
+		// Nothing of ours may claim the chord either; `editor.checks.spec.ts`
 		// holds that side.
 		assert.doesNotMatch(
 			readSource('src/lib/components/Editor.svelte'),

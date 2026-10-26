@@ -110,7 +110,7 @@ describe('editor writes through the store', () => {
 describe('editor status readings', () => {
 	test('the status bar renders the measured label and no longer a translation key', () => {
 		// The line ending is the model's own EOL (`lineEndingLabel`, driven
-		// against real Monaco buffers in editorLineEnding.test.ts), refreshed
+		// against real Monaco buffers in documents.test.ts), refreshed
 		// with the other document-wide readings. It used to be a hardcoded CRLF.
 		tabManager.closeAll();
 		tabManager.addTab('/notes/crlf.md', 'a\r\nb');

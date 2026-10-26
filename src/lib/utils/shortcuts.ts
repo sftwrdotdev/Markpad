@@ -12,7 +12,7 @@
  * been a fourth copy — and the one users would trust most.
  *
  * So this is the single copy the display layers read, and
- * `scripts/shortcutRegistry.test.ts` ties it to the handlers: every chord below
+ * `scripts/shortcuts.test.ts` ties it to the handlers: every chord below
  * is fired at the real code and has to run the command it is labelled with.
  * The registry is not a source of truth about behaviour — the handlers are —
  * it is a claim about them that a test refuses to let drift.
@@ -90,7 +90,7 @@ export type ShortcutEntry = {
 	 *
 	 * The `keys` group needs this because there is no action id to check against:
 	 * a contextual key IS a nameless command. Recording the handler's name keeps
-	 * the row as verifiable as every other one — `shortcutRegistry.test.ts` reads
+	 * the row as verifiable as every other one — `shortcuts.test.ts` reads
 	 * the component's `addCommand` calls, evaluates the keybinding with Monaco's
 	 * own `KeyMod`/`KeyCode`, and requires that this chord be bound to this
 	 * function.
@@ -125,7 +125,7 @@ export type ShortcutEntry = {
  * Every user-visible shortcut, grouped for display.
  *
  * Each row is checked against the code that implements it. Adding a row without
- * a matching binding fails `scripts/shortcutRegistry.test.ts`, which is the
+ * a matching binding fails `scripts/shortcuts.test.ts`, which is the
  * whole point: the panel cannot advertise a chord the app does not answer.
  */
 export const SHORTCUTS: readonly ShortcutEntry[] = [
@@ -256,7 +256,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		//
 		// Taking it means Mod+K stops being a chord PREFIX, which is what
 		// `insert-table-simple` and `table-insert-column` used to hang off. What
-		// that costs on Monaco's side is argued in monacoChordOwnership.spec.ts.
+		// that costs on Monaco's side is argued in editor.checks.spec.ts.
 		chords: ['Mod+K'],
 		group: 'edit',
 		editorAction: true,
@@ -279,7 +279,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		//
 		// NOT `Mod+Alt+C`, which was the obvious pick and is not available — on macOS
 		// that is Monaco's `toggleFindCaseSensitive`. The reason it cannot be taken is
-		// recorded in monacoChordOwnership.spec.ts, where the next person hunting for
+		// recorded in editor.checks.spec.ts, where the next person hunting for
 		// a free chord will be.
 		chords: ['Mod+Shift+C'],
 		group: 'edit',
@@ -565,7 +565,7 @@ const PLATFORM_KEY_WORDS = {
  * `Alt` used to be in that second list, and that was wrong: the panel advertised
  * `Alt+Left` to a Mac user, who has no key called Alt to press. Adding a modifier
  * that macOS renames without adding it here fails
- * `scripts/shortcutRegistry.test.ts`.
+ * `scripts/shortcuts.test.ts`.
  */
 export function formatChord(chord: string, modifier: 'Cmd' | 'Ctrl'): string {
 	const words: Record<string, string> = PLATFORM_KEY_WORDS[modifier];

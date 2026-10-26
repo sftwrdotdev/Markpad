@@ -14,9 +14,9 @@ import { callbackBodies, enclosingFunctionName, functionSource, offsetOf, readSo
 //  - `enclosingFunctionName` matched `\n\t…function NAME(` and nothing else. A
 //    raw `invoke('render_markdown')` inside `const f = async () => {}` was
 //    therefore attributed to the classic `function` above it, which in
-//    MarkdownViewer.svelte is the wrapper renderPipelineConvention.test.ts
+//    MarkdownViewer.svelte is the wrapper preview.checks.test.ts
 //    demands. Measured: the bypass planted, the whole suite green.
-//  - The `$effect` bodies monacoStartupGraph.test.ts checks were sliced with
+//  - The `$effect` bodies editor.checks.test.ts checks were sliced with
 //    `/\$effect\(\(\) => \{([\s\S]*?)\n\t\}\);/`, which needs a tab-indented
 //    closing brace. Measured: a one-line effect merged into its successor and
 //    the ungated `editor` read inside it went unreported.

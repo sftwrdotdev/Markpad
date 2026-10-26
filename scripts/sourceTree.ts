@@ -18,7 +18,7 @@ import { parse } from 'svelte/compiler';
 // The same argument is why `readSource` exists rather than a `readFileSync` per
 // call site: reading a file as text is a decision about line endings and path
 // separators, and a decision made 135 times is a decision made differently.
-// `singleImplementationConvention.test.ts` holds both to one copy.
+// `release.checks.test.ts` holds both to one copy.
 
 export type SourceFile = { path: string; text: string };
 
@@ -44,8 +44,8 @@ export type SourceFile = { path: string; text: string };
  * written against `\n` — the form the files have in the repository.
  *
  * This does not make CRLF untestable, because no test that cares about CRLF
- * reads it off the disk. `frontMatter.test.ts`, `frontMatterProseBlock.test.ts`
- * and `pasteUrlContext.test.ts` all assert on the parser's handling of a CRLF
+ * reads it off the disk. `editing.test.ts`, `editing.test.ts`
+ * and `editor.test.ts` all assert on the parser's handling of a CRLF
  * *document*, and each spells the document as a literal in the test — which is
  * the right way round: a fixture whose bytes matter should not be at the mercy
  * of what Git decided to check out.
@@ -82,8 +82,8 @@ export function readDictionarySource(): string {
  * fail, and an `assert.match` fails while blaming the wrong thing.
  *
  * Both instances found in this suite so far were silent for their whole life:
- * scrollSyncInput.test.ts (the anchor drifted when the code around it changed)
- * and issue261EditorPdf.test.ts (the subject was deleted in the same commit that
+ * layout.checks.test.ts (the anchor drifted when the code around it changed)
+ * and editor.checks.test.ts (the subject was deleted in the same commit that
  * added the assertion). Neither was noticed by a test run, because neither
  * failed.
  */
@@ -184,8 +184,8 @@ export function filesMatching(sources: SourceFile[], marker: RegExp): string[] {
  * `sanitize.ts` owns the document policy; `richContent.ts` sanitizes Mermaid's
  * own SVG output, which needs `foreignObject` and the inline `<style>` the
  * document policy forbids — a different input under a deliberately different
- * config. Both `previewSanitize.test.ts` (call sites) and
- * `singleImplementationConvention.test.ts` (imports) key off this one list, so
+ * config. Both `preview.checks.test.ts` (call sites) and
+ * `release.checks.test.ts` (imports) key off this one list, so
  * adding a sanitizer is one edit and one decision instead of two.
  */
 export const SANITIZER_FILES = ['src/lib/utils/richContent.ts', 'src/lib/utils/sanitize.ts'];
@@ -194,7 +194,7 @@ export const SANITIZER_FILES = ['src/lib/utils/richContent.ts', 'src/lib/utils/s
 //
 // The three helpers below answer questions about *scope* — "which function is
 // this offset inside", "what is the body of this callback" — from the real AST.
-// `svelte/compiler` is already a dependency and `homeTabRender.spec.ts` already
+// `svelte/compiler` is already a dependency and `windows.checks.spec.ts` already
 // parses a component with it, and a function node is a function node whatever
 // the spelling. The cost is ~170ms for the largest component, paid once per
 // file thanks to the cache below.
@@ -350,7 +350,7 @@ export function enclosingFunctionName(text: string, index: number): string | nul
  * pair `sliceBetween(text, 'async function subject', 'async function
  * whatever-comes-next')` names the neighbour rather than the subject: the slice
  * is then only as tight as the declaration order happens to make it, and it
- * widens silently as the file grows. Both uses in truncatedBufferGuard.spec.ts
+ * widens silently as the file grows. Both uses in documents.load.spec.ts
  * had already grown past their subject — the transfer slice ran from
  * `canTransfer` through `canDetach`, the detach slice from `handleDetach`
  * through `moveTabToWindow` — and each swallowed function carries a

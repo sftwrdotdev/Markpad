@@ -48,7 +48,7 @@ import { highlightedCode, renderedMath } from './richContentCache.js';
  * `\(` and `\[` reach this point only because `processMarkdownHtml` mints
  * them — comrak eats a user-typed `\(` long before the preview exists. So the
  * set rendered here is exactly the set `src/lib/utils/markdown.ts` decided on,
- * and that set is what scripts/mathDelimiterContract.test.ts holds against the
+ * and that set is what scripts/preview.render.test.ts holds against the
  * backend's. Adding a delimiter Markdown *can* spell reopens the gap.
  */
 export const MATH_DELIMITERS = [
@@ -204,7 +204,7 @@ function loadLanguages(hljs: any, names: Iterable<string>): Promise<unknown> | n
  * `foreignObject` is what the browser picks, so keeping it *hid* a label that
  * had survived intact. `renderRichContent` now asks Mermaid for SVG-native
  * labels, and this filter no longer names the tag. See
- * scripts/mermaidDiagramLabels.test.ts.
+ * scripts/preview.richContent.test.ts.
  *
  * On why that `<style>` is acceptable inside an exported file, see
  * `renderExportRichContent` in `export.ts`.

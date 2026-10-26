@@ -16,7 +16,7 @@ import { readSource, functionSource } from './sourceTree.js';
 /*
  * RUNNING the app's two keyboard layers, so tests can ask what a chord DOES.
  *
- * Extracted from `formatShortcutKeymap.test.ts` (#480) when a second test file
+ * Extracted from `shortcuts.checks.test.ts` (#480) when a second test file
  * — the shortcut-registry contract — needed the same two functions. It is the
  * same harness, not a parallel one: both callers get the same keymaps from the
  * same extraction, so there is no way for one of them to be checked against a

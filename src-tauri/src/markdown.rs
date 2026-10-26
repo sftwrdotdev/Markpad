@@ -2563,7 +2563,7 @@ pub(crate) mod tests {
     //
     // So both sides are asserted against one shared, hand-authored
     // table: scripts/mathDelimiterCorpus.json. The other half lives in
-    // scripts/mathDelimiterContract.test.ts and runs the real frontend.
+    // scripts/preview.render.test.ts and runs the real frontend.
     // Change one side's rule and exactly one of the two goes red.
     // -----------------------------------------------------------------
 
@@ -3204,7 +3204,7 @@ pub(crate) mod tests {
     //    later headings with the same text; a wikilink can only ever address
     //    the first one (see the doc comment on `heading_anchor_id`).
     //  * The actual click-through. The href *shape* the frontend accepts is
-    //    pinned from the TypeScript side in scripts/wikilinkFileTargets.test.ts.
+    //    pinned from the TypeScript side in scripts/editing.test.ts.
 
     #[test]
     fn copy_reference_output_becomes_a_real_link() {
@@ -3813,7 +3813,7 @@ mod split_blocks_tests {
         assert_eq!(blocks("<img src=\"x.png\">\n\na\n\n<hr/>\n\nb\n").len(), 4);
     }
 
-    /// `scripts/previewPatchParity.spec.ts` replays the preview's block patch
+    /// `scripts/preview.spec.ts` replays the preview's block patch
     /// over this sample's blocks, so the fixture has to be what the renderer
     /// says today. `MARKPAD_UPDATE_FIXTURES=1 cargo test` rewrites it.
     #[test]

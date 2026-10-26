@@ -14,7 +14,7 @@ const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 
 /**
- * The behavioural half of `checkedReadMigration.test.ts`: `ensureFullContent`,
+ * The behavioural half of `documents.checks.test.ts`: `ensureFullContent`,
  * driven for real.
  *
  * #379 made every read that fills a WRITABLE buffer report whether the decode

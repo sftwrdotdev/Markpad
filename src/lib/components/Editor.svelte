@@ -411,7 +411,7 @@
 		// AltGr+Z matched Ctrl+Alt+Z and ż was never typed. The editor's own
 		// keydown fires before the keybinding service dispatches (see the vim
 		// note above), so this key is set in time for the Ctrl+Alt actions'
-		// `keybindingContext` to refuse it. `monacoAltGraph.spec.ts` shows both.
+		// `keybindingContext` to refuse it. `editor.spec.ts` shows both.
 		const altGraphChord = editor.createContextKey<boolean>("altGraphChord", false);
 		editor.onKeyDown((e) => altGraphChord.set(isAltGraphChord(e.browserEvent)));
 

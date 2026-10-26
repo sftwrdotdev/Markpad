@@ -42,7 +42,7 @@
 ; `bundle.fileAssociations[].name` from tauri.conf.json verbatim -- the template
 ; expands `{{or association.name ext}}` into the APP_ASSOCIATE FILECLASS
 ; argument -- and nothing in the build exports it as a define, so it is repeated
-; here. scripts/nsisInstallerHooks.test.ts fails if the two ever disagree.
+; here. scripts/release.checks.test.ts fails if the two ever disagree.
 !define MARKPAD_PROGID "Markdown File"
 
 ; Make Markpad selectable from Explorer's "Open with" list (#756).

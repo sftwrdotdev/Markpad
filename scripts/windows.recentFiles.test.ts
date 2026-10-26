@@ -16,7 +16,7 @@ import { describe, test } from 'node:test';
  *
  * `recentFiles.ts` reaches `writeStoredSetting` in `settings.svelte.ts`, which
  * is a runes module — hence the shims below, the same ones
- * settingsPersistence.spec.ts uses and for the same reason. Node's test runner
+ * settings.spec.ts uses and for the same reason. Node's test runner
  * gives every file its own process, so they cannot leak.
  */
 

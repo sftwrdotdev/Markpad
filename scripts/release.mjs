@@ -10,7 +10,7 @@
  * rewrites the line and hands them a dirty working tree they did not ask for --
  * which is how the 2.7.2/2.7.3 skew was found, one release after it shipped.
  *
- * scripts/versionSync.test.ts catches that skew. This is the other half: a
+ * scripts/release.checks.test.ts catches that skew. This is the other half: a
  * guard says the three disagree, and this makes it hard for them to.
  *
  * It deliberately stops before committing, tagging or pushing. Whether a tag

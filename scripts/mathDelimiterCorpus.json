@@ -2,7 +2,7 @@
 	"$comment": [
 		"Shared math-delimiter corpus. Read by BOTH sides of the render pipeline:",
 		"  src-tauri/src/markdown.rs  -> the_backend_recognises_exactly_the_math_the_contract_lists",
-		"  scripts/mathDelimiterContract.test.ts -> the frontend's own decision",
+		"  scripts/preview.render.test.ts -> the frontend's own decision",
 		"",
 		"The invariant it pins: the set of spans the BACKEND hides from comrak must",
 		"equal the set the FRONTEND renders with KaTeX. Neither side is the",

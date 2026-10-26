@@ -104,7 +104,7 @@ describe('undo history per tab', () => {
 		/**
 		 * Fixed, because nothing here is about line endings: the status-bar label
 		 * that reads this is driven against real Monaco buffers in
-		 * `editorLineEnding.test.ts`, and a fake that guessed an EOL from its
+		 * `documents.test.ts`, and a fake that guessed an EOL from its
 		 * buffer would be a second implementation of exactly what that fix removed.
 		 */
 		getEOL() {

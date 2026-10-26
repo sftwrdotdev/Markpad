@@ -54,7 +54,7 @@ describe('context menu labels', () => {
 	 * menu rendered the English label.
 	 *
 	 * These labels are held to a stricter bar than the dictionary at large.
-	 * i18nCoverage.test.ts reports per-locale gaps rather than failing on them,
+	 * settings.checks.test.ts reports per-locale gaps rather than failing on them,
 	 * because 19 locales are missing >100 keys and nobody should have to translate
 	 * a new English string 25 times before landing it. That trade does not apply
 	 * here: this is a fixed list of a dozen context-menu entries, all 26 languages

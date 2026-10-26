@@ -52,7 +52,7 @@
  * DEGRADING: every step is guarded and the whole thing is a no-op if the API is
  * not what this file expects, so an upgrade that renames or removes it costs a
  * silent return, not a crash on entering Vim mode.
- * `scripts/vimScrollCommands.test.ts` drives the six keys through the real
+ * `scripts/editor.vim.test.ts` drives the six keys through the real
  * package and fails when upstream's behaviour changes underneath.
  */
 

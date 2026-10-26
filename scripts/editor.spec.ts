@@ -91,7 +91,7 @@ describe('AltGr in Monaco', () => {
 	});
 
 	async function loadMonaco() {
-		// The web branch, on Windows, as `monacoChordOwnership.spec.ts` explains.
+		// The web branch, on Windows, as `editor.checks.spec.ts` explains.
 		(document as unknown as { queryCommandSupported: () => boolean }).queryCommandSupported = () => true;
 		Object.defineProperty(navigator, 'userAgent', {
 			value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

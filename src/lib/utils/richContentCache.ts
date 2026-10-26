@@ -29,7 +29,7 @@
  * Inline maths (`$x$`, which `markdown.ts` mints as `\(x\)`) is rendered by
  * KaTeX's own `renderMathInElement`, which walks the tree and calls its own
  * bundled KaTeX. There is no seam to memoise without either re-implementing its
- * delimiter scanner — the thing `mathDelimiterContract.test.ts` exists to keep
+ * delimiter scanner — the thing `preview.render.test.ts` exists to keep
  * honest — or monkey-patching a library's method. So inline maths still costs
  * what it always did; on the stress document that is ~11ms of the pass.
  */

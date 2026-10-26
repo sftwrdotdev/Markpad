@@ -34,7 +34,7 @@ describe('file history and markdown link targets', () => {
 	});
 
 	// Entries exist to be re-opened, and an untitled buffer cannot be. See the
-	// behaviour this protects in scripts/tabNavigationHistory.spec.ts.
+	// behaviour this protects in scripts/navigation.spec.ts.
 	test('an untitled tab starts with no history entry at all', () => {
 		assert.deepEqual(createFileHistory(''), {
 			history: [],

@@ -1,5 +1,5 @@
 {
-	"note": "Real mermaid 11.16.0 output, captured in a browser. See scripts/mermaidDiagramLabels.test.ts.",
+	"note": "Real mermaid 11.16.0 output, captured in a browser. See scripts/preview.richContent.test.ts.",
 	"diagrams": {
 		"flowchart": {
 			"source": "graph LR\n  A[Alpha] -->|edgelabel| B(Bravo)",

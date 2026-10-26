@@ -29,12 +29,12 @@ import DOMPurify from 'dompurify';
  * block of a built document, attached to a selector the exported `<article
  * class="markdown-body">` matches, and last in the cascade. The last two tests
  * run the real `exportAsHtml` end to end and read the bytes it hands to
- * `save_file_content`, on the harness `exportRichContent.test.ts` established.
+ * `save_file_content`, on the harness `export.test.ts` established.
  */
 describe('exported content width', () => {
 	// The shim stands in for the DOM `exportAsHtml` builds into. Without a real DOM
 	// DOMPurify is a no-op object; what it does and where it sits in the pipeline is
-	// `exportSanitize.test.ts`'s subject, not this one's.
+	// `export.checks.test.ts`'s subject, not this one's.
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' } }, { identitySanitize: true });
 
 	type Rule = { selectors: string[]; declarations: string; media: 'screen' | 'print' };
@@ -416,7 +416,7 @@ describe('HTML export paths and front matter', () => {
 		// 3. A base with no separator. The href side would answer `/other.md` — the
 		//    filesystem root, a real and wrong directory — so its caller refuses the
 		//    empty base outright. The document side answers relatively and lets
-		//    resolveLocalFileLinkPath do the refusing (see localFileLinks.test.ts).
+		//    resolveLocalFileLinkPath do the refusing (see preview.test.ts).
 		assert.equal(resolveExportImagePath('a.png', ''), 'a.png');
 		assert.equal(resolveMarkdownTargetPath('', target('other.md')), null);
 	});
@@ -532,7 +532,7 @@ describe('open the exported file', () => {
  * live preview, on elements the exported article is not inside.
  */
 describe('export carries the preview appearance', () => {
-	// As in `exportContentWidth.test.ts`: the shim, and DOMPurify as the identity.
+	// As in `export.test.ts`: the shim, and DOMPurify as the identity.
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' }, addEventListener: () => {} }, { identitySanitize: true });
 
 	const appearance = {
@@ -647,7 +647,7 @@ describe('export carries the preview appearance', () => {
  *     up — and not the libraries' own output.
  *   - `DOMPurify.sanitize`, which is a no-op object without a real DOM. It is
  *     replaced by the identity function. What the filter does and where it sits
- *     in the pipeline is pinned by `exportSanitize.test.ts`; the relevant fact
+ *     in the pipeline is pinned by `export.checks.test.ts`; the relevant fact
  *     here is only that the diagram filter and the document filter are separate
  *     calls, which the diagram test below covers from the other side.
  */
@@ -790,7 +790,7 @@ describe('rich content in the HTML export', () => {
 			mermaidTheme: options.mermaidTheme ?? 'neutral',
 			libraries: fakeLibraries(record) as any,
 			// The width the preview was reading at, which the export follows (#467).
-			// Irrelevant to what this file asserts; `exportContentWidth.test.ts` owns it.
+			// Irrelevant to what this file asserts; `export.test.ts` owns it.
 			contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
 			appearance: plainAppearance,
 			newlineBreaks: options.newlineBreaks ?? true,
@@ -865,7 +865,7 @@ describe('rich content in the HTML export', () => {
 		assert.match(run.document, /<style>#mermaid-[^{]*\.node rect\{fill:#eee;\}<\/style>/);
 		// The stand-in Mermaid above emits `foreignObject`; the real one no longer
 		// does, and the diagram filter no longer allows it (see
-		// scripts/mermaidDiagramLabels.test.ts). What is pinned here is unchanged by
+		// scripts/preview.richContent.test.ts). What is pinned here is unchanged by
 		// that: the export must hand the *diagram* filter's output through, not the
 		// document policy's. Case-insensitive because the shim lower-cases tag names
 		// on serialisation where a real browser keeps `foreignObject`.
@@ -1292,7 +1292,7 @@ describe('mermaid print theme', () => {
  * prompt the HTML export already had.
  */
 describe('PDF export result', () => {
-	// As in `exportPreviewAppearance.test.ts`: the shim, and DOMPurify as the identity.
+	// As in `export.test.ts`: the shim, and DOMPurify as the identity.
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' }, addEventListener: () => {} }, { identitySanitize: true });
 
 	function exportWith(osType: 'windows' | 'macos', savePath: string | null) {
