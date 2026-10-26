@@ -49,7 +49,7 @@ import {
 	toggleFoldFromClick,
 	type FoldHost,
 } from './utils/foldState.js';
-import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
+import { dropPaneFor, dropZoneLabel, handleDrop } from './utils/fileDrop.js';
 import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, headingText, preferredReferenceStyle } from './utils/headingReference.js';
 import {
@@ -3491,23 +3491,10 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						const paths = event.payload.paths;
 						const currentEditor = editorPane;
 						if (currentEditor) currentEditor.hideDragCaret();
-						// Both panes route through `routeDroppedFile`. The editor's
-						// branch used to look for an image and silently discard
-						// everything else, so a `.md` dropped there did nothing at
-						// all while the same drop on the preview opened it.
-						const pane = dropPaneFor(dragTarget, !!currentEditor);
-						paths.forEach(path => {
-							switch (routeDroppedFile(path, pane)) {
-								case 'insert':
-									currentEditor?.handleDroppedFile(path, x, y);
-									break;
-								case 'open':
-									loadMarkdown(path);
-									break;
-								case 'unsupported':
-									reportUnsupportedDrop(path);
-									break;
-							}
+						handleDrop(paths, dragTarget, !!currentEditor, {
+							insert: (path) => currentEditor?.handleDroppedFile(path, x, y),
+							open: (path) => loadMarkdown(path),
+							unsupported: reportUnsupportedDrop,
 						});
 						
 						isDragging = false;

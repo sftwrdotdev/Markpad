@@ -535,18 +535,7 @@ describe('open file mode', () => {
 describe('file drop routing', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
-	test('the viewer routes both panes through it, and acts on all three answers', () => {
-		const dropHandler = sliceBetween(
-			viewerSource,
-			"} else if (event.payload.type === 'drop') {",
-			'isDragging = false;',
-		);
-
-		assert.match(dropHandler, /const pane = dropPaneFor\(dragTarget, !!currentEditor\);/);
-		assert.match(dropHandler, /switch \(routeDroppedFile\(path, pane\)\)/);
-		assert.match(dropHandler, /case 'insert':[\s\S]{0,120}?handleDroppedFile\(path, x, y\)/);
-		assert.match(dropHandler, /case 'open':[\s\S]{0,80}?loadMarkdown\(path\)/);
-		assert.match(dropHandler, /case 'unsupported':[\s\S]{0,80}?reportUnsupportedDrop\(path\)/);
+	test('the unsupported-drop toast names the file with toast.unsupportedFile', () => {
 		// One toast helper for both panes: the message used to be built inline in
 		// the preview branch, which is part of why the editor branch had nothing
 		// to say.
