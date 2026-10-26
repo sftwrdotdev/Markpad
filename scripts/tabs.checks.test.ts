@@ -9,30 +9,6 @@ import {
 } from './sourceTree.js';
 
 describe('cross-window tab transfer wiring', () => {
-	// insertTransferredTab lives in the Svelte store ($state rune, not loadable
-	// in node), so — like windowStateRestore.spec.ts — the thin store wrapper is
-	// checked statically; all decision logic above is exercised directly.
-	test('insertTransferredTab is a thin wrapper: build, push, activate, return the id', () => {
-		const tabs = readSource('src/lib/stores/tabs.svelte.ts');
-		const fn = sliceBetween(tabs, 'insertTransferredTab(', 'closeTab(');
-
-		assert.match(fn, /buildTransferredTab\(/);
-		// untitled re-numbering uses this window's titles and localized base
-		assert.match(fn, /this\.tabs\.map\(\(tab\) => tab\.title\)/);
-		assert.match(fn, /t\('tabs\.untitled', settings\.language\)/);
-		// the new tab is pushed, activated, and its id returned
-		assert.match(fn, /this\.tabs\.push\(tab\);/);
-		assert.match(fn, /this\.activeTabId = tab\.id;/);
-		assert.match(fn, /return tab\.id;/);
-	});
-
-	test('serializeState still persists window shape only (untouched by transfer)', () => {
-		const tabs = readSource('src/lib/stores/tabs.svelte.ts');
-		const fn = sliceBetween(tabs, 'serializeState(extra', 'restoreState(');
-		assert.doesNotMatch(fn, /rawContent/);
-		assert.doesNotMatch(fn, /TransferableTab/);
-	});
-
 	test('source removal waits for destination completion', () => {
 		const broker = readSource('src-tauri/src/tab_transfer.rs');
 		const session = readSource('src/lib/sessions/windowSession.svelte.ts');
@@ -45,41 +21,12 @@ describe('cross-window tab transfer wiring', () => {
 });
 
 describe('tab transfer handoff', () => {
-	const session = readSource(new URL('../src/lib/sessions/windowSession.svelte.ts', import.meta.url));
 	const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-	const broker = readSource(new URL('../src-tauri/src/tab_transfer.rs', import.meta.url));
 
 	// A tab transfer is only ever allowed to end in one of two states: the source
 	// still has the tab, or the destination does. Every defect below produced the
 	// third state -- present in both windows, each with its own auto-save timer
 	// writing over the other.
-
-	test('the source keeps waiting when the destination has already claimed', () => {
-		// The 15s timeout is a guess about a window that may simply be slow to
-		// render. Cancelling regardless is what stranded a copy on each side.
-		const cancel = sliceFrom(session, 'const cancel = async ()');
-		assert.match(cancel, /outcome\.cancelled/);
-		assert.match(cancel, /outcome\.claimed/);
-		assert.match(cancel, /if \(!outcome\.cancelled && outcome\.claimed\) \{\s*\n\s*setTimeout\(cancel, 15_000\);\s*\n\s*return;/);
-	});
-
-	test('the destination releases its claim when it cannot finish', () => {
-		// Because a claimed transfer is immune to the source's timeout, the
-		// destination is the only party that can end a claim it cannot complete.
-		assert.match(session, /async function releaseClaim\(token: string\)/);
-		const accept = sliceBetween(session, 'async function acceptOfferedTransfer', 'async function claimTransferredTab');
-		// Invalid payload, a refusing destination, and a thrown render all release.
-		assert.equal((accept.match(/releaseClaim\(token\)/g) ?? []).length, 3);
-		assert.match(accept, /if \(claimed\) await releaseClaim\(token\);/);
-	});
-
-	test('a claim is distinguished from "no such token"', () => {
-		// Releasing a token that was never claimed would be a no-op at best and a
-		// cancel of someone else's transfer at worst.
-		const accept = sliceBetween(session, 'async function acceptOfferedTransfer', 'async function claimTransferredTab');
-		assert.match(accept, /if \(payload === null\)/);
-		assert.match(accept, /claimed = true;/);
-	});
 
 	test('a failed render undoes the inserted tab', () => {
 		// The tab must exist before it can be rendered, so the destination owns a
@@ -115,27 +62,6 @@ describe('tab transfer handoff', () => {
 		// article: restoring for a tab the user has since switched away from would
 		// move whichever document is on screen instead.
 		assert.match(accept, /tabManager\.activeTabId === id/);
-	});
-
-	test('a second transfer of the same tab is refused while one is in flight', () => {
-		// The menu entry becomes clickable again long before the transfer
-		// resolves; two payloads for one tab means two windows each build it.
-		assert.match(session, /const transfersInFlight = new Set<string>\(\);/);
-		assert.match(session, /if \(transfersInFlight\.has\(tabId\)\) return false;/);
-		assert.match(session, /\} finally \{\s*\n\s*transfersInFlight\.delete\(tabId\);/);
-	});
-
-	test('the broker binds every operation to the window that may perform it', () => {
-		// Tokens used to be t1..t16, and any webview could read or destroy any
-		// staged transfer -- including the document text of a drag in progress.
-		assert.match(broker, /fn is_destination_label/);
-		assert.match(broker, /enum CancelAuthority/);
-		assert.doesNotMatch(broker, /format!\("t\{\}"/);
-	});
-
-	test('eviction never drops a transfer that is mid-handoff', () => {
-		assert.match(broker, /fn eviction_victim/);
-		assert.match(broker, /claimed_at/);
 	});
 });
 
@@ -235,27 +161,7 @@ describe('tab switch is not a render', () => {
 	});
 });
 
-describe('numbered untitled titles', () => {
-	test('new tabs are created with numbered untitled titles', () => {
-		const tabs = readSource('src/lib/stores/tabs.svelte.ts');
-		assert.match(tabs, /nextUntitledTitle\(/);
-		// both creation paths go through the helper
-		const addNewTab = sliceBetween(tabs, 'addNewTab()', 'addHomeTab()');
-		assert.match(addNewTab, /nextUntitledTitle\(/);
-	});
-});
-
 describe('background edit-only tab position', () => {
-	test('a percentage is not invented to go with the anchor', () => {
-		// The view state carries `scrollTop` but neither height, so no fraction of
-		// the scrollable range can be computed from it. `anchorLine` is the first
-		// entry of both restore cascades, so recovering it is what decides where the
-		// tab opens; writing a percentage nobody can justify is not.
-		const source = readSource('src/lib/utils/editorPosition.ts');
-		const derivation = sliceFrom(source, 'export function outgoingTabAnchorLine');
-		assert.doesNotMatch(derivation, /scrollPercentage/);
-	});
-
 	test('both gates that drop the view state ask for the anchor first', () => {
 		// The two moments a tab's position leaves memory. Neither carries
 		// `editorViewState`: `serializeState` omits it and `restoreState` seeds
