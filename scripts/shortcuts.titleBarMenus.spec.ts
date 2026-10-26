@@ -31,3 +31,33 @@ test('titlebar menus close before a document context menu opens', () => {
 		}
 	}
 });
+
+test('TitleBar decides the platform from settings.osType, not from the user agent', async () => {
+	// The component used to hold `navigator.userAgent.includes('Macintosh')` and
+	// derive its chrome, its `native-mac` class and its menu modifier from it.
+	const { settings } = await import('../src/lib/stores/settings.svelte.js');
+	const { TitleBarPlatform } = await import('../src/lib/stores/titleBarPlatform.svelte.js');
+	const navigatorPlatform = Object.getOwnPropertyDescriptor(Navigator.prototype, 'platform');
+	const osType = settings.osType;
+	Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+	onTestFinished(() => {
+		delete (navigator as any).platform;
+		if (navigatorPlatform) Object.defineProperty(Navigator.prototype, 'platform', navigatorPlatform);
+		settings.osType = osType;
+	});
+
+	const chrome = new TitleBarPlatform();
+	// The browser says Mac; the backend's answer wins once it is in.
+	settings.osType = 'windows';
+	assert.equal(chrome.isMac, false);
+	assert.equal(chrome.modifier, 'Ctrl');
+
+	// And it stays reactive: `osType` resolves once, after mount.
+	settings.osType = 'macos';
+	assert.equal(chrome.isMac, true);
+	assert.equal(chrome.modifier, 'Cmd');
+
+	// Before the backend answers, the browser hint covers the gap.
+	settings.osType = 'unknown';
+	assert.equal(chrome.isMac, true);
+});

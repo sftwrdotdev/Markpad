@@ -9,8 +9,8 @@
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
 	import { getConfiguredTitlebarToolbarIds, visibleTitlebarActionIds, type ViewMode, viewModeOf } from '../utils/titlebarToolbar.js';
-	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
-	import { platformOf } from '../utils/platform.js';
+	import { shortcutLabel } from '../utils/shortcuts.js';
+	import { TitleBarPlatform } from '../stores/titleBarPlatform.svelte.js';
 	import { canExportTab } from '../utils/tabFileActions.js';
 	import { openNewWindow, openPinnedTagWindow } from '../utils/pinnedTagWindow.js';
 	import { getVersion } from '@tauri-apps/api/app';
@@ -113,20 +113,9 @@
 	let innerWidth = $state(1000);
 	let isCollapsed = $derived(innerWidth <= 450 || settings.zenMode);
 
-	// The platform comes from `settings.osType` — the Rust `get_os_type` answer
-	// the rest of the app already reads — rather than from this component's own
-	// user-agent sniff for "Macintosh", which was a second source that could
-	// disagree with it. `platformOf` covers the window before that
-	// command answers; see the comment on it for why the title bar cannot simply
-	// read `settings.osType` directly without flashing Windows chrome on a Mac.
-	//
-	// `$derived` rather than plain consts: the source is now reactive state, and
-	// `osType` can change once after mount (unknown → resolved). At plain consts
-	// the title bar would keep whatever the fallback said and never correct
-	// itself on a machine where the two do differ.
-	let platform = $derived(platformOf(settings.osType));
-	let isMac = $derived(platform === 'macos');
-	let modifier = $derived(modifierFor(platform));
+	const titleBarPlatform = new TitleBarPlatform();
+	let isMac = $derived(titleBarPlatform.isMac);
+	let modifier = $derived(titleBarPlatform.modifier);
 
 	let isWin11 = $state(false);
 	const popovers = new TitleBarPopovers();
