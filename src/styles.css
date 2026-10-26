@@ -1440,7 +1440,7 @@ body {
 	}
 
 	.markdown-body {
-		padding: 0.75in !important;
+		padding: 1cm !important;
 		margin: 0 !important;
 		box-sizing: border-box !important;
 		box-decoration-break: clone !important;
@@ -1549,8 +1549,8 @@ body {
 		margin: 1em auto;
 	}
 	/* An image or a diagram taller than the paper used to be clipped at the page
-	   break rather than scaled; 9.5in is what both Letter and A4 hold with the
-	   0.75in margins above. */
+	   break rather than scaled; 9in fits both Letter and A4 inside the
+	   1cm margins above. */
 	.markdown-body img,
 	.markdown-body .mermaid-diagram svg {
 		max-height: 9in !important;

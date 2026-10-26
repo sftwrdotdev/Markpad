@@ -226,13 +226,26 @@ html, body {
 	padding: 0;
 }
 .markdown-body {
-	padding: 40px !important;
 	max-width: ${exportContentMaxWidth(input.contentWidth)};
 ${appearance}
 	margin: 0 auto;
 	height: auto !important;
 	overflow: visible !important;
 	min-height: 100%;
+}
+@media screen {
+	.markdown-body {
+		padding: 40px !important;
+	}
+}
+/* The copied print sheet hides everything outside #app, because the app prints
+   #print-root inside it. An exported file has no #app: its article is the page.
+   The :not(#app) is there for weight, to outrank that rule. Its padding is left
+   to the print sheet, so paper gets the same margins as the app's PDF. */
+@media print {
+	body > .markdown-body:not(#app) {
+		display: block !important;
+	}
 }
 .lang-label {
 	display: none !important;
