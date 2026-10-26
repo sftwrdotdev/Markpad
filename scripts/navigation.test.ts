@@ -14,6 +14,8 @@ import { getMarkdownLinkTarget, isOpenInNewTabMarkdownTarget, resolveMarkdownTar
 import { jumpScrollBehavior } from '../src/lib/utils/motion.js';
 import { EditorJumps, type JumpEditor } from '../src/lib/utils/editorJumps.js';
 import { asBufferLine } from '../src/lib/utils/lineCoordinates.js';
+import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
+import { viewerCommandCalls } from './keymapHarness.js';
 
 describe('file history and markdown link targets', () => {
 	test('new file tabs start history with their path', () => {
@@ -300,5 +302,23 @@ describe('preview scroll sync across the front matter', async () => {
 		// The outline and the tab's anchor both count from the body, so the
 		// preview's answer is not shifted.
 		assert.equal(getPreviewScrollAnchor(preview(300 - PREVIEW_ANCHOR_OFFSET), measure), 5);
+	});
+});
+
+describe('edit view toggle', () => {
+	test('one function owns what ⌘E means, and every entry point uses it', () => {
+		// The hotkey, the toolbar, the title bar and Monaco's own command all route
+		// to `toggleEditView`, so the chord cannot mean one thing with the caret in
+		// the editor and another with it in the preview. The title bar's Edit button
+		// runs in navigation.viewMode.spec.ts; the editor's `oncommand` prop is the
+		// markup check in shortcuts.checks.test.ts.
+		assert.equal(
+			viewerCommandFor(
+				{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },
+				{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
+			),
+			'toggle-edit-view',
+		);
+		assert.deepEqual(viewerCommandCalls()['toggle-edit-view'], ['toggleEditView']);
 	});
 });

@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { readSource, functionSource } from './sourceTree.js';
-import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
-import { viewerCommandTable } from './keymapHarness.js';
 
 const { frontMatterLineOffset } = await import('../src/lib/utils/frontMatter.js');
 
@@ -119,26 +117,4 @@ describe('jump to the selected fragment wiring', () => {
 		assert.match(menuSource, /window\.addEventListener\('keydown'/);
 		assert.match(menuSource, /e\.key === 'Escape'/);
 	});
-
-	test('one function owns what ⌘E means, and every entry point uses it', () => {
-		// The hotkey, the toolbar, the title bar and Monaco's own command all route
-		// here, so the chord cannot mean one thing with the caret in the editor and
-		// another with it in the preview — which is what
-		// `shortcuts.checks.test.ts` pins from the other side.
-		// The chord is a call now, not a pattern: the branch structure moved to
-		// `viewerKeymap.ts` and #647 had already shown what the old spelling cost —
-		// five assertions of this shape went red for a renamed local.
-		assert.equal(
-			viewerCommandFor(
-				{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },
-				{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
-			),
-			'toggle-edit-view',
-		);
-		assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
-		// The editor entry point hands Monaco's ⌘E to the same switch. The title
-		// bar's Edit button runs in navigation.viewMode.spec.ts.
-		assert.match(viewerSource, /oncommand=\{runViewerCommand\}/, 'the editor entry point');
-	});
-
 });

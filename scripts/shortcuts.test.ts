@@ -10,7 +10,7 @@ import type { ViewMode } from '../src/lib/utils/titlebarToolbar.js';
 import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { tabListMenuItems, tabMenuItems } from '../src/lib/utils/tabContextMenu.js';
 import { translations } from './allTranslations.js';
-import { type Chord, documentKeymap, PLATFORMS } from './keymapHarness.js';
+import { type Chord, documentKeymap, PLATFORMS, viewerCommandCalls } from './keymapHarness.js';
 
 describe('shortcut registry', () => {
 	/*
@@ -955,5 +955,35 @@ describe('tab context menus', () => {
 				[t('menu.undoCloseTab', 'en'), `${mod}+Shift+T`],
 			]);
 		}
+	});
+});
+
+describe('viewer command table', () => {
+	// `viewerCommandCalls` runs the real table against a recording host; see its
+	// note in `keymapHarness.ts`.
+	const calls = viewerCommandCalls();
+
+	test('Ctrl+Q quits the way the menu’s Exit does, not by closing one window', () => {
+		// The menu prints Ctrl+Q beside Exit, and Exit runs `appExit`, which closes
+		// every window. The chord used to run `getCurrentWindow().close()`, so with
+		// two windows open it closed one and left the app running.
+		assert.deepEqual(calls['app-exit'], ['appExit']);
+	});
+
+	test('every command the dispatcher can name is one the component can run', () => {
+		// The table is a `Record` over the union, so the compiler rejects a missing
+		// entry; this rejects an entry that does nothing.
+		const commands = Object.keys(calls) as ViewerCommand[];
+		assert.ok(commands.length >= 10, `only ${commands.length} commands were reached; the sweep is not running`);
+		for (const command of commands) assert.notDeepEqual(calls[command], [], `${command} does nothing`);
+	});
+
+	test('no path anywhere still opens a Home tab from a keystroke', () => {
+		// The #392 defect in its original spelling: the document branch for Ctrl+T
+		// called `tabManager.addHomeTab`. There is no `ViewerCommand` for that any
+		// more, so the checkable end is the other one: no command the keyboard
+		// reaches touches `addHomeTab`.
+		const routes = Object.entries(calls).filter(([, names]) => names.some((name) => name.endsWith('addHomeTab')));
+		assert.deepEqual(routes.map(([command]) => command), [], 'a keyboard command still reaches addHomeTab');
 	});
 });
