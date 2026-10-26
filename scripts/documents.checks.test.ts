@@ -5,7 +5,6 @@ import { describe, test } from 'node:test';
 import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { DEFAULT_OPEN_FILE_MODE } from '../src/lib/utils/openFileMode.js';
-import { viewerCommandTable } from './keymapHarness.js';
 import {
 	callbackBodies,
 	filesMatching,
@@ -80,7 +79,7 @@ describe('checked read migration', () => {
 	});
 
 	test('entering the editor reads the fidelity and stores it', () => {
-		const toggle = sliceBetween(viewer, 'async function toggleEdit', 'async function saveContent');
+		const toggle = sliceBetween(viewer, 'async function toggleEdit', 'async function restoreAfterLeavingEditor');
 		assert.match(toggle, /\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked', \{ path: tab\.path \}\)\)/);
 		const read = offsetOf(toggle, 'read_file_content_checked');
 		const flag = offsetOf(toggle, 'setTabDecodedLossy(tab.id, lossy)');
@@ -114,25 +113,10 @@ describe('checked read migration', () => {
 		assert.match(body, /hasReplacementChars/, 'the live tab decides whether anything is still being refused');
 	});
 
-	test('a refused save does not add a generic toast to its own explanation', () => {
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		const check = offsetOf(body, 'if (documentSession.isLossySaveRefused(s.id)) return;');
-		const toast = offsetOf(body, "t('toast.autoSaveFailed'");
-		assert.ok(check < toast, 'the refusal must be recognised before the generic toast is raised');
-	});
-
 	test('a tab that can only be refused stops re-arming the timer', () => {
-		// Auto-save re-arms on every keystroke. Without this the guard was reached
-		// again every 1.5s for as long as the user kept typing — each time
-		// producing the console warning, the wasted round trip, and (before the
-		// test above) the toast.
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		assert.match(body, /decodedLossily: tab\.hasReplacementChars/);
-		assert.match(body, /const eligible = [^;]*!\(s\.decodedLossily && documentSession\.isLossySaveRefused\(s\.id\)\)/);
-		// The FIRST attempt must still happen: it is what produces the explanation.
-		// `isLossySaveRefused` is false until the guard has spoken, so eligibility
-		// only drops afterwards — and "Save As" to a new file clears
-		// `hasReplacementChars`, which restores it.
+		// The eligibility rule runs in documents.test.ts "auto-save debounce". What
+		// is left: "Save As" to a new file forgets that the refusal was said, so a
+		// later lossy load into the same tab is explained again.
 		assert.match(
 			readSource('src/lib/sessions/documentSession.svelte.ts'),
 			/lossySaveWarnedTabs\.delete\(tab\.id\)/,
@@ -287,7 +271,8 @@ describe('lossy decode save guard', () => {
 		assert.match(session, /const success = await saveContent\(tabId\);/);
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
-		assert.match(functionSource(viewer, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
+		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
+		assert.match(functionSource(saves, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 	});
 
 	test('Save As to a new file stays open as the escape hatch', () => {
@@ -325,53 +310,6 @@ describe('lossy decode save guard', () => {
 		const i18n = readDictionarySource();
 		assert.match(i18n, /lossySaveBlocked: 'Not saved: parts of this file could not be read in any encoding/);
 		assert.match(i18n, /use "Save As" to write a copy/);
-	});
-});
-
-describe('save from reading mode', () => {
-	test('the browser save dialog is always suppressed', () => {
-		// preventDefault has to run for every mode, including the no-op case, or
-		// reading mode would surface the webview's own Save Page dialog. It is one
-		// unconditional call on the command rather than one per branch now, so this
-		// reads the six-line handler rather than the branch it used to sit in — and
-		// covers all twenty-two commands instead of Save alone.
-		const handler = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'handleKeyDown');
-		assert.match(
-			handler,
-			/if \(!command\) return;\s*\n\s*e\.preventDefault\(\);/,
-			'a command that runs must have had the keystroke prevented first',
-		);
-	});
-
-	/*
-	 * The three below are the residue of this seam, and they say so.
-	 *
-	 * What Ctrl+S DOES is a closure over `tabManager.activeTab` inside the
-	 * component, which is the one thing that could not move: see the note on
-	 * `viewerCommandTable` in `keymapHarness.ts`. They are still text assertions —
-	 * but text anchored on a `case 'save':` label rather than on a chord condition,
-	 * so the rename that reddened five of these in #647 no longer reaches them.
-	 */
-	const saveCommand = () => viewerCommandTable()['save'];
-
-	test('an untitled buffer can be saved from reading mode', () => {
-		// `path === ''` is the untitled case; documentSession.saveContent opens
-		// the Save dialog for it, so no extra plumbing is needed here.
-		assert.match(saveCommand(), /saveTarget\.path === ''/);
-	});
-
-	test('a saved, unmodified document does not write on Ctrl+S', () => {
-		// Writing unconditionally would touch mtime and wake the file watcher,
-		// which in live mode reloads the tab -- a keystroke that reads as a no-op
-		// to the user should not move the document underneath them.
-		assert.match(saveCommand(), /saveTarget\.isDirty \|\| saveTarget\.path === ''/);
-	});
-
-	test('the HOME tab is not savable', () => {
-		// HOME carries the sentinel path 'HOME' and is never dirty, so the guard
-		// excludes it without naming it. This pins that reasoning: if the guard
-		// ever becomes unconditional, HOME would start opening a Save dialog.
-		assert.doesNotMatch(saveCommand(), /^\s*saveContent\(\);\s*$/m);
 	});
 });
 
@@ -762,28 +700,6 @@ describe('external change reload', () => {
 		assert.doesNotMatch(body, /loadMarkdown\(currentFile\)/);
 	});
 
-	test('a conflict is surfaced with both choices instead of resolving itself', () => {
-		assert.match(viewer, /externalChangeConflicts/);
-		assert.match(viewer, /t\('externalChange\.reload'/);
-		assert.match(viewer, /t\('externalChange\.keepMine'/);
-	});
-
-	test('the debounced auto-save is held back while a conflict is unanswered', () => {
-		// Otherwise the 1.5s timer fires while the bar is still asking "reload or
-		// keep mine": the user's edits survive, but the external change is gone
-		// from disk before either answer can be given.
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		assert.match(body, /hasPendingConflict: hasExternalChangeConflict\(tab\.id\)/);
-		assert.match(body, /const eligible = [^;]*!s\.hasPendingConflict/);
-	});
-
-	test('an explicit save answers the conflict and takes the bar down', () => {
-		// Pressing Cmd+S is a decision. Leaving the bar up afterwards would ask a
-		// question the user already answered.
-		const body = sliceBetween(viewer, 'async function saveContent(tabId?: string)', 'async function saveContentAs');
-		assert.match(body, /clearExternalChangeConflict/);
-	});
-
 	test('turning Live Mode on does not reload', () => {
 		// Enabling reload is not a request to discard the buffer, and this was
 		// the one loadMarkdown call in the app with no canCloseTab in front of it.
@@ -816,23 +732,6 @@ describe('external change reload', () => {
 		assert.match(bar, /t\('externalChange\.compare'/);
 		assert.match(bar, /t\('externalChange\.reload'/);
 		assert.match(bar, /t\('externalChange\.keepMine'/);
-	});
-
-	test('Compare reads the file at the moment it is asked, not when the bar went up', () => {
-		// The bar can stand for a while. What the user needs to see is the file as
-		// it is when they are actually answering.
-		const fn = sliceBetween(viewer, 'async function compareExternalChange', '\n\t}');
-		assert.match(fn, /read_file_content_checked/);
-		assert.match(fn, /tab\.rawContent/);
-	});
-
-	test('answering the bar closes the comparison with it', () => {
-		// Otherwise the overlay outlives the question and shows a diff against a
-		// version that is no longer either side of anything.
-		for (const name of ['resolveExternalChangeByReloading', 'resolveExternalChangeByKeepingBuffer']) {
-			const fn = sliceBetween(viewer, `function ${name}`, '\n\t}');
-			assert.match(fn, /comparison = null/, `${name} left the comparison open`);
-		}
 	});
 
 	test('the diff view owns its models and never edits the document', () => {
@@ -881,22 +780,14 @@ describe('reopening a dirty document', () => {
 	// --- reverting is still possible, and only by saying so ---
 	//
 	// Authorization is declared by the caller, never inferred by the session from
-	// nearby state. An earlier draft let an unanswered external-change conflict
-	// stand in for the user's "Reload" click; that is guessing intent from an
-	// adjacent flag, and two callers can be in that state for different reasons.
-
-	// The two revert commands, and only those two. Anything else that starts
-	// passing this flag is a caller claiming the user chose to lose work.
-	for (const name of ['resolveExternalChangeByReloading', 'reloadFromDisk']) {
-		test(`${name} declares that it is discarding the buffer`, () => {
-			const fn = sliceBetween(viewer, `async function ${name}`, '\n\t}');
-			assert.match(fn, /loadMarkdown\(/);
-			assert.match(fn, /discardUnsavedBuffer: true/);
-		});
-	}
-
+	// nearby state. The two revert commands (Reload on the conflict bar, Reload
+	// from disk) declare it; `documents.conflicts.spec.ts` runs both. Anything
+	// else that starts passing this flag is a caller claiming the user chose to
+	// lose work.
 	test('nothing else in the viewer asks to discard a buffer', () => {
-		assert.equal(viewer.match(/discardUnsavedBuffer: true/g)?.length, 2);
+		assert.equal(viewer.match(/discardUnsavedBuffer: true/g), null);
+		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
+		assert.equal(saves.match(/discardUnsavedBuffer: true/g)?.length, 2);
 	});
 });
 

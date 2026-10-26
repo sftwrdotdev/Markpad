@@ -59,7 +59,7 @@ describe('merged auto-save preference', () => {
 			assert.doesNotMatch(source, /settings\.confirmBeforeSave/);
 		}
 		// And the four decisions are still there, now reading the one switch.
-		assert.match(viewerSource, /if \(!settings\.autoSave\) return;/); // leaving an editable pane
+		assert.match(readSource('src/lib/sessions/externalChange.svelte.ts'), /if \(!settings\.autoSave\) return;/); // leaving an editable pane
 		assert.match(viewerSource, /if \(!settings\.autoSave\) \{/); // the debounce
 		assert.match(readSource('src/lib/sessions/windowExit.ts'), /if \(settings\.autoSave\) \{/); // the close-window walk
 		// Closing a tab. The condition grew a third term — a file that changed

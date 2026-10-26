@@ -22,6 +22,8 @@
 	import Toast from './components/Toast.svelte';
 	import FindBar from './components/FindBar.svelte';
 	import { createWindowExit } from './sessions/windowExit.js';
+	import { createExternalChange } from './sessions/externalChange.svelte.js';
+	import { autoSaveFailureNeedsToast, isAutoSaveEligible } from './utils/autoSaveTimer.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath, showsHomeScreen } from './utils/homeTab.js';
@@ -117,7 +119,7 @@ import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSl
 import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
 import { isTocOverhanging } from './utils/tocOverlay.js';
 import { splitRatioAfterMove } from './utils/splitPanes.js';
-import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
+import { dispatchViewerKey, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
 	getScrollSyncPositionFromPixels,
 	getScrollTopForSyncPosition,
@@ -887,7 +889,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			console.error(message, error);
 			addToast(`${message}: ${String(error)}`, 'error');
 		},
-		onDiskChangedUnderSave: noteExternalChangeConflict,
+		onDiskChangedUnderSave: (id) => externalChange.noteExternalChangeConflict(id),
 		cancelPendingAutoSave,
 		// Two questions, one dialog. With the file untouched, Save means "write
 		// what I typed" and the ordinary wording is right. With the disk moved
@@ -912,6 +914,30 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// written. What the reader needs is to know where it stops.
 		onPartialCopySaved: () => addToast(t('toast.partialCopySaved', settings.language), 'info'),
 	});
+
+	const externalChange = createExternalChange({
+		tabManager,
+		settings,
+		documentSession,
+		loadMarkdown,
+		canCloseTab,
+		readFile: (path) => invoke('read_file_content_checked', { path }),
+		editorLanguageFor,
+		addToast,
+		t,
+	});
+	const {
+		saveContent,
+		saveActiveTab,
+		saveSilently,
+		flushBeforeLeavingEditableMode,
+		hasExternalChangeConflict,
+		noteExternalChangeConflict,
+		resolveExternalChangeByReloading,
+		reloadFromDisk,
+		compareExternalChange,
+		resolveExternalChangeByKeepingBuffer,
+	} = externalChange;
 
 	// Persisted through Rust, not localStorage: setItem is an async message
 	// to the WebKit storage process that dies in transit when the last
@@ -2096,48 +2122,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	/**
-	 * The last auto-save a tab gets before it stops being auto-saveable.
-	 *
-	 * Shared by the two ways out of an editable pane (leaving edit mode,
-	 * closing split view). It is NOT a condition of the switch: the view
-	 * changes whether or not the write succeeds, and nothing here asks the
-	 * user anything. The only reason it exists is that the background debounce
-	 * requires `isEditing || isSplit` (see the auto-save effect), so the tab is
-	 * about to lose its scheduled writer while still dirty — a user who asked
-	 * for "save automatically" would otherwise be left with edits that no timer
-	 * is going to flush.
-	 *
-	 * Untitled tabs are excluded on purpose: `saveContent` would open the Save
-	 * dialog for them, which is exactly the forced save decision this stopped
-	 * making.
-	 */
-	async function flushBeforeLeavingEditableMode(tab: Tab) {
-		if (!tab.isDirty || tab.path === '') return;
-		// Auto-save off means edits are kept until the user saves them, so
-		// leaving the pane must not write either — closing keeps or asks.
-		if (!settings.autoSave) return;
-
-		const success = await saveSilently(tab.id);
-		if (!success) {
-			// Refused because the file changed underneath: the edit stays in
-			// the buffer and the conflict bar is already asking about it.
-			if (hasExternalChangeConflict(tab.id)) return;
-			// Reported, not obeyed. A file that cannot be written — read-only
-			// path, a buffer the lossy-decode guard refuses — used to trap the
-			// user in the editor with no way to look at their own text.
-			addToast(t('toast.autoSaveFailed', settings.language), 'error');
-			return;
-		}
-		if (tab.isDirty) {
-			// TOCTOU: the user typed during the await, so the file is one
-			// revision behind and the debounce is about to be dropped. The
-			// preview shows those newest edits, so nothing is lost or wrong on
-			// screen; the disk is what the user should hear about.
-			addToast(t('toast.savedNewerEdits', settings.language), 'info');
-		}
-	}
-
-	/**
 	 * Reading mode's HTML, rendered from the tab's own buffer and its own path.
 	 * Writes through the tab id, so a tab switch during the render cannot land
 	 * one document's HTML on another — and, unlike the `loadMarkdown` call this
@@ -2354,134 +2338,15 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 */
 	let lineCoords = $derived(lineCoordinates(rawContent));
 
-	async function saveContent(tabId?: string): Promise<boolean> {
-		const id = tabId ?? tabManager.activeTabId ?? '';
-		// Only the saves the user asked for come here — Cmd+S, the menu and
-		// title bar Save. Saves nobody asked for go through `saveSilently`.
-		// So a save that lands here IS the answer "keep my version": it both
-		// authorises the write the session would otherwise refuse, and leaves
-		// the bar with nothing to ask.
-		//
-		// Without the first half the bar became a trap: the disk really has
-		// changed, so the guard in `saveContent` refuses, so the bar goes back
-		// up, and Cmd+S can never get the user out of it.
-		if (hasExternalChangeConflict(id)) documentSession.allowOverwriteOnce(id);
-		return saveSilently(id);
-	}
-
-	/**
-	 * A save nobody asked for: the debounce, leaving an editable pane, the
-	 * exit's auto-save. It never authorises overwriting a changed file, so on
-	 * a conflicted tab the session's guard refuses it and the bar stays up.
-	 */
-	async function saveSilently(tabId: string): Promise<boolean> {
-		const saved = await documentSession.saveContent(tabId);
-		if (saved) clearExternalChangeConflict(tabId);
-		return saved;
-	}
-
 	async function saveContentAs(): Promise<boolean> {
 		return documentSession.saveContentAs();
 	}
 
-	// --- External change conflicts ---
-	// A file changed on disk while the tab holding it had unsaved edits. The
-	// reload is NOT performed: `setTabRawContent` replaces originalContent
-	// too, so an automatic reload would erase the edits and the fact that
-	// there were any. The tab is flagged instead and the user picks.
-	//
-	// The question is about one file at one baseline, so that is what is
-	// recorded. Anything that puts another document in the tab — a link, back
-	// and forward, Reload, Save As, the close dialog's Save or Don't Save —
-	// moves the path or the baseline, and the conflict is void without each of
-	// them having to remember to clear it.
-	let externalChangeConflicts = $state<Record<string, { path: string; baseline: string }>>({});
 	let activeExternalChangeConflict = $derived(
 		tabManager.activeTabId ? hasExternalChangeConflict(tabManager.activeTabId) : false,
 	);
 
-	function hasExternalChangeConflict(tabId: string): boolean {
-		const conflict = externalChangeConflicts[tabId];
-		const tab = tabManager.tabs.find((item) => item.id === tabId);
-		return !!conflict && !!tab && tab.path === conflict.path && tab.originalContent === conflict.baseline;
-	}
-
-	function noteExternalChangeConflict(tabId: string) {
-		const tab = tabManager.tabs.find((item) => item.id === tabId);
-		if (tab) externalChangeConflicts[tabId] = { path: tab.path, baseline: tab.originalContent };
-	}
-
-	function clearExternalChangeConflict(tabId: string) {
-		delete externalChangeConflicts[tabId];
-	}
-
-	/** "Reload": the user chose the disk version over their own edits. */
-	async function resolveExternalChangeByReloading(tabId: string) {
-		// The reload lands in the active tab, so it is refused for any other.
-		const tab = tabManager.activeTab;
-		if (!tab?.path || tab.id !== tabId) return;
-		comparison = null;
-		clearExternalChangeConflict(tab.id);
-		await loadMarkdown(tab.path, {
-			preserveEditState: true,
-			skipTabManagement: true,
-			resetScrollHistory: true,
-			// The user answered "the file changed under your edits" with the
-			// disk version. Every other caller of loadMarkdown is an OPEN and
-			// must leave an edited buffer alone; this one is the revert, and
-			// says so rather than leaving the session to infer it.
-			discardUnsavedBuffer: true,
-		});
-	}
-
-	/**
-	 * The two versions the conflict bar is asking about, once the user has
-	 * asked to see them.
-	 *
-	 * Read on demand rather than kept alongside the flag: the bar can stand for
-	 * a while, and what matters is what the file says when the question is
-	 * actually being answered, not what it said when it was raised.
-	 */
-	let comparison = $state<{ tabId: string; onDisk: string; mine: string; language: string } | null>(null);
-
-	// The overlay answers for the tab it was opened on. Switching tabs, or that
-	// tab's conflict going void, closes it rather than letting its buttons land
-	// on whatever is in front.
-	$effect(() => {
-		if (comparison && (comparison.tabId !== tabManager.activeTabId || !hasExternalChangeConflict(comparison.tabId))) {
-			comparison = null;
-		}
-	});
-
-	/** "Compare": show what Reload would replace, before it is irreversible. */
-	async function compareExternalChange() {
-		const tab = tabManager.activeTab;
-		if (!tab?.path) return;
-		try {
-			const [onDisk] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-			if (tabManager.activeTabId !== tab.id) return;
-			comparison = {
-				tabId: tab.id,
-				onDisk,
-				mine: tab.rawContent,
-				language: editorLanguageFor(tab.path),
-			};
-		} catch (error) {
-			console.error('Failed to read the file for comparison', error);
-			addToast(`${t('externalChange.compare', settings.language)}: ${String(error)}`, 'error');
-		}
-	}
-
-	/** "Keep my version": dismiss. The buffer stays dirty and saveable. */
-	function resolveExternalChangeByKeepingBuffer(id: string) {
-		// The answer is about a write, not about a bar: the next save has to be
-		// allowed past the guard that would otherwise refuse to overwrite the
-		// changed file. One save only — a third program writing a minute later
-		// is a new question, and the user has not answered that one.
-		documentSession.allowOverwriteOnce(id);
-		comparison = null;
-		clearExternalChangeConflict(id);
-	}
+	$effect(() => externalChange.closeStaleComparison());
 
 	/**
 	 * Auto-save effect.
@@ -2534,21 +2399,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			const seenIds = new Set<string>();
 			for (const s of snapshot) {
 				seenIds.add(s.id);
-				// A tab with an unanswered external-change conflict is NOT
-				// eligible: the debounce would fire while the bar is still
-				// asking "reload or keep mine", write the buffer, and destroy
-				// the disk version the question was about — leaving the user to
-				// answer a question whose "reload" branch no longer exists.
-				// Only this background timer is held back. Cmd+S and the close
-				// dialog's Save still write, because that answer means "keep
-				// mine".
-				// A tab whose buffer was decoded lossily is dropped once the
-				// guard has refused it and said why. The first attempt is what
-				// produces that explanation, so it is deliberately allowed
-				// through; re-arming after it would only reach the same refusal
-				// every 1.5s for as long as the user keeps typing.
-				const eligible = s.isDirty && s.path !== '' && s.editable && !s.hasPendingConflict
-					&& !(s.decodedLossily && documentSession.isLossySaveRefused(s.id));
+				const eligible = isAutoSaveEligible(s, documentSession.isLossySaveRefused);
 				const prevRef = lastContentRefByTab.get(s.id);
 				const refChanged = prevRef !== s.contentRef;
 
@@ -2584,15 +2435,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						(ok) => {
 							if (!ok) {
 								console.error('Auto-save failed for tab', s.id);
-								// A refusal already explained itself, naming the
-								// file and the way out. "Auto-save failed" on top
-								// of that says nothing new.
-								if (documentSession.isLossySaveRefused(s.id)) return;
-								// Same reasoning for the other refusal: the disk
-								// moved under the write, and the conflict bar is
-								// already on screen saying so and offering both
-								// ways out.
-								if (hasExternalChangeConflict(s.id)) return;
+								if (!autoSaveFailureNeedsToast(s.id, { isLossySaveRefused: documentSession.isLossySaveRefused, hasExternalChangeConflict })) return;
 								addToast(
 									t('toast.autoSaveFailed', settings.language),
 									'error',
@@ -2779,25 +2622,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		if (!selected) return;
 		const paths = Array.isArray(selected) ? selected : [selected];
 		for (const path of paths) await loadMarkdown(path);
-	}
-
-	async function reloadFromDisk() {
-		const activeId = tabManager.activeTabId;
-		const tab = tabManager.activeTab;
-		if (!activeId || !tab?.path) return;
-		if (!(await canCloseTab(activeId))) return;
-
-		await loadMarkdown(tab.path, {
-			preserveEditState: true,
-			skipTabManagement: true,
-			resetScrollHistory: true,
-			// canCloseTab has already resolved the buffer, so normally there is
-			// nothing left to discard — but the user can type during that await,
-			// and a reload that silently did nothing would be worse than one
-			// that does what its menu item says.
-			discardUnsavedBuffer: true,
-		});
-		addToast(t('toast.reloadedFromDisk', settings.language), 'info');
 	}
 
 	function toggleHome() {
@@ -3355,10 +3179,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			case 'save-as':
 				return void saveContentAs();
 			case 'save': {
-				// Save from any mode. An untitled buffer has content to write. A
-				// clean saved file is a no-op, so its mtime does not wake the watcher.
-				const saveTarget = tabManager.activeTab;
-				if (saveTarget && (saveTarget.isDirty || saveTarget.path === '')) saveContent();
+				// Save from any mode; see `saveActiveTab`.
+				void saveActiveTab();
 				return;
 			}
 			case 'undo-close-tab':
@@ -3452,10 +3274,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		const command = viewerCommandFor(e, keyContext());
-		if (!command) return;
-		e.preventDefault();
-		runViewerCommand(command);
+		dispatchViewerKey(e, keyContext(), runViewerCommand);
 	}
 
 	async function navigateFileHistory(direction: 'back' | 'forward') {
@@ -3969,10 +3788,10 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	<Settings show={showSettings} theme={settings.theme} onSetTheme={(t) => (settings.theme = t)} onclose={() => (showSettings = false)} />
 
 	<DiffOverlay
-		show={comparison !== null}
-		onDisk={comparison?.onDisk ?? ''}
-		mine={comparison?.mine ?? ''}
-		language={comparison?.language ?? 'markdown'}
+		show={externalChange.comparison !== null}
+		onDisk={externalChange.comparison?.onDisk ?? ''}
+		mine={externalChange.comparison?.mine ?? ''}
+		language={externalChange.comparison?.language ?? 'markdown'}
 		labels={{
 			onDisk: t('externalChange.onDisk', settings.language),
 			mine: t('externalChange.mine', settings.language),
@@ -3980,9 +3799,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			keepMine: t('externalChange.keepMine', settings.language),
 			close: t('externalChange.close', settings.language),
 		}}
-		onclose={() => (comparison = null)}
-		onreload={() => comparison && resolveExternalChangeByReloading(comparison.tabId)}
-		onkeep={() => comparison && resolveExternalChangeByKeepingBuffer(comparison.tabId)} />
+		onclose={externalChange.closeComparison}
+		onreload={() => externalChange.comparison && resolveExternalChangeByReloading(externalChange.comparison.tabId)}
+		onkeep={() => externalChange.comparison && resolveExternalChangeByKeepingBuffer(externalChange.comparison.tabId)} />
 
 	{#if sidebarSide}
 		<Sidebar
