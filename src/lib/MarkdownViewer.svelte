@@ -99,14 +99,7 @@ import { resolveLocalFileLinkPath } from './utils/localFileLinks.js';
 import { canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
 import { findSeedFromSelection } from './utils/findSeed.js';
 import { normalizeAssetPath } from './utils/exportHtml.js';
-import {
-	dropRecentFile,
-	isRecentFilesStorageEvent,
-	promoteRecentFile,
-	readStoredRecentFiles,
-	renameRecentFile,
-	updateStoredRecentFiles,
-} from './utils/recentFiles.js';
+import { createRecentFiles } from './utils/recentFiles.js';
 
 	const appWindow = getCurrentWindow();
 
@@ -143,6 +136,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let showSettings = $state(false);
 
 	let recentFiles = $state<string[]>([]);
+	const recentFileList = createRecentFiles((files) => (recentFiles = files));
 	let isFocused = $state(true);
 	
 	let markdownBody: HTMLElement | null = $state(null);
@@ -2077,37 +2071,21 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 
 
 
-	/*
-	 * All three mutations go through `updateStoredRecentFiles`, which re-reads
-	 * the stored list first. Writing `JSON.stringify(recentFiles)` from this
-	 * window's copy published a snapshot from whenever this window last looked,
-	 * so with two windows open the later write erased the other's entries.
-	 */
 	function saveRecentFile(path: string) {
-		recentFiles = updateStoredRecentFiles((current) => promoteRecentFile(current, path));
+		recentFileList.save(path);
 	}
 
 	function loadRecentFiles() {
-		recentFiles = readStoredRecentFiles();
+		recentFileList.load();
 	}
 
 	function deleteRecentFile(path: string) {
-		recentFiles = updateStoredRecentFiles((current) => dropRecentFile(current, path));
+		recentFileList.remove(path);
 	}
 
-	/*
-	 * localStorage fires `storage` in every *other* same-origin document, so
-	 * this is how a window learns that a sibling opened or removed a file. Home
-	 * screens in other windows used to keep showing a stale list until restart,
-	 * and — worse — that stale list was what their next write published.
-	 */
 	$effect(() => {
 		if (typeof window === 'undefined') return;
-		const onStorage = (event: StorageEvent) => {
-			if (isRecentFilesStorageEvent(event)) recentFiles = readStoredRecentFiles();
-		};
-		window.addEventListener('storage', onStorage);
-		return () => window.removeEventListener('storage', onStorage);
+		return recentFileList.listen(window);
 	});
 
 	function removeRecentFile(path: string, event: MouseEvent) {
@@ -3550,7 +3528,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 						const newPath = oldPath.replace(/[/\\][^/\\]+$/, (m) => m.charAt(0) + newName);
 						try {
 							await documentSession.renameFile(tabId, newPath);
-							recentFiles = updateStoredRecentFiles((current) => renameRecentFile(current, oldPath, newPath));
+							recentFileList.rename(oldPath, newPath);
 						} catch (e) {
 							console.error('Failed to rename file', e);
 							await askCustom(`Failed to rename file: ${e}`, { title: 'Error', kind: 'error' });

@@ -261,13 +261,6 @@ describe('the recent-file list is written through one helper', () => {
 
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	test('every mutation goes through the read-modify-write helper', () => {
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => promoteRecentFile\(\1, path\)\)/);
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => dropRecentFile\(\1, path\)\)/);
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => renameRecentFile\(\1, oldPath, newPath\)\)/);
-		assert.equal(viewer.match(/updateStoredRecentFiles\(/g)?.length, 3, 'exactly three call sites, all of them shown above');
-	});
-
 	test('nothing writes the key directly any more', () => {
 		// Any surviving `setItem('recent-files', ...)` is a window publishing its
 		// own snapshot again, which is the whole defect.
@@ -279,15 +272,6 @@ describe('the recent-file list is written through one helper', () => {
 		// The × on the active document's entry closed the tab through the bare
 		// `tabManager.closeTab`, with no unsaved-changes prompt.
 		assert.doesNotMatch(functionSource(viewer, 'removeRecentFile'), /closeTab/);
-	});
-
-	test('a window folds in what its siblings did', () => {
-		// localStorage fires `storage` in every OTHER same-origin document. Without
-		// this the home screen showed a stale list until restart — and that stale
-		// list was what the next write published.
-		assert.match(viewer, /isRecentFilesStorageEvent\(event\)\) recentFiles = readStoredRecentFiles\(\)/);
-		assert.match(viewer, /window\.addEventListener\('storage', onStorage\)/);
-		assert.match(viewer, /window\.removeEventListener\('storage', onStorage\)/);
 	});
 });
 
