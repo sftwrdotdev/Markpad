@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
 import { afterAll, beforeAll, describe, test, vi } from 'vitest';
+import type { TranslationKey } from '../src/lib/utils/i18n.js';
 
 // The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the
 // Svelte plugin, so the store and the session run under real reactivity, and jsdom
@@ -1271,7 +1272,7 @@ describe('window organization', () => {
 	test('the Home menu groups window organization below export actions', async () => {
 		const { view, labels } = await openHomeMenu(() => {});
 		using _ = view;
-		const at = (key: string) => {
+		const at = (key: TranslationKey) => {
 			const index = labels.findIndex((label) => label.startsWith(t(key, 'en')));
 			assert.notEqual(index, -1, `${key} is in the menu`);
 			return index;

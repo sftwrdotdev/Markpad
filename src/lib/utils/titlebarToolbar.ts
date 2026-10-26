@@ -1,18 +1,19 @@
 import { hasMarkdownLinkExtension } from './markdownLinks.js';
 import { applyMove, getAdjacentMove, getReorderMove, type ToolbarMove } from './toolbarMove.js';
+import type { TranslationKey } from './i18n.js';
 
 export type TitlebarToolbarPlacement = 'bar' | 'menu';
 
 type TitlebarToolbarAction = {
 	id: string;
-	labelKey: string;
+	labelKey: TranslationKey;
 	fallbackName: string;
 	sample: string;
 	defaultPlacement: TitlebarToolbarPlacement;
 	required?: boolean;
 	// Second line in Settings: when the button shows (see
 	// visibleTitlebarActionIds), or for viewMode, the modes it switches between.
-	hintKey?: string;
+	hintKey?: TranslationKey;
 };
 
 type ConfiguredTitlebarToolbarIds = {

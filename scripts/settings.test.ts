@@ -5,7 +5,7 @@ import { DEFAULT_AUTO_SAVE, resolveAutoSave } from '../src/lib/utils/autoSaveSet
 import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
 import { previewAppearanceFrom } from '../src/lib/utils/previewLayout.js';
-import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, type LanguageCode, t, type Translation, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { isHexColor, isSafeCssColor, sanitizeThemeColors } from '../src/lib/utils/theme.js';
 import { translations } from './allTranslations.js';
 
@@ -346,6 +346,20 @@ describe('translation coverage', () => {
 		];
 
 		assert.deepEqual(keys.filter((key) => directTranslation('zh-CN', key) === undefined), []);
+	});
+
+	test('t() never echoes a key back for a reachable string', () => {
+		// TitleBar called t('common.save'), which no language defines, so the button
+		// read "common.save". The key type now refuses that call; this states the
+		// end result through t() itself: every key English defines renders as text
+		// in every language, either its own translation or the English fallback.
+		for (const key of english.keys()) {
+			for (const lang of languages) {
+				const value = t(key as TranslationKey, lang);
+				assert.notEqual(value, key, `t('${key}', '${lang}') renders the key itself`);
+				assert.ok(value.length > 0, `t('${key}', '${lang}') is empty`);
+			}
+		}
 	});
 
 	test('per-locale completeness (reported, never enforced)', () => {

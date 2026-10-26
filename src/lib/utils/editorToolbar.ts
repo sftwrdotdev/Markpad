@@ -7,6 +7,7 @@ import {
 } from './listSyntax.js';
 import { shortcutLabel } from './shortcuts.js';
 import { applyMove, getAdjacentMove, getReorderMove, type ToolbarMove } from './toolbarMove.js';
+import type { TranslationKey } from './i18n.js';
 
 type EditorToolbarGroup = 'inline' | 'block' | 'list' | 'insert';
 
@@ -14,7 +15,7 @@ export type EditorToolbarTool = {
 	id: string;
 	label: string;
 	/** The app menu's i18n key for this command, so the toolbar names it the same way. */
-	labelKey: string;
+	labelKey: TranslationKey;
 	shortcut?: (modifier: 'Ctrl' | 'Cmd') => string;
 	group: EditorToolbarGroup;
 };

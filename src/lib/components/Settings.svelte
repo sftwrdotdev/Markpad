@@ -30,7 +30,7 @@
 		type SettingsRow,
 	} from '../utils/settingsPanes.js';
 	import { createSettingsOpen } from '../utils/settingsOpen.svelte.js';
-	import type { LanguageCode } from '../utils/i18n.js';
+	import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 	import { getEditorToolbarTools } from '../utils/editorToolbar.js';
 	import { getTitlebarToolbarActions, type TitlebarToolbarPlacement } from '../utils/titlebarToolbar.js';
 	import { DEFAULT_PREVIEW_MAX_WIDTH, normalizePreviewMaxWidth } from '../utils/previewWidth.js';
@@ -64,7 +64,7 @@
 		{ value: 'blue', color: '#438af3' },
 		{ value: 'cyan', color: '#2bb9b2' },
 		{ value: 'green', color: '#4db158' }
-	];
+	] as const;
 
 	type SettingsModalFrame = {
 		width: number;
@@ -655,7 +655,7 @@
 						onclick={(e) => { e.stopPropagation(); highlightMenuOpen = !highlightMenuOpen; }}>
 							<div style="display: flex; align-items: center; gap: 8px;">
 							<div class="color-circle" style="background-color: {highlightColors.find(c => c.value === settings.highlightColor)?.color || 'var(--color-accent-fg)'}"></div>
-							<span>{t(`colors.${settings.highlightColor || 'default'}`, settings.language)}</span>
+							<span>{t(`colors.${settings.highlightColor || 'default'}` as TranslationKey, settings.language)}</span>
 						</div>
 							<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 					</button>

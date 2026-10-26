@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
 import { describe, test, vi } from 'vitest';
+import type { TranslationKeyIn } from '../src/lib/utils/i18n.js';
 
 // Its own file: the `vi.mock` calls below replace the Tauri modules for every
 // test in the file.
@@ -130,7 +131,7 @@ describe('the update dialog', () => {
 	Element.prototype.animate ??= function () {
 		return { cancel() {}, playState: 'finished', effect: null, onfinish: null } as unknown as Animation;
 	};
-	const tk = (key: string) => t(`update.${key}`, settings.language);
+	const tk = (key: TranslationKeyIn<'update'>) => t(`update.${key}`, settings.language);
 
 	function mountDialog() {
 		const target = document.createElement('div');

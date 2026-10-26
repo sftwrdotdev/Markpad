@@ -1,4 +1,4 @@
-import type { Translation } from '../utils/i18n.js';
+import type { LocaleTable } from '../utils/i18n.js';
 
 export default {
     settings: {
@@ -285,4 +285,4 @@ export default {
     toc: {
         resizeTableOfContents: 'Ubah ukuran daftar isi'
     }
-} satisfies Translation;
+} satisfies LocaleTable;

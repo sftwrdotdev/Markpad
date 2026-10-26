@@ -1,3 +1,4 @@
+import type { TranslationKey } from './i18n.js';
 /**
  * What an already-open document opens AS — the preference behind #183.
  *
@@ -17,7 +18,7 @@ export type OpenFileMode = 'preview' | 'editor' | 'split';
 export const DEFAULT_OPEN_FILE_MODE: OpenFileMode = 'preview';
 
 /** The Settings select, in order: the one control, with its three answers. */
-export const OPEN_FILE_MODE_OPTIONS: readonly { value: OpenFileMode; labelKey: string }[] = [
+export const OPEN_FILE_MODE_OPTIONS: readonly { value: OpenFileMode; labelKey: TranslationKey }[] = [
 	{ value: 'preview', labelKey: 'settings.preview' },
 	{ value: 'editor', labelKey: 'settings.editor' },
 	{ value: 'split', labelKey: 'menu.splitView' },

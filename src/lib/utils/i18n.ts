@@ -68,7 +68,7 @@ export function getSupportedLanguages() {
 // saved language before the first render, so a window never paints in English
 // first. A language switched to later renders in English for the moment its
 // chunk takes to arrive, and `t()` re-runs its callers when it lands.
-const en: Translation = {
+const en = {
     settings: {
         title: 'Settings',
         editor: 'Editor',
@@ -502,7 +502,29 @@ const en: Translation = {
         decrease: 'Decrease',
         increase: 'Increase'
     }
-};
+} satisfies Translation;
+
+/** Every dotted path to a string in the English table: the keys `t()` accepts. */
+type KeyPaths<T, Prefix extends string = ''> = {
+    [K in keyof T & string]: T[K] extends string ? `${Prefix}${K}` : KeyPaths<T[K], `${Prefix}${K}.`>;
+}[keyof T & string];
+export type TranslationKey = KeyPaths<typeof en>;
+type Suffix<K, Prefix extends string> = K extends `${Prefix}.${infer Rest}` ? Rest : never;
+/** The keys under one section, for a caller that adds the `section.` prefix itself. */
+export type TranslationKeyIn<Section extends string> = Suffix<TranslationKey, Section>;
+
+type PartialTable<T> = { [K in keyof T]?: T[K] extends string ? string : PartialTable<T[K]> };
+
+/** The labels of the editor's context menu (viewerContextMenu.ts `editorContextMenuItems`). */
+type EditorMenuLabel = 'undo' | 'redo' | 'cut' | 'copy' | 'paste' | 'selectAll' | 'commandPalette' | 'changeAllOccurrences';
+
+/**
+ * The shape a locale file `satisfies`. A language may leave keys untranslated
+ * (`t()` falls back to English) but may not file a key English does not have,
+ * and must translate every editor menu label: a missing one showed English
+ * in a menu that is otherwise translated (#261).
+ */
+export type LocaleTable = PartialTable<typeof en> & { menu: Record<EditorMenuLabel, string> };
 
 const dictionaries = new Map<LanguageCode, Translation>([['en', en]]);
 let localeLoaded = () => {};
@@ -527,7 +549,7 @@ export async function loadLocale(lang: LanguageCode): Promise<Translation> {
 // forgot to pass the language compiled, ran, and showed English in all 26
 // languages — silently, including on aria-labels a screen reader reads out.
 // The default is the bug; the compiler is the check. Do not restore it.
-export function t(key: string, lang: LanguageCode): string {
+export function t(key: TranslationKey, lang: LanguageCode): string {
     const keys = key.split('.');
     
     const getValue = (dict: any) => {

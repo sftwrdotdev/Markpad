@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { flushSync } from 'svelte';
 import { afterAll, describe, onTestFinished, test } from 'vitest';
 
-import { getSupportedLanguages } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
 import { updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 
@@ -1149,7 +1149,7 @@ describe('settings panes', async () => {
 			candidate.inactiveTitleKey,
 			...(candidate.kind === 'select' ? candidate.options.map((option) => option.labelKey) : []),
 		]);
-		const missing = keys.filter((key): key is string => key !== undefined && t(key, 'en') === key);
+		const missing = keys.filter((key): key is TranslationKey => key !== undefined && t(key, 'en') === key);
 		assert.deepEqual(missing, []);
 	});
 

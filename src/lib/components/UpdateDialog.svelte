@@ -2,7 +2,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import { updateStore } from '../stores/update.svelte.js';
 	import { settings } from '../stores/settings.svelte.js';
-	import { t } from '../utils/i18n.js';
+	import { t, type TranslationKeyIn } from '../utils/i18n.js';
 	import { windowDisplay } from '../utils/viewerWindows.js';
 
 	let { settleForExit } = $props<{ settleForExit: () => Promise<boolean> }>();
@@ -10,7 +10,7 @@
 	let dialogEl = $state<HTMLDivElement>();
 	let previousActiveElement: HTMLElement | null = null;
 
-	function tk(key: string, vars?: Record<string, string>): string {
+	function tk(key: TranslationKeyIn<'update'>, vars?: Record<string, string>): string {
 		let s = t(`update.${key}`, settings.language);
 		if (vars) {
 			for (const [k, v] of Object.entries(vars)) {

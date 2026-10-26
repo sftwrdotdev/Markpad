@@ -32,7 +32,7 @@ import {
 	getStoredPreviewFullWidth,
 	normalizePreviewMaxWidth,
 } from '../utils/previewWidth.js';
-import { getSupportedLanguages, type LanguageCode } from '../utils/i18n.js';
+import { getSupportedLanguages, type LanguageCode, type TranslationKey } from '../utils/i18n.js';
 
 export type OSType = 'macos' | 'windows' | 'linux' | 'unknown';
 
@@ -207,7 +207,7 @@ export function isTabPosition(value: unknown): value is TabPosition {
 }
 
 /** The Settings select for the tab position, in order. */
-export const TAB_POSITION_OPTIONS: readonly { value: TabPosition; labelKey: string }[] = [
+export const TAB_POSITION_OPTIONS: readonly { value: TabPosition; labelKey: TranslationKey }[] = [
 	{ value: 'top', labelKey: 'settings.tabPositionTop' },
 	{ value: 'left', labelKey: 'settings.tabPositionLeft' },
 	{ value: 'right', labelKey: 'settings.tabPositionRight' },

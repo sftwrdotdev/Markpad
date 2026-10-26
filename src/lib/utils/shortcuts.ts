@@ -37,11 +37,12 @@
  * continuation and nothing anywhere told a user it was there.
  */
 import type { ViewerCommand } from './viewerKeymap.js';
+import type { TranslationKey } from './i18n.js';
 
 type ShortcutGroup = 'file' | 'edit' | 'keys' | 'view' | 'window';
 
 /** Display order of the groups, and the i18n key that titles each one. */
-export const SHORTCUT_GROUPS: ReadonlyArray<{ group: ShortcutGroup; labelKey: string }> = [
+export const SHORTCUT_GROUPS: ReadonlyArray<{ group: ShortcutGroup; labelKey: TranslationKey }> = [
 	{ group: 'file', labelKey: 'menu.file' },
 	{ group: 'edit', labelKey: 'menu.edit' },
 	{ group: 'keys', labelKey: 'keys.group' },
@@ -65,11 +66,11 @@ export type ShortcutEntry = {
 	 * these labels was already in the dictionary for a menu entry or a context
 	 * menu, in all 26 locales.
 	 */
-	readonly labelKey: string;
+	readonly labelKey: TranslationKey;
 	/** The label on macOS, where the app menu names the command differently. */
-	readonly macosLabelKey?: string;
+	readonly macosLabelKey?: TranslationKey;
 	/** A note on where the chord works, for a command that is not everywhere. */
-	readonly hintKey?: string;
+	readonly hintKey?: TranslationKey;
 	/**
 	 * The chords, most-advertised first. Written in the spelling the CODE uses,
 	 * which is not always the spelling a user reads: `Mod` renders as `Cmd` on
@@ -586,8 +587,8 @@ export function shortcutLabel(id: string, modifier: 'Cmd' | 'Ctrl'): string | un
 
 type ShortcutSection = {
 	group: ShortcutGroup;
-	labelKey: string;
-	entries: ReadonlyArray<{ id: string; labelKey: string; hintKey?: string; chords: string[] }>;
+	labelKey: TranslationKey;
+	entries: ReadonlyArray<{ id: string; labelKey: TranslationKey; hintKey?: TranslationKey; chords: string[] }>;
 };
 
 /** The whole registry, grouped and rendered for `platform` — what the panel draws. */

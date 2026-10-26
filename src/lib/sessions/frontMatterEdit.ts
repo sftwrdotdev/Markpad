@@ -1,14 +1,14 @@
 import type { settings as Settings } from '../stores/settings.svelte.js';
 import type { Tab, tabManager as TabManager } from '../stores/tabs.svelte.js';
 import { parseFrontMatterEditableValue, type FrontMatterField } from '../utils/frontMatter.js';
-import type { LanguageCode } from '../utils/i18n.js';
+import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 
 export type FrontMatterEditOptions = {
 	tabManager: typeof TabManager;
 	settings: typeof Settings;
 	documentSession: { ensureFullContent: (tabId: string) => Promise<boolean> };
 	addToast: (message: string, type?: 'info' | 'error' | 'warning') => unknown;
-	t: (key: string, language: LanguageCode) => string;
+	t: (key: TranslationKey, language: LanguageCode) => string;
 	/** Rewrites the field in the tab's buffer and re-renders; `nextValue` may throw. */
 	applyFrontMatter: (tab: Tab, field: FrontMatterField, nextValue: () => unknown) => Promise<void>;
 };

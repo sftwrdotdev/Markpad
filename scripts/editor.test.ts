@@ -13,7 +13,7 @@ import { getMapForWordSeparators } from 'monaco-editor/esm/vs/editor/common/core
 import { USUAL_WORD_SEPARATORS } from 'monaco-editor/esm/vs/editor/common/core/wordHelper.js';
 import { language as markdownLanguage } from 'monaco-editor/esm/vs/basic-languages/markdown/markdown.js';
 
-import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, type LanguageCode, t, type Translation, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
 import { editorLanguageFor } from '../src/lib/utils/editorLanguage.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
@@ -72,7 +72,7 @@ describe('context menu labels', () => {
 	}
 
 	// The markdown formatting entries that used to be English string literals.
-	const FORMATTING_ACTIONS: ReadonlyArray<[actionId: string, key: string, englishLabel: string]> = [
+	const FORMATTING_ACTIONS: ReadonlyArray<[actionId: string, key: TranslationKey, englishLabel: string]> = [
 		['fmt-strikethrough', 'menu.strikethrough', 'Strikethrough'],
 		['fmt-inline-code', 'menu.inlineCode', 'Inline Code'],
 		['fmt-code-block', 'menu.codeBlock', 'Code Block'],
