@@ -25,7 +25,7 @@
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
 	import { isHomePath } from './utils/homeTab.js';
-	import { copyableFlavours } from './utils/previewCopy.js';
+	import { handleCopy as handlePreviewCopy } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
@@ -93,8 +93,8 @@ import {
 	resolveMarkdownTargetPath,
 	type MarkdownLinkTarget as RelativeMarkdownTarget,
 } from './utils/markdownLinks.js';
-import { resolveLocalFileLinkPath } from './utils/localFileLinks.js';
-import { canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
+import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
+import { canonicalizePath } from './utils/pathIdentity.js';
 import { findSeedFromSelection } from './utils/findSeed.js';
 import { normalizeAssetPath } from './utils/exportHtml.js';
 import {
@@ -2080,28 +2080,20 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		return false;
 	}
 
-	async function openRelativeMarkdownTarget(target: RelativeMarkdownTarget) {
-		const from = currentFile;
-		const resolved = resolveMarkdownTargetPath(from, target);
-		if (!resolved) return;
-		// The same file, not the same string: `readme.md#a` inside `Readme.md`
-		// on macOS, or a link through a symlink, is a jump within this document,
-		// not a reload that asks to discard its unsaved edits.
-		const [resolvedKey, fromKey] = await Promise.all([canonicalizePath(resolved), canonicalizePath(from)]);
-		if (isSameFilePath({ path: resolved, pathKey: resolvedKey }, { path: from, pathKey: fromKey })) {
-			if (target.hash) {
-				await scrollToAnchorWhenReady(target.hash);
-			} else if (markdownBody) {
+	function openRelativeMarkdownTarget(target: RelativeMarkdownTarget) {
+		return openRelativeTarget(target, {
+			currentFile,
+			canonicalizePath,
+			scrollToAnchorWhenReady,
+			scrollToTop: () => {
+				if (!markdownBody) return;
 				pushScrollHistory();
 				markdownBody.scrollTo({ top: 0, behavior: jumpBehavior });
-			}
-			return;
-		}
-		if (tabManager.activeTabId && !(await canCloseTab(tabManager.activeTabId))) return;
-		await loadMarkdown(resolved, { navigate: true });
-		if (target.hash) {
-			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, resolved);
-		}
+			},
+			get activeTabId() { return tabManager.activeTabId; },
+			canCloseTab,
+			loadMarkdown: (path) => loadMarkdown(path, { navigate: true }),
+		});
 	}
 
 	async function openMarkdownTargetInNewTab(target: RelativeMarkdownTarget) {
@@ -2117,90 +2109,18 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		}
 	}
 
-	async function handleLinkClick(e: MouseEvent) {
-		const target = e.target as HTMLElement;
-
-		// The hover preview describes the element under the cursor, and only
-		// `mouseout` takes it down. A click that replaces the document removes
-		// that element while the cursor is still on it, and removing a node
-		// dispatches no `mouseout` — so the box was left on screen until the
-		// pointer happened to cross another link. Dropping it here, before any
-		// branch, is the same thing a browser does with its own link preview:
-		// the click is the moment the description stops being about anything.
-		tooltip.show = false;
-
-		// Fold toggle: the heading's chevron, or a foldable callout's whole title
-		// bar. One branch for both, because they are one feature — the callout's
-		// own branch used to toggle the classes and stop there, so a folded
-		// callout re-opened on the next render while a folded heading did not.
-		if (toggleFoldFromClick(foldHost, target)) {
-			if (e.detail > 1) e.preventDefault(); // prevent double-click selection
-			e.stopPropagation();
-			return;
-		}
-
-		const a = target.closest('a');
-		if (a) {
-			const href = a.getAttribute('href');
-			if (href?.startsWith('#') && href.length > 1) {
-				e.preventDefault();
-				await scrollToAnchorWhenReady(href.substring(1));
-				return;
-			}
-
-			const relativeMarkdownTarget = href ? getRelativeMarkdownTarget(href) : null;
-			if (relativeMarkdownTarget) {
-				e.preventDefault();
-				e.stopPropagation();
-				// Which of the two this is depends on the setting and the chord
-				// together — the chord means "the other one". Opening a tab goes
-				// through `addTab`, which already resolves a file that is open to
-				// the tab holding it, so one gesture answers both halves of #661:
-				// a new tab, or the one that already has the file.
-				if (opensInNewTab(settings.osType, e, settings.linksOpenInNewTab)) {
-					await openMarkdownTargetInNewTab(relativeMarkdownTarget);
-				} else {
-					await openRelativeMarkdownTarget(relativeMarkdownTarget);
-				}
-				return;
-			}
-
-			// Every other link is opened by `handleDocumentClick` on `document`,
-			// and SvelteKit's router sits in between (on
-			// `document.documentElement`), claiming any same-origin href whose
-			// click nobody else has: `[a](Files/a.pdf)` became a client-side
-			// navigation to a route that does not exist, and its 404 page
-			// replaced the app — including the title bar it draws, which on
-			// Windows is the only way to close the window (#772). The router
-			// bails on `event.defaultPrevented`.
-			e.preventDefault();
-			return;
-		}
-
-        // media zoom handling
-        const img = target.closest('img');
-        if (img) {
-            zoomData = { src: img.src };
-            return;
-        }
-
-        const mermaidDiv = target.closest('.mermaid-diagram');
-        if (mermaidDiv) {
-            const svg = mermaidDiv.querySelector('svg');
-            if (svg) {
-                // clone and strip fixed dimensions so viewBox governs scaling
-                const clone = svg.cloneNode(true) as SVGElement;
-                clone.removeAttribute('width');
-                clone.removeAttribute('height');
-                clone.style.width = '';
-                clone.style.height = '';
-                zoomData = { html: clone.outerHTML };
-                return;
-            }
-        }
-
-		placePreviewCursor(e);
-    }
+	function handleLinkClick(e: MouseEvent) {
+		return handlePreviewClick(e, {
+			hideTooltip: () => { tooltip.show = false; },
+			toggleFold: (target) => toggleFoldFromClick(foldHost, target),
+			scrollToAnchor: (id) => scrollToAnchorWhenReady(id),
+			opensInNewTab: (event) => opensInNewTab(settings.osType, event, settings.linksOpenInNewTab),
+			openInNewTab: openMarkdownTargetInNewTab,
+			openHere: openRelativeMarkdownTarget,
+			zoom: (data) => { zoomData = data; },
+			placeCursor: placePreviewCursor,
+		});
+	}
 
 	async function handleTaskCheckboxChange(event: Event) {
 		const checkbox = event.target as HTMLInputElement;
@@ -2904,25 +2824,14 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		showHome = false;
 	}
 
-	/**
-	 * Hands a file Markpad does not edit to the OS: a document link to
-	 * `data.csv`, or a non-Markdown file clicked in the folder sidebar.
-	 */
-	async function openWithSystem(path: string) {
-		try {
-			// The OS default handler runs a program (`./setup.command`,
-			// `Calculator.app`, `x.exe`) rather than showing it, so one
-			// click on a document's link would launch it. Reveal it instead.
-			if (await invoke<boolean>('is_launchable_path', { path })) {
-				await invoke('open_file_folder', { path });
-				addToast(t('toast.launchableLinkRevealed', settings.language).replace('{{target}}', path), 'info');
-				return;
-			}
-			await openPath(path);
-		} catch (error) {
-			console.error('Failed to open local file', path, error);
-			addToast(t('toast.openFailed', settings.language).replace('{{target}}', path), 'error');
-		}
+	function openWithSystem(path: string) {
+		return openPathWithSystem(path, {
+			isLaunchable: (p) => invoke<boolean>('is_launchable_path', { path: p }),
+			reveal: (p) => invoke('open_file_folder', { path: p }),
+			openPath,
+			revealed: (p) => addToast(t('toast.launchableLinkRevealed', settings.language).replace('{{target}}', p), 'info'),
+			openFailed: (p) => addToast(t('toast.openFailed', settings.language).replace('{{target}}', p), 'error'),
+		});
 	}
 
 	async function selectFolder() {
@@ -3149,16 +3058,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * selection, so cancelling there would copy an empty string.
 	 */
 	function handleCopy(e: ClipboardEvent) {
-		const active = document.activeElement;
-		if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
-		const selection = window.getSelection();
-		if (!selection || selection.isCollapsed || !selection.rangeCount || !e.clipboardData) return;
-		// Rendered content keeps its formatting when copied (#674), as in a
-		// browser or VS Code's Markdown preview.
-		const { text, html } = copyableFlavours(selection, currentFile);
-		e.clipboardData.setData('text/plain', text);
-		e.clipboardData.setData('text/html', html);
-		e.preventDefault();
+		handlePreviewCopy(e, currentFile);
 	}
 
 	function handleContextMenu(e: MouseEvent) {
@@ -3296,50 +3196,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	function handleMouseOver(event: MouseEvent) {
 		if (mode !== 'app') return;
 		const anchor = linkAt(event.target);
-		if (anchor) {
-			const rawHref = anchor.getAttribute('href') || '';
-
-			// tooltip for same-page anchor links: show text of target header
-			if (rawHref.startsWith('#')) {
-				const el = findAnchorTarget(rawHref.substring(1));
-				if (el) {
-					// Use data-label if it's a block anchor, otherwise use textContent
-					let text = el.getAttribute('data-label') || el.textContent || '';
-					text = text.replace(/↩.*$/, '').trim(); // remove backrefs if any
-					if (text) {
-						const rect = anchor.getBoundingClientRect();
-						tooltip = { show: true, text, shortcut: '', html: '', isFootnote: false, x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
-						return;
-					}
-				}
-				return;
-			}
-
-			// footnote references: show footnote content instead of URL
-			if (anchor.hasAttribute('data-footnote-ref') || anchor.closest('[data-footnote-ref]') || rawHref.match(/#fn-|#fnref-|#user-content-fn/)) {
-				const fnId = rawHref.replace(/^#/, '');
-				const fnLi = previewBlocks?.querySelector(`#${CSS.escape(fnId)}`) ||
-				              previewBlocks?.querySelector(`li#${CSS.escape(fnId)}`);
-				if (fnLi) {
-					// clone to remove backref arrow from tooltip
-					const clone = fnLi.cloneNode(true) as HTMLElement;
-					const backrefs = clone.querySelectorAll('.footnote-backref, a[href^="#fnref-"]');
-					backrefs.forEach(b => b.remove());
-					
-					let fnHtml = clone.innerHTML.trim();
-					if (fnHtml) {
-						const rect = anchor.getBoundingClientRect();
-						tooltip = { show: true, text: '', shortcut: '', html: fnHtml, isFootnote: true, x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
-						return;
-					}
-				}
-			}
-
-			// The raw href. The DOM-resolved one starts with `tauri://localhost`.
-			if (rawHref) {
-				const rect = anchor.getBoundingClientRect();
-				tooltip = { show: true, text: rawHref, shortcut: '', html: '', isFootnote: false, x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
-			}
+		if (!anchor) return;
+		const label = linkTooltipFor(anchor, { findAnchorTarget, footnoteRoot: previewBlocks });
+		if (label) {
+			const rect = anchor.getBoundingClientRect();
+			tooltip = { show: true, ...label, shortcut: '', x: rect.left + rect.width / 2, y: rect.top - 8, align: 'top' };
 		}
 	}
 
@@ -3350,43 +3211,14 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	async function handleDocumentClick(event: MouseEvent) {
 		if (mode !== 'app') return;
 		const anchor = linkAt(event.target);
-		if (anchor) {
-			const rawHref = anchor.getAttribute('href');
-			if (!rawHref) return;
-
-			if (rawHref.startsWith('#')) return;
-
-			const relativeMarkdownTarget = getRelativeMarkdownTarget(rawHref);
-			if (relativeMarkdownTarget) {
-				event.preventDefault();
-				await openRelativeMarkdownTarget(relativeMarkdownTarget);
-				return;
-			}
-
-			// A link to a local non-markdown file (`[data](./data.csv)`) is a
-			// path, and `anchor.href` is not: the DOM resolved it against the
-			// webview origin. Hand the OS the resolved disk path instead.
-			const localFilePath = resolveLocalFileLinkPath(rawHref, currentFile);
-			if (localFilePath) {
-				event.preventDefault();
-				await openWithSystem(localFilePath);
-				return;
-			}
-
-			if (anchor.href) {
-				event.preventDefault();
-				// `openUrl` rejects anything outside the opener plugin's scope
-				// (`mailto:`, `tel:`, `http://*`, `https://*`). Without this the
-				// rejection was unhandled: the click did nothing, said nothing,
-				// and left an uncaught promise rejection behind.
-				try {
-					await openUrl(anchor.href);
-				} catch (error) {
-					console.error('Failed to open link', anchor.href, error);
-					addToast(t('toast.openFailed', settings.language).replace('{{target}}', rawHref), 'error');
-				}
-			}
-		}
+		if (!anchor) return;
+		await followDocumentLink(event, anchor, {
+			currentFile,
+			openHere: openRelativeMarkdownTarget,
+			openWithSystem,
+			openUrl,
+			openFailed: (rawHref) => addToast(t('toast.openFailed', settings.language).replace('{{target}}', rawHref), 'error'),
+		});
 	}
 
 	function handleWheel(e: WheelEvent) {

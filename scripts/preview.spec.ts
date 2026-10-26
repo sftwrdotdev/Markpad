@@ -9,7 +9,8 @@ import { type AnchorBox, type AnchorNode, findAnchorElement, getPreviewOffsetFor
 import { processMarkdownHtml } from '../src/lib/utils/markdown.js';
 import { type Annotation, annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf } from '../src/lib/utils/previewAnnotations.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
-import { copyableFlavours, copyableHtml } from '../src/lib/utils/previewCopy.js';
+import { copyableFlavours, copyableHtml, handleCopy } from '../src/lib/utils/previewCopy.js';
+import { linkTooltipFor } from '../src/lib/utils/previewLinks.js';
 import { type DomPoint, pointAtSource, sourceAtPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, sanitizeMarkdownFragment, sanitizeMarkdownHtml } from '../src/lib/utils/sanitize.js';
 import blocks from './fixtures/markdown-syntax.blocks.json';
@@ -1320,5 +1321,123 @@ describe('rich content idempotence', () => {
 			expect(article.querySelectorAll('.code-block-shell').length).toBe(1);
 			expect(article.querySelectorAll('.lang-label').length).toBe(1);
 		});
+	});
+});
+
+describe('link hover preview', () => {
+	test('the hover preview never prints the webview origin', () => {
+		// `[3.md](./3.md)` showed `tauri://localhost/3.md`: the DOM resolves
+		// `href` against the webview's own origin. The box names the link as the
+		// document wrote it.
+		const anchor = document.createElement('a');
+		anchor.setAttribute('href', './3.md');
+		assert.notEqual(anchor.href, './3.md', 'jsdom resolves the property, as the webview does');
+		assert.deepEqual(linkTooltipFor(anchor, { findAnchorTarget: () => null, footnoteRoot: null }), {
+			text: './3.md',
+			html: '',
+			isFootnote: false,
+		});
+	});
+});
+
+describe('preview copy handler', () => {
+	// #549 put both DOM-selection copy routes — ⌘C in the preview, and Edit ▸ Copy
+	// in the menu bar — on one handler that writes the clipboard itself, because
+	// WebKit's own copy writes a WebArchive beside the text. #674 added exactly one
+	// more flavour, `text/html`, built here rather than by the scheme.
+
+	afterEach(() => {
+		window.getSelection()?.removeAllRanges();
+		document.body.innerHTML = '';
+	});
+
+	function copyEvent() {
+		const written: Record<string, string> = {};
+		let prevented = false;
+		const event = {
+			clipboardData: { setData: (type: string, value: string) => { written[type] = value; } },
+			preventDefault: () => { prevented = true; },
+		} as unknown as ClipboardEvent;
+		return { event, written, prevented: () => prevented };
+	}
+
+	function select(html: string) {
+		document.body.innerHTML = `<article>${html}</article>`;
+		const range = document.createRange();
+		range.selectNodeContents(document.querySelector('article')!);
+		const selection = window.getSelection()!;
+		selection.removeAllRanges();
+		selection.addRange(range);
+		return selection;
+	}
+
+	const DOC = '/Users/me/notes/report.md';
+
+	test('the copy handler writes plain text and cancels the native copy', () => {
+		select('<p>hello <strong>world</strong></p>');
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.equal(copy.written['text/plain'], 'hello world');
+		// Without this the native copy still runs and still builds the archive.
+		assert.equal(copy.prevented(), true);
+	});
+
+	test('the rich flavour is the one this handler builds, and the only one', () => {
+		// RTF is WebKit's own flavour; writing it would be the scheme deciding again.
+		const selection = select('<p>hello <strong>world</strong></p>');
+		const expected = copyableFlavours(selection, DOC).html;
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(Object.keys(copy.written).sort(), ['text/html', 'text/plain']);
+		assert.equal(copy.written['text/html'], expected);
+		assert.match(copy.written['text/html'], /<strong>world<\/strong>/);
+	});
+
+	test('both flavours come from one decision', () => {
+		// A selection containing math takes its plain text from the formula
+		// source, which only the HTML pass knows about.
+		select(
+			'<p>Energy <span class="katex">' +
+				'<span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E=mc^2</annotation></semantics></math></span>' +
+				'<span class="katex-html" aria-hidden="true"><span class="base">E=mc2</span></span>' +
+				'</span></p>',
+		);
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.equal(copy.written['text/plain'], 'Energy $E=mc^2$');
+		assert.doesNotMatch(copy.written['text/html'], /katex-mathml/);
+	});
+
+	test('a selection inside a form control is left to the platform', () => {
+		// `getSelection()` cannot read a selection inside a field, so cancelling
+		// here would copy an empty string. Monaco takes input through a hidden
+		// textarea, which keeps the editor on its own copy path (#548).
+		const field = document.createElement('textarea');
+		document.body.append(field);
+		field.focus();
+		const article = document.createElement('article');
+		article.innerHTML = '<p>preview text</p>';
+		document.body.append(article);
+		const range = document.createRange();
+		range.selectNodeContents(article);
+		window.getSelection()!.removeAllRanges();
+		window.getSelection()!.addRange(range);
+		assert.equal(document.activeElement, field);
+		assert.equal(window.getSelection()!.isCollapsed, false);
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(copy.written, {});
+		assert.equal(copy.prevented(), false);
+	});
+
+	test('a collapsed selection is not copied', () => {
+		// Edit ▸ Copy is enabled with nothing selected; writing '' would clear the
+		// clipboard instead of leaving it alone.
+		select('<p>preview text</p>');
+		window.getSelection()!.collapseToStart();
+		const copy = copyEvent();
+		handleCopy(copy.event, DOC);
+		assert.deepEqual(copy.written, {});
+		assert.equal(copy.prevented(), false);
 	});
 });

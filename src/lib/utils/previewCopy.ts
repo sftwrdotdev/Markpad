@@ -132,3 +132,21 @@ export function copyableFlavours(selection: Selection, tabPath: string): { text:
 		html: copyableHtml(fragment, tabPath, dropSoftBreaks),
 	};
 }
+
+/**
+ * The document's `copy` handler: ⌘C in the preview and Edit ▸ Copy both land
+ * here (#549). It writes the clipboard itself and cancels the native copy, so
+ * the flavours on the clipboard are exactly these two and WebKit adds none.
+ */
+export function handleCopy(e: ClipboardEvent, tabPath: string) {
+	const active = document.activeElement;
+	if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+	const selection = window.getSelection();
+	if (!selection || selection.isCollapsed || !selection.rangeCount || !e.clipboardData) return;
+	// Rendered content keeps its formatting when copied (#674), as in a
+	// browser or VS Code's Markdown preview.
+	const { text, html } = copyableFlavours(selection, tabPath);
+	e.clipboardData.setData('text/plain', text);
+	e.clipboardData.setData('text/html', html);
+	e.preventDefault();
+}
