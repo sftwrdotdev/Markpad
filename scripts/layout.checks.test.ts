@@ -41,17 +41,13 @@ describe('split pane ratio', () => {
 		assert.equal(/Math\.(min|max)/.test(source), false);
 	});
 
-	test('both splitter routes take the direction from the same place', () => {
-		// The failure this guards is a splitter that follows the pointer one way
-		// and the arrow keys the other — invisible until someone swaps the panes.
+	test('no splitter route spells the direction itself', () => {
+		// The routes' agreement is layout.test.ts "both splitter routes take the
+		// direction from the same place". This is the absence of a third copy.
 		const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-		const calls = viewer.match(/splitRatioAfterMove\(/g) ?? [];
-		assert.equal(calls.length, 2, 'expected the drag and the arrow keys, and nothing else');
-
-		// No route may reintroduce the sign itself.
 		assert.equal(/splitEditorSide === 'left' \? /.test(viewer), false);
 	});
+
 });
 
 describe('fold layout', () => {

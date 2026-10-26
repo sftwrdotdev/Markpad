@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { asBufferLine, asRendererLine, lineCoordinates, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
 import { outwardSign, planPaneSlide } from '../src/lib/utils/paneSlide.js';
 import { getScrollSyncPositionFromPixels, getScrollTopForSyncPosition, type ScrollSyncPosition } from '../src/lib/utils/scrollSync.js';
-import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
+import { splitRatioAfterDrag, splitRatioAfterKey, splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
 import { activeTocIdForLine, sourceLineOf, type TocLineEntry } from '../src/lib/utils/tocFollow.js';
 import { isTocOverhanging, isTocOverPreview } from '../src/lib/utils/tocOverlay.ts';
 
@@ -217,6 +217,19 @@ describe('split pane ratio', () => {
 		// the ratio is the editor's share and the editor is now on the far side.
 		assert.equal(splitRatioAfterMove(0.5, 0.1, 'right'), 0.4);
 		assert.equal(splitRatioAfterMove(0.5, -0.1, 'right'), 0.6);
+	});
+
+	test('both splitter routes take the direction from the same place', () => {
+		// A splitter that follows the pointer one way and the arrow keys the other
+		// is invisible until someone swaps the panes.
+		for (const side of ['left', 'right'] as const) {
+			const dragged = splitRatioAfterDrag(0.5, 400, 450, 1000, side);
+			const keyed = splitRatioAfterKey(0.5, 'ArrowRight', side)!;
+			assert.equal(Math.sign(dragged - 0.5), Math.sign(keyed - 0.5), side);
+			assert.equal(Math.sign(keyed - 0.5), side === 'left' ? 1 : -1, side);
+			assert.equal(Math.sign(splitRatioAfterKey(0.5, 'ArrowLeft', side)! - 0.5), -Math.sign(keyed - 0.5), side);
+		}
+		assert.equal(splitRatioAfterKey(0.5, 'Enter', 'left'), null);
 	});
 });
 

@@ -119,7 +119,7 @@ import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSl
 import { adjustPreviewMaxWidth } from './utils/previewWidth.js';
 import { dismissesToc, tocAutoCollapses } from './utils/tocOverlay.js';
 import { exportContextFrom, previewAppearanceFrom, previewLayout } from './utils/previewLayout.js';
-import { splitRatioAfterMove } from './utils/splitPanes.js';
+import { splitRatioAfterDrag, splitRatioAfterKey } from './utils/splitPanes.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
 	getScrollSyncPositionFromPixels,
@@ -485,15 +485,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		const activeTab = tabManager.activeTab;
 		if (!activeTab || !tabManager.activeTabId) return;
 
-		// The same step the bar takes under the pointer, in the same units, so
-		// `splitRatioAfterMove` is the only thing that knows which way is wider.
-		const step = e.key === 'ArrowLeft' ? -0.05 : e.key === 'ArrowRight' ? 0.05 : 0;
-		if (step === 0) return;
-
-		tabManager.setSplitRatio(
-			tabManager.activeTabId,
-			splitRatioAfterMove(activeTab.splitRatio, step, settings.splitEditorSide),
-		);
+		const next = splitRatioAfterKey(activeTab.splitRatio, e.key, settings.splitEditorSide);
+		if (next === null) return;
+		tabManager.setSplitRatio(tabManager.activeTabId, next);
 	}
 
 	function handleTocResizeKeyDown(e: KeyboardEvent) {
@@ -3375,10 +3369,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		const containerWidth = window.innerWidth;
 
 		const onMove = (moveEvent: MouseEvent) => {
-			const deltaX = moveEvent.clientX - startX;
 			tabManager.setSplitRatio(
 				tabId,
-				splitRatioAfterMove(startRatio, deltaX / containerWidth, settings.splitEditorSide),
+				splitRatioAfterDrag(startRatio, startX, moveEvent.clientX, containerWidth, settings.splitEditorSide),
 			);
 		};
 
