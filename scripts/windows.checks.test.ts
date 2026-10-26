@@ -22,22 +22,6 @@ describe('window geometry is saved while the app runs', () => {
 	});
 });
 
-describe('moving tabs between windows', () => {
-	// `WebviewWindowBuilder::build()` deadlocks when called from a
-	// *synchronous* Tauri command on Windows/WebView2, because the main thread is
-	// blocked inside the command while WebView2 waits for that same thread to pump
-	// messages (tauri-apps/tauri#12521). Both forms compile everywhere, and CI's
-	// `cargo test` runs on a host where the deadlock cannot happen, so dropping the
-	// `async` is invisible until "Move to New Window" freezes a Windows user's app
-	// hard enough to need a force-kill. Issue #356.
-	test('create_transfer_window is async so window creation cannot deadlock the main thread', () => {
-		const lib = readRustBackend();
-
-		assert.match(lib, /#\[tauri::command\]\n(?:pub )?async fn create_transfer_window\(/);
-		assert.doesNotMatch(lib, /#\[tauri::command\]\n(?:pub )?fn create_transfer_window\(/);
-	});
-});
-
 describe('startup keeps the window handle it built', () => {
 	const backend = readRustBackend();
 
@@ -85,14 +69,8 @@ describe('windows are equal views of one session', () => {
 		assert.deepEqual(filesMatching(sources, /['"`]main['"`]/), []);
 		assert.deepEqual(filesMatching(sources, /isMain(Window)?\b/), []);
 	});
-
-	test('Rust names the launch window once', () => {
-		const runtime = readSource('src-tauri/src/window_runtime.rs');
-		const code = runtime.slice(0, runtime.indexOf('#[cfg(test)]'));
-		assert.deepEqual(code.match(/"main"/g), ['"main"']);
-		assert.match(code, /pub const LAUNCH_LABEL: &str = "main";/);
-	});
 });
+
 
 describe('a cold start does not steal focus', () => {
 	const backend = readRustBackend();

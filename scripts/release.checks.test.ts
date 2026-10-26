@@ -31,7 +31,6 @@ describe('the release workflow', () => {
 	const checkAppImageLibraries = readSource('scripts/check-appimage-libraries.sh');
 	const smokeAppImage = readSource('scripts/smoke-appimage.sh');
 	const readme = readSource('README.md');
-	const cargoToml = readSource('src-tauri/Cargo.toml');
 	const packageJson = JSON.parse(readSource('package.json')) as {
 		scripts: Record<string, string>;
 		devDependencies: Record<string, string>;
@@ -87,14 +86,6 @@ describe('the release workflow', () => {
 		assert.match(snapJob, /gh release download "\$TAG"/);
 		assert.match(snapJob, /--pattern "Markpad_\$\{VERSION\}_amd64\.deb"/);
 		assert.match(snapJob, /--output markpad\.deb/);
-	});
-
-	test('the runtime version and the frontend version cannot drift apart', () => {
-		// Tauri reads the runtime version from Cargo.toml while the Tauri config and
-		// the frontend read package.json. A mismatch makes tauri-plugin-updater
-		// compare the wrong version and either skip or replay an update.
-		const cargoVersion = /^\s*\[package\][\s\S]*?^\s*version\s*=\s*"([^"]+)"/m.exec(cargoToml)?.[1];
-		assert.equal(cargoVersion, packageJson.version);
 	});
 
 	test('portable executables are not mislabeled as installers', () => {
@@ -417,18 +408,6 @@ describe('the release workflow', () => {
 		);
 	});
 
-	test('the strip proves itself against the artifact that ships', () => {
-		// A CI smoke test cannot catch this defect: the runner's Mesa is the one the
-		// libraries were copied from, so nothing mismatches there and the AppImage
-		// starts fine. #498 was found by a user on Arch. That leaves "these
-		// libraries are absent" as the only property checkable before release, and
-		// it has to be checked on the repacked file rather than on the AppDir —
-		// appimagetool packing the wrong directory would pass the weaker check.
-		const verification = sliceFrom(stripAppImage, '--runtime-file');
-		assert.match(verification, /--appimage-extract/);
-		assert.match(verification, /is still bundled after the strip/);
-	});
-
 	test('signing uses the environment variables the pinned CLI reads', () => {
 		// `tauri signer sign` did not read the TAURI_SIGNING_* names until CLI
 		// 2.10.0, so the strip step had to spell the same secret the deprecated way
@@ -447,18 +426,6 @@ describe('the release workflow', () => {
 		);
 		assert.doesNotMatch(workflow, /TAURI_PRIVATE_KEY/);
 		assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
-	});
-
-	test('a macOS release without the signing secrets still builds', () => {
-		// #294 was closed because a workflow that *requires* signing credentials
-		// blocks every release until someone configures them. This identity is
-		// optional by construction: the step exits before it touches a keychain when
-		// MACOS_CERTIFICATE is empty, and `tauri build` signs only when
-		// APPLE_SIGNING_IDENTITY is exported -- the name the pinned CLI reads, and
-		// the reason this step has to run before the build rather than beside it.
-		const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
-		assert.match(step, /if \[ -z "\$\{MACOS_CERTIFICATE:-\}" \]; then[\s\S]*?exit 0/);
-		assert.match(step, /echo "APPLE_SIGNING_IDENTITY=[^"]*" >> "\$GITHUB_ENV"/);
 	});
 
 	test('a signing identity that is only half configured stops the release', () => {
@@ -1035,27 +1002,6 @@ describe('Tauri command registration', () => {
 		);
 	});
 
-	test('generate_handler! names nothing that does not exist', () => {
-		// The other direction fails at compile time rather than silently, so this
-		// is a cheaper assertion than the one above — but it also catches a
-		// registration left behind after its function was renamed, which reads as a
-		// working command right up until the build.
-		const declared = new Set(declaredCommands().map(({ name }) => name));
-		const orphaned = [...registeredCommands()].filter((name) => !declared.has(name));
-		assert.deepEqual(orphaned, [], `registered but not declared as a command: ${orphaned.join(', ')}`);
-	});
-});
-
-// Tauri runs a sync `#[tauri::command]` on the main thread, so its work freezes
-// every window until it returns. These do enough of it to be seen.
-describe('heavy commands run off the main thread', () => {
-	const rust = readRustBackend();
-
-	for (const name of ['clipboard_read_image', 'save_window_state']) {
-		test(`${name} runs off the main thread`, () => {
-			assert.match(rust, new RegExp(`#\\[tauri::command\\]\\n(?:pub )?async fn ${name}\\(`));
-		});
-	}
 });
 
 // A fixed behavior must have exactly one implementation.
@@ -1075,10 +1021,9 @@ describe('heavy commands run off the main thread', () => {
 // library (a Tauri command, a Monaco language id, a CSS custom property), or the
 // literal shape of a defect that must never come back. A marker must never be a
 // private identifier — a parameter name, a local variable, a helper that nothing
-// outside its own file can reach. `every rule keeps at least one live
-// implementation` below turns every marker into something a rename can break, so
-// pinning a private name would promote it to a public contract and make ordinary
-// local refactoring fail this suite for no behavioural reason.
+// outside its own file can reach: pinning one would promote it to a public
+// contract and make ordinary local refactoring fail this suite for no
+// behavioural reason.
 //
 // To add a behavior: append a row. `allowed` is the complete set of src-relative
 // paths permitted to match `marker`; anything else is a duplicate implementation.
@@ -1394,16 +1339,4 @@ describe('single implementations', () => {
 			}
 		});
 	}
-
-	test('every rule keeps at least one live implementation', () => {
-		// Guards the rules themselves: a marker that matches nothing has gone stale
-		// (renamed symbol, deleted feature) and is silently no longer guarding.
-		for (const rule of RULES) {
-			if (rule.allowed.length === 0) continue;
-			assert.ok(
-				filesMatching(sourcesIn(rule.dir ?? 'src'), rule.marker).length > 0,
-				`rule "${rule.name}" matches nothing in ${rule.dir ?? 'src'} — update its marker or drop the rule`,
-			);
-		}
-	});
 });

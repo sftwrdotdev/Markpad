@@ -1104,6 +1104,16 @@ pub(crate) mod tests {
     use crate::fs_safety::tests::temp_path;
     use std::path::PathBuf;
 
+    /// Compiles only when `command` returns a future: Tauri runs a sync command
+    /// on the main thread, which freezes every window until it returns.
+    pub(crate) fn runs_off_the_main_thread<F: std::future::Future>(_command: F) {}
+
+    #[test]
+    fn clipboard_read_image_runs_off_the_main_thread() {
+        // The resize and PNG encode of a screenshot-sized image. Built, never run.
+        let _ = || runs_off_the_main_thread(clipboard_read_image(false));
+    }
+
     #[test]
     fn an_imported_theme_is_written_only_when_its_name_and_json_are_safe() {
         let themes = temp_path("install-theme").join("themes");

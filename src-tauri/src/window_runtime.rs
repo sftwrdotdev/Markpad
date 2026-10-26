@@ -1463,6 +1463,20 @@ mod tests {
     use super::*;
     use std::collections::HashSet;
 
+    #[test]
+    fn heavy_window_commands_run_off_the_main_thread() {
+        use crate::commands::tests::runs_off_the_main_thread;
+        // save_window_state: two fsyncs, ~8 ms of every window frozen on the main
+        // thread. create_transfer_window: WebView2 deadlocks building a window
+        // from a sync command (tauri-apps/tauri#12521, #356). Built, never run.
+        let _ = |window: tauri::Window, app: AppHandle| {
+            runs_off_the_main_thread(save_window_state(window, app, String::new()))
+        };
+        let _ = |app: AppHandle| {
+            runs_off_the_main_thread(create_transfer_window(app, String::new(), None))
+        };
+    }
+
     // macOS open-document events: opening several files from Finder delivers
     // several paths, and every one has to reach the launch window. The defect
     // this guards against was consuming only the first.

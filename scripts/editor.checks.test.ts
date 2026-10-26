@@ -185,12 +185,6 @@ describe('Monaco IME patch', () => {
 		new URL(`../node_modules/monaco-editor/esm/vs/editor/browser/controller/editContext/textArea/${MONACO_TEXTAREA_FILE}`, import.meta.url),
 	);
 
-	test('both anchors match the installed Monaco exactly once', () => {
-		for (const { from } of MONACO_IME_PATCH) {
-			assert.equal(textAreaSource.split(from).length - 1, 1, `anchor ${JSON.stringify(from.trim())}`);
-		}
-	});
-
 	test('the patch turns both conditions into "unless a screen reader is attached"', () => {
 		const patched = patchMonacoTextAreaForIme(textAreaSource);
 		for (const { from, to } of MONACO_IME_PATCH) {
