@@ -3,11 +3,9 @@ import { describe, test } from 'node:test';
 
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
-import ts from 'typescript';
 
 import { bareCommands } from './keymapHarness.js';
-import { functionSource, readRustBackend, readSource, sliceFrom } from './sourceTree.js';
-import { frontMatterFenceLines, frontMatterLineOffset } from '../src/lib/utils/frontMatter.js';
+import { readRustBackend, readSource, sliceFrom } from './sourceTree.js';
 import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 
 /*
@@ -100,74 +98,12 @@ describe('list keys in the editor', () => {
  * different text, which is the part that is easy to get backwards.
  */
 describe('heading link completion wiring', () => {
-	const editorSource = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
-
 	const rustSource = readRustBackend();
 
-	/* ---------------------------------------------------------------- wiring */
-
-	test('the heading context is asked before the path context, which shares its prefix', () => {
-		// `](#` also satisfies the embed test — `/!?\[.*\]\($/` matches everything
-		// up to the paren. Asking for files first would answer a `#` with a list of
-		// filenames.
-		const heading = editorSource.indexOf('const headingContext = headingLinkContext(prefix)');
-		const embed = editorSource.indexOf('const isEmbedContext =');
-		assert.ok(heading > 0 && embed > 0);
-		assert.ok(heading < embed);
-		// And `#` has to open the dropdown, or the reader types it and nothing
-		// happens until the next character.
-		assert.match(editorSource, /triggerCharacters: \["\(", "\/", "\\\\", '"', "#"\]/);
-	});
-
-	test('each context writes the text its own syntax resolves', () => {
-		assert.match(
-			editorSource,
-			/insertText:\s*\n?\s*headingContext === "slug" \? anchor\.slug : anchor\.text/,
-		);
-		// Labelled by the heading, so typing a word of it finds the entry whatever
-		// the slug turned that word into.
-		assert.match(editorSource, /label: anchor\.text/);
-		assert.match(editorSource, /detail: `#\$\{anchor\.slug\}`/);
-	});
-
-	test('the list is read from Rust, and re-read only when the buffer changes', () => {
-		// A second anchorizer written in TypeScript would drift from comrak's
-		// without anything failing — the links would simply stop landing.
-		assert.match(editorSource, /const markdown = model\.getValue\(\);\s*const outline = \(\s*invoke\("markdown_outline", \{\s*markdown,/);
+	test('the outline command Rust answers takes the markdown the editor sends', () => {
+		// The TypeScript half (`createDocumentOutline` sends `{ markdown, … }`)
+		// runs in editing.test.ts; this is the Rust half of the command contract.
 		assert.match(rustSource, /async fn markdown_outline\(\s*markdown: String,/);
-		// Completion fires per keystroke while the dropdown is open; the headings
-		// cannot have moved between two keystrokes of one edit. Keyed on the model
-		// too, because version ids are counted per model and each tab has its own.
-		assert.match(editorSource, /if \(outlineCache\?\.model === model && outlineCache\.version === version\) return outlineCache\.outline;/);
-	});
-
-	// The folding provider and the sticky-scroll symbols ask for the same version
-	// together, and each ask sends the whole buffer to Rust to be parsed.
-	test('two asks for one version share one Rust call', async () => {
-		const lift = (name: string) => {
-			try {
-				return functionSource(editorSource, name);
-			} catch {
-				return '';
-			}
-		};
-		const calls: string[] = [];
-		const invoke = async (cmd: string) => {
-			calls.push(cmd);
-			return cmd === 'markdown_outline' ? { anchors: [], folds: [] } : [];
-		};
-		const headingAnchors = new Function(
-			'invoke',
-			'frontMatterFenceLines',
-			ts.transpileModule(
-				`let anchorCache = null;\nlet outlineCache = null;\n${lift('documentOutline')}\n${lift('headingAnchors')}\nreturn headingAnchors;`,
-				{ compilerOptions: { target: ts.ScriptTarget.ES2022 } },
-			).outputText,
-		)(invoke, () => 0) as (model: unknown) => Promise<unknown>;
-		const model = { getVersionId: () => 1, getValue: () => '# A\n' };
-
-		await Promise.all([headingAnchors(model), headingAnchors(model)]);
-		assert.equal(calls.length, 1, `one version, ${calls.length} calls: ${calls.join(', ')}`);
 	});
 
 	test('the Rust side numbers repeated headings the way the renderer does', () => {
@@ -349,86 +285,6 @@ describe('front matter field state scope', () => {
 					`${table} is indexed by \`${expression}\`, which does not carry the document`,
 				);
 			}
-		}
-	});
-});
-
-describe('front matter in the editor', () => {
-	// Split view hands scroll positions across as "inside the front matter" or
-	// "this line of the body", so both panes have to agree on where the front
-	// matter ends. The preview's answer is parseFrontMatter's. The editor used to
-	// scan for any two `---` lines on its own, so a document opening with a
-	// thematic break told the preview it was inside a front matter panel the
-	// preview did not have, and the preview stayed at the top until the editor
-	// scrolled past the second rule.
-	test('the editor finds the end of the front matter through parseFrontMatter too', () => {
-		const leadingRule = `---\n\n${Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n')}\n\n---\n\n# Next\n`;
-		assert.equal(frontMatterLineOffset(leadingRule), 0);
-
-		const editor = readSource('src/lib/components/Editor.svelte');
-		const scrollEnd = functionSource(editor, 'getEditorFrontMatterScrollEnd');
-		assert.match(scrollEnd, /frontMatterLineOffset\(/);
-		assert.doesNotMatch(editor, /\.trim\(\) !== '---'/);
-	});
-
-	// Split view asks for it on every scroll event, and it costs a copy of the
-	// buffer plus a YAML parse: once per document version is enough.
-	test('the editor parses the front matter once per document version, not per scroll event', () => {
-		const scrollEnd = functionSource(readSource('src/lib/components/Editor.svelte'), 'getEditorFrontMatterScrollEnd');
-		const run = new Function(
-			'editor',
-			'frontMatterLineOffset',
-			'getEditorContentScrollMax',
-			ts.transpileModule(`let frontMatterOffsetCache = null;\n${scrollEnd}\nreturn getEditorFrontMatterScrollEnd;`, {
-				compilerOptions: { target: ts.ScriptTarget.ES2022 },
-			}).outputText,
-		);
-		let version = 1;
-		let reads = 0;
-		const model = {
-			getVersionId: () => version,
-			getValue: () => (reads++, '---\ntitle: x\n---\n\n# Body\n'),
-			getLineCount: () => 6,
-		};
-		const editor = {
-			getModel: () => model,
-			getTopForLineNumber: (line: number) => line * 10,
-		};
-		const scrollEndOf = run(editor, frontMatterLineOffset, () => 1000) as () => number;
-
-		assert.equal(scrollEndOf(), 50);
-		scrollEndOf();
-		assert.equal(reads, 1, 'the buffer was re-read and re-parsed at the same version');
-		version = 2;
-		scrollEndOf();
-		assert.equal(reads, 2, 'an edit must invalidate it');
-	});
-
-	// The editor's analyses (headings, folds, colours) run in Rust on the whole
-	// buffer and blank the front matter lines first, so the closing `---` does not
-	// underline the YAML into a heading. Rust used to find those lines itself, with
-	// any two leading `---` lines, and blanked a thematic break plus the prose
-	// under it that the preview renders. Now it is told, by the same rule.
-	test('the editor tells Rust how many lines the front matter spans, fence to fence', () => {
-		const leadingRule = '---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n';
-		assert.equal(frontMatterFenceLines(leadingRule), 0);
-		assert.equal(frontMatterFenceLines('# Plain\n'), 0);
-		assert.equal(frontMatterFenceLines('---\ntitle: x\ntags: [a]\n---\n\n# Body\n'), 4);
-		assert.equal(frontMatterFenceLines('\uFEFF--- \r\ntitle: x\r\n  ---\r\n# Body\r\n'), 3);
-		assert.equal(frontMatterFenceLines('---\n---\n'), 2);
-		// No newline after the closing fence: it is still one of the lines.
-		assert.equal(frontMatterFenceLines('---\ntitle: x\n---'), 3);
-		// Malformed is still front matter: the preview strips it too.
-		assert.equal(frontMatterFenceLines('---\ntitle: [broken\n---\n'), 3);
-
-		const editor = readSource('src/lib/components/Editor.svelte');
-		const tokens = readSource('src/lib/utils/semanticTokens.ts');
-		for (const [source, command] of [
-			[editor, 'markdown_outline'],
-			[tokens, 'markdown_semantic_spans'],
-		]) {
-			const call = source.slice(source.indexOf(`invoke(${source === editor ? '"' : "'"}${command}`));
-			assert.match(call.slice(0, call.indexOf('}')), /frontMatterLines: frontMatterFenceLines\(/, command);
 		}
 	});
 });

@@ -9,10 +9,13 @@ import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { editorKeyHandlers, type KeyHandlerEditor } from '../src/lib/utils/editorKeyHandlers.js';
 import { installShimDom, parseHtml } from './renderProtocolDom.ts';
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
+import { createDocumentOutline, MARKDOWN_COMPLETION_TRIGGERS, type MarkdownCompletionDeps, provideMarkdownCompletionItems } from '../src/lib/utils/markdownCompletion.js';
 import { headingFoldRanges, headingSymbols } from '../src/lib/utils/headingSymbols.js';
 import { DEFAULT_REFERENCE_STYLE, headingReference, preferredReferenceStyle } from '../src/lib/utils/headingReference.js';
 import { findSeedFromSelection } from '../src/lib/utils/findSeed.js';
-import { addFrontMatterListItems, getFrontMatterListItems, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
+import { editorFrontMatterScrollEnd } from '../src/lib/utils/editorFrontMatter.js';
+import { createMarkdownSemanticTokensProvider } from '../src/lib/utils/semanticTokens.js';
+import { addFrontMatterListItems, getFrontMatterListItems, frontMatterFenceLines, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
 import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
 /*
@@ -1533,6 +1536,111 @@ describe('heading link completion', () => {
 		assert.equal(headingQueryStart(prefix), prefix.indexOf('#') + 1);
 		assert.equal(prefix.slice(headingQueryStart(prefix)), 'mer');
 	});
+
+	// The provider the editor registers, run against a one-line model and an
+	// injected `invoke` standing in for Rust.
+	const ANCHORS = [
+		{ line: 1, level: 1, text: '11. Mermaid Diagrams', slug: '11-mermaid-diagrams' },
+		{ line: 3, level: 2, text: 'Setup', slug: 'setup' },
+	];
+
+	function complete(line: string, invoked: string[] = []) {
+		const model = {
+			getLineContent: () => line,
+			getWordUntilPosition: () => ({ word: '', startColumn: line.length + 1, endColumn: line.length + 1 }),
+		} as unknown as Monaco.editor.ITextModel;
+		const position = { lineNumber: 1, column: line.length + 1 } as Monaco.Position;
+		return provideMarkdownCompletionItems(model, position, {
+			monaco: {
+				Range: class {
+					constructor(...range: number[]) {
+						Object.assign(this, { range });
+					}
+				},
+				languages: { CompletionItemKind: { Reference: 17, File: 20, Folder: 23 } },
+			} as unknown as MarkdownCompletionDeps['monaco'],
+			headingAnchors: async () => ANCHORS,
+			invoke: async (command) => {
+				invoked.push(command);
+				return ['notes.md'];
+			},
+			activeTabPath: () => '/docs/readme.md',
+			imageDirectory: () => 'assets',
+		});
+	}
+
+	test('the heading context is asked before the path context, which shares its prefix', async () => {
+		// `](#` also satisfies the embed test — `/!?\[.*\]\($/` matches everything
+		// up to the paren. Asking for files first would answer a `#` with a list of
+		// filenames.
+		const invoked: string[] = [];
+		const { suggestions } = await complete('See [the diagrams](#', invoked);
+		assert.deepEqual(suggestions.map((s) => s.label), ['11. Mermaid Diagrams', 'Setup']);
+		assert.deepEqual(invoked, [], 'the path completion ran too');
+		// …while the bare paren is still the path completion.
+		assert.deepEqual((await complete('See [x](')).suggestions.map((s) => s.label), ['notes.md', 'assets/notes.md']);
+		// And `#` has to open the dropdown, or the reader types it and nothing
+		// happens until the next character.
+		assert.ok(MARKDOWN_COMPLETION_TRIGGERS.includes('#'));
+	});
+
+	test('each context writes the text its own syntax resolves', async () => {
+		const slug = (await complete('See [the diagrams](#')).suggestions;
+		assert.deepEqual(slug.map((s) => s.insertText), ['11-mermaid-diagrams', 'setup']);
+		const wikilink = (await complete('[[#')).suggestions;
+		assert.deepEqual(wikilink.map((s) => s.insertText), ['11. Mermaid Diagrams', 'Setup']);
+		// Labelled by the heading, so typing a word of it finds the entry whatever
+		// the slug turned that word into.
+		assert.deepEqual(wikilink.map((s) => [s.label, s.detail]), [
+			['11. Mermaid Diagrams', '#11-mermaid-diagrams'],
+			['Setup', '#setup'],
+		]);
+	});
+
+	function outlineModel(text: string) {
+		let version = 1;
+		return {
+			model: { getVersionId: () => version, getValue: () => text } as unknown as Monaco.editor.ITextModel,
+			edit: () => (version += 1),
+		};
+	}
+
+	test('the list is read from Rust, and re-read only when the buffer changes', async () => {
+		// A second anchorizer written in TypeScript would drift from comrak's
+		// without anything failing — the links would simply stop landing.
+		const calls: Array<[string, unknown]> = [];
+		const { headingAnchors } = createDocumentOutline(async (command, args) => {
+			calls.push([command, args]);
+			return { anchors: ANCHORS, folds: [] };
+		});
+		const one = outlineModel('# A\n');
+		assert.deepEqual(await headingAnchors(one.model), ANCHORS);
+		assert.deepEqual(calls, [['markdown_outline', { markdown: '# A\n', frontMatterLines: 0 }]]);
+		// Completion fires per keystroke while the dropdown is open; the headings
+		// cannot have moved between two keystrokes of one edit.
+		await headingAnchors(one.model);
+		assert.equal(calls.length, 1, 'the same version was parsed twice');
+		// Keyed on the model too, because version ids are counted per model and
+		// each tab has its own.
+		await headingAnchors(outlineModel('# B\n').model);
+		assert.equal(calls.length, 2, 'another tab at the same version got this tab\'s headings');
+		one.edit();
+		await headingAnchors(one.model);
+		assert.equal(calls.length, 3, 'an edit must invalidate it');
+	});
+
+	// The folding provider and the sticky-scroll symbols ask for the same version
+	// together, and each ask sends the whole buffer to Rust to be parsed.
+	test('two asks for one version share one Rust call', async () => {
+		const calls: string[] = [];
+		const { documentOutline, headingAnchors } = createDocumentOutline(async (command) => {
+			calls.push(command);
+			return { anchors: [], folds: [] };
+		});
+		const { model } = outlineModel('# A\n');
+		await Promise.all([headingAnchors(model), documentOutline(model)]);
+		assert.equal(calls.length, 1, `one version, ${calls.length} calls: ${calls.join(', ')}`);
+	});
 });
 
 describe('heading symbols and folds', () => {
@@ -1929,6 +2037,90 @@ Body starts here.
 		assert.equal(parsed.valid, false);
 		assert.match(parsed.error ?? '', /alias/i);
 		assert.equal(parsed.body, '# Body\n');
+	});
+
+	/** An editor over `text`, as `editorFrontMatterScrollEnd` reads it: line N sits at N*10 px. */
+	function scrollEditor(text: string) {
+		const state = { version: 1, reads: 0 };
+		const model = {
+			getVersionId: () => state.version,
+			getValue: () => (state.reads++, text),
+			getLineCount: () => text.split('\n').length,
+		};
+		const editor = { getModel: () => model, getTopForLineNumber: (line: number) => line * 10 };
+		const scrollEnd = editorFrontMatterScrollEnd(() => editor as never, () => 100_000);
+		return { state, scrollEnd };
+	}
+
+	// Split view hands scroll positions across as "inside the front matter" or
+	// "this line of the body", so both panes have to agree on where the front
+	// matter ends. The editor used to scan for any two `---` lines on its own, so
+	// a document opening with a thematic break told the preview it was inside a
+	// front matter panel the preview did not have.
+	test('the editor finds the end of the front matter through parseFrontMatter too', () => {
+		const leadingRule = `---\n\n${Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n')}\n\n---\n\n# Next\n`;
+		assert.equal(scrollEditor(leadingRule).scrollEnd(), 0, 'a leading rule is body, not front matter');
+		assert.equal(scrollEditor('---\ntitle: x\n---\n\n# Body\n').scrollEnd(), 50);
+	});
+
+	// Split view asks for it on every scroll event, and it costs a copy of the
+	// buffer plus a YAML parse: once per document version is enough.
+	test('the editor parses the front matter once per document version, not per scroll event', () => {
+		const { state, scrollEnd } = scrollEditor('---\ntitle: x\n---\n\n# Body\n');
+		assert.equal(scrollEnd(), 50);
+		scrollEnd();
+		assert.equal(state.reads, 1, 'the buffer was re-read and re-parsed at the same version');
+		state.version = 2;
+		scrollEnd();
+		assert.equal(state.reads, 2, 'an edit must invalidate it');
+	});
+
+	// The editor's analyses (headings, folds, colours) run in Rust on the whole
+	// buffer and blank the front matter lines first, so the closing `---` does not
+	// underline the YAML into a heading. Rust used to find those lines itself, with
+	// any two leading `---` lines, and blanked a thematic break plus the prose
+	// under it that the preview renders. Now it is told, by the same rule.
+	test('the editor tells Rust how many lines the front matter spans, fence to fence', async () => {
+		assert.equal(frontMatterFenceLines('---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n'), 0);
+		assert.equal(frontMatterFenceLines('# Plain\n'), 0);
+		assert.equal(frontMatterFenceLines('---\ntitle: x\ntags: [a]\n---\n\n# Body\n'), 4);
+		assert.equal(frontMatterFenceLines('\uFEFF--- \r\ntitle: x\r\n  ---\r\n# Body\r\n'), 3);
+		assert.equal(frontMatterFenceLines('---\n---\n'), 2);
+		// No newline after the closing fence: it is still one of the lines.
+		assert.equal(frontMatterFenceLines('---\ntitle: x\n---'), 3);
+		// Malformed is still front matter: the preview strips it too.
+		assert.equal(frontMatterFenceLines('---\ntitle: [broken\n---\n'), 3);
+
+		const text = '---\ntitle: x\ntags: [a]\n---\n\n# Body\n';
+		const model = { uri: 'file:///a.md', getVersionId: () => 1, getValue: () => text };
+		const sent: Array<[string, unknown]> = [];
+
+		const { documentOutline } = createDocumentOutline(async (command, args) => {
+			sent.push([command, args]);
+			return { anchors: [], folds: [] };
+		});
+		await documentOutline(model as never);
+
+		// The semantic-token provider calls Tauri's `invoke` itself, so the
+		// stand-in goes where Tauri's runtime puts it.
+		const scope = globalThis as { window?: unknown };
+		const previous = scope.window;
+		scope.window = {
+			__TAURI_INTERNALS__: {
+				invoke: async (command: string, args: unknown) => (sent.push([command, args]), []),
+			},
+		};
+		try {
+			const { provider } = createMarkdownSemanticTokensProvider({} as never);
+			await provider.provideDocumentSemanticTokens(model as never);
+		} finally {
+			scope.window = previous;
+		}
+
+		assert.deepEqual(sent, [
+			['markdown_outline', { markdown: text, frontMatterLines: 4 }],
+			['markdown_semantic_spans', { content: text, frontMatterLines: 4 }],
+		]);
 	});
 });
 

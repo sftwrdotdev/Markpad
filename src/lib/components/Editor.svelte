@@ -12,7 +12,7 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
-	import { frontMatterFenceLines, frontMatterLineOffset } from '../utils/frontMatter.js';
+	import { editorFrontMatterScrollEnd } from '../utils/editorFrontMatter.js';
 	import { isAltGraphChord, type ViewerCommand } from '../utils/viewerKeymap.js';
 	import { platformOf } from '../utils/platform.js';
 	import { editorKeyHandlers } from '../utils/editorKeyHandlers.js';
@@ -26,10 +26,10 @@
 	import { installVimClipboardRegisters } from '../utils/vimClipboardRegisters.js';
 	import { countWords } from '../utils/wordCount.js';
 	import {
-		headingLinkContext,
-		headingQueryStart,
-		type HeadingAnchor,
-	} from '../utils/headingCompletion.js';
+		createDocumentOutline,
+		MARKDOWN_COMPLETION_TRIGGERS,
+		provideMarkdownCompletionItems,
+	} from '../utils/markdownCompletion.js';
 	import { headingFoldRanges, headingSymbols } from '../utils/headingSymbols.js';
 	import {
 		getLineAtVerticalOffset,
@@ -596,46 +596,9 @@
 
 		container.addEventListener("wheel", wheelListener, { capture: true });
 
-		/**
-	 * This document's headings, from the Rust side that renders them.
-	 *
-	 * Cached on the model's version, which changes on every edit: a completion
-	 * fires per keystroke once the dropdown is open, and re-parsing a
-	 * 3,000-line document for each of them would be paid for nothing — the
-	 * headings cannot have moved between two keystrokes of the same edit.
-	 *
-	 * Asked of Rust rather than derived here: the ids come out of comrak's
-	 * anchorizer, and a second implementation in TypeScript would drift from
-	 * it silently, producing links that look right and land nowhere.
-	 *
-	 * Keyed on the model as well: each tab has its own, and version ids are
-	 * counted per model, so two tabs can stand at the same one.
-	 *
-	 * The block folds come with them, from the same parse: the folding provider
-	 * wants both for every version. The promise is what is cached, so the
-	 * folding and symbol providers asking at once share one call.
-	 */
-	type Outline = { anchors: HeadingAnchor[]; folds: Monaco.languages.FoldingRange[] };
-	let outlineCache: { model: Monaco.editor.ITextModel; version: number; outline: Promise<Outline> } | null = null;
-
-	function documentOutline(model: Monaco.editor.ITextModel): Promise<Outline> {
-		const version = model.getVersionId();
-		if (outlineCache?.model === model && outlineCache.version === version) return outlineCache.outline;
-
-		const markdown = model.getValue();
-		const outline = (
-			invoke("markdown_outline", {
-				markdown,
-				frontMatterLines: frontMatterFenceLines(markdown),
-			}) as Promise<Outline>
-		).catch(() => ({ anchors: [], folds: [] }));
-		outlineCache = { model, version, outline };
-		return outline;
-	}
-
-	async function headingAnchors(model: Monaco.editor.ITextModel): Promise<HeadingAnchor[]> {
-		return (await documentOutline(model)).anchors;
-	}
+		// This document's headings and block folds, from Rust, cached per model
+		// version: utils/markdownCompletion.ts.
+		const { documentOutline, headingAnchors } = createDocumentOutline(invoke);
 
 	// The colours that come from the renderer rather than from the grammar's
 	// regexes (`utils/semanticTokens.ts`). Registered once per editor, beside the
@@ -667,104 +630,15 @@
 	const completionProvider = monaco.languages.registerCompletionItemProvider(
 			"markdown",
 			{
-				triggerCharacters: ["(", "/", "\\", '"', "#"],
-				provideCompletionItems: async (model, position) => {
-					const lineContent = model.getLineContent(position.lineNumber);
-					const prefix = lineContent.substring(0, position.column - 1);
-
-					// #200: this document's headings, as link targets. Asked
-					// first because `](#` is also the tail of the embed context
-					// below — once a `#` is typed the answer is headings, not
-					// files.
-					const headingContext = headingLinkContext(prefix);
-					if (headingContext) {
-						const anchors = await headingAnchors(model);
-						const range = new monaco.Range(
-							position.lineNumber,
-							headingQueryStart(prefix) + 1,
-							position.lineNumber,
-							position.column,
-						);
-
-						return {
-							suggestions: anchors.map((anchor, index) => ({
-								// Labelled by what it reads as, inserted as
-								// whatever that context needs. Monaco filters on
-								// the label, so typing "mermaid" finds
-								// "11. Mermaid Diagrams" and writes the slug.
-								label: anchor.text,
-								detail: `#${anchor.slug}`,
-								kind: monaco.languages.CompletionItemKind.Reference,
-								insertText:
-									headingContext === "slug" ? anchor.slug : anchor.text,
-								// Document order, not alphabetical: a heading's
-								// neighbours are what the writer is thinking in.
-								sortText: String(index).padStart(5, "0"),
-								range,
-							})),
-						};
-					}
-
-					const isEmbedContext = /(!?\[.*\]\(|<img.*src=["']|src=["'])$/.test(
-						prefix,
-					);
-					if (!isEmbedContext) return { suggestions: [] };
-
-					const tab = tabManager.activeTab;
-					if (!tab?.path) return { suggestions: [] };
-
-					const lastSlash = Math.max(
-						tab.path.lastIndexOf("\\"),
-						tab.path.lastIndexOf("/"),
-					);
-					const parentDir = tab.path.substring(0, lastSlash);
-					const imgDirName = resolveImageDirectory(
-						settings.imageDirectory,
-						tab.path,
-					);
-
-					try {
-						const [currentEntries, imgEntries] = await Promise.all([
-							invoke("list_directory_contents", { path: parentDir })
-								.then((r) => r as string[])
-								.catch(() => []),
-							invoke("list_directory_contents", { path: `${parentDir}/${imgDirName}` })
-								.then((r) => r as string[])
-								.catch(() => []),
-						]);
-
-						const word = model.getWordUntilPosition(position);
-						const range = new monaco.Range(
-							position.lineNumber,
-							word.startColumn,
-							position.lineNumber,
-							word.endColumn,
-						);
-
-						const suggestions: Monaco.languages.CompletionItem[] = [
-							...currentEntries.map((e) => ({
-								label: e,
-								kind: e.endsWith("/")
-									? monaco.languages.CompletionItemKind.Folder
-									: monaco.languages.CompletionItemKind.File,
-								insertText: e,
-								range,
-							})),
-							...imgEntries.map((e) => ({
-								label: `${imgDirName}/${e}`,
-								kind: e.endsWith("/")
-									? monaco.languages.CompletionItemKind.Folder
-									: monaco.languages.CompletionItemKind.File,
-								insertText: `${imgDirName}/${e}`,
-								range,
-							})),
-						];
-
-						return { suggestions };
-					} catch (err) {
-						return { suggestions: [] };
-					}
-				},
+				triggerCharacters: MARKDOWN_COMPLETION_TRIGGERS,
+				provideCompletionItems: (model, position) =>
+					provideMarkdownCompletionItems(model, position, {
+						monaco,
+						headingAnchors,
+						invoke,
+						activeTabPath: () => tabManager.activeTab?.path,
+						imageDirectory: () => settings.imageDirectory,
+					}),
 			},
 		);
 
@@ -1655,28 +1529,7 @@
 		return Math.max(0, editor.getContentHeight() - layout.height);
 	}
 
-	let frontMatterOffsetCache: { model: Monaco.editor.ITextModel; version: number; offset: number } | null = null;
-
-	function getEditorFrontMatterScrollEnd() {
-		if (!editor) return 0;
-
-		const model = editor.getModel();
-		if (!model) return 0;
-
-		// The preview's rule, not a second one: a leading `---` block that is not
-		// a YAML mapping is body there, and the two panes must agree on where the
-		// front matter ends or every position above it syncs to the top. Cached on
-		// the model's version because this runs on every scroll event.
-		const version = model.getVersionId();
-		if (frontMatterOffsetCache?.model !== model || frontMatterOffsetCache.version !== version) {
-			frontMatterOffsetCache = { model, version, offset: frontMatterLineOffset(model.getValue()) };
-		}
-		const bodyStartLine = frontMatterOffsetCache.offset + 1;
-		if (bodyStartLine <= 1) return 0;
-
-		const safeBodyStartLine = Math.max(1, Math.min(model.getLineCount(), bodyStartLine));
-		return Math.max(0, Math.min(getEditorContentScrollMax(), editor.getTopForLineNumber(safeBodyStartLine)));
-	}
+	const getEditorFrontMatterScrollEnd = editorFrontMatterScrollEnd(() => editor, getEditorContentScrollMax);
 
 	// Monaco's own line -> pixel measurement, which already accounts for folded
 	// regions, wrapped lines and view zones. `getLineAtVerticalOffset` inverts it
