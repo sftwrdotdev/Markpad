@@ -505,8 +505,8 @@ the preprocessing passes look for.
 
 The one dimension this file cannot carry is line endings — it is LF throughout,
 and the original was CRLF. That half is covered by
-`scripts/taskToggleLineEndings.test.ts`, which drives both endings through the
-real write-back.
+`scripts/documents.save.spec.ts` ("task toggle line endings"), which drives
+both endings through the real write-back.
 
 ## Task-Like Text That Is Not A Task
 
