@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, test } from 'vitest';
 import assert from 'node:assert/strict';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
+import { exportAsHtml } from '../src/lib/utils/export.js';
 import { canExportTab } from '../src/lib/utils/tabFileActions.js';
 
 describe('rendered HTML field', () => {
@@ -11,11 +12,16 @@ describe('rendered HTML field', () => {
 	// has to be in place before the stores are imported, so both happen in beforeAll.
 	let tabManager: (typeof import('../src/lib/stores/tabs.svelte.js'))['tabManager'];
 	let settings: (typeof import('../src/lib/stores/settings.svelte.js'))['settings'];
+	const commands: string[] = [];
 
 	beforeAll(async () => {
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
-			invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
+			invoke: (cmd: string) => {
+				commands.push(cmd);
+				// The save dialog answers "cancelled": asking it is all exportWouldRun reads.
+				return Promise.resolve(cmd === 'get_os_type' ? 'macos' : null);
+			},
 		};
 		({ tabManager } = await import('../src/lib/stores/tabs.svelte.js'));
 		({ settings } = await import('../src/lib/stores/settings.svelte.js'));
@@ -134,5 +140,63 @@ describe('rendered HTML field', () => {
 		assert.equal(tabManager.activeTab!.rawContent, '', 'precondition: the buffer is empty');
 
 		assert.equal(canExportTab(tabManager.activeTab), false);
+	});
+
+	/** Whether Export as HTML, given the active tab, would go as far as asking where to save. */
+	async function exportWouldRun(): Promise<boolean> {
+		const tab = tabManager.activeTab;
+		if (!tab) return false;
+		commands.length = 0;
+		await exportAsHtml({ rawContent: tab.rawContent, tabPath: tab.path, tabTitle: tab.title } as Parameters<typeof exportAsHtml>[0]);
+		return commands.includes('plugin:dialog|save');
+	}
+
+	function untitledBufferBeingEdited(text = '# notes\n\nsomething worth exporting\n') {
+		reset();
+		tabManager.addNewTab();
+		const tab = tabManager.activeTab!;
+		tab.isEditing = true;
+		tabManager.updateTabRawContent(tab.id, text);
+		return tab;
+	}
+
+	test('the menu is never stricter than the export it fronts', async () => {
+		// The invariant behind the fix, over the states a tab can be in. Being
+		// STRICTER is the defect this test is for; being looser is pinned by the
+		// empty-buffer tests.
+		const states: Array<[string, () => void]> = [
+			['untitled, edited, TOC closed', () => void untitledBufferBeingEdited()],
+			['untitled, edited, TOC open', () => { untitledBufferBeingEdited(); settings.showToc = true; }],
+			['untitled, split view', () => tabManager.setSplitEnabled(untitledBufferBeingEdited().id, true)],
+			['untitled, reading mode', () => { untitledBufferBeingEdited().isEditing = false; }],
+			[
+				'saved file, edited, TOC closed',
+				() => {
+					reset();
+					tabManager.addTab('/notes/a.md');
+					const tab = tabManager.activeTab!;
+					tabManager.setTabRawContent(tab.id, '# a\n');
+					tab.isEditing = true;
+				},
+			],
+		];
+
+		const hidden: string[] = [];
+		for (const [name, arrange] of states) {
+			arrange();
+			const offered = canExportTab(tabManager.activeTab);
+			if ((await exportWouldRun()) && !offered) hidden.push(name);
+		}
+		assert.deepEqual(hidden, [], 'the export is possible in these states and the menu hides it');
+	});
+
+	test('an empty untitled buffer is offered nothing to export', async () => {
+		// A gate that simply always returned true would pass the test above.
+		reset();
+		tabManager.addNewTab();
+		tabManager.activeTab!.isEditing = true;
+
+		assert.equal(await exportWouldRun(), false, 'precondition: exportAsHtml returns null for an empty buffer');
+		assert.equal(canExportTab(tabManager.activeTab), false, 'so the menu must not offer it either');
 	});
 });
