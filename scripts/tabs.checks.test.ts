@@ -107,33 +107,20 @@ describe('tab switch is not a render', () => {
 	 * The switch-time transition suppression is a contract between two files, and
 	 * both halves fail silently on their own.
 	 *
-	 * The viewer adds a class to `.layout-container`, forces a style recalculation
-	 * so the new pane geometry commits while transitions are off, and removes it —
-	 * in one statement, before the first paint of the switch. The rule that makes
-	 * the class mean anything lives in `styles.css`.
+	 * The viewer calls `commitWithoutTransitions` (utils/motion.ts), which adds a
+	 * class to `.layout-container`, forces a style recalculation and removes it;
+	 * `tabs.test.ts` runs that half. The rule that makes the class mean anything
+	 * lives in `styles.css`, and jsdom has no style recalculation to observe it in.
 	 *
-	 * Neither half can be a behaviour test: the ordering being asserted is
-	 * "the class is on the element during the browser's style recalculation", and
-	 * jsdom has no style recalculation to be inside of.
-	 *
-	 * The interesting failure is the third assertion. Svelte deletes scoped
+	 * The interesting failure is the last assertion. Svelte deletes scoped
 	 * selectors it cannot see applied in the markup, and this class is applied
 	 * through `classList` — so moving these rules into the component's `<style>`
 	 * block, which is where they look like they belong, compiles them away and
 	 * restores every animation with nothing going red.
 	 */
-	test('a tab switch commits the new pane geometry with transitions off', () => {
+	test('styles.css switches transitions off under .tab-switching', () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		const styles = readSource('src/styles.css');
-
-		// The viewer's half: add, force the recalculation, remove. The forced read
-		// between the two is the mechanism, not a formality — without it the class
-		// is added and removed within one style computation and suppresses nothing.
-		assert.match(
-			viewer,
-			/classList\.add\('tab-switching'\);\s*void [\w.]+\.offsetHeight;\s*[\w.]+\.classList\.remove\('tab-switching'\);/,
-			'the viewer must add the class, force a style recalculation, and remove it in one statement',
-		);
 
 		// The stylesheet's half, and that it reaches the outline wrapper, whose
 		// shadow follows the tab's mode.

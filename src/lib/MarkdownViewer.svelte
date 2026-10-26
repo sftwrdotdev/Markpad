@@ -120,7 +120,7 @@ import {
 import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
-import { jumpScrollBehavior } from './utils/motion.js';
+import { commitWithoutTransitions, jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { reportWindowMeta } from './sessions/windowMeta.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
@@ -923,11 +923,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	$effect(() => {
 		const _ = tabManager.activeTabId;
 		const container = untrack(() => layoutContainerEl);
-		if (container) {
-			container.classList.add('tab-switching');
-			void container.offsetHeight;
-			container.classList.remove('tab-switching');
-		}
+		if (container) commitWithoutTransitions(container);
 		showHome = false;
 		findOpen = false;
 	});
