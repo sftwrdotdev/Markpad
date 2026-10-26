@@ -2,7 +2,7 @@
 	import { type Tab, tabManager } from '../stores/tabs.svelte.js';
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 	import { commands } from '../bindings.js';
-	import { emitTo } from '@tauri-apps/api/event';
+	import { emitToWindow } from '../windowEvents.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
@@ -98,8 +98,8 @@
 				.map((window) => ({
 					label: `${t('menu.moveToWindow', currentLang)} ${windowDisplay(window, currentLang)}`,
 					disabled: isHomePath(tab.path),
-					onHover: () => emitTo(window.label, 'window-identify', windowDisplay(window, currentLang)),
-					onClick: () => emitTo(selfLabel, 'menu-tab-move', { tabId: tab.id, targetLabel: window.label }),
+					onHover: () => emitToWindow(window.label, 'window-identify', windowDisplay(window, currentLang)),
+					onClick: () => emitToWindow(selfLabel, 'menu-tab-move', { tabId: tab.id, targetLabel: window.label }),
 				}));
 		} catch (error) {
 			console.error('Failed to list viewer windows', error);
@@ -116,7 +116,7 @@
 				tabCount: tabManager.tabs.length,
 				fileActionItems,
 				moveToWindowItems,
-				emit: (event, payload) => emitTo(selfLabel, event, payload),
+				emit: (event, payload) => emitToWindow(selfLabel, event, payload),
 			}),
 		};
 	}

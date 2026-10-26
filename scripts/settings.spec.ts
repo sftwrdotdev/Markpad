@@ -485,8 +485,8 @@ describe('settings persistence', async () => {
 	 * `theme`, `zoomLevel` and `preview.fullWidth` each had their own `$state` in
 	 * MarkdownViewer.svelte with a bare `localStorage.setItem` beside it. What that
 	 * cost is asserted below, one property per test; that no such write can come
-	 * back is asserted by the `localStorage is written through one function` rule in
-	 * release.checks.test.ts.
+	 * back is the `local-storage-writes-through-the-store` lint rule
+	 * (eslint.config.js).
 	 * ---------------------------------------------------------------------------
 	 */
 
@@ -782,7 +782,7 @@ describe('settings persistence', async () => {
 		// It is the assertion that fails the moment someone re-forks the catalogue
 		// into this module, which is how the two copies got here in the first place.
 		// The `pt` drift the fork produced was in `name`/`nativeName`, which codes
-		// cannot see; the `nativeName:` rule in release.checks.test.ts
+		// cannot see; the `one-language-catalogue` lint rule (eslint.config.js)
 		// covers that half.
 		const offered = getSupportedLanguages().map((entry) => entry.code);
 

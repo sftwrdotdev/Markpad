@@ -48,8 +48,8 @@ function appSelectors(): { selector: string; rule: Rule }[] {
  */
 describe('exported content width', () => {
 	// The shim stands in for the DOM `exportAsHtml` builds into. Without a real DOM
-	// DOMPurify is a no-op object; what it does and where it sits in the pipeline is
-	// `export.checks.test.ts`'s subject, not this one's.
+	// DOMPurify is a no-op object; what it does is preview.spec.ts's subject, not
+	// this one's.
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' } }, { identitySanitize: true });
 
 	type Rule = { selectors: string[]; declarations: string; media: 'screen' | 'print' };
@@ -661,8 +661,8 @@ describe('export carries the preview appearance', () => {
  *     — which elements get handed to which library, and where the results end
  *     up — and not the libraries' own output.
  *   - `DOMPurify.sanitize`, which is a no-op object without a real DOM. It is
- *     replaced by the identity function. What the filter does and where it sits
- *     in the pipeline is pinned by `export.checks.test.ts`; the relevant fact
+ *     replaced by the identity function. What the filter does runs in
+ *     `preview.spec.ts`; the relevant fact
  *     here is only that the diagram filter and the document filter are separate
  *     calls, which the diagram test below covers from the other side.
  */

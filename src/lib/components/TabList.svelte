@@ -4,7 +4,7 @@
 	import ContextMenu, { type ContextMenuItem } from './ContextMenu.svelte';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
-	import { emitTo } from '@tauri-apps/api/event';
+	import { emitToWindow } from '../windowEvents.js';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { tabListMenuItems } from '../utils/tabContextMenu.js';
@@ -188,7 +188,7 @@
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
-			items: tabListMenuItems(settings.language, settings.osType, (event) => emitTo(getCurrentWindow().label, event)),
+			items: tabListMenuItems(settings.language, settings.osType, (event) => emitToWindow(getCurrentWindow().label, event)),
 		};
 	}
 </script>

@@ -25,7 +25,7 @@ import {
  * The marker vocabulary comes from ./listSyntax.ts, which is the same grammar
  * the toolbar's toggles and the preview's checkbox rewrite read. A fourth
  * spelling of "what a list marker looks like" is exactly what #631 collapsed,
- * and `scripts/release.checks.test.ts` holds it collapsed.
+ * and the `list-marker-grammar-from-bindings` lint rule holds it collapsed.
  */
 
 /**

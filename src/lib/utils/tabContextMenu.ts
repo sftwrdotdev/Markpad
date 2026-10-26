@@ -3,9 +3,10 @@ import { isHomePath } from './homeTab.js';
 import { type LanguageCode, t } from './i18n.js';
 import { modifierFor, shortcutLabel } from './shortcuts.js';
 import { hasRealFilePath } from './tabFileActions.js';
+import type { WindowEventName } from '../windowEvents.js';
 
 /** Sends a tab-menu event to this window. */
-type Emit = (event: string, payload?: unknown) => void;
+type Emit = (event: WindowEventName, payload?: string) => void;
 
 // ContextMenu prints `shortcut` into the same `<span class="menu-shortcut">`
 // the app menu uses, so a literal here sits a keystroke away from the app

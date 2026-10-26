@@ -143,10 +143,11 @@ src-tauri/
 - Export singleton instances (e.g., `export const tabManager = new TabManager()`)
 
 ### Tauri Invoke
-Use `invoke()` from `@tauri-apps/api/core` for Rust commands:
+Call Rust commands through the generated bindings (`cargo test` regenerates
+`src/lib/bindings.ts`); a raw `invoke` is a lint error:
 ```typescript
-import { invoke } from '@tauri-apps/api/core';
-const result = await invoke<string>('command_name', { arg: value });
+import { commands } from '../bindings.js'; // relative to the caller
+const result = await commands.commandName(value);
 ```
 
 ### File Operations
@@ -158,8 +159,8 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 - **Frontend**: two runners, split by glob so a file belongs to exactly one.
   - `npm test` runs `scripts/*.test.ts` (`node --test --import tsx`).
   - `npm run test:vitest` runs `scripts/*.spec.ts` (vitest, jsdom, Svelte plugin).
-- **CI**: Runs `npm audit`, `npm run check`, `npm test`, `npm run test:vitest` and
-  `cargo test` on PRs
+- **CI**: Runs `npm audit`, `npm run check`, `npm run lint`, `npm test`,
+  `npm run test:vitest` and `cargo test` on PRs
 
 Tests run the real code and assert what it does. A test does not read source as text —
 no regex over a file, no slicing a function body, no cutting code out of a component and
@@ -167,10 +168,12 @@ evaluating it: such a test guards a spelling, goes red on a rename and stays gre
 regression. When the logic sits in a component where a test cannot call it, move it into a
 `.ts` or `.svelte.ts` module the component calls, and test the module.
 
-The `*.checks.*` files are the one exception, and are meant to shrink: they hold contract
-checks (a Tauri command or event name, a config key, an i18n key — the spelling that joins
-Rust and TypeScript) and convention checks ("one implementation of this behavior"), until
-those move to generated bindings and lint rules.
+What a run cannot show is held elsewhere. Command and event names, arguments and returns
+are generated from Rust into `src/lib/bindings.ts` (tauri-specta), so a mismatch is a
+`npm run check` error. Code conventions ("one implementation of this behavior", "call
+through this wrapper") are lint rules in `eslint.config.js` (`npm run lint`), plus
+`src-tauri/clippy.toml` and `scripts/conventions.test.ts` for the Rust ones clippy cannot
+express.
 
 ### Where a test goes
 
@@ -178,8 +181,6 @@ Tests are grouped by feature, not by the fix that added them:
 
 - `scripts/<feature>.test.ts` and `scripts/<feature>.spec.ts` hold behavior tests (the
   runner rules below decide which of the two).
-- `scripts/<feature>.checks.test.ts` / `.checks.spec.ts` hold the cases that read source as
-  text, kept apart from the behavior tests.
 - `scripts/<feature>.<area>.test.ts` / `.spec.ts` is for a part of a feature that must run
   in its own process (module mocks, a process-wide shim such as `installShimDom()`) or would
   make the main file unreadable.
@@ -279,7 +280,7 @@ mandatory for `tauri-plugin-updater` to compare versions correctly.
 The lock file is the one that gets forgotten, because nothing in the editing
 loop reads it — a bump without it lands green and stays wrong until the next
 person's `cargo build` rewrites the line and leaves them a dirty working tree.
-`scripts/release.checks.test.ts` asserts the three agree.
+`scripts/release.workflows.test.ts` asserts the three agree.
 
 ## Releasing
 

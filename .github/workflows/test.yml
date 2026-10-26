@@ -118,6 +118,12 @@ jobs:
       - name: check frontend
         run: npm run check
 
+      # The code conventions no type can express (one implementation of a fixed
+      # behaviour, Rust reached only through the generated bindings, ...), as
+      # lint rules in eslint.config.js. Each message says why.
+      - name: lint frontend conventions
+        run: npm run lint
+
       - name: run frontend behavior tests
         run: npm test
 

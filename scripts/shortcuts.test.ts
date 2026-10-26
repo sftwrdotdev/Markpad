@@ -20,7 +20,7 @@ describe('shortcut registry', () => {
 	 * A test that compared the registry against the panel would be worthless —
 	 * they are the same copy. So every row of `src/lib/utils/shortcuts.ts` is
 	 * checked against the code that implements it, using the same harness
-	 * `shortcuts.checks.test.ts` uses (`./keymapHarness.ts`): the editor's
+	 * the other shortcut tests use (`./keymapHarness.ts`): the editor's
 	 * actions are registered by really running `registerLocalizedActions`, and the
 	 * document-level chords are discovered by firing synthetic keystrokes at the
 	 * real `handleKeyDown`. Neither is a description of the handlers; both are the
@@ -471,7 +471,7 @@ describe('shortcut registry', () => {
 
 	test('no two rows in one panel section read the same, in any language', () => {
 		// Two rows with one label is indistinguishable from a duplicated entry from
-		// the user's side — the defect `editor.checks.test.ts` calls ED-6.
+		// the user's side.
 		const languages = getSupportedLanguages().map((l) => l.code) as LanguageCode[];
 		for (const { group } of SHORTCUT_GROUPS) {
 			const rows = SHORTCUTS.filter((entry: ShortcutEntry) => entry.group === group);

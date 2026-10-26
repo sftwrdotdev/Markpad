@@ -1044,8 +1044,7 @@ describe('tab reading position', () => {
 	// The two tests below are the two moments, run against the REAL cascade over
 	// the REAL `processMarkdownHtml` output of the document being transferred.
 	// What they cannot be is a live drag: two windows and a Rust broker are not
-	// reachable from here, so the sequence is replayed rather than performed, and
-	// the wiring that performs it is asserted in `tabs.checks.test.ts`.
+	// reachable from here, so the sequence is replayed rather than performed.
 
 	/**
 	 * A layout in which every source line is `LINE_HEIGHT` tall.

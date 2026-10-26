@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { convertFileSrc } from '@tauri-apps/api/core';
 	import { commands, events, type Appearance } from './bindings.js';
-	import { emitTo, type EventCallback } from '@tauri-apps/api/event';
+	import { emitToWindow, type WindowEventName } from './windowEvents.js';
+	import type { EventCallback } from '@tauri-apps/api/event';
 	import { getAllWindows, getCurrentWindow } from '@tauri-apps/api/window';
 	import { onMount, tick, untrack } from 'svelte';
 	import { fade, fly, slide } from 'svelte/transition';
@@ -587,6 +588,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		acceptTransferredTab: transferOptions.acceptTransferredTab,
 		onError: (message, error) => {
 			console.error(message, error);
+			// eslint-disable-next-line markpad/toasts-are-translated -- a pass-through: the sessions pass t() text, and the rest is developer detail beside String(error).
 			addToast(`${message}: ${String(error)}`, 'error');
 		},
 		onWarning: (message, error) => console.warn(message, error),
@@ -672,6 +674,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		isScrolling: () => isScrolling,
 		onError: (message, error) => {
 			console.error(message, error);
+			// eslint-disable-next-line markpad/toasts-are-translated -- a pass-through: the sessions pass t() text, and the rest is developer detail beside String(error).
 			addToast(`${message}: ${String(error)}`, 'error');
 		},
 		onDiskChangedUnderSave: (id) => externalChange.noteExternalChangeConflict(id),
@@ -2307,7 +2310,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			addToast(t('toast.noOtherWindows', settings.language), 'info');
 			return;
 		}
-		await Promise.all(others.map((window) => emitTo(window.label, 'merge-into', appWindow.label)));
+		await Promise.all(others.map((window) => emitToWindow(window.label, 'merge-into', appWindow.label)));
 	}
 
 	function startDrag(e: MouseEvent, tabId: string | null) {
@@ -2450,7 +2453,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 				}),
 			);
 
-			const listeners: [string, EventCallback<any>][] = [
+			const listeners: [WindowEventName, EventCallback<any>][] = [
 				['menu-tab-rename', async (event) => {
 					const tabId = event.payload as string;
 					const tab = tabManager.tabs.find((t) => t.id === tabId);

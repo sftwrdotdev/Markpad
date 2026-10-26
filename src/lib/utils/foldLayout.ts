@@ -45,8 +45,8 @@ function updateFoldHeights(root: HTMLElement) {
 	//
 	// Measure the layout height, not `scrollHeight`: KaTeX glyphs overhang
 	// their box, so `scrollHeight` is up to ~7px taller and the wrapper would
-	// grow past its content (see the fold-height rule in
-	// release.checks.test.ts). Nothing is clipped by the smaller
+	// grow past its content (see the `fold-height-from-layout` lint rule in
+	// eslint.config.js). Nothing is clipped by the smaller
 	// number: expanded wrappers are `overflow: visible`.
 	//
 	// Divide by the preview's CSS `zoom`: a rect is in viewport pixels, and

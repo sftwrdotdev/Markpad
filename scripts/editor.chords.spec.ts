@@ -19,7 +19,7 @@ import { bareCommands, type Chord, editorKeymap, label, PLATFORMS } from './keym
  * `Cmd+Y` + `Cmd+Shift+Z` on Windows and Linux but only `Cmd+Shift+Z` on
  * macOS (`editorExtensions.js`). Mac users lost keyboard redo entirely, and no
  * test could see it, because the only description of Monaco's keymap in the
- * suite was eleven rows hand-copied into `shortcuts.checks.test.ts`.
+ * suite was eleven rows hand-copied into a test file.
  *
  * WHERE MONACO'S KEYMAP COMES FROM HERE
  *
@@ -269,7 +269,7 @@ describe('Monaco chord ownership', () => {
 			action: 'fmt-quote',
 			chords: { macOS: 'Shift+Meta+.', Windows: 'Ctrl+Shift+.', Linux: 'Ctrl+Shift+.' },
 			monaco: 'editor.action.inPlaceReplace.down',
-			why: "GitHub's blockquote chord, and Shift+. IS the `>` marker. Argued at the binding itself in Editor.svelte and again in shortcuts.checks.test.ts; `inPlaceReplace` cycles enum-ish words in code and has nothing to cycle in prose.",
+			why: "GitHub's blockquote chord, and Shift+. IS the `>` marker. Argued at the binding itself in Editor.svelte; `inPlaceReplace` cycles enum-ish words in code and has nothing to cycle in prose.",
 		},
 		{
 			action: 'view-toggle-edit',
