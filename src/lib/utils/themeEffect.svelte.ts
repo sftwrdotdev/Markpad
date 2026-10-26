@@ -1,9 +1,10 @@
+import type { Appearance } from '../bindings.js';
 import { untrack } from 'svelte';
 import { clearVscodeTheme, loadVscodeTheme } from './theme.js';
 
 export interface ThemeEffectDeps {
 	/** What Rust paints the next window's background from: the appearance, never a theme name. */
-	saveStartupAppearance(appearance: 'system' | 'light' | 'dark'): void;
+	saveStartupAppearance(appearance: Appearance): void;
 	readVscodeTheme(name: string): Promise<string>;
 	/** Re-draws the diagrams. Run untracked: see below. */
 	recolourDiagrams(): void;

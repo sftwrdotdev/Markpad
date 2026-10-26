@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getCurrentWindow } from '@tauri-apps/api/window';
-	import { invoke } from '@tauri-apps/api/core';
+	import { commands } from '../bindings.js';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { fly } from 'svelte/transition';
 	import iconUrl from '../../assets/icon.png';
@@ -125,7 +125,7 @@
 	}
 
 	$effect(() => {
-		invoke('is_win11')
+		commands.isWin11()
 			.then((res) => {
 				isWin11 = res as boolean;
 			})
@@ -250,7 +250,7 @@
 
 	$effect(() => {
 		if (!popovers.homeMenuOpen) return;
-		invoke<Array<{ name: string; color: string }>>('list_pinned_tags')
+		commands.listPinnedTags()
 			.then((tags) => (pinnedTags = tags))
 			.catch(console.error);
 	});
@@ -259,7 +259,7 @@
 	
 	$effect(() => {
 		if (popovers.themeMenuOpen) {
-			invoke('get_saved_vscode_themes')
+			commands.getSavedVscodeThemes()
 				.then((themes) => {
 					savedVscodeThemes = themes as string[];
 				})

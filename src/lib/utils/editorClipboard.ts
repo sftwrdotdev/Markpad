@@ -3,16 +3,16 @@ import { clipboardTextForSelection, insertTextAtCursor } from './editorEdits.js'
 import { routeDroppedFile } from './fileDrop.js';
 import { documentParentDir, imageEmbed, resolveImageDirectory } from './imageEmbed.js';
 import { isLinkifyPasteTarget } from './pasteContext.js';
+import { commands } from '../bindings.js';
 
 /**
  * What the editor's clipboard and drop handlers reach: the editor and the
  * Monaco module (both assigned once Monaco has loaded, hence getters), the
- * Tauri bridge, the active tab and the image settings.
+ * active tab and the image settings.
  */
 export type EditorClipboardDeps = {
 	editor: () => Monaco.editor.IStandaloneCodeEditor;
 	monaco: () => typeof Monaco;
-	invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
 	tabs: { readonly activeTab: { readonly path?: string } | null | undefined };
 	settings: { readonly imageDirectory: string; readonly macosImageScaling: boolean };
 };
@@ -65,28 +65,19 @@ export async function pasteFromClipboard(deps: EditorClipboardDeps) {
 				// not pixels (#768). Read it first and copy it as a drop does, so
 				// it keeps its own name and bytes rather than whatever preview the
 				// file manager put beside it.
-				const files = await deps.invoke("clipboard_read_file_list").catch(() => null) as string[] | null;
+				const files = await commands.clipboardReadFileList().catch(() => null) as string[] | null;
 				for (const srcPath of files ?? []) {
 					if (routeDroppedFile(srcPath, "editor") !== "insert") continue;
-					const relPath = (await deps.invoke("copy_file_to_img", {
-						srcPath,
-						parentDir,
-						imageDirectory: imgDirName,
-					})) as string;
+					const relPath = (await commands.copyFileToImg(srcPath, parentDir, imgDirName)) as string;
 					embeds.push(imageEmbed(relPath));
 				}
 
 				if (embeds.length === 0) {
 					// check for image in clipboard via Rust
-					const base64Image = await deps.invoke("clipboard_read_image", { macosImageScaling: deps.settings.macosImageScaling }).catch(() => null) as string | null;
+					const base64Image = await commands.clipboardReadImage(deps.settings.macosImageScaling).catch(() => null) as string | null;
 					if (base64Image) {
 						const filename = `paste_${Date.now()}.png`; // output of Rust command is always PNG
-						const relPath = (await deps.invoke("save_image", {
-							parentDir,
-							filename,
-							base64Data: base64Image,
-							imageDirectory: imgDirName,
-						})) as string;
+						const relPath = (await commands.saveImage(parentDir, filename, base64Image, imgDirName)) as string;
 						embeds.push(imageEmbed(relPath));
 					}
 				}
@@ -121,7 +112,7 @@ export async function pasteFromClipboard(deps: EditorClipboardDeps) {
 			}
 
 			// fall through to text paste via Rust
-			const rawText = await deps.invoke("clipboard_read_text").catch(() => "") as string;
+			const rawText = await commands.clipboardReadText().catch(() => "") as string;
 			if (!rawText) return;
 			// Every edit below is a paste, and a paste is its own undo step:
 			// `executeEdits` appends to the step typing left open, so without
@@ -225,7 +216,7 @@ export async function copyToClipboard(deps: EditorClipboardDeps) {
 	const monaco = deps.monaco();
 	editor?.focus();
 	const { text } = clipboardTextForSelection(editor, monaco);
-	if (text) await deps.invoke('clipboard_write_text', { text }).catch(console.error);
+	if (text) await commands.clipboardWriteText(text).catch(console.error);
 }
 
 export async function cutToClipboard(deps: EditorClipboardDeps) {
@@ -235,7 +226,7 @@ export async function cutToClipboard(deps: EditorClipboardDeps) {
 	const { text, range } = clipboardTextForSelection(editor, monaco);
 	if (!text || !range || !editor) return;
 	const model = editor.getModel();
-	await deps.invoke('clipboard_write_text', { text }).catch(console.error);
+	await commands.clipboardWriteText(text).catch(console.error);
 	// `range` is in this model's coordinates; after a tab switch it would
 	// delete text from the other document.
 	if (editor.getModel() !== model) return;
@@ -262,11 +253,7 @@ export async function handleDroppedFile(deps: EditorClipboardDeps, path: string,
 			deps.settings.imageDirectory,
 			tabPath,
 		);
-		const relPath = (await deps.invoke("copy_file_to_img", {
-			srcPath: path,
-			parentDir,
-			imageDirectory: imgDirName,
-		})) as string;
+		const relPath = (await commands.copyFileToImg(path, parentDir, imgDirName)) as string;
 		// As in `pasteFromClipboard`: a tab switch during the copy leaves the
 		// file where it was copied and the link out of the other document.
 		if (editor.getModel() !== dropModel) return;

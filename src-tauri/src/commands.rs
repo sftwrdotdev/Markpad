@@ -513,9 +513,37 @@ pub async fn watch_file(
 /// `app.rs` is the only reader — see the background colour it picks at startup.
 #[tauri::command]
 #[specta::specta]
-pub fn save_theme(app: AppHandle, theme: String) -> Result<(), String> {
+pub fn save_theme(app: AppHandle, theme: Appearance) -> Result<(), String> {
     let theme_path = window_runtime::config_file(&app, "theme.txt")?;
-    atomic_write(&theme_path, theme.as_bytes()).map_err(|e| e.to_string())
+    atomic_write(&theme_path, theme.as_str().as_bytes()).map_err(|e| e.to_string())
+}
+
+/// What `save_theme` writes to `theme.txt` and `app.rs` reads back, one word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    fn as_str(self) -> &'static str {
+        match self {
+            Appearance::System => "system",
+            Appearance::Light => "light",
+            Appearance::Dark => "dark",
+        }
+    }
+
+    /// `theme.txt` as written. Anything else — no file, or the raw theme name
+    /// older builds wrote — asks the OS.
+    pub fn from_saved(saved: &str) -> Self {
+        [Appearance::Light, Appearance::Dark]
+            .into_iter()
+            .find(|appearance| appearance.as_str() == saved)
+            .unwrap_or(Appearance::System)
+    }
 }
 
 fn themes_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
@@ -1135,6 +1163,19 @@ pub(crate) mod tests {
     use super::*;
     use crate::fs_safety::tests::temp_path;
     use std::path::PathBuf;
+
+    // The window colour at startup comes from the word `save_theme` wrote, so
+    // the reader has to know every word the writer can send.
+    #[test]
+    fn the_startup_reader_reads_back_every_appearance_save_theme_writes() {
+        for appearance in [Appearance::System, Appearance::Light, Appearance::Dark] {
+            assert_eq!(Appearance::from_saved(appearance.as_str()), appearance);
+        }
+        assert_eq!(
+            Appearance::from_saved("vscode:Ayu Dark"),
+            Appearance::System
+        );
+    }
 
     #[test]
     fn an_imported_theme_is_written_only_when_its_name_and_json_are_safe() {

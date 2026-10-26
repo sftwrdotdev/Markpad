@@ -55,13 +55,13 @@ describe('editor option wiring', () => {
 		// The handlers live in utils/editorClipboard.ts since the paste/drop/cut move.
 		const clipboard = readSource('src/lib/utils/editorClipboard.ts');
 		assert.equal(
-			count(editor + clipboard, /invoke\('clipboard_write_text'/g),
+			count(editor + clipboard, /commands\.clipboardWriteText\(/g),
 			2,
 			'clipboard_write_text is called from copyToClipboard and cutToClipboard, nowhere else in the editor',
 		);
 		assert.match(
 			readSource('src/lib/utils/vimAttach.ts'),
-			/installVimClipboardRegisters\(VimMode, \(text\) => \{\s*invoke\('clipboard_write_text', \{ text \}\)/,
+			/installVimClipboardRegisters\(VimMode, \(text\) => \{\s*commands\.clipboardWriteText\(text\)/,
 			'the third writer is the Vim register',
 		);
 		assert.match(functionSource(clipboard, 'copyToClipboard'), /clipboardTextForSelection\(editor, monaco\)/);

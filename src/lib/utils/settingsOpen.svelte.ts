@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { getVersion } from '@tauri-apps/api/app';
 
 /**
@@ -25,7 +25,7 @@ export function createSettingsOpen(options: {
 	async function loadFonts() {
 		if (loaded) return;
 		try {
-			view.systemFonts = await invoke<string[]>('get_system_fonts');
+			view.systemFonts = await commands.getSystemFonts();
 			loaded = true;
 		} catch (e) {
 			console.error('Failed to load system fonts:', e);

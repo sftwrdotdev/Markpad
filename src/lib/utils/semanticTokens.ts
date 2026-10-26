@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 import { frontMatterFenceLines } from './frontMatter.js';
 
@@ -110,10 +110,7 @@ export function createMarkdownSemanticTokensProvider(monaco: typeof import('mona
 		if (cache && cache.uri === uri && cache.version === version) return cache.tokens;
 
 		const content = model.getValue();
-		const spans = (await invoke('markdown_semantic_spans', {
-			content,
-			frontMatterLines: frontMatterFenceLines(content),
-		})) as SemanticSpan[];
+		const spans = (await commands.markdownSemanticSpans(content, frontMatterFenceLines(content))) as SemanticSpan[];
 		// The model can have moved on while Rust was parsing. Returning tokens
 		// for text that is no longer there would paint the wrong ranges, so the
 		// stale answer is cached against its own version and Monaco asks again.

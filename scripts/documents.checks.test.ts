@@ -123,18 +123,6 @@ describe('lossy decode save guard', () => {
 	});
 });
 
-describe('unsaved recovery', () => {
-	test('the close decision commands are spelled the same in the viewer and in Rust', () => {
-		// Cross-language contract: only the string connects invoke() to the command.
-		const viewer = readSource('src/lib/sessions/windowExit.ts');
-		const rust = readSource('src-tauri/src/window_runtime.rs');
-		for (const name of ['keeps_unsaved_on_close', 'set_quitting']) {
-			assert.ok(viewer.includes(`invoke<boolean>('${name}'`) || viewer.includes(`invoke('${name}'`), `viewer does not invoke ${name}`);
-			assert.match(rust, new RegExp(`pub fn ${name}\\(`), `Rust does not declare ${name}`);
-		}
-	});
-});
-
 describe('live mode watched path', () => {
 	const runtime = readSource('src-tauri/src/window_runtime.rs');
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');

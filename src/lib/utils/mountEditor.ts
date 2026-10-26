@@ -1,6 +1,5 @@
 import type * as Monaco from 'monaco-editor';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { invoke } from '@tauri-apps/api/core';
 import { wheelZoomFactor, type settings as SettingsStore } from '../stores/settings.svelte.js';
 import { MARKDOWN_LANGUAGE_ID } from './pasteContext.js';
 import { isAltGraphChord } from './viewerKeymap.js';
@@ -227,7 +226,7 @@ export function mountEditor(deps: MountEditorDeps): () => void {
 
 	// This document's headings and block folds, from Rust, cached per model
 	// version: utils/markdownCompletion.ts.
-	const { documentOutline, headingAnchors } = createDocumentOutline(invoke);
+	const { documentOutline, headingAnchors } = createDocumentOutline();
 
 	// The colours that come from the renderer rather than from the grammar's
 	// regexes (`utils/semanticTokens.ts`). Registered once per editor, beside the
@@ -264,7 +263,6 @@ export function mountEditor(deps: MountEditorDeps): () => void {
 				provideMarkdownCompletionItems(model, position, {
 					monaco,
 					headingAnchors,
-					invoke,
 					activeTabPath: () => tabManager.activeTab?.path,
 					imageDirectory: () => settings.imageDirectory,
 				}),

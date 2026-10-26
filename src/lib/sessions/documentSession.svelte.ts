@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { save } from '@tauri-apps/plugin-dialog';
 import { settings } from '../stores/settings.svelte.js';
 import { tabManager, type Tab } from '../stores/tabs.svelte.js';
@@ -240,7 +240,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		try {
 			// The same read the reload does, so the two strings are comparable:
 			// decoded with the file's own encoding rather than assumed UTF-8.
-			const [content] = (await invoke('read_file_content_checked', { path })) as [string, boolean, string];
+			const [content] = (await commands.readFileContentChecked(path)) as [string, boolean, string];
 			return content !== tab.originalContent;
 		} catch {
 			// Unreadable right now — mid-write, or gone. "Changed" is the safe
@@ -336,7 +336,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// the fidelity again costs nothing and makes the flag a property of
 			// the buffer instead of a memory of how it was obtained; it also
 			// CLEARS the flag for a file converted to UTF-8 since the load.
-			const [full, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
+			const [full, lossy, encoding] = (await commands.readFileContentChecked(tab.path)) as [string, boolean, string];
 			// Overtaken, edited or closed while the read was out. Whether the
 			// buffer is whole is still the question asked, so the tab answers it.
 			if (!mayApply()) return tabManager.tabs.find((item) => item.id === tabId)?.isTruncated === false;
@@ -610,10 +610,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				let lossy: boolean;
 				let encoding: string;
 				if (initialIsEditing || initialIsSplit) {
-					[content, lossy, encoding] = (await invoke('read_file_content_checked', { path: filePath })) as [string, boolean, string];
+					[content, lossy, encoding] = (await commands.readFileContentChecked(filePath)) as [string, boolean, string];
 					isFull = true;
 				} else {
-					[content, isFull, lossy, encoding] = (await invoke('open_markdown_preview', { path: filePath, maxBytes: 5_000_000 })) as [string, boolean, boolean, string];
+					[content, isFull, lossy, encoding] = (await commands.openMarkdownPreview(filePath, 5_000_000)) as [string, boolean, boolean, string];
 				}
 				if (!mayApply()) return;
 				const rendered = await options.renderMarkdown(content);
@@ -659,7 +659,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					// view only speaks for this load while this load's tab is the
 					// view.
 					if (tabManager.activeTabId === activeId) options.measureInitialViewport();
-					(invoke('read_file_content_checked', { path: filePath }) as Promise<[string, boolean, string]>)
+					(commands.readFileContentChecked(filePath) as Promise<[string, boolean, string]>)
 						.then(([fullContent, fullLossy, fullEncoding]) => {
 							const applyFull = () => {
 								try {
@@ -697,7 +697,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 						});
 				}
 			} else {
-				const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: filePath })) as [string, boolean, string];
+				const [content, lossy, encoding] = (await commands.readFileContentChecked(filePath)) as [string, boolean, string];
 				// Same race, same guard: this branch reads the whole file, so it
 				// cannot strand a slice, but a stale one still overwrites the
 				// winner's buffer and encoding and flips the tab into the editor.
@@ -808,7 +808,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// silently converted to UTF-8 by every auto-save. An untitled
 				// buffer saved through the dialog above still carries the
 				// `UTF-8` it was created with, which is what it should be.
-				await invoke('save_file_content', { path: targetPath, content: snapshot, encoding: tab.encoding });
+				await commands.saveFileContent(targetPath, snapshot, tab.encoding);
 				if (tab.path === '') {
 					tabManager.updateTabPath(tab.id, targetPath, targetKey);
 					options.saveRecentFile(targetPath);
@@ -875,7 +875,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				// decode, and one holding a character its own encoding cannot
 				// represent. Writing the copy in the encoding that caused the
 				// problem would take the exit away.
-				await invoke('save_file_content', { path: selected, content: snapshot, encoding: 'UTF-8' });
+				await commands.saveFileContent(selected, snapshot, 'UTF-8');
 				tabManager.updateTabPath(tab.id, selected, selectedKey);
 				// The buffer now has a UTF-8 file of its own that it matches
 				// exactly, so it is safe to save from here on — and every save
@@ -927,7 +927,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// it through the auto-save effect.
 		options.cancelPendingAutoSave(tab.id);
 		await writeExclusively(tab.id, async () => {
-			await invoke('rename_file', { oldPath: tab.path, newPath });
+			await commands.renameFile(tab.path, newPath);
 			tabManager.updateTabPath(tab.id, newPath, await canonicalizePath(newPath));
 		});
 	}

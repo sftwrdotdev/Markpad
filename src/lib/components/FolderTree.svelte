@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { invoke } from '@tauri-apps/api/core';
+	import { commands } from '../bindings.js';
 	import { folderManager, type FolderEntry } from '../stores/folder.svelte.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { tabManager } from '../stores/tabs.svelte.js';
@@ -82,11 +82,11 @@
 			items: [
 				{
 					label: t('menu.copyFullPath', lang),
-					onClick: () => invoke('clipboard_write_text', { text: entry.path }).catch(console.error),
+					onClick: () => commands.clipboardWriteText(entry.path).catch(console.error),
 				},
 				{
 					label: t('menu.openFileLocation', lang),
-					onClick: () => invoke('open_file_folder', { path: entry.path }).catch(console.error),
+					onClick: () => commands.openFileFolder(entry.path).catch(console.error),
 				},
 			],
 		};

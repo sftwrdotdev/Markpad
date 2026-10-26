@@ -597,6 +597,26 @@ mod tests {
         assert!(broker.peek(&token).is_none());
     }
 
+    // The source drops its tab when it hears `tab-transfer-claimed`, which
+    // `complete_detached_tab` sends to the source label `complete_as` hands back.
+    // A claim is only a reservation: it hands back the payload and no source to
+    // announce to, and the completion after it still finds the transfer.
+    #[test]
+    fn only_completion_hands_back_the_source_to_announce_to() {
+        let broker = TabTransferBroker::new();
+        let token = broker.stage("tab".to_string(), "main".to_string());
+        let destination = destination_label(&token);
+
+        assert_eq!(
+            broker.claim_as(&destination, &token, Instant::now()),
+            Ok(Some("tab".to_string()))
+        );
+        let transfer = broker
+            .complete_as(&destination, &token)
+            .expect("the claim must leave the transfer for completion");
+        assert_eq!(transfer.source_label, "main");
+    }
+
     // The source kept typing while the new window booted: the destination
     // must claim the newer copy, not the one staged at the click.
     #[test]

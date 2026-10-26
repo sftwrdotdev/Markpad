@@ -1180,7 +1180,7 @@ describe('single implementations', () => {
 			// The viewer half — that its one occurrence sits inside
 			// renderMarkdownPreview rather than merely in the same file — is pinned by
 			// preview.checks.test.ts.
-			marker: /invoke\(\s*'render_markdown'/g,
+			marker: /commands\.renderMarkdown\(/g,
 			allowed: ['src/lib/MarkdownViewer.svelte', 'src/lib/utils/export.ts'],
 		},
 		{

@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 type MetaSource = {
 	readonly windowTag: { name: string; color: string } | null;
@@ -19,12 +19,7 @@ export function reportWindowMeta(tabManager: MetaSource, readyAtStart: boolean) 
 	let ready = $state(readyAtStart);
 	$effect(() => {
 		if (!ready) return;
-		invoke('set_window_meta', {
-			tagName: tabManager.windowTag?.name ?? null,
-			tagColor: tabManager.windowTag?.color ?? null,
-			activeTabTitle: tabManager.activeTab?.title ?? '',
-			tabCount: tabManager.tabs.length,
-		}).catch(() => {});
+		commands.setWindowMeta(tabManager.windowTag?.name ?? null, tabManager.windowTag?.color ?? null, tabManager.activeTab?.title ?? '', tabManager.tabs.length).catch(() => {});
 	});
 	return { markReady: () => void (ready = true) };
 }

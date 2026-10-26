@@ -61,7 +61,6 @@
 	import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 	import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 	import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
-	import { invoke } from "@tauri-apps/api/core";
 
 	let {
 		value,
@@ -455,7 +454,6 @@
 	const clipboard: EditorClipboardDeps = {
 		editor: () => editor,
 		monaco: () => monaco,
-		invoke,
 		tabs: tabManager,
 		settings,
 	};
@@ -665,7 +663,7 @@
 			const currentEditor = editor;
 			const currentStatusNode = vimStatusNode;
 			import("monaco-vim").then((module) => {
-				vim = attachVimMode(module, currentEditor, currentStatusNode, invoke, () => disposed);
+				vim = attachVimMode(module, currentEditor, currentStatusNode, () => disposed);
 			});
 			return () => {
 				disposed = true;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { after, before, describe, test } from 'node:test';
+import { after, before, describe, test, type TestContext } from 'node:test';
 
 import type * as Monaco from 'monaco-editor';
 
@@ -18,6 +18,7 @@ import { DEFAULT_REFERENCE_STYLE, headingReference, headingSlug, preferredRefere
 import { findSeedFromSelection, seedFindBar } from '../src/lib/utils/findSeed.js';
 import { editorFrontMatterScrollEnd } from '../src/lib/utils/editorFrontMatter.js';
 import { createMarkdownSemanticTokensProvider } from '../src/lib/utils/semanticTokens.js';
+import { stubTauriInvoke } from './tauriInvoke.js';
 import { addFrontMatterListItems, getFrontMatterListItems, frontMatterFenceLines, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
 import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
@@ -1540,14 +1541,18 @@ describe('heading link completion', () => {
 		assert.equal(prefix.slice(headingQueryStart(prefix)), 'mer');
 	});
 
-	// The provider the editor registers, run against a one-line model and an
-	// injected `invoke` standing in for Rust.
+	// The provider the editor registers, run against a one-line model and a
+	// stubbed Tauri `invoke` standing in for Rust.
 	const ANCHORS = [
 		{ line: 1, level: 1, text: '11. Mermaid Diagrams', slug: '11-mermaid-diagrams' },
 		{ line: 3, level: 2, text: 'Setup', slug: 'setup' },
 	];
 
-	function complete(line: string, invoked: string[] = []) {
+	function complete(t: TestContext, line: string, invoked: string[] = []) {
+		stubTauriInvoke(t, async (command) => {
+			invoked.push(command);
+			return ['notes.md'];
+		});
 		const model = {
 			getLineContent: () => line,
 			getWordUntilPosition: () => ({ word: '', startColumn: line.length + 1, endColumn: line.length + 1 }),
@@ -1563,34 +1568,30 @@ describe('heading link completion', () => {
 				languages: { CompletionItemKind: { Reference: 17, File: 20, Folder: 23 } },
 			} as unknown as MarkdownCompletionDeps['monaco'],
 			headingAnchors: async () => ANCHORS,
-			invoke: async (command) => {
-				invoked.push(command);
-				return ['notes.md'];
-			},
 			activeTabPath: () => '/docs/readme.md',
 			imageDirectory: () => 'assets',
 		});
 	}
 
-	test('the heading context is asked before the path context, which shares its prefix', async () => {
+	test('the heading context is asked before the path context, which shares its prefix', async (t) => {
 		// `](#` also satisfies the embed test — `/!?\[.*\]\($/` matches everything
 		// up to the paren. Asking for files first would answer a `#` with a list of
 		// filenames.
 		const invoked: string[] = [];
-		const { suggestions } = await complete('See [the diagrams](#', invoked);
+		const { suggestions } = await complete(t, 'See [the diagrams](#', invoked);
 		assert.deepEqual(suggestions.map((s) => s.label), ['11. Mermaid Diagrams', 'Setup']);
 		assert.deepEqual(invoked, [], 'the path completion ran too');
 		// …while the bare paren is still the path completion.
-		assert.deepEqual((await complete('See [x](')).suggestions.map((s) => s.label), ['notes.md', 'assets/notes.md']);
+		assert.deepEqual((await complete(t, 'See [x](')).suggestions.map((s) => s.label), ['notes.md', 'assets/notes.md']);
 		// And `#` has to open the dropdown, or the reader types it and nothing
 		// happens until the next character.
 		assert.ok(MARKDOWN_COMPLETION_TRIGGERS.includes('#'));
 	});
 
-	test('each context writes the text its own syntax resolves', async () => {
-		const slug = (await complete('See [the diagrams](#')).suggestions;
+	test('each context writes the text its own syntax resolves', async (t) => {
+		const slug = (await complete(t, 'See [the diagrams](#')).suggestions;
 		assert.deepEqual(slug.map((s) => s.insertText), ['11-mermaid-diagrams', 'setup']);
-		const wikilink = (await complete('[[#')).suggestions;
+		const wikilink = (await complete(t, '[[#')).suggestions;
 		assert.deepEqual(wikilink.map((s) => s.insertText), ['11. Mermaid Diagrams', 'Setup']);
 		// Labelled by the heading, so typing a word of it finds the entry whatever
 		// the slug turned that word into.
@@ -1608,14 +1609,15 @@ describe('heading link completion', () => {
 		};
 	}
 
-	test('the list is read from Rust, and re-read only when the buffer changes', async () => {
+	test('the list is read from Rust, and re-read only when the buffer changes', async (t) => {
 		// A second anchorizer written in TypeScript would drift from comrak's
 		// without anything failing — the links would simply stop landing.
 		const calls: Array<[string, unknown]> = [];
-		const { headingAnchors } = createDocumentOutline(async (command, args) => {
+		stubTauriInvoke(t, async (command, args) => {
 			calls.push([command, args]);
 			return { anchors: ANCHORS, folds: [] };
 		});
+		const { headingAnchors } = createDocumentOutline();
 		const one = outlineModel('# A\n');
 		assert.deepEqual(await headingAnchors(one.model), ANCHORS);
 		assert.deepEqual(calls, [['markdown_outline', { markdown: '# A\n', frontMatterLines: 0 }]]);
@@ -1634,12 +1636,13 @@ describe('heading link completion', () => {
 
 	// The folding provider and the sticky-scroll symbols ask for the same version
 	// together, and each ask sends the whole buffer to Rust to be parsed.
-	test('two asks for one version share one Rust call', async () => {
+	test('two asks for one version share one Rust call', async (t) => {
 		const calls: string[] = [];
-		const { documentOutline, headingAnchors } = createDocumentOutline(async (command) => {
+		stubTauriInvoke(t, async (command) => {
 			calls.push(command);
 			return { anchors: [], folds: [] };
 		});
+		const { documentOutline, headingAnchors } = createDocumentOutline();
 		const { model } = outlineModel('# A\n');
 		await Promise.all([headingAnchors(model), documentOutline(model)]);
 		assert.equal(calls.length, 1, `one version, ${calls.length} calls: ${calls.join(', ')}`);
@@ -2095,7 +2098,7 @@ Body starts here.
 	// underline the YAML into a heading. Rust used to find those lines itself, with
 	// any two leading `---` lines, and blanked a thematic break plus the prose
 	// under it that the preview renders. Now it is told, by the same rule.
-	test('the editor tells Rust how many lines the front matter spans, fence to fence', async () => {
+	test('the editor tells Rust how many lines the front matter spans, fence to fence', async (t) => {
 		assert.equal(frontMatterFenceLines('---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n'), 0);
 		assert.equal(frontMatterFenceLines('# Plain\n'), 0);
 		assert.equal(frontMatterFenceLines('---\ntitle: x\ntags: [a]\n---\n\n# Body\n'), 4);
@@ -2110,27 +2113,14 @@ Body starts here.
 		const model = { uri: 'file:///a.md', getVersionId: () => 1, getValue: () => text };
 		const sent: Array<[string, unknown]> = [];
 
-		const { documentOutline } = createDocumentOutline(async (command, args) => {
+		stubTauriInvoke(t, async (command, args) => {
 			sent.push([command, args]);
-			return { anchors: [], folds: [] };
+			return command === 'markdown_outline' ? { anchors: [], folds: [] } : [];
 		});
+		const { documentOutline } = createDocumentOutline();
 		await documentOutline(model as never);
-
-		// The semantic-token provider calls Tauri's `invoke` itself, so the
-		// stand-in goes where Tauri's runtime puts it.
-		const scope = globalThis as { window?: unknown };
-		const previous = scope.window;
-		scope.window = {
-			__TAURI_INTERNALS__: {
-				invoke: async (command: string, args: unknown) => (sent.push([command, args]), []),
-			},
-		};
-		try {
-			const { provider } = createMarkdownSemanticTokensProvider({} as never);
-			await provider.provideDocumentSemanticTokens(model as never);
-		} finally {
-			scope.window = previous;
-		}
+		const { provider } = createMarkdownSemanticTokensProvider({} as never);
+		await provider.provideDocumentSemanticTokens(model as never);
 
 		assert.deepEqual(sent, [
 			['markdown_outline', { markdown: text, frontMatterLines: 4 }],

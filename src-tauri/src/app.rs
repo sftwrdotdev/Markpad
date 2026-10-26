@@ -231,10 +231,10 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
     // dark VS Code theme on a light desktop flashed a white window on
     // every launch. A file left over from that older format still lands
     // there, and self-corrects as soon as the frontend applies its theme.
-    let bg_color = match theme_pref.as_str() {
-        "dark" => Some(tauri::window::Color(24, 24, 24, 255)),
-        "light" => Some(tauri::window::Color(253, 253, 253, 255)),
-        _ => {
+    let bg_color = match commands::Appearance::from_saved(&theme_pref) {
+        commands::Appearance::Dark => Some(tauri::window::Color(24, 24, 24, 255)),
+        commands::Appearance::Light => Some(tauri::window::Color(253, 253, 253, 255)),
+        commands::Appearance::System => {
             if let Ok(t) = window.theme() {
                 match t {
                     tauri::Theme::Dark => Some(tauri::window::Color(24, 24, 24, 255)),

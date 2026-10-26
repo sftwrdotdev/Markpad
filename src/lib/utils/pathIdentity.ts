@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { hasRealFilePath } from './tabFileActions.js';
 
 /**
@@ -41,7 +41,7 @@ export interface PathIdentity {
 export async function canonicalizePath(path: string): Promise<string> {
 	if (!hasRealFilePath(path)) return '';
 	try {
-		const resolved = await invoke<string>('canonicalize_path', { path });
+		const resolved = await commands.canonicalizePath(path);
 		return typeof resolved === 'string' && resolved !== '' ? resolved : path;
 	} catch {
 		return path;

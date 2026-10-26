@@ -312,8 +312,8 @@ describe('preview width', () => {
 describe('render pipeline convention', () => {
 	// Every preview render must go through renderMarkdownPreview, which strips
 	// YAML front matter before invoking the Rust renderer. Calling the raw
-	// `invoke('render_markdown')` command anywhere else silently bypasses that
-	// step — the compiler cannot catch it because the command name is a string.
+	// `commands.renderMarkdown` command anywhere else silently bypasses that
+	// step, and the compiler cannot tell the two calls apart.
 	//
 	// Which *files* may name the raw command is a single-implementation question and
 	// is pinned by the RULES table in release.checks.test.ts. What is
@@ -330,9 +330,7 @@ describe('render pipeline convention', () => {
 
 	test('every raw render_markdown call in the viewer sits inside renderMarkdownPreview', () => {
 		const viewer = readSource(VIEWER);
-		const offsets = callSiteOffsets(viewer, 'invoke').filter((offset) =>
-			/^invoke\(\s*'render_markdown'/.test(viewer.slice(offset)),
-		);
+		const offsets = callSiteOffsets(viewer, 'commands.renderMarkdown');
 
 		// Not "there is exactly one occurrence, and something matching the wrapper
 		// name appears within 400 characters of it". That form passed as soon as a

@@ -28,6 +28,7 @@ import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToke
 import { clipboardTextForSelection, type EditingEditor, insertLink, insertTextAtCursor, wrapAsCodeBlock } from '../src/lib/utils/editorEdits.js';
 import { mountAfterLoad } from '../src/lib/utils/editorMount.js';
 import { pasteFromClipboard } from '../src/lib/utils/editorClipboard.js';
+import { stubTauriInvoke } from './tauriInvoke.js';
 import { paragraphAround } from '../src/lib/utils/focusParagraph.js';
 
 // WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
@@ -1252,11 +1253,12 @@ describe('paste URL context', () => {
 		assert.ok(languages.length > 0 && languages.every((id) => id === 'markdown'), `tokenized as ${languages}`);
 	});
 
-	test('the paste path consults the context guard before building a link', async () => {
+	test('the paste path consults the context guard before building a link', async (t) => {
 		// The editor's own paste handler, with the clipboard holding a URL and the
 		// caret in a fence, then in prose: the guard decides between the bare URL
 		// and `[label](url)`.
 		const url = 'https://example.com/a';
+		stubTauriInvoke(t, async (cmd) => (cmd === 'clipboard_read_text' ? url : null));
 		const pasteInto = async (lines: string[], line: number, column: number) => {
 			const edits: { source: string; text: string }[] = [];
 			const selection = {
@@ -1288,7 +1290,6 @@ describe('paste URL context', () => {
 						editor: { tokenize: (text: string) => tokenize(text) },
 						Selection: class {},
 					}) as never,
-				invoke: async (cmd) => (cmd === 'clipboard_read_text' ? url : null),
 				// No document path: the image branch is skipped, as for an untitled tab.
 				tabs: { activeTab: { path: undefined } },
 				settings: { imageDirectory: 'img', macosImageScaling: false },

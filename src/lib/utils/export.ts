@@ -1,5 +1,5 @@
 import { save } from '@tauri-apps/plugin-dialog';
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { getMarkdownBodyWithoutFrontMatter, parseFrontMatter } from './frontMatter.js';
 import { processMarkdownHtml } from './markdown.js';
 import {
@@ -373,7 +373,7 @@ async function buildExportArticle(
 	{ embedImages = true }: { embedImages?: boolean } = {},
 ): Promise<{ root: HTMLElement; embeddedImages: number; missingImages: number }> {
 	const body = getMarkdownBodyWithoutFrontMatter(ctx.rawContent);
-	const rendered = (await invoke('render_markdown', { content: body })) as string;
+	const rendered = (await commands.renderMarkdown(body, null)) as string;
 	// The export used to write `rendered` to disk untouched. comrak runs with
 	// `unsafe_ = true`, so a script the preview had filtered out was still live
 	// in the exported file — and the exported file has no CSP of the app's, gets
@@ -427,7 +427,7 @@ async function buildExportArticle(
 		if (!localPath) continue;
 
 		try {
-			const dataUrl = (await invoke('read_file_as_data_url', { path: localPath })) as string;
+			const dataUrl = (await commands.readFileAsDataUrl(localPath)) as string;
 			img.setAttribute('src', dataUrl);
 			embeddedImages += 1;
 		} catch (e) {
@@ -504,7 +504,7 @@ export async function exportAsHtml(ctx: ExportContext): Promise<ExportHtmlResult
 	});
 
 	try {
-		await invoke('save_file_content', { path: selected, content: fullHtml, encoding: 'UTF-8' });
+		await commands.saveFileContent(selected, fullHtml, 'UTF-8');
 		return {
 			path: selected,
 			embeddedImages: article.embeddedImages,
@@ -580,10 +580,10 @@ export async function exportAsPdf(ctx: PdfExportContext): Promise<string | null>
 	// ship half a document.
 	await waitForImages(ctx.printRoot);
 	if (ctx.osType !== 'windows') {
-		await invoke('print_pdf');
+		await commands.printPdf();
 		return null;
 	}
-	await invoke('export_pdf_windows', { path: windowsTarget });
+	await commands.exportPdfWindows(windowsTarget);
 	return windowsTarget;
 }
 

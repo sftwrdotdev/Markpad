@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 
 import { reviewDirtyTabs } from './closeReview.js';
 import { isHomePath } from '../utils/homeTab.js';
@@ -77,7 +77,7 @@ export function createWindowExit(options: WindowExitOptions) {
 		if (!tag?.pinned) return;
 		const files = pinFilesAtClose ?? openFilePaths();
 		if (files.length === 0) return;
-		const pinned = await invoke('update_pinned_tag', { name: tag.name, color: tag.color, files });
+		const pinned = await commands.updatePinnedTag(tag.name, tag.color, files);
 		if (!pinned) tabManager.setWindowTag({ ...tag, pinned: false });
 	}
 
@@ -85,13 +85,13 @@ export function createWindowExit(options: WindowExitOptions) {
 		// Two windows sharing a tag share one pin entry, and the last to save wins.
 		const holder = await pinnedTagHolder(tag.name, appWindow.label);
 		if (holder) {
-			await invoke('focus_window', { label: holder });
+			await commands.focusWindow(holder);
 			return;
 		}
 		// Tabs already here belong to this window's own group. The pinned one
 		// opens in a window of its own, which adopts it from its label.
 		if (tabManager.tabs.some((tab) => !isHomePath(tab.path))) {
-			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()), tagName: tag.name });
+			await commands.createTransferWindow(pinnedWindowToken(tag.name, Date.now()), tag.name);
 			return;
 		}
 		tabManager.setWindowTag({ ...tag, pinned: true });
@@ -147,7 +147,7 @@ export function createWindowExit(options: WindowExitOptions) {
 			// The walk's dialogs are in-app modals inside THIS window: with
 			// multiple windows, another window may be covering it and the review
 			// would be invisible. Bring the reviewing window to the front first.
-			invoke('show_window').catch(console.error);
+			commands.showWindow().catch(console.error);
 			try {
 				// Auto-save without confirmation: silently save every dirty tab
 				// that has a real path. Untitled tabs need a Save dialog, so the
@@ -240,7 +240,7 @@ export function createWindowExit(options: WindowExitOptions) {
 		// of several windows asks below. Decided before `hadDirtyTabs`:
 		// the buffers stay dirty, and a re-triggered close would only
 		// find them again. If unsure, ask.
-		const keepsUnsaved = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => false);
+		const keepsUnsaved = () => commands.keepsUnsavedOnClose().catch(() => false);
 		if (settings.persistOpenEditors && (await keepUnsavedForExit(keepsUnsaved))) return;
 
 		// With tabs to review the close is held open while their
@@ -249,10 +249,10 @@ export function createWindowExit(options: WindowExitOptions) {
 		const hadDirtyTabs = tabManager.tabs.some((t) => t.isDirty);
 		if (hadDirtyTabs) event.preventDefault();
 		// Closing one of several windows forgets it; quit or the last window remembers.
-		const endsSession = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => true);
+		const endsSession = () => commands.keepsUnsavedOnClose().catch(() => true);
 		if (!(await settleForExit(endsSession))) {
 			// A cancelled close cancels the quit, so the windows left ask again.
-			invoke('set_quitting', { quitting: false }).catch(console.error);
+			commands.setQuitting(false).catch(console.error);
 			return;
 		}
 		// Resolved: drop the backup, so a discarded buffer stays gone.
@@ -279,7 +279,7 @@ export function createWindowExit(options: WindowExitOptions) {
 	 */
 	async function appExit() {
 		// Quit keeps unsaved changes in every window, not only the last one.
-		await invoke('set_quitting', { quitting: true }).catch(console.error);
+		await commands.setQuitting(true).catch(console.error);
 		for (const other of await options.allWindows()) {
 			if (other.label !== appWindow.label) await other.close();
 		}
@@ -301,7 +301,7 @@ export function createWindowExit(options: WindowExitOptions) {
 		tabManager.closeTab(tabId);
 		if (tabManager.tabs.length > 0) return;
 
-		invoke('unwatch_file').catch(console.error);
+		commands.unwatchFile().catch(console.error);
 		// Off, the empty window stays and renders Home.
 		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
 	}

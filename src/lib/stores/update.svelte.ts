@@ -1,7 +1,7 @@
 import { check, type Update } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getVersion } from '@tauri-apps/api/app';
-import { invoke } from '@tauri-apps/api/core';
+import { commands } from '../bindings.js';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { ViewerWindowEntry } from '../utils/viewerWindows.js';
 
@@ -73,7 +73,7 @@ class UpdateStore {
 			// binary. Being offered an update that cannot be installed is worse
 			// than not being offered one, so the question is asked first and the
 			// dialog says where updates actually come from. See #570.
-			if (!(await invoke<boolean>('self_update_supported'))) {
+			if (!(await commands.selfUpdateSupported())) {
 				if (token !== this.#checkToken) return;
 				this.phase = 'package-managed';
 				return;
@@ -120,7 +120,7 @@ class UpdateStore {
 		// unsaved tabs and writes the session. So the others close first, each
 		// through its own close review, and the update waits on offer (#767).
 		// No list to go on is how this behaved before it asked.
-		const windows = (await invoke<ViewerWindowEntry[]>('list_viewer_windows').catch(() => null)) ?? [];
+		const windows = (await commands.listViewerWindows().catch(() => null)) ?? [];
 		this.otherWindows = windows.filter((window) => window.label !== getCurrentWindow().label);
 		if (this.otherWindows.length > 0) {
 			this.phase = 'available';

@@ -164,7 +164,7 @@ export const commands = {
 	 *  file by the time it applies the theme, so it sends the answer instead.
 	 *  `app.rs` is the only reader — see the background colour it picks at startup.
 	 */
-	saveTheme: (theme: string) => __TAURI_INVOKE<null>("save_theme", { theme }),
+	saveTheme: (theme: Appearance) => __TAURI_INVOKE<null>("save_theme", { theme }),
 	/**
 	 *  Async because enumerating every installed font family is a slow,
 	 *  filesystem-heavy call (fontconfig on Linux, DirectWrite on Windows,
@@ -312,6 +312,9 @@ export const events = {
 };
 
 /* Types */
+/**  What `save_theme` writes to `theme.txt` and `app.rs` reads back, one word. */
+export type Appearance = "system" | "light" | "dark";
+
 /**
  *  Result of `cancel_detached_tab`. `cancelled == false && claimed == true`
  *  means the destination already took the payload and is still finishing:

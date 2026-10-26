@@ -138,12 +138,9 @@ describe('window state restore', () => {
 
 	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
 		// Behaviour: windows.sessionRestore.spec.ts. What stays here is the
-		// contract: the localStorage key older builds read, and the Rust commands
-		// that hold the snapshot now.
+		// contract: the localStorage key older builds read. The Rust commands that
+		// hold the snapshot now are generated `commands.*` (bindings.ts).
 		assert.match(viewer, /const WINDOW_STATE_KEY = 'savedTabsDataV2';/);
-		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
-		assert.match(session, /invoke\('load_window_state'\)/);
-		assert.match(session, /invoke\('clear_window_state'\)/);
 	});
 
 });
