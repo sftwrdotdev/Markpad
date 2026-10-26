@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { flushSync, mount, unmount } from 'svelte';
 import { afterAll, beforeAll, describe, test } from 'vitest';
 
 import { anchorScrollTop, previewZoomFactor, PREVIEW_ANCHOR_OFFSET } from '../src/lib/utils/previewAnchor.js';
@@ -30,6 +31,7 @@ const {
 	tabAnchorForEditorTopLine,
 	EDITOR_ANCHOR_LINE_OFFSET,
 } = await import('../src/lib/utils/lineCoordinates.js');
+const { default: ContextMenu } = await import('../src/lib/components/ContextMenu.svelte');
 
 describe('anchor jump under zoom', () => {
 	/*
@@ -1438,5 +1440,41 @@ describe('tab anchor across panes', () => {
 		// And a bare number, which does not say which of the two it is.
 		// @ts-expect-error a plain `number` no longer claims a numbering
 		tabManager.updateTabAnchorLine(tab.id, 812);
+	});
+});
+
+describe('the preview context menu', () => {
+	// The menu is opened BY right-clicking a selection, and two of its items act
+	// on that selection (Copy, Edit). Anything that moves focus off the document
+	// stops the selection being painted, so the highlight disappears under the
+	// menu that exists to act on it.
+	test('the context menu does not take focus away from the selection', () => {
+		const selected = document.createElement('textarea');
+		selected.value = 'some selected text';
+		document.body.append(selected);
+		selected.focus();
+		selected.setSelectionRange(5, 13);
+
+		let hidden = 0;
+		const target = document.createElement('div');
+		document.body.append(target);
+		const menu = mount(ContextMenu, {
+			target,
+			props: { show: true, x: 10, y: 10, items: [{ label: 'Copy', onClick: () => {} }], onhide: () => hidden++ },
+		});
+		flushSync();
+		try {
+			assert.ok(target.querySelector('.context-menu'), 'the menu is open');
+			assert.equal(document.activeElement, selected, 'focusing the menu unpaints the selection');
+			assert.deepEqual([selected.selectionStart, selected.selectionEnd], [5, 13]);
+
+			// Escape still closes it — from the window, since the menu never has focus.
+			selected.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+			assert.equal(hidden, 1, 'Escape closes the menu without it having focus');
+		} finally {
+			unmount(menu);
+			target.remove();
+			selected.remove();
+		}
 	});
 });
