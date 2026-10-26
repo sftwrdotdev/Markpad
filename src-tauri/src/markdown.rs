@@ -3160,6 +3160,15 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn heading_anchor_id_answers_each_lookup_afresh() {
+        // A wikilink names a heading by text, which only ever reaches the first
+        // heading with it, so a second lookup is not numbered `-1` the way a
+        // second heading in one document is.
+        assert_eq!(heading_anchor_id("Objectives"), "objectives");
+        assert_eq!(heading_anchor_id("Objectives"), "objectives");
+    }
+
+    #[test]
     fn wikilink_targets_survive_punctuation_in_the_heading() {
         // "1. 概述" used to become "1.-概述" while comrak rendered "1-概述",
         // so the link resolved to nothing.
