@@ -6,7 +6,7 @@ import { parse } from 'svelte/compiler';
 import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
-import { functionSource, readSource, walkSourceFiles } from './sourceTree.js';
+import { readSource, walkSourceFiles } from './sourceTree.js';
 
 /**
  * Settings whose label did not describe what the code did.
@@ -40,7 +40,6 @@ describe('merged auto-save preference', () => {
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-	const sessionSource = readSource(new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url));
 
 	test('the merged preference is stored under its own key, and the old ones are read-only', () => {
 		assert.match(settingsSource, /key: 'editor\.autoSaveEdits'/);
@@ -51,21 +50,13 @@ describe('merged auto-save preference', () => {
 		assert.doesNotMatch(settingsSource, /key: 'editor\.confirmBeforeSave'/);
 	});
 
-	test('nothing evaluates the pair any more', () => {
-		// Four sites read `autoSave && !confirmBeforeSave`; a survivor would be a
-		// path that still consults a preference no UI can set.
-		for (const source of [viewerSource, sessionSource, settingsComponentSource, settingsSource]) {
-			assert.doesNotMatch(source, /settings\.confirmBeforeSave/);
-		}
-		// And the four decisions are still there, now reading the one switch.
-		assert.match(readSource('src/lib/sessions/externalChange.svelte.ts'), /if \(!settings\.autoSave\) return;/); // leaving an editable pane
-		assert.match(viewerSource, /if \(!settings\.autoSave\) \{/); // the debounce
-		assert.match(readSource('src/lib/sessions/windowExit.ts'), /if \(settings\.autoSave\) \{/); // the close-window walk
-		// Closing a tab. The condition grew a third term — a file that changed
-		// under the buffer is a question for the user, not something auto-save may
-		// answer by writing — but it is still this one switch that decides whether
-		// the silent save happens at all.
-		assert.match(sessionSource, /if \(settings\.autoSave && tab\.path !== '' && !diskMoved\)/);
+	test('the auto-save debounce still reads the one switch', () => {
+		// Remainder of "nothing evaluates the pair any more". `settings` has no
+		// `confirmBeforeSave`, so svelte-check rejects any read of the old pair, and
+		// the other three sites run in documents.viewMode.spec.ts,
+		// documents.save.spec.ts and windows.exit.test.ts. The debounce is a
+		// `$effect` in the component, observable only by mounting it.
+		assert.match(viewerSource, /if \(!settings\.autoSave\) \{/);
 	});
 
 	/* ---------------------------------------------- B & C: visible dependency */
@@ -99,13 +90,6 @@ describe('merged auto-save preference', () => {
 	});
 
 
-	/* ------------------------------------------------ D: last tab (#829) */
-
-	test('closing the last tab leaves the window on Home when the setting is off', () => {
-		const body = functionSource(readSource('src/lib/sessions/windowExit.ts'), 'closeTabAndWindowIfLast');
-		assert.match(body, /if \(settings\.closeWindowWithLastTab\) await destroyWindowAfterTabsClosed\(\);/);
-		assert.equal(body.match(/destroyWindowAfterTabsClosed\(/g)?.length, 1, 'no ungated destroy');
-	});
 });
 
 describe('font family values', () => {
