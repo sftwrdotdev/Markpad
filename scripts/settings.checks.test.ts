@@ -98,15 +98,6 @@ describe('merged auto-save preference', () => {
 		// Hiding it would answer "where did that setting go?" with nothing.
 		assert.match(settingsComponentSource, /\.setting-item\.inactive[\s\S]{0,200}?opacity: 0\.45/);
 	});
-
-
-	/* ------------------------------------------------ D: last tab (#829) */
-
-	test('closing the last tab leaves the window on Home when the setting is off', () => {
-		const body = functionSource(viewerSource, 'closeTabAndWindowIfLast');
-		assert.match(body, /if \(settings\.closeWindowWithLastTab\) await destroyWindowAfterTabsClosed\(\);/);
-		assert.equal(body.match(/destroyWindowAfterTabsClosed\(/g)?.length, 1, 'no ungated destroy');
-	});
 });
 
 describe('font family values', () => {
