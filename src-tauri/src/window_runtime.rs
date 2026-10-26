@@ -9,7 +9,7 @@ use std::sync::{
     Arc, Mutex,
 };
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime, State};
 
 pub struct WatcherState {
     pub(crate) watchers: Mutex<HashMap<String, RecommendedWatcher>>,
@@ -1027,7 +1027,7 @@ fn is_viewer_label(label: &str) -> bool {
     label == LAUNCH_LABEL || label.starts_with("window-")
 }
 
-pub fn bring_to_front(window: &tauri::WebviewWindow) {
+pub fn bring_to_front<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     let _ = window.show();
     let _ = window.unminimize();
     let _ = window.set_focus();
@@ -1046,7 +1046,7 @@ fn delivery_label<'a>(
         .or_else(|| open.first().copied())
 }
 
-pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
+pub fn pick_delivery_window<R: Runtime>(app: &AppHandle<R>) -> Option<tauri::WebviewWindow<R>> {
     let windows = app.webview_windows();
     let mut open: Vec<&str> = windows
         .keys()
@@ -1090,7 +1090,7 @@ fn merge_startup_files(opened: Vec<String>, mut files: Vec<String>) -> Vec<Strin
 /// A file opened by the OS. Until the launch window has taken the launch's files it
 /// joins them, so it lands there and in no other window; after that it goes
 /// where `pick_delivery_window` says.
-pub fn deliver_opened_path(app: &AppHandle, path: String) {
+pub fn deliver_opened_path<R: Runtime>(app: &AppHandle<R>, path: String) {
     let state = app.state::<AppState>();
     let target = {
         let mut pending = lock_recover(&state.startup_files);
@@ -1159,7 +1159,7 @@ pub fn startup_paths(args: &[String], cwd: &Path) -> Vec<String> {
         .collect()
 }
 
-pub fn handle_single_instance(app: &AppHandle, args: Vec<String>, cwd: String) {
+pub fn handle_single_instance<R: Runtime>(app: &AppHandle<R>, args: Vec<String>, cwd: String) {
     // Explorer launches one process per selected file, so these can arrive
     // before the launch window listens; `deliver_opened_path` queues them and
     // fronts the window each one lands in.
@@ -1420,7 +1420,7 @@ pub fn geometry_flags() -> tauri_plugin_window_state::StateFlags {
 pub struct GeometrySaver(Mutex<Box<dyn Fn() + Send>>);
 
 impl GeometrySaver {
-    pub fn new(app: AppHandle) -> Self {
+    pub fn new<R: Runtime>(app: AppHandle<R>) -> Self {
         Self(Mutex::new(Box::new(coalesced(
             Duration::from_millis(500),
             move || {
@@ -1433,7 +1433,7 @@ impl GeometrySaver {
     }
 }
 
-pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
+pub fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
     match event {
         tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
             if let Some(saver) = window.try_state::<GeometrySaver>() {
@@ -1484,6 +1484,48 @@ mod tests {
         // Once taken, a later file is not queued for the launch window again.
         assert!(!queue_startup_file(&mut pending, "/n/d.md"));
         assert_eq!(pending, None);
+    }
+
+    // The window-state plugin saves only on a clean exit, so after a crash
+    // every window came back at its default size. A move or a resize reaches
+    // the managed saver while the app runs; other events do not.
+    #[test]
+    fn a_move_or_resize_schedules_a_geometry_save() {
+        use tauri::{PhysicalPosition, PhysicalSize, WindowEvent};
+        let app = tauri::test::mock_app();
+        let calls = Arc::new(AtomicU64::new(0));
+        let counted = calls.clone();
+        app.manage(GeometrySaver(Mutex::new(Box::new(move || {
+            counted.fetch_add(1, Ordering::SeqCst);
+        }))));
+        let webview_window =
+            tauri::WebviewWindowBuilder::new(&app, "window-1", tauri::WebviewUrl::default())
+                .build()
+                .unwrap();
+        let window = webview_window.as_ref().window();
+
+        handle_window_event(&window, &WindowEvent::Focused(false));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+        handle_window_event(&window, &WindowEvent::Moved(PhysicalPosition::new(10, 20)));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        handle_window_event(&window, &WindowEvent::Resized(PhysicalSize::new(800, 600)));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+    }
+
+    // `markpad a.md b.md` with Markpad already running arrives here instead of
+    // at `send_markdown_path`. Taking only the first path opened a.md alone,
+    // and emitting straight to a window lost the files that arrived before
+    // the launch window listened (Explorer launches one process per file).
+    #[test]
+    fn a_second_launch_hands_every_argv_path_to_the_running_window() {
+        let app = tauri::test::mock_app();
+        app.manage(AppState::new());
+        let args = ["markpad", "a.md", "b.md"].map(String::from).to_vec();
+        handle_single_instance(app.handle(), args, "/n".into());
+        let pending = lock_recover(&app.state::<AppState>().startup_files).clone();
+        let expected =
+            ["a.md", "b.md"].map(|name| Path::new("/n").join(name).display().to_string());
+        assert_eq!(pending, Some(expected.to_vec()));
     }
 
     fn idle_watcher() -> RecommendedWatcher {
