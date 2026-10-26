@@ -60,14 +60,16 @@ encoding_rs = "0.8"
 specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive"] }
 
-[target.'cfg(not(windows))'.dev-dependencies]
-# Mock runtime (`tauri::test`) for tests that need an AppHandle or a window.
-# Not on Windows: see `setup_tests` in app.rs.
-tauri = { version = "2", features = ["test"] }
+[dev-dependencies]
 # The TypeScript exporter, for the `export_bindings` test only: a release build
 # carries the commands and events, never the code that writes bindings.ts.
 specta-typescript = "=0.0.13"
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+
+[target.'cfg(not(windows))'.dev-dependencies]
+# Mock runtime (`tauri::test`) for tests that need an AppHandle or a window.
+# Not on Windows: see `setup_tests` in app.rs.
+tauri = { version = "2", features = ["test"] }
 
 
 
