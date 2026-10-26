@@ -15,6 +15,8 @@ import { language as markdownLanguage } from 'monaco-editor/esm/vs/basic-languag
 
 import { getSupportedLanguages, type LanguageCode, t, type Translation, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
+import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
+import { readSource } from './sourceTree.js';
 import { editorLanguageFor } from '../src/lib/utils/editorLanguage.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { createdEditorOptions, editorOptionsFromSettings, editorReadOnly, updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
@@ -1547,5 +1549,39 @@ describe('editor mount', () => {
 		assert.deepEqual(events, ['create']);
 		cleanup();
 		assert.deepEqual(events, ['create', 'teardown']);
+	});
+});
+
+// The build-time patch to Monaco that stops the IME composition overlay from
+// jittering (#724). See the header of monacoImePatch.mjs for the mechanism.
+//
+// The patch runs against the INSTALLED Monaco file, which is input here, not a
+// source contract: the two source lines the patch anchors on must still exist
+// exactly once in the file it targets. A Monaco bump that moves or
+// rewrites either line — including the bump that finally carries the upstream
+// fix, microsoft/vscode#333909 — turns this red, which is the signal to delete
+// the patch rather than let it silently stop applying.
+describe('Monaco IME patch', () => {
+	// Through `readSource`: the anchors are written against `\n`, and it is what
+	// keeps them matching on a Windows checkout.
+	const textAreaSource = readSource(
+		new URL(`../node_modules/monaco-editor/esm/vs/editor/browser/controller/editContext/textArea/${MONACO_TEXTAREA_FILE}`, import.meta.url),
+	);
+
+	test('the patch turns both conditions into "unless a screen reader is attached"', () => {
+		const patched = patchMonacoTextAreaForIme(textAreaSource);
+		for (const { from, to } of MONACO_IME_PATCH) {
+			assert.equal(patched.includes(from), false, 'the original condition is gone');
+			assert.equal(patched.split(to).length - 1, 1, 'the replacement is there once');
+		}
+		// Nothing else moved: the patch is those two lines and no more.
+		assert.equal(patched.length, textAreaSource.length + MONACO_IME_PATCH.reduce((n, p) => n + p.to.length - p.from.length, 0));
+	});
+
+	test('a Monaco that no longer has the anchors fails the build instead of shipping unpatched', () => {
+		assert.throws(
+			() => patchMonacoTextAreaForIme(textAreaSource.replace(MONACO_IME_PATCH[0].from, '')),
+			/expected exactly one match/,
+		);
 	});
 });

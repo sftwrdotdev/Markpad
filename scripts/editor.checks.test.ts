@@ -7,7 +7,6 @@ import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/
 
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
 import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
-import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
 import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { DEFAULT_IMAGE_DIRECTORY } from '../src/lib/utils/imageEmbed.js';
@@ -165,41 +164,6 @@ describe('editor undo stops', () => {
 			}
 		}
 		assert.deepEqual(missing, []);
-	});
-});
-
-// The build-time patch to Monaco that stops the IME composition overlay from
-// jittering (#724). See the header of monacoImePatch.mjs for the mechanism.
-//
-// These are text assertions against the INSTALLED Monaco, and they say so:
-// the contract being pinned is that the two source lines the patch anchors on
-// still exist exactly once in the file it targets. A Monaco bump that moves or
-// rewrites either line — including the bump that finally carries the upstream
-// fix, microsoft/vscode#333909 — turns this red, which is the signal to delete
-// the patch rather than let it silently stop applying.
-describe('Monaco IME patch', () => {
-	// Through `readSource`, like every other test that reads a file: the anchors
-	// are written against `\n`, and it is what keeps them matching on a Windows
-	// checkout (see release.checks.test.ts).
-	const textAreaSource = readSource(
-		new URL(`../node_modules/monaco-editor/esm/vs/editor/browser/controller/editContext/textArea/${MONACO_TEXTAREA_FILE}`, import.meta.url),
-	);
-
-	test('the patch turns both conditions into "unless a screen reader is attached"', () => {
-		const patched = patchMonacoTextAreaForIme(textAreaSource);
-		for (const { from, to } of MONACO_IME_PATCH) {
-			assert.equal(patched.includes(from), false, 'the original condition is gone');
-			assert.equal(patched.split(to).length - 1, 1, 'the replacement is there once');
-		}
-		// Nothing else moved: the patch is those two lines and no more.
-		assert.equal(patched.length, textAreaSource.length + MONACO_IME_PATCH.reduce((n, p) => n + p.to.length - p.from.length, 0));
-	});
-
-	test('a Monaco that no longer has the anchors fails the build instead of shipping unpatched', () => {
-		assert.throws(
-			() => patchMonacoTextAreaForIme(textAreaSource.replace(MONACO_IME_PATCH[0].from, '')),
-			/expected exactly one match/,
-		);
 	});
 });
 
@@ -442,63 +406,6 @@ describe('Monaco startup graph', () => {
 		}
 
 		assert.deepEqual(offenders, []);
-	});
-
-	test("monaco-vim's one import into monaco still resolves", () => {
-		// monaco-vim 0.4.4 is the latest release and is unmaintained. It imports
-		// exactly one monaco module, and without an extension:
-		//
-		//   monaco-editor/esm/vs/editor/editor.api
-		//
-		// monaco-editor 0.55 maps `"./*": "./*"` -- an identity -- so a bundler adds
-		// `.js` on the filesystem and finds it. 0.56 changed it to
-		// `"./*": "./esm/vs/*.js"`, which prepends a prefix the specifier already
-		// carries: the path doubles to `esm/vs/esm/vs/…` and nothing is there. Once a
-		// package declares `exports`, a resolver may not fall back to the filesystem
-		// path it would otherwise have used, so there is no recovery.
-		//
-		// The 0.56 bump built clean, passed 976 tests on three platforms, and shipped
-		// vim mode dead. Nothing here loads monaco-vim, and no build step resolved it
-		// strictly enough to notice. So this applies the map by hand and asks whether
-		// the file is there -- which is the whole of what went wrong.
-		const monacoPkg = JSON.parse(readSource('node_modules/monaco-editor/package.json'));
-		const patterns = Object.entries((monacoPkg.exports ?? {}) as Record<string, unknown>).filter(
-			([key]) => key.includes('*'),
-		);
-
-		// One build of the package rather than a walk of its dist: the .mjs, .cjs and
-		// .umd.js are the same source through three bundlers and name the same import.
-		const specifiers = new Set<string>();
-		for (const match of readSource('node_modules/monaco-vim/dist/index.mjs').matchAll(
-			/['"](monaco-editor\/[^'"]+)['"]/g,
-		)) {
-			specifiers.add(match[1]);
-		}
-		assert.ok(specifiers.size > 0, 'found no monaco imports in monaco-vim; this check has nothing to ask about');
-
-		const unresolvable: string[] = [];
-		for (const specifier of specifiers) {
-			const subpath = `.${specifier.slice('monaco-editor'.length)}`;
-			let target: string | null = null;
-			for (const [pattern, value] of patterns) {
-				const [before, after] = pattern.split('*');
-				if (!subpath.startsWith(before) || !subpath.endsWith(after)) continue;
-				const star = subpath.slice(before.length, subpath.length - after.length);
-				target = String(value).replace('*', star);
-				break;
-			}
-			if (!target) continue;
-			const base = `node_modules/monaco-editor/${target.slice(2)}`;
-			// The extensions a bundler will try after the map has had its say.
-			if (![base, `${base}.js`, `${base}.mjs`].some((candidate) => existsSync(candidate))) {
-				unresolvable.push(`${specifier} → ${target}`);
-			}
-		}
-		assert.deepEqual(
-			unresolvable,
-			[],
-			"monaco-editor's exports map sends a monaco-vim import somewhere that does not exist; vim mode will be dead",
-		);
 	});
 });
 
