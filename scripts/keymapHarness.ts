@@ -8,7 +8,6 @@ import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseAp
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { viewerCommandTable, type ViewerCommandHost } from '../src/lib/utils/viewerCommands.js';
 import { editorActions, editorKeyCommands, type EditorActionDeps, type EditorKeyCommand } from '../src/lib/utils/editorActions.js';
-import { readSource, functionSource } from './sourceTree.js';
 
 /*
  * RUNNING the app's two keyboard layers, so tests can ask what a chord DOES.
