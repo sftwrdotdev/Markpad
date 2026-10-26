@@ -324,6 +324,36 @@ describe('startup restore keeps the session', () => {
 		assert.equal(a.rawContent, '# a');
 	});
 
+	test('the tab on screen is read once even if activation runs during the breadcrumb write', async () => {
+		// Restore takes the read before its first await. Otherwise the activation
+		// effect, re-running while the breadcrumb is on its way to disk, finds the
+		// tab still unread and starts a second read of it.
+		reset(['/a.md', '/b.md'], { '/a.md': '# a' });
+		let release!: () => void;
+		const written = new Promise<void>((resolve) => (release = resolve));
+		let held = false;
+		const real = (window as any).__TAURI_INTERNALS__.invoke;
+		(window as any).__TAURI_INTERNALS__.invoke = (cmd: string, args: any) => {
+			if (!held && cmd === 'save_restore_progress' && JSON.parse(args.json).pending === '/a.md') {
+				held = true;
+				return written.then(() => real(cmd, args));
+			}
+			return real(cmd, args);
+		};
+		try {
+			const restoring = makeSession().restore();
+			while (!held) await flush();
+			await documents.readActiveIfUnread();
+			release();
+			await restoring;
+		} finally {
+			(window as any).__TAURI_INTERNALS__.invoke = real;
+		}
+
+		assert.deepEqual(readsOf(), ['/a.md']);
+		assert.equal(tabManager.activeTab?.rawContent, '# a');
+	});
+
 	test('an unread tab cannot be saved over its file', async () => {
 		reset(['/a.md', '/b.md']);
 		await makeSession().restore();
@@ -693,6 +723,37 @@ describe('startup restore keeps the session', () => {
 		// the list of every document the user had open stayed on disk indefinitely
 		// — including for the user who turned the setting off to stop that.
 		assert.equal(storedSnapshot, null, 'the file on the Rust side goes too');
+	});
+
+	// An older build restoring a v2 snapshot it cannot understand ends up with
+	// undefined tab content, and auto-save writes a stale buffer over the wrong
+	// file. So nothing is left in the keys an older build reads.
+	test('a saved window leaves nothing in localStorage for a legacy build to misread', async () => {
+		reset(['/a.md', '/b.md']);
+		const session = makeSession();
+		await session.restore();
+		localStorage.setItem(WINDOW_STATE_KEY, 'stale');
+		localStorage.setItem(LEGACY_STATE_KEY, 'stale');
+		storedSnapshot = null;
+
+		await session.persistState(true);
+
+		assert.deepEqual(persistedPaths(), ['/a.md', '/b.md'], 'the snapshot goes to the Rust side');
+		assert.equal(localStorage.getItem(WINDOW_STATE_KEY), null);
+		assert.equal(localStorage.getItem(LEGACY_STATE_KEY), null);
+	});
+
+	test('turning session restore off clears the localStorage keys as well as the file', async () => {
+		reset(['/a.md']);
+		restoreEnabled = false;
+		localStorage.setItem(WINDOW_STATE_KEY, 'stale');
+		localStorage.setItem(LEGACY_STATE_KEY, 'stale');
+
+		await makeSession().restore();
+
+		assert.equal(storedSnapshot, null);
+		assert.equal(localStorage.getItem(WINDOW_STATE_KEY), null);
+		assert.equal(localStorage.getItem(LEGACY_STATE_KEY), null);
 	});
 
 	test('a snapshot an older build left in localStorage is still restored, then migrated', async () => {
