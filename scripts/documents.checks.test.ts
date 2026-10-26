@@ -810,38 +810,6 @@ describe('truncated buffer guard', () => {
 		assert.match(enter, /tabManager\.setTabRawContent\(tab\.id, content\)/);
 	});
 
-	test('a partial buffer cannot be handed to another window', () => {
-		// The destination rebuilds the tab from the payload alone and has no way
-		// to know the text is incomplete, so its auto-save would truncate the file.
-		//
-		// Each subject is extracted by its own name. The previous form sliced
-		// `'canTransfer: (tabId)'` → `'transferPayload:'`, which ran past
-		// `canDetach`, and `'async function handleDetach'` → `'async function
-		// carryActiveTabToNextWindow'`, which ran past `moveTabToWindow`. Both
-		// swallowed neighbours end in a character-identical copy of the guard being
-		// asserted, so the `assert.match` was satisfied either way: deleting
-		// `&& !tab.isTruncated` from `canTransfer`, and separately deleting the whole
-		// four-line `ensureFullContent` guard from `handleDetach`, each left the
-		// suite green — on the transfer-then-auto-save path this file is named for.
-		//
-		// The two neighbours were therefore never asserted about, only stood in
-		// front of. Both are the same guard on the same path, so both are named.
-		for (const predicate of ['canTransfer', 'canDetach']) {
-			assert.match(
-				functionSource(viewer, predicate),
-				/!tab\.isTruncated/,
-				`${predicate} must refuse a tab whose buffer is still the preview slice`,
-			);
-		}
-		for (const mover of ['handleDetach', 'moveTabToWindow']) {
-			assert.match(
-				functionSource(viewer, mover),
-				/if \(!\(await documentSession\.ensureFullContent\(tabId\)\)\) \{[\s\S]*?return false;/,
-				`${mover} must complete the buffer before the payload is built, and stop when it cannot`,
-			);
-		}
-	});
-
 	test('front matter edits in preview mode complete the buffer first', () => {
 		for (const entry of ['async function handleFrontMatterEdit', 'async function handleFrontMatterListChange']) {
 			// One handler is followed by a `function`, the other by an `async

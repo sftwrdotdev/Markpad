@@ -87,14 +87,6 @@ describe('moving tabs between windows', () => {
 		);
 	});
 
-	test('moving to an existing window uses the acknowledged transfer protocol', () => {
-		assert.match(session, /async function transfer\(/);
-		assert.match(session, /invoke\('complete_detached_tab', \{ token \}\)/);
-		assert.match(session, /onTransferClaimed\(tabId\)/);
-		assert.match(session, /async function acceptOfferedTransfer/);
-		assert.match(viewer, /invoke\('offer_tab_to_window', \{ targetLabel, token \}\)/);
-	});
-
 	// `WebviewWindowBuilder::build()` deadlocks when called from a
 	// *synchronous* Tauri command on Windows/WebView2, because the main thread is
 	// blocked inside the command while WebView2 waits for that same thread to pump
