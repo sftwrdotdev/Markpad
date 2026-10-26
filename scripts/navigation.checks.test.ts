@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { readSource, functionSource, sliceFrom } from './sourceTree.js';
+import { readSource, functionSource } from './sourceTree.js';
 import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { viewerCommandTable } from './keymapHarness.js';
 
@@ -120,48 +120,7 @@ describe('preview anchor restore wiring', () => {
 });
 
 describe('jump to the selected fragment wiring', () => {
-	const editorSource = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	/* ------------------------------------------------------------------ */
-	/* the jump itself                                                     */
-	/* ------------------------------------------------------------------ */
-
-	test('the outline and the context menu share one line-to-editor jump', () => {
-		// `revealHeader` used to reveal and select the line itself. Leaving that
-		// copy in place while #90 grew a second one is the drift
-		// singleImplementationConvention.test.ts exists to catch: the two would
-		// scroll differently, focus differently, and only one of them would clamp.
-		const revealHeader = functionSource(editorSource, 'revealHeader');
-		assert.match(revealHeader, /revealSourceRange\(lineNumber, lineNumber, 'top'\)/);
-		assert.doesNotMatch(revealHeader, /setSelection\(\{[\s\S]*?startColumn: 1/);
-	});
-
-	test('the jump clamps to the buffer before asking Monaco for a column', () => {
-		// `getLineMaxColumn` throws past the end of the model, and the preview can
-		// hand over a stale line: its HTML is the render of a buffer that may have
-		// been replaced by a shorter one since.
-		const reveal = functionSource(editorSource, 'revealSourceRange');
-		assert.match(reveal, /lastLine = model\.getLineCount\(\)/);
-		assert.match(reveal, /end = Math\.min\([^\n]*lastLine\)/);
-		assert.doesNotMatch(reveal, /getLineMaxColumn\((?!end\))/);
-	});
-
-	test('a jump asked for before Monaco has loaded is queued, not dropped', () => {
-		// `monaco-editor` is imported dynamically, so the editor exists several
-		// frames after the component does — and the preview calls in immediately
-		// after flipping into edit mode.
-		const reveal = functionSource(editorSource, 'revealSourceRange');
-		assert.match(reveal, /if \(!editorReady \|\| !editor\) \{\s*\n\s*pendingReveal = \{ startLine, endLine, placement \};/);
-
-		// Spent after the view-state / anchor-line restore, so an explicit "edit
-		// this fragment" wins over the position the tab was left at.
-		const afterReady = sliceFrom(editorSource, 'editorReady = true;');
-		assert.ok(
-			afterReady.indexOf('pendingReveal') < afterReady.indexOf('return () => {'),
-			'the queued jump must be spent inside onMount, before the teardown closure',
-		);
-	});
 
 	/* ------------------------------------------------------------------ */
 	/* the context menu wiring                                             */

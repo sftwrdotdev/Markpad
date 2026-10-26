@@ -193,7 +193,7 @@ describe('editor option wiring', () => {
 		assert.ok(measured !== -1, 'the wrapping for a proportional font is applied in onMount');
 		assert.ok(measured < restored, 'and before the view state is restored');
 		assert.ok(
-			editor.indexOf('editorReady = true;') < editor.indexOf('if (pendingSync) {'),
+			editor.indexOf('editorReady = true;') < editor.indexOf('jumps.spendPending();'),
 			'the pending sync is spent after both',
 		);
 	});

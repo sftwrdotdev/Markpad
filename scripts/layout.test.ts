@@ -7,6 +7,7 @@ import { getScrollSyncPositionFromPixels, getScrollTopForSyncPosition, type Scro
 import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
 import { activeTocIdForLine, sourceLineOf, type TocLineEntry } from '../src/lib/utils/tocFollow.js';
 import { isTocOverhanging, isTocOverPreview } from '../src/lib/utils/tocOverlay.ts';
+import { bindScrollSync } from '../src/lib/utils/editorJumps.js';
 
 describe('scroll sync section mapping', () => {
 	// These tests import and run the mapping. The previous scroll-sync tests read
@@ -704,5 +705,30 @@ describe('outline overlay placement', () => {
 			isTocOverhanging({ ...DEFAULTS, ...reading, tocSide: 'left', viewerWidth: 600, tocWidth: 60 }),
 			true,
 		);
+	});
+});
+
+describe('scroll sync input', () => {
+	test('typing does not initiate split scroll synchronization', () => {
+		// The editor-to-preview sync listens to scrolling. A caret move by itself,
+		// which every keystroke is, must not drag the other pane along.
+		const listeners: Record<string, ((e: unknown) => void)[]> = { scroll: [], cursor: [] };
+		const on = (kind: string) => (listener: (e: unknown) => void) => {
+			listeners[kind].push(listener);
+			return { dispose: () => listeners[kind].splice(listeners[kind].indexOf(listener), 1) };
+		};
+		const editor = { onDidScrollChange: on('scroll'), onDidChangeCursorPosition: on('cursor') };
+		let synced = 0;
+		const binding = bindScrollSync(editor as never, () => synced++);
+
+		for (const listener of listeners.cursor) listener({ position: { lineNumber: 2, column: 4 } });
+		for (const listener of listeners.scroll) listener({ scrollTopChanged: false, scrollLeftChanged: true });
+		assert.equal(synced, 0);
+
+		for (const listener of listeners.scroll) listener({ scrollTopChanged: true });
+		assert.equal(synced, 1);
+
+		binding.dispose();
+		assert.deepEqual(listeners, { scroll: [], cursor: [] });
 	});
 });

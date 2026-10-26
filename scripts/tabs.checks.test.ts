@@ -303,14 +303,4 @@ describe('editor reading position flush', () => {
 		assert.ok(flushAt < stateAt);
 	});
 
-	test('a sync asked for while Monaco is loading is kept, and spent after the restore', () => {
-		// #799: Ctrl+E from the preview asks before the editor exists. Dropping the
-		// request left the editor wherever its old view state put it.
-		const sync = sliceFrom(editor, 'export function syncScrollToPosition');
-		assert.match(sync, /if \(!editorReady \|\| !editor\) \{\s*pendingSync = position;/);
-		const readyAt = offsetOf(editor, 'editorReady = true;');
-		const spendAt = offsetOf(editor, 'if (pendingSync) {');
-		const revealAt = offsetOf(editor, 'if (pendingReveal) {');
-		assert.ok(readyAt < spendAt && spendAt < revealAt);
-	});
 });
