@@ -772,14 +772,18 @@ pub async fn get_system_fonts() -> Vec<String> {
 #[tauri::command]
 pub fn self_update_supported(app: AppHandle) -> bool {
     #[cfg(target_os = "linux")]
-    {
-        app.env().appimage.is_some()
-    }
+    let is_appimage = app.env().appimage.is_some();
     #[cfg(not(target_os = "linux"))]
-    {
+    let is_appimage = {
         let _ = app;
-        true
-    }
+        false
+    };
+    self_update_supported_for(is_appimage)
+}
+
+/// Only Linux is gated: there only an AppImage can be replaced in place.
+fn self_update_supported_for(is_appimage: bool) -> bool {
+    !cfg!(target_os = "linux") || is_appimage
 }
 
 #[tauri::command]
@@ -1475,5 +1479,18 @@ pub(crate) mod tests {
         }
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_linux_gates_self_update() {
+        // Windows runs the downloaded NSIS installer and macOS replaces the
+        // bundle, so neither may be gated; on Linux only an AppImage updates.
+        if cfg!(target_os = "linux") {
+            assert!(self_update_supported_for(true));
+            assert!(!self_update_supported_for(false));
+        } else {
+            assert!(self_update_supported_for(false));
+            assert!(self_update_supported_for(true));
+        }
     }
 }

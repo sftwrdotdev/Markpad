@@ -9,15 +9,23 @@ import { describe, test, vi } from 'vitest';
 // updater exits inside `downloadAndInstall`, `relaunch()` requests an exit
 // elsewhere — so CloseRequested never fires and nothing reviews unsaved tabs or
 // writes the restore snapshot unless the store asks for it first.
-const { log, windows } = vi.hoisted(() => ({ log: [] as string[], windows: [{ label: 'main' }] }));
+const { log, windows, updater } = vi.hoisted(() => ({
+	log: [] as string[],
+	windows: [{ label: 'main' }],
+	updater: { selfUpdateSupported: true, checks: 0 },
+}));
 
 vi.mock('@tauri-apps/api/core', () => ({
-	invoke: async (cmd: string) => (cmd === 'list_viewer_windows' ? windows : true),
+	invoke: async (cmd: string) =>
+		cmd === 'list_viewer_windows' ? windows : cmd === 'self_update_supported' ? updater.selfUpdateSupported : true,
 }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: 'main' }) }));
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: async () => '2.7.6' }));
 vi.mock('@tauri-apps/plugin-updater', () => ({
-	check: async () => ({ version: '2.7.7', body: '', downloadAndInstall: async () => void log.push('install') }),
+	check: async () => {
+		updater.checks += 1;
+		return { version: '2.7.7', body: '', downloadAndInstall: async () => void log.push('install') };
+	},
 }));
 vi.mock('@tauri-apps/plugin-process', () => ({
 	relaunch: async () => {
@@ -85,5 +93,28 @@ describe('an update settles the window before it installs', () => {
 		await updateStore.startDownload(settleAnswering(true));
 		assert.deepEqual(log, ['settled', 'install', 'relaunch'], 'once it has closed, the install goes ahead');
 		assert.equal(updateStore.otherWindows.length, 0);
+	});
+});
+
+describe('package-managed installs', () => {
+	test('the updater asks whether it can install before it checks', async () => {
+		// #570. A `.deb`, `.rpm` or snap install passes the check and then fails at
+		// install time. The question is asked first, so such an install is never
+		// offered an update, and the check is not even made.
+		updateStore.close();
+		updater.checks = 0;
+		updater.selfUpdateSupported = false;
+		try {
+			await updateStore.runCheck();
+			assert.equal(updateStore.phase, 'package-managed');
+			assert.equal(updater.checks, 0);
+		} finally {
+			updater.selfUpdateSupported = true;
+			updateStore.close();
+		}
+
+		await updateStore.runCheck();
+		assert.equal(updateStore.phase, 'available', 'a self-updating install still checks');
+		assert.equal(updater.checks, 1);
 	});
 });
