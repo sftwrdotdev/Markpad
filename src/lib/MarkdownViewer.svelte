@@ -87,6 +87,7 @@ import {
 	updateFrontMatterField,
 	type FrontMatterField,
 } from './utils/frontMatter.js';
+import { FrontMatterFieldState } from './utils/frontMatterFieldState.svelte.js';
 import {
 	anchorIdCandidates,
 	getMarkdownLinkTarget as getRelativeMarkdownTarget,
@@ -324,10 +325,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let currentFile = $derived(tabManager.activeTab?.path ?? '');
 	let frontMatterPanelKey = $derived(currentFile || tabManager.activeTabId || 'untitled');
 	let frontMatterCollapsedByKey = $state<Record<string, boolean>>({});
-	let frontMatterEditErrors = $state<Record<string, string>>({});
-	let frontMatterTagDrafts = $state<Record<string, string>>({});
-	let frontMatterTagEditIndexes = $state<Record<string, number | null>>({});
-	let frontMatterTagEditDrafts = $state<Record<string, string>>({});
+	const frontMatterFields = new FrontMatterFieldState(() => frontMatterPanelKey);
 	let isFrontMatterCollapsed = $derived(frontMatterCollapsedByKey[frontMatterPanelKey] ?? true);
 	// An untitled tab is Markdown until saved under another name; see `editorLanguageFor`.
 	let isMarkdown = $derived(currentFile === '' || hasMarkdownLinkExtension(currentFile));
@@ -1144,10 +1142,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		return `frontmatter-${key.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 	}
 
-	function frontMatterFieldStateKey(field: FrontMatterField) {
-		return `${frontMatterPanelKey}:${field.key}`;
-	}
-
 	function tagsEqual(left: string[], right: string[]) {
 		return left.length === right.length && left.every((value, index) => value === right[index]);
 	}
@@ -1164,7 +1158,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	function clearFrontMatterEditError(field: FrontMatterField) {
-		delete frontMatterEditErrors[frontMatterFieldStateKey(field)];
+		frontMatterFields.clearEditError(field);
 	}
 
 	// `nextValue` runs inside the try so a parse error lands on the field.
@@ -1175,10 +1169,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			clearFrontMatterEditError(field);
 			await renderTabPreviewFromRaw(tab);
 		} catch (error) {
-			frontMatterEditErrors = {
-				...frontMatterEditErrors,
-				[frontMatterFieldStateKey(field)]: String(error),
-			};
+			frontMatterFields.setEditError(field, error);
 		}
 	}
 
@@ -1196,42 +1187,35 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	function getFrontMatterTagDraft(field: FrontMatterField) {
-		return frontMatterTagDrafts[frontMatterFieldStateKey(field)] ?? '';
+		return frontMatterFields.tagDraft(field);
 	}
 
 	function setFrontMatterTagDraft(field: FrontMatterField, value: string) {
-		frontMatterTagDrafts[frontMatterFieldStateKey(field)] = value;
-		clearFrontMatterEditError(field);
+		frontMatterFields.setTagDraft(field, value);
 	}
 
 	function clearFrontMatterTagDraft(field: FrontMatterField) {
-		delete frontMatterTagDrafts[frontMatterFieldStateKey(field)];
+		frontMatterFields.clearTagDraft(field);
 	}
 
 	function getFrontMatterTagEditIndex(field: FrontMatterField) {
-		return frontMatterTagEditIndexes[frontMatterFieldStateKey(field)] ?? null;
+		return frontMatterFields.tagEditIndex(field);
 	}
 
 	function getFrontMatterTagEditDraft(field: FrontMatterField, fallback: string) {
-		return frontMatterTagEditDrafts[frontMatterFieldStateKey(field)] ?? fallback;
+		return frontMatterFields.tagEditDraft(field, fallback);
 	}
 
 	function setFrontMatterTagEditDraft(field: FrontMatterField, value: string) {
-		frontMatterTagEditDrafts[frontMatterFieldStateKey(field)] = value;
-		clearFrontMatterEditError(field);
+		frontMatterFields.setTagEditDraft(field, value);
 	}
 
 	function startFrontMatterTagEdit(field: FrontMatterField, index: number, value: string) {
-		const key = frontMatterFieldStateKey(field);
-		frontMatterTagEditIndexes[key] = index;
-		frontMatterTagEditDrafts[key] = value;
-		clearFrontMatterEditError(field);
+		frontMatterFields.startTagEdit(field, index, value);
 	}
 
 	function clearFrontMatterTagEdit(field: FrontMatterField) {
-		const key = frontMatterFieldStateKey(field);
-		delete frontMatterTagEditIndexes[key];
-		delete frontMatterTagEditDrafts[key];
+		frontMatterFields.clearTagEdit(field);
 	}
 
 	async function handleFrontMatterListChange(field: FrontMatterField, nextItems: string[]) {
@@ -4094,8 +4078,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 															{:else}
 																<code>{field.displayValue}</code>
 															{/if}
-															{#if frontMatterEditErrors[frontMatterFieldStateKey(field)]}
-																<div class="frontmatter-field-error" role="status">{frontMatterEditErrors[frontMatterFieldStateKey(field)]}</div>
+															{#if frontMatterFields.editError(field)}
+																<div class="frontmatter-field-error" role="status">{frontMatterFields.editError(field)}</div>
 															{/if}
 														</div>
 													{/each}
