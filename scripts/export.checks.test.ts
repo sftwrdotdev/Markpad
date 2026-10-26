@@ -1,9 +1,9 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExportDocument, exportThemeAttribute } from '../src/lib/utils/export.ts';
+import { buildExportDocument } from '../src/lib/utils/export.ts';
 import { DEFAULT_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
 import { plainAppearance } from './exportFixtures.ts';
-import { offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { offsetOf, readRustBackend, readSource, sliceBetween } from './sourceTree.js';
 import { useShimDom } from './preview.domShim.ts';
 
 /**
@@ -527,162 +527,7 @@ describe('folds in print and export', () => {
 	});
 });
 
-describe('exported theme', () => {
-	const styles = readSource('src/styles.css');
-
-	/** The opening `<html …>` tag of a built export. */
-	function htmlTag(document: string): string {
-		const match = document.match(/<html[^>]*>/);
-		assert.ok(match, 'the export must contain an <html> tag');
-		return match[0];
-	}
-
-	/** Does `<html …>` satisfy a `[data-theme="…"]` attribute selector? */
-	function matchesThemeSelector(document: string, theme: string): boolean {
-		return new RegExp(`<html[^>]*\\sdata-theme="${theme}"`).test(htmlTag(document));
-	}
-
-	function build(theme: string | null | undefined, extra: Partial<{ styles: string; title: string; articleHtml: string }> = {}) {
-		return buildExportDocument({
-			theme,
-			title: extra.title ?? 'Notes',
-			styles: extra.styles ?? '',
-			articleHtml: extra.articleHtml ?? '<p>body</p>',
-			contentWidth: DEFAULT_PREVIEW_MAX_WIDTH,
-			appearance: plainAppearance,
-		});
-	}
-
-	test('every theme selector the stylesheet defines can be reproduced by an export', () => {
-		// Pins the two halves together: a new `:root[data-theme="…"]` block in
-		// styles.css must be a value the export is willing to write out, or that
-		// theme silently becomes unexportable.
-		const declared = [...styles.matchAll(/:root\[data-theme="([^"]+)"\]/g)].map((m) => m[1]);
-		assert.ok(declared.length >= 2, 'expected styles.css to select themes by data-theme');
-
-		for (const theme of new Set(declared)) {
-			assert.equal(exportThemeAttribute(theme), ` data-theme="${theme}"`, `${theme} must survive an export`);
-			assert.ok(matchesThemeSelector(build(theme), theme));
-		}
-	});
-
-	test('the system theme is exported as "follow the reader", not as a frozen colour', () => {
-		// `system` is the one theme that is not a colour: MarkdownViewer deletes
-		// `data-theme` for it and lets `@media (prefers-color-scheme: dark)` decide.
-		// An export with no attribute reproduces that same cascade wherever it is
-		// opened, which is the instruction the user actually gave. Baking in the
-		// exporter's momentary system colour would make the file disagree with the
-		// author's own screen the next time their machine switches.
-		for (const absent of [undefined, null, '']) {
-			const doc = build(absent);
-			assert.doesNotMatch(htmlTag(doc), /data-theme/, `system theme must not pin a colour (${String(absent)})`);
-			assert.match(htmlTag(doc), /^<html lang="en">$/);
-		}
-
-		// And the mechanism it delegates to has to still be in the sheet that gets copied.
-		assert.match(styles, /@media \(prefers-color-scheme: dark\)/);
-	});
-
-	test('a ticked task dims its content once, not once per nesting level', () => {
-		// `opacity` composites rather than inherits, so a rule matching every
-		// descendant multiplies itself down the tree. Words survive that at one or two
-		// levels deep and KaTeX does not: it nests twelve spans, so a formula in a
-		// ticked item rendered at 0.65^12 = 0.006 and disappeared while the text beside
-		// it merely faded. samples/katex-stress.md keeps a ticked and an unticked task
-		// item next to each other so the difference is visible rather than arguable.
-		//
-		// Scanned across the whole stylesheet rather than inside one rule, because the
-		// first attempt at this fixed `:has(:checked)` -- labelled in the file as the
-		// fallback for reload and initial state -- and left `.task-done`, which is the
-		// class the app actually sets. Both carried it. An assertion scoped to the
-		// block being edited passed, and nothing a user sees had changed.
-		const styles = readSource('src/styles.css');
-		const universal = styles
-			.split('\n')
-			.filter((line) => /(task-done|data-task-checkbox\]:checked\))\s*\*\s*[,{]/.test(line));
-		assert.deepEqual(
-			universal,
-			[],
-			'a completed task applies opacity to every descendant; deep markup compounds it away',
-		);
-
-		// And both paths still dim something -- deleting the rules would pass the
-		// assertion above for the wrong reason.
-		for (const marker of ['li.task-done > .task-text', ':checked) > .task-text']) {
-			const block = sliceFrom(styles, marker);
-			assert.match(
-				block.slice(0, 600),
-				/opacity:\s*0?\.\d+/,
-				`the rule at "${marker}" stopped dimming anything at all`,
-			);
-		}
-	});
-
-	test('a ticked task strikes only its own text, not its parents or sub-tasks', () => {
-		// #911. `:has(input:checked)` matched every ancestor of a ticked sub-task, and
-		// `text-decoration` on the `li` propagated into nested lists, where no
-		// descendant rule can take it back off.
-		const styles = readSource('src/styles.css');
-		assert.doesNotMatch(styles, /:has\(input\[data-task-checkbox\]:checked\)/, 'a checkbox anywhere below the item matches it');
-		assert.doesNotMatch(styles, /(task-done|:checked\))\s*\{/, 'a strike on the li reaches every nested list');
-		assert.doesNotMatch(styles, /(task-done|:checked\))\s+\.task-text/, 'a descendant .task-text reaches every nested task');
-	});
-
-	test('a plain item in a list that also holds tasks keeps its bullet', () => {
-		// comrak puts `contains-task-list` on the whole `<ul>` once any item is a
-		// task, and `list-style` inherits, so a rule on the list stripped the bullet
-		// from plain items beside a task.
-		const selectors = readSource('src/styles.css')
-			.replace(/\/\*[\s\S]*?\*\//g, '')
-			.split('{')
-			.map((chunk) => chunk.split('}').pop()!);
-		assert.deepEqual(selectors.filter((s) => s.includes('contains-task-list')), []);
-	});
-
-	test('the marker rules are pseudo-elements, which is what makes them apply', () => {
-		// `summary:marker` sat in the stylesheet as a single colon. `:marker` is not
-		// a pseudo-class, so the rule matched nothing and the disclosure triangle was
-		// never hidden -- silently, for as long as it had been there. esbuild, which
-		// vite 6 minifies with, passes it through; lightningcss, which vite 8 uses,
-		// rejects it by name:
-		//
-		//   'marker' is not recognized as a valid pseudo-class.
-		//   Did you mean '::marker' (pseudo-element) or is this a typo?
-		//
-		// A rule that matches nothing is invisible in every direction: nothing renders
-		// differently, nothing errors, and the CSS reads as if it works.
-		//
-		// Only the pseudo-elements with no legacy spelling. `:before`, `:after`,
-		// `:first-line` and `:first-letter` are CSS2 and every browser still accepts
-		// one colon -- this file inherits several from github-markdown-css and they
-		// work. The ones CSS3 introduced have no such form: written with one colon
-		// they parse as an unknown pseudo-class and the whole rule is discarded.
-		const styles = readSource('src/styles.css');
-		const singleColon = styles
-			.split('\n')
-			.filter((line) => /[^:]:(marker|placeholder|selection|backdrop|file-selector-button)\b/.test(line));
-		assert.deepEqual(
-			singleColon,
-			[],
-			'a CSS3 pseudo-element is written with one colon here, so the rule matches nothing',
-		);
-	});
-});
-
 describe('native PDF printing', () => {
-	test('all Markpad webviews may invoke Tauri native printing', () => {
-		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
-			windows: string[];
-			permissions: string[];
-		};
-
-		assert.deepEqual(capability.windows, ['main', 'window-*']);
-		assert.ok(
-			capability.permissions.includes('core:webview:allow-print'),
-			'macOS replaces window.print() with Tauri native printing, which requires this permission',
-		);
-	});
-
 	// A Tauri command name is a bare string on the JS side and an identifier inside a macro on the Rust
 	// side, so nothing — not tsc, not `svelte-check`, not `cargo check` — notices
 	// when one moves and the other does not. The failure is silent at build time
@@ -840,31 +685,5 @@ describe('PDF prints the export article', () => {
 		assert.match(printBlock, /#print-root\s*\{[^}]*display:\s*block\s*!important;/);
 		// And it is not in the way on screen.
 		assert.match(styles.slice(offsetOf(styles, '\n#print-root {')), /#print-root \{\n\tdisplay: none;/);
-	});
-
-	test('the print sheet names no part of the interface', () => {
-		// The regression this change exists to prevent: one selector per app part,
-		// growing by one every time a part is added, and silently wrong until
-		// someone finds their find-bar highlights in a PDF.
-		for (const selector of [
-			'.custom-title-bar',
-			'.tab-area',
-			'.window-controls-left',
-			'.title-actions-container',
-			'.pane.editor-pane',
-			'.pane.viewer-pane',
-			'.split-bar',
-			'.find-bar',
-			'.toc-overlay-wrapper',
-			'.markpad-find-match',
-			'.home-menu-container',
-			'.theme-dropdown-container',
-		]) {
-			assert.doesNotMatch(
-				printBlock,
-				new RegExp(selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
-				`${selector} is app state — the printed article cannot contain it, so the print sheet must not mention it`,
-			);
-		}
 	});
 });

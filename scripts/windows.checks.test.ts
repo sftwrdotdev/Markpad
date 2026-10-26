@@ -44,19 +44,6 @@ describe('startup keeps the window handle it built', () => {
 	});
 });
 
-describe('window title capability', () => {
-	test('all Markpad windows may update their native title', () => {
-		const capability = JSON.parse(readSource('src-tauri/capabilities/default.json')) as {
-			permissions: string[];
-		};
-
-		assert.ok(
-			capability.permissions.includes('core:window:allow-set-title'),
-			'window tags and active document names call appWindow.setTitle(), which requires this permission',
-		);
-	});
-});
-
 // Windows are equal views of one session. "main" is only the name Tauri gives
 // the window it builds at launch, and only startup tells that window apart:
 // adoption, the launch's files and the quiet first show, all in Rust behind

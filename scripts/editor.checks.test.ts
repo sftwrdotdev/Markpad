@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 
 import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
 
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
-import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
-import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
+import { importedThemeRules } from '../src/lib/utils/theme.js';
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { DEFAULT_IMAGE_DIRECTORY } from '../src/lib/utils/imageEmbed.js';
 
@@ -74,45 +71,6 @@ describe('editor option wiring', () => {
 // (#676's defect, one layer over), and a colour that has drifted from the one
 // the rest of the app resolves through `--color-*`.
 describe('editor theme contracts', () => {
-	const styles = readSource('src/styles.css');
-
-	/** A `--color-*` value, read out of the block that defines the given appearance. */
-	function paletteColor(appearance: 'light' | 'dark', name: string): string {
-		const block = appearance === 'dark'
-			? styles.slice(styles.indexOf(':root[data-theme="dark"] {'))
-			: styles.slice(styles.indexOf(':root {'));
-		const match = block.match(new RegExp(`--color-${name}:\\s*(#[0-9a-fA-F]{6})`));
-		assert.ok(match, `styles.css must define --color-${name} for ${appearance}`);
-		return match[1].slice(1).toLowerCase();
-	}
-
-	test('the colours are the app palette, not a second one', () => {
-		// One-way duplication: `defineTheme` takes hex strings and never sees the
-		// stylesheet, so the literals in editorTheme.ts have to be checked against
-		// the custom properties everything else in the app resolves.
-		const expected = {
-			accent: 'accent-fg',
-			code: 'success-fg',
-			emphasis: 'attention-fg',
-			link: 'done-fg',
-			muted: 'fg-muted',
-			text: 'fg-default',
-		};
-
-		for (const appearance of ['light', 'dark'] as const) {
-			const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
-			assert.equal(byToken.get('keyword.md'), paletteColor(appearance, expected.accent));
-			assert.equal(byToken.get('string.md'), paletteColor(appearance, expected.code));
-			assert.equal(byToken.get('variable.md'), paletteColor(appearance, expected.code));
-			assert.equal(byToken.get('strong.md'), paletteColor(appearance, expected.emphasis));
-			assert.equal(byToken.get('emphasis.md'), paletteColor(appearance, expected.emphasis));
-			assert.equal(byToken.get('string.link.md'), paletteColor(appearance, expected.link));
-			assert.equal(byToken.get('escape.md'), paletteColor(appearance, expected.muted));
-			assert.equal(byToken.get('variable.source.md'), paletteColor(appearance, expected.text));
-			assert.equal(byToken.get('keyword.table.header.md'), paletteColor(appearance, expected.text));
-		}
-	});
-
 	test('the editor pane and the theme importer are the only writers', () => {
 		assert.deepEqual(filesMatching(readSourceFiles('src'), /\.editor\.setTheme\(/), [
 			// The widget's owner: it defines `app-theme-*` and it is the only thing
@@ -173,26 +131,14 @@ describe('editor undo stops', () => {
 // never touches it. It is therefore loaded with `await import()` from
 // Editor.svelte's `onMount`, not with a top-level `import`.
 //
-// WHAT THIS FILE PROVES: walking only *static* imports from the app's entry
-// module (`src/routes/+page.svelte`), no reachable module names `monaco-editor`
-// or `monaco-vim` as a static import. That is the property a bundler turns into
-// "not in the startup chunk", and it is the property a careless edit destroys —
-// re-adding `import * as monaco from 'monaco-editor'` anywhere in the reachable
-// graph, in Editor.svelte or in any util it pulls in, fails this test.
-//
-// WHAT IT DOES NOT PROVE: that Rollup actually emitted a separate chunk. Chunk
-// splitting is the bundler's decision, and `vite.config.js` could still be
-// changed to inline everything (e.g. a `manualChunks` that merges it, or
-// `inlineDynamicImports`). Verifying that needs a real build; the numbers from
-// one are recorded in the PR description instead. Source-level reachability is
-// the half that can run in CI without a 45-second build, so it is the half
-// that is locked here.
+// That Monaco stays out of the startup chunks is checked on a real build: the
+// test.yml step "monaco is not in the startup chunks" runs
+// scripts/check-startup-chunk.mjs on the Vite manifest and source maps. The
+// tests below are the source conventions that keep it that way.
 //
 // Type-only imports (`import type ...`) are deliberately ignored: TypeScript
 // erases them, so they cost nothing at runtime and Editor.svelte relies on one.
 describe('Monaco startup graph', () => {
-	const ENTRY = 'src/routes/+page.svelte';
-
 	const FORBIDDEN = ['monaco-editor', 'monaco-vim'];
 
 	/** `import ... from 'x'`, `export ... from 'x'`, and bare `import 'x'`. */
@@ -229,112 +175,6 @@ describe('Monaco startup graph', () => {
 		const runtimeOnly = source.replace(TYPE_IMPORT, '');
 		return [...runtimeOnly.matchAll(STATIC_IMPORT)].map((m) => m[1]);
 	}
-
-	/**
-	 * Resolve a specifier to a file on disk, or `null` for a bare package name.
-	 * SvelteKit sources use the `.js` extension for relative TypeScript imports, so
-	 * `./x.js` has to be probed as `./x.ts` too.
-	 */
-	function resolveLocal(specifier: string, fromFile: string): string | null {
-		let target: string;
-		if (specifier.startsWith('.')) target = resolve(dirname(fromFile), specifier);
-		else if (specifier.startsWith('#lib/')) target = resolve('src/lib', specifier.slice('#lib/'.length));
-		else if (specifier.startsWith('$app/') || !specifier.startsWith('/')) return null;
-		else return null;
-
-		const candidates = [
-			target,
-			target.replace(/\.js$/, '.ts'),
-			target.replace(/\.js$/, '.svelte.ts'),
-			`${target}.ts`,
-			`${target}.js`,
-			`${target}.svelte`,
-		];
-		return candidates.find((c) => existsSync(c) && !c.endsWith('/')) ?? null;
-	}
-
-	function walkStaticGraph(entry: string): Map<string, string[]> {
-		const reached = new Map<string, string[]>();
-		const queue = [resolve(entry)];
-
-		while (queue.length > 0) {
-			const file = queue.pop()!;
-			if (reached.has(file)) continue;
-
-			const specifiers = staticSpecifiers(importableSource(file));
-			reached.set(file, specifiers);
-
-			for (const specifier of specifiers) {
-				const local = resolveLocal(specifier, file);
-				if (local) queue.push(local);
-			}
-		}
-
-		return reached;
-	}
-
-	test('the parser sees the imports it is supposed to see', () => {
-		// A graph walk that silently resolves nothing would pass this file forever.
-		const graph = walkStaticGraph(ENTRY);
-		const files = [...graph.keys()].map((f) => relative(process.cwd(), f).replace(/\\/g, '/'));
-
-		assert.ok(files.includes('src/lib/MarkdownViewer.svelte'), 'reached the viewer from the entry');
-		assert.ok(files.includes('src/lib/components/Editor.svelte'), 'reached Editor.svelte, which is still statically imported');
-		assert.ok(files.includes('src/lib/stores/settings.svelte.ts'), 'followed a #lib specifier with a .js extension');
-		assert.ok(files.length > 30, `walked a real graph, not a stub (got ${files.length} files)`);
-
-		// The negative check below is only meaningful if a static Monaco import
-		// would in fact be seen. Plant the exact regressions this file exists to
-		// catch and prove the matcher reports each one.
-		assert.deepEqual(
-			staticSpecifiers('import * as monaco from "monaco-editor";'),
-			['monaco-editor'],
-			'a static Monaco import is detected when present',
-		);
-		assert.deepEqual(
-			staticSpecifiers('import type * as Monaco from "monaco-editor";'),
-			[],
-			'a type-only import is erased at compile time and does not count',
-		);
-		assert.deepEqual(
-			// The shape Editor.svelte actually has: the type import stays, and a
-			// value import of the same module is added beside it.
-			staticSpecifiers(
-				'import type * as Monaco from "monaco-editor";\nimport * as monaco from "monaco-editor";',
-			),
-			['monaco-editor'],
-			'a value import is not masked by a type import of the same module',
-		);
-		assert.deepEqual(
-			staticSpecifiers('const monaco = await import("monaco-editor");'),
-			[],
-			'a dynamic import is not a static one',
-		);
-	});
-
-	test('Monaco is not reachable by static import from the app entry', () => {
-		const graph = walkStaticGraph(ENTRY);
-
-		const offenders: string[] = [];
-		for (const [file, specifiers] of graph) {
-			for (const specifier of specifiers) {
-				if (FORBIDDEN.some((pkg) => specifier === pkg || specifier.startsWith(`${pkg}/`))) {
-					// Vite's `?worker` imports compile to a URL plus a `new Worker(url)`
-					// wrapper and emit the worker bundle as its own file, so they are
-					// already lazy — verified against a production build: zero worker
-					// requests on first paint.
-					if (specifier.endsWith('?worker')) continue;
-					offenders.push(`${relative(process.cwd(), file)} -> ${specifier}`);
-				}
-			}
-		}
-
-		assert.deepEqual(
-			offenders,
-			[],
-			'Monaco must be reached with await import(), never a static import, or it lands back in the startup chunk',
-		);
-	});
 
 	test('Editor.svelte loads Monaco with a dynamic import', () => {
 		const editor = readSource('src/lib/components/Editor.svelte');
@@ -459,25 +299,6 @@ describe('semantic token contracts', () => {
 
 		const unstyled = emitted.filter((kind) => theme._match(kind).metadata === fallthrough);
 		assert.deepEqual(unstyled, [], 'these repaint an imported theme with its own default foreground');
-	});
-});
-
-// #676: an imported VS Code theme colours TextMate scopes, Monaco's markdown
-// tokenizer emits names of its own, and until now nothing renamed one into the
-// other — so `markup.bold` reached `defineTheme` and matched nothing.
-describe('markdown token colour variables', () => {
-	test('every construct colour the importer writes is read by the stylesheet', () => {
-		// The two halves are joined by a variable name and nothing else: the
-		// importer writes `--md-strong`, `styles.css` reads it, and no type or
-		// import holds them together. Renaming one silently drops the colour.
-		const styles = readSource('src/styles.css');
-
-		for (const [kind, cssVar] of PREVIEW_KIND_VARS) {
-			// The comma is the fallback. Without one, a construct the theme does not
-			// name renders with no colour at all rather than with the value the rule
-			// carried before the import.
-			assert.ok(styles.includes(`var(${cssVar},`), `${cssVar} is written for \`${kind}\` and read by no rule with a fallback`);
-		}
 	});
 });
 

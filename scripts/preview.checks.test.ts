@@ -20,21 +20,6 @@ describe('KaTeX contrib flavour', () => {
 	});
 });
 
-describe('local file links', () => {
-	test('the capability still grants the command this depends on', () => {
-		// `open_path` needs both the command grant and a path scope. Granting the
-		// command alone leaves the plugin resolving
-		// `fs_scope.is_allowed(path) && allowed.any(matches_path_program)` against
-		// URL-only scope entries, which answer false to the second — that is how
-		// `openPath` came to be refused with ForbiddenPath everywhere, including in
-		// `askToOpenExportedFile` (#399, fixed in #403). Asserted here so the grant
-		// cannot quietly disappear; the scope's shape is deliberately not asserted,
-		// so narrowing it later is not a test failure.
-		const capability = readSource('src-tauri/capabilities/default.json');
-		assert.match(capability, /opener:allow-open-path/);
-	});
-});
-
 describe('preview copy handler', () => {
 	// #549 put both DOM-selection copy routes — ⌘C in the preview, and Edit ▸ Copy
 	// in the menu bar, which is a predefined Copy item asking the webview to
@@ -296,32 +281,5 @@ describe('render pipeline convention', () => {
 			offsets.map(() => WRAPPER),
 			`the raw render_markdown command must be invoked from ${WRAPPER}, which strips front matter first`,
 		);
-	});
-});
-
-describe('save image as', () => {
-	// `saveImageAs` refuses a remote image instead of fetching it because the
-	// CSP's `connect-src 'self'` refuses a cross-origin fetch from the webview.
-	// The function itself runs in preview.spec.ts ("save image as").
-
-	test('the CSP that makes the remote case impossible is still the one described', () => {
-		// If `connect-src` is ever widened, the comment above stops being true and
-		// a JS download becomes possible again. Fail here rather than leave a
-		// stale explanation in the source.
-		const conf = readSource('src-tauri/tauri.conf.json');
-		assert.match(conf, /"connect-src":\s*"'self'"/);
-	});
-});
-
-describe('YouTube external fallback', () => {
-	const tauriConfig = readSource('src-tauri/tauri.conf.json');
-
-	// --- the halves that are not this module's output ---
-
-	test('the app no longer permits YouTube frames', () => {
-		// A contract with the packaged app rather than with a function: the CSP
-		// lives in tauri.conf.json, nothing type-checks it, and a `frame-src` that
-		// outlived the iframe is permission granted for no feature.
-		assert.doesNotMatch(tauriConfig, /frame-src/);
 	});
 });

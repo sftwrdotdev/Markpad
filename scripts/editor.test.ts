@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
+import postcss from 'postcss';
 
 import { containsUnusualLineTerminators } from 'monaco-editor/esm/vs/base/common/strings.js';
 import { EditorOptions, inUntrustedWorkspace, type UnicodeHighlightOptions } from 'monaco-editor/esm/vs/editor/common/config/editorOptions.js';
@@ -21,7 +22,7 @@ import { editorLanguageFor } from '../src/lib/utils/editorLanguage.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import { createdEditorOptions, editorOptionsFromSettings, editorReadOnly, updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
-import { importedThemeRules, MARKDOWN_SCOPE_ALIASES, markdownKindColors, monacoTokenRules } from '../src/lib/utils/theme.js';
+import { importedThemeRules, MARKDOWN_SCOPE_ALIASES, markdownKindColors, monacoTokenRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
 import { encodeSemanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { resolveExportImagePath } from '../src/lib/utils/exportHtml.js';
 import { DEFAULT_IMAGE_DIRECTORY, documentParentDir, encodeImageDestination, imageEmbed, resolveImageDirectory } from '../src/lib/utils/imageEmbed.js';
@@ -1589,5 +1590,60 @@ describe('Monaco IME patch', () => {
 			() => patchMonacoTextAreaForIme(textAreaSource.replace(MONACO_IME_PATCH[0].from, '')),
 			/expected exactly one match/,
 		);
+	});
+});
+
+// The editor's Markdown colours and the preview's construct colours both meet
+// styles.css only through a custom-property name, which no compiler follows.
+describe('editor colours against the stylesheet', () => {
+	const styles = postcss.parse(readSource('src/styles.css'));
+
+	/** A `--color-*` value from the top-level rule whose selector list is exactly `selector`. */
+	function paletteColor(selector: string, name: string): string {
+		let value: string | undefined;
+		styles.each((node) => {
+			if (value !== undefined || node.type !== 'rule' || node.selector !== selector) return;
+			node.walkDecls(`--color-${name}`, (decl) => {
+				value ??= decl.value;
+			});
+		});
+		assert.ok(value, `styles.css must define --color-${name} under ${selector}`);
+		assert.match(value, /^#[0-9a-fA-F]{6}$/);
+		return value.slice(1).toLowerCase();
+	}
+
+	test('the colours are the app palette, not a second one', () => {
+		// One-way duplication: `defineTheme` takes hex strings and never sees the
+		// stylesheet, so the literals in editorTheme.ts have to be checked against
+		// the custom properties everything else in the app resolves.
+		const blocks = { light: ':root', dark: ':root[data-theme="dark"]' } as const;
+		for (const appearance of ['light', 'dark'] as const) {
+			const color = (name: string) => paletteColor(blocks[appearance], name);
+			const byToken = new Map(markdownTokenRules(appearance).map((rule) => [rule.token, rule.foreground]));
+			assert.equal(byToken.get('keyword.md'), color('accent-fg'));
+			assert.equal(byToken.get('string.md'), color('success-fg'));
+			assert.equal(byToken.get('variable.md'), color('success-fg'));
+			assert.equal(byToken.get('strong.md'), color('attention-fg'));
+			assert.equal(byToken.get('emphasis.md'), color('attention-fg'));
+			assert.equal(byToken.get('string.link.md'), color('done-fg'));
+			assert.equal(byToken.get('escape.md'), color('fg-muted'));
+			assert.equal(byToken.get('variable.source.md'), color('fg-default'));
+			assert.equal(byToken.get('keyword.table.header.md'), color('fg-default'));
+		}
+	});
+
+	test('every construct colour the importer writes is read by the stylesheet', () => {
+		// #676: the importer writes `--md-strong`, `styles.css` reads it, and no
+		// type or import holds them together. Renaming one silently drops the colour.
+		const readWithFallback = new Set<string>();
+		styles.walkDecls((decl) => {
+			for (const match of decl.value.matchAll(/var\(\s*(--[\w-]+)\s*,/g)) readWithFallback.add(match[1]);
+		});
+		for (const [kind, cssVar] of PREVIEW_KIND_VARS) {
+			// The comma is the fallback. Without one, a construct the theme does not
+			// name renders with no colour at all rather than with the value the rule
+			// carried before the import.
+			assert.ok(readWithFallback.has(cssVar), `${cssVar} is written for \`${kind}\` and read by no rule with a fallback`);
+		}
 	});
 });

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 
 import type * as Monaco from 'monaco-editor';
+import postcss, { type Root } from 'postcss';
+import { parse as parseSvelte } from 'svelte/compiler';
 
 import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { displayWidth, formatTable, parseTableAt, type TableDocument, type TableEdit, tableOperation, type TableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
@@ -19,6 +21,7 @@ import { findSeedFromSelection, seedFindBar } from '../src/lib/utils/findSeed.js
 import { editorFrontMatterScrollEnd } from '../src/lib/utils/editorFrontMatter.js';
 import { createMarkdownSemanticTokensProvider } from '../src/lib/utils/semanticTokens.js';
 import { addFrontMatterListItems, getFrontMatterListItems, frontMatterFenceLines, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
+import { readSource } from './sourceTree.js';
 import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
 /*
@@ -2275,5 +2278,61 @@ describe('list keys in the editor', () => {
 				`${call.handler} is bound without !editorTabMovesFocus: ${call.when}`,
 			);
 		}
+	});
+});
+
+// #675: Monaco draws the find widget's button tooltips into a `.context-view`
+// it appends beside the editor, above the target, and the widget sits at the
+// top edge of the editor pane, so the tooltip lands in the strip the pane and
+// `.editor-outer` clip away, and behind the fixed title bar. Both halves of the
+// fix are CSS a test without a real layout cannot render, so they are read off
+// the parsed stylesheets.
+describe('find widget tooltip clip', () => {
+	const styles = postcss.parse(readSource('src/styles.css'));
+	const titleBarAst = parseSvelte(readSource('src/lib/components/TitleBar.svelte'), { modern: true });
+	assert.ok(titleBarAst.css, 'TitleBar.svelte must keep its <style> block');
+	const titleBar = postcss.parse(titleBarAst.css.content.styles);
+
+	function declarations(root: Root, selector: string, property: string) {
+		const found: { value: string; important: boolean }[] = [];
+		root.walkRules((rule) => {
+			if (!rule.selectors.includes(selector)) return;
+			rule.walkDecls(property, (decl) => {
+				found.push({ value: decl.value, important: decl.important });
+			});
+		});
+		return found;
+	}
+
+	test('the find widget tooltip escapes both clips, and only while the widget is up', () => {
+		// Not `overflow: clip` with a margin: WebKit ships `clip` without
+		// `overflow-clip-margin`, so that spelling is a no-op on macOS and Linux.
+		const rules: string[][] = [];
+		styles.walkRules((rule) => {
+			if (rule.some((node) => node.type === 'decl' && node.prop === 'overflow' && node.value === 'visible')) {
+				rules.push(rule.selectors);
+			}
+		});
+		assert.ok(
+			rules.some((selectors) =>
+				selectors.length === 2
+				&& selectors[0] === '.pane.editor-pane:has(.find-widget.visible)'
+				&& selectors[1] === '.pane.editor-pane:has(.find-widget.visible) .editor-outer'),
+			'the pane and .editor-outer must both drop their clip while .find-widget.visible is inside',
+		);
+	});
+
+	test('the tooltip outranks the title bar it now paints over', () => {
+		const [contextView] = declarations(styles, '.context-view', 'z-index');
+		const [titleBarZ] = declarations(titleBar, '.custom-title-bar', 'z-index');
+		assert.ok(contextView, 'expected a z-index on .context-view');
+		assert.ok(titleBarZ, 'expected a z-index on .custom-title-bar');
+		assert.ok(
+			Number(contextView.value) > Number(titleBarZ.value),
+			`.context-view (${contextView.value}) must stay above .custom-title-bar (${titleBarZ.value})`,
+		);
+		// Monaco writes `z-index: 2576` inline on the node, so the rule only lands
+		// if it is marked important.
+		assert.equal(contextView.important, true);
 	});
 });

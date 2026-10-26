@@ -127,6 +127,17 @@ jobs:
       - name: run frontend behavior tests (vitest)
         run: npm run test:vitest
 
+      # Monaco is most of the app's JavaScript and only the editor needs it, so
+      # Editor.svelte loads it with `await import()`. A static import anywhere in
+      # the startup graph folds it back into the chunks every window parses on
+      # first paint, and nothing else fails. This builds the frontend and reads
+      # the Vite manifest (which chunks load at startup) and their source maps
+      # (which modules each chunk holds). Measured: about 6 seconds.
+      - name: monaco is not in the startup chunks
+        run: |
+          npx vite build --sourcemap
+          node scripts/check-startup-chunk.mjs
+
       # Nothing had ever checked Rust formatting, so master drifted to 47
       # rustfmt diffs across all six source files -- not because anyone
       # disagreed with the tool, but because `cargo fmt` is a thing you have to
@@ -143,10 +154,12 @@ jobs:
           cd src-tauri
           cargo fmt --check
 
+      # `--locked` fails the run when Cargo.lock no longer matches Cargo.toml
+      # (a version bump that skipped the lock), instead of rewriting it here.
       - name: run cargo test
         run: |
           cd src-tauri
-          cargo test
+          cargo test --locked
 
       # `-D warnings` is only defensible because the count is currently zero:
       # the two that existed (a redundant `'static` on a const, a `push_str`
@@ -159,4 +172,4 @@ jobs:
       - name: run clippy
         run: |
           cd src-tauri
-          cargo clippy --all-targets -- -D warnings
+          cargo clippy --locked --all-targets -- -D warnings
