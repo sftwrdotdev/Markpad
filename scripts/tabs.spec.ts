@@ -17,6 +17,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession, claimTabForRead } = await import('../src/lib/sessions/documentSession.svelte.js');
 const { createWindowSession } = await import('../src/lib/sessions/windowSession.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
+const { loadLocale } = await import('../src/lib/utils/i18n.js');
 
 describe('a preview host per tab', () => {
 	function patchPreviewBlocks(host: HTMLElement, html: string) {
@@ -1296,5 +1297,178 @@ describe('tab transfer races', () => {
 		void session.transfer(tabId, async () => {});
 		await settle();
 		assert.equal(calls.filter((call) => call.cmd === 'stage_detached_tab').length, 2);
+	});
+
+	const ARRIVING = JSON.stringify({
+		path: '/notes/a.md',
+		title: 'a.md',
+		rawContent: 'old',
+		originalContent: 'old',
+		isDirty: false,
+		isEditing: false,
+		isSplit: false,
+		isScrollSynced: false,
+		hasReplacementChars: false,
+		encoding: 'UTF-8',
+		splitRatio: 0.5,
+		scrollTop: 0,
+		scrollPercentage: 0,
+		anchorLine: 0,
+		historyIndex: 0,
+		history: [],
+	});
+
+	test('the source keeps waiting when the destination has already claimed', async () => {
+		// The 15s timeout is a guess about a window that may simply be slow to
+		// render. Cancelling regardless is what stranded a copy on each side.
+		vi.useFakeTimers();
+		respond = (cmd) =>
+			cmd === 'stage_detached_tab' ? TOKEN : cmd === 'cancel_detached_tab' ? { cancelled: false, claimed: true } : null;
+		const tabId = openTab('doc');
+		const { session } = makeSession();
+
+		let result: boolean | undefined;
+		void session.transfer(tabId, async () => {}).then((moved) => (result = moved));
+		for (let i = 0; i < 3; i++) {
+			await vi.advanceTimersByTimeAsync(15_000);
+			await settle();
+		}
+		assert.ok(calls.some((call) => call.cmd === 'cancel_detached_tab'), 'the timeout asked the broker');
+		assert.equal(result, undefined, 'a claimed transfer was given up on while the destination rendered');
+
+		emit('tab-transfer-claimed', TOKEN);
+		await settle();
+		assert.equal(result, true);
+		assert.equal(tabManager.tabs.length, 0);
+	});
+
+	test('the destination releases its claim when it cannot finish', async () => {
+		// Because a claimed transfer is immune to the source's timeout, the
+		// destination is the only party that can end a claim it cannot complete.
+		const cases: Array<[string, string, () => Promise<string | null>]> = [
+			['an invalid payload', '{"not":"a tab"}', async () => 'never'],
+			['a refusing destination', ARRIVING, async () => null],
+			['a thrown render', ARRIVING, async () => { throw new Error('render failed'); }],
+		];
+		for (const [why, payload, accept] of cases) {
+			calls = [];
+			respond = (cmd) => (cmd === 'claim_detached_tab' ? payload : null);
+			const { session } = makeSession(accept);
+
+			assert.equal(await session.acceptOfferedTransfer(TOKEN), false, why);
+			assert.deepEqual(
+				calls.filter((call) => call.cmd === 'cancel_detached_tab').map((call) => call.args),
+				[{ token: TOKEN }],
+				`${why} must hand the claim back exactly once`,
+			);
+		}
+	});
+
+	test('a claim is distinguished from "no such token"', async () => {
+		// Releasing a token that was never claimed would be a no-op at best and a
+		// cancel of someone else's transfer at worst.
+		respond = () => null;
+		const { session } = makeSession(async () => 'never');
+
+		assert.equal(await session.acceptOfferedTransfer(TOKEN), false);
+		assert.deepEqual(calls.map((call) => call.cmd), ['claim_detached_tab']);
+	});
+
+	test('a second transfer of the same tab is refused while one is in flight', async () => {
+		// The menu entry becomes clickable again long before the transfer
+		// resolves; two payloads for one tab means two windows each build it.
+		respond = (cmd) => (cmd === 'stage_detached_tab' ? TOKEN : null);
+		const tabId = openTab('doc');
+		const { session } = makeSession();
+
+		const first = session.transfer(tabId, async () => {});
+		await settle();
+		const second = session.transfer(tabId, async () => {});
+		await settle();
+		assert.equal(calls.filter((call) => call.cmd === 'stage_detached_tab').length, 1, 'a second payload was staged');
+
+		emit('tab-transfer-claimed', TOKEN);
+		assert.equal(await first, true);
+		assert.equal(await second, false);
+	});
+});
+
+describe('tabs the store builds', () => {
+	beforeAll(() => {
+		(window as any).__TAURI_INTERNALS__ = {
+			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
+			invoke: (cmd: string) => Promise.resolve(cmd === 'get_os_type' ? 'macos' : null),
+		};
+	});
+
+	let language: typeof settings.language;
+	beforeEach(() => {
+		language = settings.language;
+		tabManager.closeAll();
+	});
+	afterEach(() => {
+		settings.language = language;
+		tabManager.closeAll();
+	});
+
+	test('new tabs are created with numbered untitled titles', () => {
+		tabManager.addNewTab();
+		tabManager.addNewTab();
+		assert.deepEqual(tabManager.tabs.map((tab) => tab.title), ['Untitled 1', 'Untitled 2']);
+	});
+
+	test('a tab arriving from another window gets a free localized untitled title, becomes active, and its id is returned', async () => {
+		await loadLocale('de');
+		settings.language = 'de';
+		tabManager.addNewTab();
+		const resident = tabManager.activeTabId;
+
+		const id = tabManager.insertTransferredTab({
+			// Numbered in the source window, where it was the first untitled tab.
+			path: '',
+			title: 'Unbenannt 1',
+			rawContent: 'draft',
+			originalContent: '',
+			isDirty: true,
+			isEditing: true,
+			scrollTop: 0,
+			scrollPercentage: 0,
+			anchorLine: asRendererLine(0),
+			isSplit: false,
+			splitRatio: 0.5,
+			isScrollSynced: false,
+			hasReplacementChars: false,
+			encoding: 'UTF-8',
+			history: [],
+			historyIndex: 0,
+		});
+
+		assert.notEqual(id, resident);
+		assert.equal(tabManager.activeTabId, id);
+		assert.equal(tabManager.tabs.find((tab) => tab.id === id)?.rawContent, 'draft');
+		assert.deepEqual(tabManager.tabs.map((tab) => tab.title), ['Unbenannt 1', 'Unbenannt 2']);
+	});
+
+	test('a percentage is not invented to go with the anchor', () => {
+		// The view state carries `scrollTop` but neither height, so no fraction of
+		// the scrollable range can be computed from it. `anchorLine` is the first
+		// entry of both restore cascades, so recovering it is what decides where the
+		// tab opens; writing a percentage nobody can justify is not.
+		tabManager.addTab('/notes/a.md', 'body\n'.repeat(200));
+		const background = tabManager.activeTab!;
+		background.isEditing = true;
+		background.scrollPercentage = 0.25;
+		background.editorViewState = {
+			viewState: { firstPosition: { lineNumber: 40, column: 1 }, firstPositionDeltaTop: 0, scrollTop: 900 },
+		};
+		tabManager.addTab('/notes/b.md', 'other');
+
+		const first = JSON.parse(tabManager.serializeState());
+		const second = JSON.parse(tabManager.serializeState());
+
+		assert.notEqual(first.tabs[0].anchorLine, 0, 'the anchor is recovered from the view state');
+		assert.equal(first.tabs[0].scrollPercentage, 0.25);
+		assert.equal(second.tabs[0].scrollPercentage, 0.25);
+		assert.equal(background.scrollPercentage, 0.25);
 	});
 });

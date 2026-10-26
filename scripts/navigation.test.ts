@@ -21,6 +21,16 @@ describe('file history and markdown link targets', () => {
 		});
 	});
 
+	// History is a list of PATHS. `createFileHistory` used to take the tab's
+	// initial content as an ignored second parameter, which is how `addNewTab`
+	// came to seed a history with a content string in it. Nothing reads such a
+	// parameter, so only the type checker can refuse it: with it back, this
+	// directive is unused and `npm run check` fails.
+	test('no caller hands a file history anything but a path', () => {
+		// @ts-expect-error a history is built from a path alone
+		assert.deepEqual(createFileHistory('/notes/a.md', '# a'), { history: ['/notes/a.md'], historyIndex: 0 });
+	});
+
 	// Entries exist to be re-opened, and an untitled buffer cannot be. See the
 	// behaviour this protects in scripts/tabNavigationHistory.spec.ts.
 	test('an untitled tab starts with no history entry at all', () => {
