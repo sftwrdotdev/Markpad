@@ -3511,7 +3511,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			try {
 				const args: string[] = await invoke('send_markdown_path');
 				if (!isDisposed && args?.length > 0) {
-					for (const path of args) await loadMarkdown(path);
+					await documentSession.openFiles(args);
 				}
 			} catch (error) {
 				console.error('Error receiving Markdown file path:', error);

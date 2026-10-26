@@ -220,20 +220,6 @@ describe('a cold start does not steal focus', () => {
 
 describe('every opened document path reaches a window', () => {
 	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const tauriLib = readRustBackend();
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-	test('macOS open-document events preserve every delivered file path', () => {
-		assert.match(runtime, /startup_files: Mutex<Option<Vec<String>>>/);
-		// Every delivered url is pushed, and the queue is taken whole: the
-		// defect this guards against was consuming only `urls.first()`.
-		assert.match(tauriLib, /for url in urls/);
-		assert.match(tauriLib, /deliver_opened_path\(/);
-		assert.match(runtime, /paths\.push\(path\.clone\(\)\)/);
-		assert.match(runtime, /startup_files\)\.take\(\)/);
-		assert.match(runtime, /for path in opened\.into_iter\(\)\.rev\(\)/);
-		assert.match(viewer, /for \(const path of args\) await loadMarkdown\(path\);/);
-	});
 
 	test('a second launch hands every argv path to the running window', () => {
 		// `markpad a.md b.md` with Markpad already running arrives here instead of

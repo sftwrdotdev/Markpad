@@ -1064,5 +1064,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return loadMarkdown(filePath, { inNewTab: true });
 	}
 
-	return { loadMarkdown, openInNewTab, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	/** Open every path, in order: the files the OS handed the launch window. */
+	async function openFiles(filePaths: readonly string[]) {
+		for (const filePath of filePaths) await loadMarkdown(filePath);
+	}
+
+	return { loadMarkdown, openInNewTab, openFiles, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

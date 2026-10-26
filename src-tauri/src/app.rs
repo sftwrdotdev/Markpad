@@ -227,14 +227,35 @@ pub fn run() {
         .run(|_app_handle, _event| {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
-                for url in urls {
-                    if let Ok(path_buf) = url.to_file_path() {
-                        window_runtime::deliver_opened_path(
-                            _app_handle,
-                            path_buf.to_string_lossy().to_string(),
-                        );
-                    }
+                for path in opened_file_paths(urls) {
+                    window_runtime::deliver_opened_path(_app_handle, path);
                 }
             }
         });
+}
+
+/// The file paths in a macOS open-document event, every one of them.
+#[cfg(target_os = "macos")]
+fn opened_file_paths(urls: Vec<tauri::Url>) -> Vec<String> {
+    urls.into_iter()
+        .filter_map(|url| url.to_file_path().ok())
+        .map(|path| path.to_string_lossy().to_string())
+        .collect()
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_open_document_event_yields_every_file_path() {
+        let urls = [
+            "file:///n/a.md",
+            "file:///n/b.md",
+            "https://example.com/c.md",
+        ]
+        .map(|url| tauri::Url::parse(url).unwrap())
+        .to_vec();
+        assert_eq!(opened_file_paths(urls), vec!["/n/a.md", "/n/b.md"]);
+    }
 }

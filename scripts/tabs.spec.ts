@@ -521,6 +521,21 @@ describe('path identity on a case-folding volume', () => {
 	// file's identity before picking a tab. Putting the path on a tab first and
 	// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
 	// link opened a second tab beside the `C:\n\b.md` the user already had open.
+	test('every file the OS hands the launch window opens, in order', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/a.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+		disk.set('/notes/c.md', { body: 'c', lossy: false });
+
+		await session.openFiles(['/notes/a.md', '/notes/b.md', '/notes/c.md']);
+
+		assert.deepEqual(
+			tabManager.tabs.map((tab) => tab.path),
+			['/notes/a.md', '/notes/b.md', '/notes/c.md'],
+		);
+	});
+
 	test('a link opened in a new tab goes through the ordinary open path', async () => {
 		reset();
 		const session = makeSession();
