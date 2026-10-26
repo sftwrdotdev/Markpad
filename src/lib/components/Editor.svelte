@@ -363,7 +363,6 @@
 			...editorOptionsFromSettings(settings, zoomLevel),
 			readOnly,
 			scrollBeyondLastLine: true,
-			stickyScroll: { enabled: settings.stickyScroll },
 			wordBasedSuggestions: "off",
 			quickSuggestions: false,
 			// Monaco's Unicode highlighter is built for source code, where a

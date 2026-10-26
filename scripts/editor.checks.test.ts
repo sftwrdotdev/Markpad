@@ -225,6 +225,7 @@ describe('editor option wiring', () => {
 	/** A settled settings store, so each test names only the field it is about. */
 	const SETTINGS = {
 		minimap: false,
+		stickyScroll: true,
 		wordWrap: 'on',
 		editorMaxWidth: 80,
 		lineNumbers: 'on',
@@ -303,6 +304,7 @@ describe('editor option wiring', () => {
 				'renderWhitespace',
 				'selectionHighlight',
 				'smoothScrolling',
+				'stickyScroll',
 				'wordWrap',
 				'wordWrapColumn',
 				'wrappingStrategy',

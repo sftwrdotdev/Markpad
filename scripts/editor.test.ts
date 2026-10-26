@@ -125,6 +125,7 @@ describe('editor options', () => {
 	/** A settled settings store, so each test names only the field it is about. */
 	const SETTINGS = {
 		minimap: false,
+		stickyScroll: true,
 		wordWrap: 'on',
 		editorMaxWidth: 80,
 		lineNumbers: 'on',
@@ -137,6 +138,13 @@ describe('editor options', () => {
 		animateCursor: true,
 		typewriterMode: false,
 	};
+
+	test('Sticky Headings reaches the editor that is already open', () => {
+		// It was set in the creation literal only, so turning the setting on or off
+		// changed nothing until the next editor was created.
+		assert.deepEqual(editorOptionsFromSettings(SETTINGS, 100).stickyScroll, { enabled: true });
+		assert.deepEqual(editorOptionsFromSettings({ ...SETTINGS, stickyScroll: false }, 100).stickyScroll, { enabled: false });
+	});
 
 	test('the caret glide is a setting and not a hard-coded on', () => {
 		// It was `cursorSmoothCaretAnimation: 'on'` in the creation literal (#710),

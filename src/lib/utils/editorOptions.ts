@@ -98,12 +98,14 @@ export function editorOptionsFromSettings(
 		// cursor line. 'all' applies it to clicks too, not only to keyboard moves.
 		cursorSurroundingLines: settings.typewriterMode ? TYPEWRITER_SURROUNDING_LINES : 0,
 		cursorSurroundingLinesStyle: settings.typewriterMode ? "all" : "default",
+		stickyScroll: { enabled: settings.stickyScroll },
 	};
 }
 
 /** The slice of the settings store the options above are derived from. */
 export type EditorOptionSettings = {
 	minimap: boolean;
+	stickyScroll: boolean;
 	wordWrap: string;
 	editorMaxWidth: number;
 	lineNumbers: string;
