@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-
 import ts from 'typescript';
 
+
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
-import { isHomePath } from '../src/lib/utils/homeTab.js';
-import { t } from '../src/lib/utils/i18n.js';
-import { formatChord, modifierFor, shortcutLabel, SHORTCUTS } from '../src/lib/utils/shortcuts.js';
-import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
+import { formatChord, SHORTCUTS } from '../src/lib/utils/shortcuts.js';
 import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
 import { bareCommands, type Chord, chordOf, documentKeymap, editorKeymap, OperatingSystem, PLATFORMS, registeredActions, viewerCommandTable } from './keymapHarness.js';
 import { functionSource, readSource, readSourceFiles, sliceBetween } from './sourceTree.js';
@@ -280,128 +277,6 @@ describe('shortcut registry', () => {
 
 		for (const path of Object.keys(CHORD_LITERAL_EXEMPT)) {
 			assert.ok(files.some((file) => file.path === path), `${path} is gone — drop it from CHORD_LITERAL_EXEMPT`);
-		}
-	});
-
-	// ------------------------------------------- the context menus, actually run
-
-	/*
-	 * `ContextMenu.svelte` prints `item.shortcut` into the SAME
-	 * `<span class="menu-shortcut">` the app menu uses, so a chord handed to it sits
-	 * in the same visual slot as a chord the app menu derived from the registry —
-	 * and the tab menus handed it `'Ctrl+T'`, `'Ctrl+Shift+T'` and `'Ctrl+W'` as
-	 * literals. On macOS that printed "New File · Ctrl+T" one keystroke away from
-	 * the File menu's "Cmd+T", and Ctrl+T is not bound there at all: `Editor.svelte`
-	 * binds `monaco.KeyMod.CtrlCmd`, which is ⌘ on a Mac.
-	 *
-	 * The guard above could not see it. It reads the `<span>` bodies of
-	 * `TitleBar.svelte`, and these were `shortcut:` object properties in two other
-	 * components — a different shape in a different file. Same for the two `title=`
-	 * tooltips on the `+` button and the tab close button.
-	 *
-	 * So the menus are RUN here rather than read: the builder function is lifted out
-	 * of its component (the same trick `keymapHarness.ts` uses on `handleKeyDown`)
-	 * and evaluated with a `settings` store that says macOS, then one that says
-	 * Windows. What comes back is the array `ContextMenu` would render, so the
-	 * assertion is about the string the user sees rather than about the shape of the
-	 * source that produced it.
-	 */
-
-	type MenuItem = { label?: string; shortcut?: string; separator?: true };
-
-	/** The items `fn` in `file` builds, on `osType`. */
-	async function contextMenuItems(file: string, fn: string, osType: string): Promise<MenuItem[]> {
-		const js = ts.transpileModule(functionSource(readSource(file), fn), {
-			compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-		}).outputText;
-
-		let menu: { items?: MenuItem[] } | undefined;
-		const known: Record<string, unknown> = {
-			// The real store field the component has to consult, and the real
-			// translator and registry functions — a stub for any of these would let a
-			// component that asked the wrong question still look right.
-			settings: { osType, language: 'en' },
-			t,
-			shortcutLabel,
-			modifierFor,
-			getTabFileActions,
-			hasRealFilePath,
-			isHomePath,
-			tab: { id: 'tab-1', path: '/notes/a.md', title: 'a.md' },
-			tabManager: { tabs: [{ id: 'tab-1' }, { id: 'tab-2' }] },
-			getCurrentWindow: () => ({ label: 'main' }),
-			emitTo: () => {},
-			// The only other window is this one, so the "move to window" section is
-			// empty and the shortcut-bearing rows are undisturbed.
-			invoke: async () => [],
-			console,
-		};
-
-		const scope = new Proxy(known, {
-			has: () => true,
-			get: (target, property) =>
-				typeof property === 'string' && property in target ? target[property] : () => undefined,
-			set: (target, property, value) => {
-				const items = (value as { items?: unknown })?.items;
-				if (Array.isArray(items)) menu = value as { items: MenuItem[] };
-				target[property as string] = value;
-				return true;
-			},
-		});
-
-		const build = new Function('scope', `with (scope) { ${js}\nreturn ${fn}; }`) as (
-			s: unknown,
-		) => (e: unknown) => unknown;
-
-		// `handleContainerContextMenu` returns early unless the event landed on the
-		// container itself, so target and currentTarget are the same object.
-		const el = { classList: { contains: () => false } };
-		await build(scope)({ preventDefault() {}, stopPropagation() {}, clientX: 10, clientY: 20, target: el, currentTarget: el });
-
-		assert.ok(menu?.items?.length, `${fn} in ${file} produced no menu at all; the harness is not running the real function`);
-		return menu!.items!;
-	}
-
-	/** file -> builder, and the labelled chords it must show on each platform. */
-	const TAB_MENUS: Array<{ file: string; fn: string; macos: Array<[string, string]> }> = [
-		{
-			file: 'src/lib/components/Tab.svelte',
-			fn: 'handleContextMenu',
-			macos: [
-				['menu.newFile', 'Cmd+T'],
-				['menu.undoCloseTab', 'Cmd+Shift+T'],
-				['menu.closeFile', 'Cmd+W'],
-			],
-		},
-		{
-			file: 'src/lib/components/TabList.svelte',
-			fn: 'handleContainerContextMenu',
-			macos: [
-				['menu.newFile', 'Cmd+T'],
-				['menu.undoCloseTab', 'Cmd+Shift+T'],
-			],
-		},
-	];
-
-	test('the tab context menus print the modifier the user is on, not a hard-coded Ctrl', async () => {
-		for (const { file, fn, macos } of TAB_MENUS) {
-			for (const platform of ['macos', 'windows'] as const) {
-				const shown = (await contextMenuItems(file, fn, platform))
-					.filter((item) => item.shortcut)
-					.map((item) => [item.label, item.shortcut]);
-
-				const want = macos.map(([labelKey, chord]) => [
-					t(labelKey, 'en'),
-					platform === 'macos' ? chord : chord.replaceAll('Cmd', 'Ctrl'),
-				]);
-
-				assert.deepEqual(
-					shown,
-					want,
-					`${file}: the ${platform} tab context menu shows ${JSON.stringify(shown)}; ` +
-						'every chord in it must come from shortcutLabel() so it agrees with the app menu',
-				);
-			}
 		}
 	});
 

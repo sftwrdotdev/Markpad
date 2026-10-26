@@ -7,6 +7,7 @@
 	import { emitTo } from '@tauri-apps/api/event';
 	import { getCurrentWindow } from '@tauri-apps/api/window';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
+	import { tabListMenuItems } from '../utils/tabContextMenu.js';
 	import { duplicateNameSuffixes } from '../utils/duplicateTabNames.js';
 	import { closestSlotIndex, dragDistance } from '../utils/tabReorder.js';
 
@@ -183,16 +184,11 @@
 		if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains('tab-list-spacer')) return;
 		e.preventDefault();
 
-		const currentLang = settings.language;
-		const modifier = modifierFor(settings.osType);
 		tabListContextMenu = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
-			items: [
-				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-new') },
-				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(getCurrentWindow().label, 'menu-tab-undo') },
-			]
+			items: tabListMenuItems(settings.language, settings.osType, (event) => emitTo(getCurrentWindow().label, event)),
 		};
 	}
 </script>
