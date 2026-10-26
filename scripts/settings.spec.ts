@@ -1067,3 +1067,191 @@ describe('settings file export and import', async () => {
 		);
 	});
 });
+
+describe('settings panes', async () => {
+	// Settings.svelte renders each pane by walking SETTINGS_PANES[pane].rows, so
+	// what a pane shows — which rows, in which order, under which labels, with
+	// which bounds and gates — is this data.
+	const { SettingsStore, CODE_FONT_SIZE_RANGE, EDITOR_FONT_SIZE_RANGE, EDITOR_MAX_WIDTH_RANGE, PREVIEW_FONT_SIZE_RANGE } =
+		await import('../src/lib/stores/settings.svelte.js');
+	const { SETTINGS_PANES, numberInputHandlers, setNumberSetting } = await import('../src/lib/utils/settingsPanes.js');
+	const { t } = await import('../src/lib/utils/i18n.js');
+	const { DEFAULT_PREVIEW_MAX_WIDTH, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } = await import('../src/lib/utils/previewWidth.js');
+	type Row = (typeof SETTINGS_PANES)['editor']['rows'][number];
+
+	const languages = getSupportedLanguages().map((language) => language.code);
+	const allRows = Object.values(SETTINGS_PANES).flatMap((pane) => pane.rows);
+
+	function row(id: string): Row {
+		const found = allRows.find((candidate) => candidate.id === id);
+		assert.ok(found, `no settings row ${id}`);
+		return found;
+	}
+
+	function ids(pane: keyof typeof SETTINGS_PANES): string[] {
+		return SETTINGS_PANES[pane].rows.map((candidate) => candidate.id);
+	}
+
+	function store() {
+		const created = new SettingsStore();
+		onTestFinished(() => created.dispose());
+		return created;
+	}
+
+	test('the settings panes were actually read', () => {
+		// Every assertion below is vacuous if the panes were empty, and the label
+		// one matters most for the preview pane.
+		assert.deepEqual(Object.keys(SETTINGS_PANES).sort(), ['appearance', 'editor', 'files', 'preview']);
+		assert.ok(allRows.length > 25, `found ${allRows.length} rows`);
+		assert.deepEqual(ids('preview'), [
+			'preview-max-width',
+			'preview-font',
+			'preview-font-size',
+			'code-font',
+			'code-font-size',
+			'preview-cursor',
+			'preview-occurrences',
+			'preview-annotations',
+			'preview-table-breakout',
+			'preview-table-scroll',
+			'preview-newline-breaks',
+		]);
+	});
+
+	test('no two controls in one settings pane carry the same label, in any language', () => {
+		// The preview pane shipped `preview-font` and `code-font` both under
+		// `settings.font`, and both sizes under `settings.fontSize`: four controls,
+		// two labels, nothing on screen saying which pair was the prose font. The
+		// rule is stated over what `t()` renders, so two distinct keys a locale
+		// translates the same are the same defect.
+		const collisions: string[] = [];
+		for (const [pane, { rows }] of Object.entries(SETTINGS_PANES)) {
+			for (const lang of languages) {
+				const seen = new Map<string, string>();
+				for (const { id, labelKey } of rows) {
+					const label = t(labelKey, lang);
+					const owner = seen.get(label);
+					if (owner) collisions.push(`${lang} ${pane}: ${owner} and ${id} both read "${label}"`);
+					else seen.set(label, id);
+				}
+			}
+		}
+		assert.deepEqual(collisions, []);
+	});
+
+	test('every key a settings row renders exists in English', () => {
+		// The component reaches these through `t(row.labelKey)` and friends, which
+		// the translation-coverage scanner cannot resolve on its own.
+		const keys = allRows.flatMap((candidate) => [
+			candidate.labelKey,
+			candidate.hintKey,
+			candidate.titleKey,
+			candidate.inactiveTitleKey,
+			...(candidate.kind === 'select' ? candidate.options.map((option) => option.labelKey) : []),
+		]);
+		const missing = keys.filter((key): key is string => key !== undefined && t(key, 'en') === key);
+		assert.deepEqual(missing, []);
+	});
+
+	test('the settings UI renders its bounds from the shared range constants', () => {
+		const ranges = Object.fromEntries(
+			allRows.flatMap((candidate) => (candidate.kind === 'number' ? [[candidate.id, candidate.range]] : [])),
+		);
+		assert.deepEqual(ranges, {
+			'editor-font-size': EDITOR_FONT_SIZE_RANGE,
+			'editor-max-width': EDITOR_MAX_WIDTH_RANGE,
+			'preview-font-size': PREVIEW_FONT_SIZE_RANGE,
+			'code-font-size': CODE_FONT_SIZE_RANGE,
+		});
+		// The same objects, not copies that agree today: persistence clamps against these.
+		assert.equal(ranges['editor-font-size'], EDITOR_FONT_SIZE_RANGE);
+		assert.equal(ranges['editor-max-width'], EDITOR_MAX_WIDTH_RANGE);
+		assert.equal(ranges['preview-font-size'], PREVIEW_FONT_SIZE_RANGE);
+		assert.equal(ranges['code-font-size'], CODE_FONT_SIZE_RANGE);
+	});
+
+	test('numeric setting inputs commit through the clamp, and not while typing', () => {
+		for (const id of ['editor-font-size', 'editor-max-width', 'preview-font-size', 'code-font-size']) {
+			const numberRow = row(id);
+			assert.equal(numberRow.kind, 'number');
+			if (numberRow.kind !== 'number') continue;
+			const { range } = numberRow;
+			const settingsStore = store();
+			const handlers = numberInputHandlers(range, (value) => setNumberSetting(settingsStore, numberRow, value));
+			const input = document.createElement('input');
+			input.type = 'number';
+			input.addEventListener('input', handlers.oninput);
+			input.addEventListener('change', handlers.onchange);
+			input.addEventListener('blur', handlers.onblur);
+			input.addEventListener('keydown', handlers.onkeydown);
+			const read = () => settingsStore[numberRow.key];
+			const type = (text: string, event: Event) => {
+				input.value = text;
+				input.dispatchEvent(event);
+			};
+
+			// Half-typed numbers are left alone: the "1" of "18" is not clamped up to the minimum.
+			const before = read();
+			type('1', new Event('input'));
+			assert.equal(read(), before, `${id}: a keystroke below the range was committed`);
+			assert.equal(input.value, '1', `${id}: the field was rewritten mid-keystroke`);
+			type('', new Event('input'));
+			assert.equal(read(), before, `${id}: an empty field reached the store`);
+			type(String(range.min + range.step), new Event('input'));
+			assert.equal(read(), range.min + range.step, `${id}: an in-range value is applied as it is typed`);
+
+			// Each commit path clamps and writes the clamped value back into the field.
+			type(String(range.max + 1000), new KeyboardEvent('keydown', { key: 'Enter' }));
+			assert.equal(read(), range.max, `${id}: Enter`);
+			assert.equal(input.value, String(range.max));
+			type(String(range.min - 1000), new Event('blur'));
+			assert.equal(read(), range.min, `${id}: blur`);
+			assert.equal(input.value, String(range.min));
+			type('', new Event('change'));
+			assert.equal(read(), range.default, `${id}: change on an empty field falls back to the default`);
+			assert.equal(input.value, String(range.default));
+			type(String(range.max + 1), new KeyboardEvent('keydown', { key: 'a' }));
+			assert.equal(read(), range.default, `${id}: a key other than Enter committed`);
+		}
+	});
+
+	test('the wrap column sits under the wrap mode, and is inert without it', () => {
+		// Monaco reads `wordWrapColumn` only in that wrap mode; the prerequisite is the row above.
+		const editor = ids('editor');
+		assert.equal(editor.indexOf('editor-max-width'), editor.indexOf('editor-word-wrap') + 1);
+		const wrapColumn = row('editor-max-width');
+		const settingsStore = store();
+		for (const mode of ['off', 'on']) {
+			settingsStore.wordWrap = mode;
+			assert.equal(wrapColumn.inactive?.(settingsStore), true, `the wrap column is live with word wrap ${mode}`);
+		}
+		settingsStore.wordWrap = 'wordWrapColumn';
+		assert.equal(wrapColumn.inactive?.(settingsStore), false);
+	});
+
+	test('the word count is greyed out when there is no status bar to show it in', () => {
+		const editor = ids('editor');
+		assert.equal(editor.indexOf('editor-word-count'), editor.indexOf('editor-status-bar') + 1);
+		const wordCount = row('editor-word-count');
+		const settingsStore = store();
+		settingsStore.statusBar = false;
+		assert.equal(wordCount.inactive?.(settingsStore), true);
+		settingsStore.statusBar = true;
+		assert.equal(wordCount.inactive?.(settingsStore), false);
+	});
+
+	test('Settings exposes a bounded preview-width input and reset action', () => {
+		const width = row('preview-max-width');
+		assert.equal(width.kind, 'previewWidth');
+		if (width.kind !== 'previewWidth') return;
+		assert.equal(width.range.min, MIN_PREVIEW_MAX_WIDTH);
+		assert.equal(width.range.max, MAX_PREVIEW_MAX_WIDTH);
+
+		const settingsStore = store();
+		settingsStore.previewMaxWidth = MAX_PREVIEW_MAX_WIDTH;
+		settingsStore.codeFontSize = CODE_FONT_SIZE_RANGE.max;
+		SETTINGS_PANES.preview.reset?.(settingsStore);
+		assert.equal(settingsStore.previewMaxWidth, DEFAULT_PREVIEW_MAX_WIDTH);
+		assert.equal(settingsStore.codeFontSize, CODE_FONT_SIZE_RANGE.default);
+	});
+});
