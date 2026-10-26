@@ -9,8 +9,8 @@ import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { installShimDom, parseHtml } from './renderProtocolDom.ts';
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
 import { headingFoldRanges, headingSymbols } from '../src/lib/utils/headingSymbols.js';
-import { DEFAULT_REFERENCE_STYLE, headingReference, preferredReferenceStyle } from '../src/lib/utils/headingReference.js';
-import { findSeedFromSelection } from '../src/lib/utils/findSeed.js';
+import { DEFAULT_REFERENCE_STYLE, headingReference, headingSlug, preferredReferenceStyle, referenceForTab } from '../src/lib/utils/headingReference.js';
+import { findSeedFromSelection, seedFindBar } from '../src/lib/utils/findSeed.js';
 import { addFrontMatterListItems, getFrontMatterListItems, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
 import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
@@ -1290,6 +1290,18 @@ describe('find seed', () => {
 		assert.equal(seed(null), '', 'no selection');
 		assert.equal(seed(selecting('x'), null), '', 'no preview on screen');
 	});
+
+	test('the seed is wired to the find bar', () => {
+		const queries: string[] = [];
+		const bar = { setQuery: (value: string) => void queries.push(value) };
+
+		seedFindBar(bar, selecting('deterministic'), preview);
+		// Nothing to seed leaves the previous query alone.
+		seedFindBar(bar, selecting('x', 'caret'), preview);
+		seedFindBar(null, selecting('no bar yet'), preview);
+
+		assert.deepEqual(queries, ['deterministic']);
+	});
 });
 
 describe('front matter parsing and editing', () => {
@@ -1545,5 +1557,28 @@ describe('wikilink file targets', () => {
 		// them either.
 		assert.equal(getMarkdownLinkTarget('report.pdf#Intro'), null);
 		assert.equal(getMarkdownLinkTarget('diagram.svg#part'), null);
+	});
+});
+
+describe('copy reference wiring', () => {
+	test('every Copy Reference entry writes the spelling the buffer is written in', () => {
+		// The preview's heading menu, the outline's right-click and the outline's
+		// context menu all build the string here. They built it inline before,
+		// which is how they came to disagree about the filename.
+		const inline = { path: 'C:\\notes\\setup.md', rawContent: 'See [Install](other.md#install).\n' };
+		assert.equal(referenceForTab('Setup', 'setup', inline), '[Setup](setup.md#setup)');
+		// The buffer, not the file on disk: an unsaved edit already counts.
+		assert.equal(referenceForTab('Setup', 'setup', { ...inline, rawContent: 'See [[Other#Install]].\n' }), '[[setup#Setup]]');
+		assert.equal(referenceForTab('Setup', 'setup', { path: null, rawContent: '' }), '#Setup');
+		assert.equal(referenceForTab('Setup', 'setup', undefined), '#Setup');
+	});
+
+	test('the id is taken off the rendered element rather than recomputed', () => {
+		// comrak can put it on an anchor nested inside the heading.
+		const anchor = { id: 'setup-1' };
+		const heading = (id: string) =>
+			({ id, querySelector: (selector: string) => (selector === 'a.anchor' ? anchor : null) }) as unknown as Element;
+		assert.equal(headingSlug(heading('setup')), 'setup');
+		assert.equal(headingSlug(heading('')), 'setup-1');
 	});
 });

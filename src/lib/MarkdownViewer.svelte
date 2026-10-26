@@ -49,7 +49,7 @@ import {
 } from './utils/foldState.js';
 import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
 import { fontFamilyValue } from './utils/fontFamily.js';
-import { headingReference, headingText, preferredReferenceStyle } from './utils/headingReference.js';
+import { headingSlug, headingText, referenceForTab } from './utils/headingReference.js';
 import {
 	findSourceLineRange,
 	getSourceLineAtPreviewOffset,
@@ -97,7 +97,7 @@ import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMar
 import { canonicalizePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
 import { contextMenuFor, editorContextMenuItems, imageMenuItems, saveImageAs as saveImageAsFile } from './utils/viewerContextMenu.js';
-import { findSeedFromSelection } from './utils/findSeed.js';
+import { seedFindBar } from './utils/findSeed.js';
 import {
 	dropRecentFile,
 	isRecentFilesStorageEvent,
@@ -226,11 +226,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		if (editorHasFocus || !previewVisible) {
 			editorPane?.triggerFind?.();
 		} else if (markdownBody) {
-			// Seed BEFORE opening, so the bar that appears already holds the query.
-			// Nothing to seed leaves the previous query alone, which is what a
-			// repeated Cmd/Ctrl+F expects.
-			const seed = findSeedFromSelection(window.getSelection(), markdownBody);
-			if (seed) findBar?.setQuery(seed);
+			seedFindBar(findBar, window.getSelection(), markdownBody);
 			// Focus explicitly: `findOpen = true` is a no-op once open.
 			findOpen = true;
 			findBar?.focusInput();
@@ -247,15 +243,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * back to what the menu has always produced.
 	 */
 	function copyHeadingReference(text: string, slug: string) {
-		const tab = tabManager.activeTab;
-		const fileName = tab?.path ? tab.path.split(/[/\\]/).pop() || null : null;
-		const reference = headingReference({
-			text,
-			slug,
-			fileName,
-			style: preferredReferenceStyle(tab?.rawContent ?? ''),
-		});
-		invoke('clipboard_write_text', { text: reference });
+		invoke('clipboard_write_text', { text: referenceForTab(text, slug, tabManager.activeTab) });
 	}
 
 	function reportUnsupportedDrop(path: string) {
@@ -2999,10 +2987,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		let copyRefItem: any[] = [];
 		if (heading) {
 			const text = headingText(heading);
-			// The rendered id, straight off the element: comrak wrote it, and
-			// the outline reads it the same way — it can be on an anchor comrak
-			// nests inside the heading rather than on the heading itself.
-			const slug = heading.id || heading.querySelector('a.anchor')?.id || '';
+			const slug = headingSlug(heading);
 			copyRefItem = [
 				{ label: t('menu.copyReference', settings.language), onClick: () => copyHeadingReference(text, slug) },
 				{ separator: true },

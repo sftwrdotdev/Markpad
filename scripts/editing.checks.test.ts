@@ -674,21 +674,13 @@ describe('copy reference wiring', () => {
 
 	/* ---------------------------------------------------------------- the wiring */
 
-	test('all three entries go through one helper, which reads the buffer', () => {
+	test('all three Copy Reference entries call the one helper', () => {
 		// The preview's heading menu, the outline's right-click, and the outline's
 		// context menu. All three built the string inline before, which is how they
-		// came to disagree about the filename in the first place.
+		// came to disagree about the filename in the first place. What the helper
+		// writes runs in editing.test.ts ("copy reference wiring"); this pins
+		// that there is no second builder.
 		assert.equal((viewerSource.match(/copyHeadingReference\(/g) ?? []).length, 4, 'one helper, three callers');
-		assert.match(viewerSource, /style: preferredReferenceStyle\(tab\?\.rawContent \?\? ''\)/);
-		// The id is taken off the rendered element rather than recomputed.
-		assert.match(viewerSource, /heading\.id \|\| heading\.querySelector\('a\.anchor'\)\?\.id/);
-	});
-});
-
-describe('find seed wiring', () => {
-	test('the seed is wired to the find bar', () => {
-		// One line the compiler cannot check: a pure function nothing calls is dead code.
-		assert.match(readSource('src/lib/MarkdownViewer.svelte'), /if \(seed\) findBar\?\.setQuery\(seed\);/);
 	});
 });
 

@@ -19,3 +19,12 @@ export function findSeedFromSelection(selection: Selection | null, root: Node | 
 	const text = selection.toString().trim();
 	return text.includes('\n') ? '' : text;
 }
+
+/**
+ * Seed the find bar BEFORE opening it, so the bar that appears already holds
+ * the query. Nothing to seed leaves the previous query alone.
+ */
+export function seedFindBar(bar: { setQuery(value: string): void } | null, selection: Selection | null, root: Node | null): void {
+	const seed = findSeedFromSelection(selection, root);
+	if (seed) bar?.setQuery(seed);
+}
