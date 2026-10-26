@@ -1338,6 +1338,21 @@ describe('link hover preview', () => {
 			isFootnote: false,
 		});
 	});
+
+	test('a footnote tooltip is read back out of the rendered preview', () => {
+		// `{@html tooltip.html}` is the one sink besides the patched article, and it
+		// is allowed because its body is a clone of what the sanitized article
+		// already holds — never markup built from the unrendered buffer.
+		const preview = document.createElement('div');
+		preview.innerHTML = '<ol><li id="fn-1"><p>The <em>note</em> <a href="#fnref-1" class="footnote-backref">↩</a></p></li></ol>';
+		const ref = document.createElement('a');
+		ref.setAttribute('href', 'fn-1');
+		ref.setAttribute('data-footnote-ref', '');
+		const label = linkTooltipFor(ref, { findAnchorTarget: () => null, footnoteRoot: preview });
+		assert.equal(label?.isFootnote, true);
+		assert.equal(label?.html, '<p>The <em>note</em> </p>');
+		assert.equal(preview.querySelector('.footnote-backref')?.textContent, '↩', 'the preview keeps its own back-link');
+	});
 });
 
 describe('preview copy handler', () => {

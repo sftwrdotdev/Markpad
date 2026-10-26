@@ -158,13 +158,7 @@ describe('preview sanitizing', () => {
 
 	const previewPatchSource = readSource('src/lib/utils/previewPatch.ts');
 
-	test('the preview sanitizes through the shared policy, not a local config', () => {
-		assert.match(
-			previewPatchSource,
-			/import\s*\{[^}]*\bsanitizeMarkdownFragment\b[^}]*\}\s*from\s*'[^']*\/sanitize\.js'/,
-			'the preview patch must import the shared sanitizer',
-		);
-
+	test('the viewer injects markup only through patchPreview and the footnote tooltip', () => {
 		// The sinks: every `{@html …}` in the viewer, whatever the expression looks
 		// like. Stated over *all* of them rather than over one known-good spelling,
 		// so adding an injection point of the raw document is a failure instead of
@@ -212,43 +206,10 @@ describe('preview sanitizing', () => {
 			'the preview must reach the article through patchPreview, once',
 		);
 
-		// Inside it: the one place markup is parsed is a block of the renderer's
-		// output, into a detached document of its own, before the filter — and what
-		// a block puts into the article is the filter's own nodes. Nothing is
-		// parsed after `sanitizeMarkdownFragment`, and no markup is assembled.
-		const parses = [...previewPatchSource.matchAll(/(\w+)\.(?:innerHTML|outerHTML|insertAdjacentHTML)\s*=\s*([^;]+);/g)].map(
-			(m) => `${m[1]} = ${m[2].trim()}`,
-		);
-		assert.deepEqual(parses, ['box = markup'], 'previewPatch.ts parses only the renderer output, before the filter');
-		assert.match(previewPatchSource, /const box = scratch\.createElement\('div'\);/, 'into the detached scratch document');
-		const processAndSanitize = sliceBetween(previewPatchSource, 'function processAndSanitize(', '\n}\n');
-		assert.match(processAndSanitize, /return sanitizeMarkdownFragment\(box\.innerHTML\);$/, 'and the filter has the last word');
-		// What a block is inserted as is always the filter's own nodes.
-		const renderBlocks = sliceBetween(previewPatchSource, 'function renderBlocks(', '\n}\n');
-		assert.deepEqual(
-			[...renderBlocks.matchAll(/Array\.from\((\w+)\.children\)/g)].map((m) => m[1]),
-			['clean', 'lone', 'mark'],
-		);
-		assert.match(renderBlocks, /const clean = processAndSanitize\(/);
-		assert.match(renderBlocks, /const lone = processAndSanitize\(/);
-		assert.match(renderBlocks, /const marks = Array\.from\(clean\.children\);/);
-		assert.match(renderBlocks, /return marks\.map\(\(mark\) =>/);
-		assert.doesNotMatch(previewPatchSource, /insertAdjacentHTML|outerHTML|createContextualFragment/);
-
-		// Why the footnote sink is allowed, pinned as a direction rather than as a
-		// spelling: the tooltip body is read out of the rendered document, never
-		// built from a string the sanitizer has not seen.
-		//
-		// `previewBlocks` and not `markdownBody`, and the difference is the whole
-		// point of the assertion rather than a rename. The article now holds one
-		// host per open tab, and `previewBlocks` is the one `patchPreview` was
-		// handed above — so this pins the tooltip to the exact element the sanitized
-		// string was parsed into, where the previous spelling only reached the box
-		// containing it.
-		const footnote = sliceBetween(viewerSource, "anchor.hasAttribute('data-footnote-ref')", 'isFootnote: true');
-		assert.match(footnote, /previewBlocks\?\.querySelector/, 'the footnote body is found in the rendered document');
-		assert.match(footnote, /\.innerHTML/, 'and taken from the DOM the shared sanitizer already filtered');
-		assert.doesNotMatch(footnote, /rawContent/, 'never from the unrendered buffer');
+		// What patchPreview does with that string, and where the footnote tooltip's
+		// body comes from, are run in preview.spec.ts ("the preview path patches in
+		// the filtered nodes, with the same policy", "a footnote tooltip is read back
+		// out of the rendered preview"). What stays here is the set of sinks.
 
 		// The regression itself — a DOMPurify call with a config assembled at the
 		// call site — is caught for the whole tree by the call-site allowlist below;

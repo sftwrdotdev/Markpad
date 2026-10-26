@@ -3,6 +3,7 @@ import { afterAll, describe, test } from 'vitest';
 
 import { countWords } from '../src/lib/utils/wordCount.js';
 import { isAltGraphChord } from '../src/lib/utils/viewerKeymap.js';
+import { contextMenuFor } from '../src/lib/utils/viewerContextMenu.js';
 
 /*
  * The status bar counted `text.match(/\S+/g)` and then kept only the tokens
@@ -180,5 +181,18 @@ describe('AltGr in Monaco', () => {
 
 		editor.dispose();
 		host.remove();
+	});
+});
+
+describe('editor context menu (#261)', () => {
+	test('a right-click in the editor gets the editor menu, before any other rule claims it', () => {
+		// Monaco takes input through a hidden `<textarea>`, so the carve-out that
+		// leaves real text fields their native menu would claim every right-click
+		// in the editor if it came first (#261/#266, then #207).
+		const root = document.createElement('div');
+		root.innerHTML = '<div class="editor-container"><div class="view-lines"><span>text</span></div><textarea class="inputarea"></textarea></div>';
+		for (const target of root.querySelectorAll('span, textarea')) {
+			assert.equal(contextMenuFor(target, { modalOpen: false, inApp: true }), 'editor', target.tagName);
+		}
 	});
 });

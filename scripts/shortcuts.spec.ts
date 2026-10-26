@@ -5,6 +5,8 @@ import { beforeAll, describe, onTestFinished, test } from 'vitest';
 
 import { canUsePreviewWidthShortcut, type KeyContext, type KeyStroke, type ViewerCommand, viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { PLATFORMS } from './keymapHarness.js';
+import { ChoiceDialog } from '../src/lib/utils/choiceDialog.svelte.js';
+import { contextMenuFor } from '../src/lib/utils/viewerContextMenu.js';
 
 describe('viewer keymap', () => {
 	/*
@@ -433,5 +435,45 @@ describe('os type fallback', async () => {
 
 		assert.equal(store.osType, 'macos');
 		assert.equal(store.editorFont, DEFAULT_FONTS.macos.editorFont);
+	});
+});
+
+describe('choice dialog', () => {
+	test('a second dialog settles the first instead of orphaning it', async () => {
+		// One dialog, one resolver. A second question used to overwrite the first
+		// caller's resolver, so that caller awaited forever — when it was the close
+		// walk, the window could not be closed again.
+		const dialog = new ChoiceDialog();
+		const first = dialog.ask('first', { title: 'Unsaved', kind: 'warning' });
+		const second = dialog.ask('second', { title: 'Unsaved', kind: 'warning' });
+		assert.equal(dialog.message, 'second');
+		dialog.close('discard');
+
+		assert.equal(await Promise.race([first, Promise.resolve('never settled')]), 'cancel');
+		assert.equal(await second, 'discard');
+		assert.equal(dialog.show, false);
+	});
+});
+
+describe('document context menu routing', () => {
+	function inside(html: string, selector: string) {
+		const root = document.createElement('div');
+		root.innerHTML = html;
+		return root.querySelector(selector)!;
+	}
+
+	test('document context menus do not open while a modal is active', () => {
+		// Every case answers 'none' with a dialog up, the editor's included.
+		for (const target of [inside('<p>text</p>', 'p'), inside('<div class="editor-container"><textarea></textarea></div>', 'textarea')]) {
+			assert.equal(contextMenuFor(target, { modalOpen: true, inApp: true }), 'none');
+		}
+		assert.equal(contextMenuFor(inside('<p>text</p>', 'p'), { modalOpen: false, inApp: true }), 'document');
+	});
+
+	test('text fields keep the webview edit menu so paste stays reachable', () => {
+		for (const html of ['<input>', '<textarea></textarea>', '<div contenteditable="true"><span>x</span></div>']) {
+			const target = inside(html, 'input, textarea, span');
+			assert.equal(contextMenuFor(target, { modalOpen: false, inApp: true }), 'native', html);
+		}
 	});
 });

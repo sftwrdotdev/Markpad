@@ -1577,31 +1577,6 @@ describe('X11 clipboard ownership', () => {
 describe('editor context menu (#261)', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	test('a right-click in the editor gets the editor menu, before any other rule claims it', () => {
-		// #261/#266 was the document menu swallowing this event: it called
-		// `preventDefault()` before checking where the click was, and its
-		// full-viewport overlay then covered Monaco's menu, so Paste hit the
-		// overlay. The fix then was to hand the event to Monaco.
-		//
-		// Markpad draws this menu itself now (#207), because Monaco's Paste reads
-		// the clipboard through the webview and cannot work here. So the invariant
-		// is no longer "Monaco gets the event first" — it is that the editor's own
-		// branch runs before every other rule in the handler.
-		//
-		// The ordering matters for a reason that is easy to miss: Monaco takes
-		// input through a hidden `<textarea>`, so the carve-out that leaves real
-		// text fields their native menu would claim every right-click in the
-		// editor if it came first.
-		const handler = sliceBetween(viewer, 'function handleContextMenu(e: MouseEvent)', '\n\tfunction handleMouseOver');
-		const editorBranch = offsetOf(handler, "closest('.editor-container')");
-		const textFieldCarveOut = offsetOf(handler, "closest('input, textarea,");
-		const documentMenu = offsetOf(handler, 'e.preventDefault();');
-
-		assert.ok(editorBranch < textFieldCarveOut, "the hidden textarea must not claim the editor's right-click");
-		assert.ok(editorBranch < documentMenu, 'the editor branch runs before the document menu');
-		assert.match(handler, /showEditorContextMenu\(e\);\s*\n\s*return;/, 'and it shows a menu rather than bailing out');
-	});
-
 	test('the editor menu runs the same three functions the keyboard runs', () => {
 		// One implementation per operation is the whole point: six entry points
 		// (three keys, three menu items) and three functions. A menu item wired to

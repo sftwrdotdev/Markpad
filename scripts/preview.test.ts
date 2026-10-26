@@ -811,7 +811,7 @@ describe('preview link clicks', () => {
 
 	const DOC = '/notes/report.md';
 
-	function documentDeps(calls: Calls, openUrl = async (url: string) => void calls.push(`url ${url}`)) {
+	function documentDeps(calls: Calls, openUrl: (url: string) => Promise<void> = async (url) => void calls.push(`url ${url}`)) {
 		return {
 			currentFile: DOC,
 			openHere: async (t: { path: string }) => void calls.push(`open ${t.path}`),

@@ -95,6 +95,8 @@ import {
 } from './utils/markdownLinks.js';
 import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
 import { canonicalizePath } from './utils/pathIdentity.js';
+import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
+import { contextMenuFor } from './utils/viewerContextMenu.js';
 import { findSeedFromSelection } from './utils/findSeed.js';
 import { normalizeAssetPath } from './utils/exportHtml.js';
 import {
@@ -522,21 +524,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	});
 
 	let tooltip = $state({ show: false, text: '', shortcut: '', html: '', isFootnote: false, x: 0, y: 0, align: 'top' as 'top' | 'right' | 'left' | 'below' });
-	let modalState = $state<{
-		show: boolean;
-		title: string;
-		message: string;
-		kind: 'info' | 'warning' | 'error';
-		showSave: boolean;
-		resolve: ((v: 'save' | 'discard' | 'cancel') => void) | null;
-	}>({
-		show: false,
-		title: '',
-		message: '',
-		kind: 'info',
-		showSave: false,
-		resolve: null,
-	});
+	const modalState = new ChoiceDialog();
 
 	let docContextMenu = $state<{
 		show: boolean;
@@ -551,21 +539,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	});
 
 	function askCustom(message: string, options: { title: string; kind: 'info' | 'warning' | 'error'; showSave?: boolean }): Promise<'save' | 'discard' | 'cancel'> {
-		// A second question replaces the first dialog, so the first caller is
-		// answered 'cancel' rather than left awaiting a resolver that is about to
-		// be overwritten — a close walk left that way never finished, and the
-		// window could not be closed again. An already-answered one ignores it.
-		modalState.resolve?.('cancel');
-		return new Promise((resolve) => {
-			modalState = {
-				show: true,
-				title: options.title,
-				message,
-				kind: options.kind,
-				showSave: options.showSave ?? false,
-				resolve,
-			};
-		});
+		return modalState.ask(message, options);
 	}
 
 	// window.prompt() is a silent no-op inside the webview (wry does not
@@ -597,15 +571,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	function closeModal(choice: 'save' | 'cancel') {
-		modalState.resolve?.(choice);
-		modalState.show = false;
+		modalState.close(choice);
 	}
 
-	// Self-contained rather than closeModal('discard'): menuModalGuards.test.ts
-	// lifts it on its own.
 	function handleModalConfirm() {
-		if (modalState.resolve) modalState.resolve('discard');
-		modalState.show = false;
+		modalState.close('discard');
 	}
 
 	function handleSplitterKeyDown(e: KeyboardEvent) {
@@ -3062,19 +3032,12 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	function handleContextMenu(e: MouseEvent) {
-		if (modalState.show) return;
-		if (mode !== 'app') return;
-		// The editor gets its own menu, and this branch has to come first:
-		// Monaco takes input through a hidden `<textarea>`, so the text-field
-		// carve-out below would otherwise claim every right-click in it.
-		if ((e.target as HTMLElement).closest('.editor-container')) {
+		const menu = contextMenuFor(e.target as HTMLElement, { modalOpen: modalState.show, inApp: mode === 'app' });
+		if (menu === 'editor') {
 			showEditorContextMenu(e);
 			return;
 		}
-		// Text fields keep the webview's own editing menu (Cut/Copy/Paste);
-		// the document menu below is about the rendered preview and has no
-		// edit items, so swallowing the native one leaves no way to paste.
-		if ((e.target as HTMLElement).closest('input, textarea, [contenteditable="true"]')) return;
+		if (menu !== 'document') return;
 		e.preventDefault();
 
 		const selection = window.getSelection();
