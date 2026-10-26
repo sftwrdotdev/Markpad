@@ -772,14 +772,18 @@ pub async fn get_system_fonts() -> Vec<String> {
 #[tauri::command]
 pub fn self_update_supported(app: AppHandle) -> bool {
     #[cfg(target_os = "linux")]
-    {
-        app.env().appimage.is_some()
-    }
+    let is_appimage = app.env().appimage.is_some();
     #[cfg(not(target_os = "linux"))]
-    {
+    let is_appimage = {
         let _ = app;
-        true
-    }
+        false
+    };
+    self_update_supported_for(is_appimage)
+}
+
+/// Only Linux is gated: there only an AppImage can be replaced in place.
+fn self_update_supported_for(is_appimage: bool) -> bool {
+    !cfg!(target_os = "linux") || is_appimage
 }
 
 #[tauri::command]
@@ -814,18 +818,25 @@ pub fn get_os_type() -> String {
 /// and Windows write into a store the system owns.
 #[cfg(all(unix, not(target_os = "macos")))]
 fn retain_clipboard_ownership() {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::AtomicBool;
     static RETAINED: AtomicBool = AtomicBool::new(false);
 
-    // Racing threads would leak a second handle, not a second connection; both
-    // are `Arc`s onto the same global. Failure is not recorded, so a copy
-    // attempted before the display is reachable does not poison later ones.
-    if RETAINED.load(Ordering::Relaxed) {
+    retain_forever(&RETAINED, || arboard::Clipboard::new().ok());
+}
+
+/// Builds one value with `make` and never drops it. Racing threads would leak a
+/// second handle, not a second connection; both are `Arc`s onto the same
+/// global. Failure is not recorded, so a copy attempted before the display is
+/// reachable does not poison later ones.
+#[cfg(any(test, all(unix, not(target_os = "macos"))))]
+fn retain_forever<T>(retained: &std::sync::atomic::AtomicBool, make: impl FnOnce() -> Option<T>) {
+    use std::sync::atomic::Ordering;
+    if retained.load(Ordering::Relaxed) {
         return;
     }
-    if let Ok(clipboard) = arboard::Clipboard::new() {
-        std::mem::forget(clipboard);
-        RETAINED.store(true, Ordering::Relaxed);
+    if let Some(value) = make() {
+        std::mem::forget(value);
+        retained.store(true, Ordering::Relaxed);
     }
 }
 
@@ -1475,5 +1486,49 @@ pub(crate) mod tests {
         }
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn only_linux_gates_self_update() {
+        // Windows runs the downloaded NSIS installer and macOS replaces the
+        // bundle, so neither may be gated; on Linux only an AppImage updates.
+        if cfg!(target_os = "linux") {
+            assert!(self_update_supported_for(true));
+            assert!(!self_update_supported_for(false));
+        } else {
+            assert!(self_update_supported_for(false));
+            assert!(self_update_supported_for(true));
+        }
+    }
+
+    #[test]
+    fn the_retained_clipboard_handle_is_never_dropped() {
+        // #729: arboard gives up X11 clipboard ownership when its last handle
+        // drops, so the handle retained for the copy command must outlive it.
+        use std::cell::Cell;
+        use std::sync::atomic::AtomicBool;
+
+        struct Handle<'a>(&'a Cell<u32>);
+        impl Drop for Handle<'_> {
+            fn drop(&mut self) {
+                self.0.set(self.0.get() + 1);
+            }
+        }
+
+        let drops = Cell::new(0);
+        let made = Cell::new(0);
+        let retained = AtomicBool::new(false);
+        let make = || {
+            made.set(made.get() + 1);
+            Some(Handle(&drops))
+        };
+
+        // A display not reachable yet is not recorded as retained.
+        retain_forever::<Handle>(&retained, || None);
+        retain_forever(&retained, make);
+        retain_forever(&retained, make);
+
+        assert_eq!(made.get(), 1, "one handle, built once");
+        assert_eq!(drops.get(), 0, "and never dropped");
     }
 }

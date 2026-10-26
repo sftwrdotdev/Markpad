@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 
-import { callbackBodies, enclosingFunctionName, functionSource, offsetOf, sliceBetween, sliceFrom } from './sourceTree.js';
+import { callbackBodies, enclosingFunctionName, functionSource, offsetOf, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 
 // scripts/sourceTree.ts is the plumbing four convention tests state their claims
 // through, so a hole in it is a hole in all of them at once, and it is invisible
@@ -159,5 +163,63 @@ describe('the sourceTree helpers', () => {
 		// `end` is searched from the end of `start`, so an earlier occurrence of
 		// `end` is a failure rather than an empty subject.
 		assert.throws(() => sliceBetween('xabc', 'b', 'x'), /expected to find "x" after "b"/);
+	});
+});
+
+describe('release version bump', () => {
+	// The stand-in cargo is a shell script.
+	const posix = { skip: process.platform === 'win32' && 'needs a POSIX shell' };
+
+	test('one command writes the version into all three files', posix, () => {
+		// RELEASING.md used to name two of the three, so the third was skipped by
+		// following the instructions correctly. The script runs here against a
+		// copy of the three manifests, with a stand-in `cargo` that records what
+		// it was asked and rewrites the lock entry the way `cargo update` does.
+		const root = realpathSync(mkdtempSync(join(tmpdir(), 'markpad-release-')));
+		try {
+			mkdirSync(join(root, 'src-tauri'));
+			mkdirSync(join(root, 'bin'));
+			writeFileSync(join(root, 'package.json'), '{\n  "name": "markpad",\n  "version": "1.0.0"\n}\n');
+			writeFileSync(
+				join(root, 'src-tauri/Cargo.toml'),
+				// A dependency's `version` ahead of ours, as a reordered manifest has.
+				'[dependencies]\nserde = { version = "1.0.0" }\n\n[package]\nname = "Markpad"\nversion = "1.0.0"\n',
+			);
+			writeFileSync(
+				join(root, 'src-tauri/Cargo.lock'),
+				'[[package]]\nname = "Markpad"\nversion = "1.0.0"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\n',
+			);
+			const cargo = join(root, 'bin/cargo');
+			writeFileSync(
+				cargo,
+				[
+					'#!/bin/sh',
+					'echo "$PWD $*" > ../cargo-call',
+					'[ "$1 $2 $3" = "update -p Markpad" ] || exit 9',
+					'sed -i.bak "/^name = \\"Markpad\\"$/{n;s/^version = .*/version = \\"$5\\"/;}" Cargo.lock',
+				].join('\n'),
+			);
+			chmodSync(cargo, 0o755);
+
+			const run = spawnSync(process.execPath, [resolve('scripts/release.mjs'), '2.3.4'], {
+				cwd: root,
+				env: { ...process.env, PATH: `${join(root, 'bin')}:${process.env.PATH}` },
+				encoding: 'utf8',
+			});
+			assert.equal(run.status, 0, run.stderr);
+
+			assert.equal(JSON.parse(readSource(join(root, 'package.json'))).version, '2.3.4');
+			const toml = readSource(join(root, 'src-tauri/Cargo.toml'));
+			assert.match(toml, /\[package\]\nname = "Markpad"\nversion = "2.3.4"/);
+			assert.match(toml, /serde = \{ version = "1.0.0" \}/, 'a dependency version is not ours');
+			assert.match(readSource(join(root, 'src-tauri/Cargo.lock')), /name = "Markpad"\nversion = "2.3.4"/);
+			// The lock is cargo's format; it is handed to cargo, not rewritten.
+			assert.equal(
+				readSource(join(root, 'cargo-call')).trim(),
+				`${join(root, 'src-tauri')} update -p Markpad --precise 2.3.4`,
+			);
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
 	});
 });

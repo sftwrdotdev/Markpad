@@ -636,6 +636,30 @@ describe('editor theme', () => {
 		}
 	});
 
+	test('both themes get rules, and every rule is a real token', () => {
+		// Every construct the palette colours, run through Monaco's own grammar. A
+		// rule naming a token this never emits would be inert.
+		const sample = [
+			'# Heading', '', '> quoted', '', '* * *', '',
+			'- item **bold** and *it* `code` \\* [a](http://x "t") <http://auto>', '',
+			'| H1 | H2 |', '|----|----|', '| a  | b  |', '',
+			'```', 'fenced', '```', '',
+			'<div class="c" id=\'x\'>html &amp; text</div>', '<!-- note -->',
+		].join('\n');
+		const emitted = new Set(createMarkdownTokenizer()(sample).flat().map((token) => token.type));
+
+		for (const appearance of ['light', 'dark'] as const) {
+			const rules = markdownTokenRules(appearance);
+			assert.ok(rules.length > 0, `${appearance} must not fall back to Monaco's source-code colours`);
+			for (const rule of rules) {
+				assert.ok(emitted.has(rule.token), `no Markdown token is called \`${rule.token}\` — the rule would be inert`);
+				// Monaco's own parser reads these as `#rrggbb` once it prepends the
+				// hash; a `#` here, or a short form, resolves to no colour.
+				assert.match(rule.foreground, /^[0-9a-f]{6}$/, `${rule.token} must be a bare six-digit hex`);
+			}
+		}
+	});
+
 	test('light and dark are actually different themes', () => {
 		const light = markdownTokenRules('light');
 		const dark = markdownTokenRules('dark');
@@ -1138,50 +1162,50 @@ describe('image embed', () => {
 // `monaco.editor.tokenize()` falls back to null tokens if the language has not
 // finished loading; that degrades to "no code token found", i.e. to the old
 // linkify-everything behaviour, and is not reproduced here.
+// `monaco.editor.tokenize()` needs a browser-backed editor to exist, so the
+// tokenizer is driven directly. Only the handful of services Monarch actually
+// touches during plain (non-encoded) tokenization are stubbed.
+function createMarkdownTokenizer() {
+	const lexer = compile('markdown', markdownLanguage);
+	const languageService = {
+		languageIdCodec: { encodeLanguageId: () => 1, decodeLanguageId: () => 'markdown' },
+		isRegisteredLanguageId: () => true,
+		// ```lang fences: Monarch asks for the embedded language and stamps its
+		// tokens with the resulting id, which is the signal pasteContext keys on.
+		getLanguageIdByLanguageName: (name: string) => name,
+		requestBasicLanguageFeatures: () => {},
+		requestRichLanguageFeatures: () => {},
+		onDidRequestBasicLanguageFeatures: () => ({ dispose() {} }),
+		onDidRequestRichLanguageFeatures: () => ({ dispose() {} }),
+	};
+	const themeService = {
+		getColorTheme: () => ({ tokenTheme: { match: () => 0 } }),
+		onDidColorThemeChange: () => ({ dispose() {} }),
+	};
+	const configurationService = {
+		getValue: () => undefined,
+		onDidChangeConfiguration: () => ({ dispose() {} }),
+	};
+
+	const tokenizer = new MonarchTokenizer(
+		languageService,
+		themeService,
+		'markdown',
+		lexer,
+		configurationService,
+	);
+
+	return (text: string): PasteContextToken[][] => {
+		let state = tokenizer.getInitialState();
+		return text.split('\n').map((line: string) => {
+			const result = tokenizer.tokenize(line, true, state);
+			state = result.endState;
+			return result.tokens as PasteContextToken[];
+		});
+	};
+}
+
 describe('paste URL context', () => {
-	// `monaco.editor.tokenize()` needs a browser-backed editor to exist, so the
-	// tokenizer is driven directly. Only the handful of services Monarch actually
-	// touches during plain (non-encoded) tokenization are stubbed.
-	function createMarkdownTokenizer() {
-		const lexer = compile('markdown', markdownLanguage);
-		const languageService = {
-			languageIdCodec: { encodeLanguageId: () => 1, decodeLanguageId: () => 'markdown' },
-			isRegisteredLanguageId: () => true,
-			// ```lang fences: Monarch asks for the embedded language and stamps its
-			// tokens with the resulting id, which is the signal pasteContext keys on.
-			getLanguageIdByLanguageName: (name: string) => name,
-			requestBasicLanguageFeatures: () => {},
-			requestRichLanguageFeatures: () => {},
-			onDidRequestBasicLanguageFeatures: () => ({ dispose() {} }),
-			onDidRequestRichLanguageFeatures: () => ({ dispose() {} }),
-		};
-		const themeService = {
-			getColorTheme: () => ({ tokenTheme: { match: () => 0 } }),
-			onDidColorThemeChange: () => ({ dispose() {} }),
-		};
-		const configurationService = {
-			getValue: () => undefined,
-			onDidChangeConfiguration: () => ({ dispose() {} }),
-		};
-
-		const tokenizer = new MonarchTokenizer(
-			languageService,
-			themeService,
-			'markdown',
-			lexer,
-			configurationService,
-		);
-
-		return (text: string): PasteContextToken[][] => {
-			let state = tokenizer.getInitialState();
-			return text.split('\n').map((line: string) => {
-				const result = tokenizer.tokenize(line, true, state);
-				state = result.endState;
-				return result.tokens as PasteContextToken[];
-			});
-		};
-	}
-
 	const tokenize = createMarkdownTokenizer();
 
 	/**

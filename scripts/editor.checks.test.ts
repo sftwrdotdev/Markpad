@@ -163,15 +163,7 @@ describe('editor option wiring', () => {
 // (#676's defect, one layer over), and a colour that has drifted from the one
 // the rest of the app resolves through `--color-*`.
 describe('editor theme contracts', () => {
-	const grammar = readSource('node_modules/monaco-editor/esm/vs/basic-languages/markdown/markdown.js');
-
 	const styles = readSource('src/styles.css');
-
-	/** Every token name this Monaco build's Markdown tokenizer can emit. */
-	const emittedTokens = (() => {
-		const tokenizer = grammar.slice(grammar.indexOf('tokenizer:'));
-		return new Set([...tokenizer.matchAll(/"([a-z][\w.]*)"/g)].map((match) => match[1]));
-	})();
 
 	/** A `--color-*` value, read out of the block that defines the given appearance. */
 	function paletteColor(appearance: 'light' | 'dark', name: string): string {
@@ -182,23 +174,6 @@ describe('editor theme contracts', () => {
 		assert.ok(match, `styles.css must define --color-${name} for ${appearance}`);
 		return match[1].slice(1).toLowerCase();
 	}
-
-	test('both themes get rules, and every rule is a real token', () => {
-		for (const appearance of ['light', 'dark'] as const) {
-			const rules = markdownTokenRules(appearance);
-			assert.ok(rules.length > 0, `${appearance} must not fall back to Monaco's source-code colours`);
-
-			for (const rule of rules) {
-				// The grammar spells its tokens without the postfix it later appends.
-				const bare = rule.token.slice(0, -'.md'.length);
-				const emitted = emittedTokens.has(bare);
-				assert.ok(emitted, `no Markdown token is called \`${rule.token}\` — the rule would be inert`);
-				// Monaco's own parser reads these as `#rrggbb` once it prepends the
-				// hash; a `#` here, or a short form, resolves to no colour.
-				assert.match(rule.foreground, /^[0-9a-f]{6}$/, `${rule.token} must be a bare six-digit hex`);
-			}
-		}
-	});
 
 	test('the colours are the app palette, not a second one', () => {
 		// One-way duplication: `defineTheme` takes hex strings and never sees the
@@ -811,18 +786,6 @@ describe('X11 clipboard ownership', () => {
 			'\n}',
 		);
 		assert.match(body, /retain_clipboard_ownership\(\)/);
-	});
-
-	test('the retained handle is never dropped', () => {
-		// `retain_clipboard_ownership` holding a `Clipboard` in a local would be a
-		// no-op: the point is that the handle outlives the call, so the invisible
-		// window arboard serves selection requests from is never destroyed.
-		const helper = sliceBetween(
-			readSource('src-tauri/src/commands.rs'),
-			'fn retain_clipboard_ownership',
-			'\n}',
-		);
-		assert.match(helper, /std::mem::forget\(/);
 	});
 });
 

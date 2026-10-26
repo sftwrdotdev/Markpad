@@ -444,8 +444,6 @@ describe('preview sanitizing', () => {
 
 	const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
 
-	const sanitizeSource = readSource('src/lib/utils/sanitize.ts');
-
 	const richContentSource = readSource('src/lib/utils/richContent.ts');
 
 	const previewPatchSource = readSource('src/lib/utils/previewPatch.ts');
@@ -554,25 +552,6 @@ describe('preview sanitizing', () => {
 		);
 	});
 
-	test('the shared policy the preview now gets is the one that forbids author stylesheets', () => {
-		// Read as one chain: the preview patch calls sanitizeMarkdownFragment (test
-		// above), which passes MARKDOWN_SANITIZE_CONFIG and only asks for nodes
-		// back, as the export's sanitizeMarkdownHtml passes it, and that config
-		// forbids the tag the payload needs.
-		assert.match(sanitizeSource, /return DOMPurify\.sanitize\(html, MARKDOWN_SANITIZE_CONFIG\)/);
-		assert.match(
-			sanitizeSource,
-			/return DOMPurify\.sanitize\(html, \{ \.\.\.MARKDOWN_SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true \}\)/,
-		);
-		assert.deepEqual(Object.keys(MARKDOWN_SANITIZE_CONFIG).sort(), ['ALLOWED_URI_REGEXP', 'FORBID_TAGS']);
-		assert.deepEqual(MARKDOWN_SANITIZE_CONFIG.FORBID_TAGS, ['style']);
-		// Identity, not equality: the regression this file exists for is a *copy* of
-		// the URI pattern, and a copy that happens to be spelled the same today is
-		// the thing that drifts tomorrow. Measured — rebuilding the config's regexp
-		// from the exported one's source and flags fails here.
-		assert.equal(MARKDOWN_SANITIZE_CONFIG.ALLOWED_URI_REGEXP, ALLOWED_MARKDOWN_URI_REGEXP);
-	});
-
 	// Every `DOMPurify.sanitize` in `src/` is a decision about what a piece of
 	// untrusted input is allowed to be, and the compiler cannot tell that a new one
 	// silently reintroduces a private policy — this file exists because that is
@@ -664,19 +643,6 @@ describe('preview width', () => {
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 
 	const tocOverlaySource = readSource(new URL('../src/lib/utils/tocOverlay.ts', import.meta.url));
-
-	test('settings load, persist, and reset the preview width through one normalizer', () => {
-		assert.match(settingsSource, /previewMaxWidth = \$state\(DEFAULT_PREVIEW_MAX_WIDTH\)/);
-		// Persistence moved from one all-fields effect to one entry per localStorage
-		// key (so that a change in one window stops rewriting every other key from a
-		// stale snapshot). The preview width still round-trips under the same key and
-		// through the same normalizer; only the plumbing that reads and writes it is
-		// now shared. See scripts/settingsPersistence.spec.ts.
-		assert.match(settingsSource, /key: 'preview\.maxWidth'/);
-		assert.match(settingsSource, /read: \(s\) => String\(s\.previewMaxWidth\)/);
-		assert.match(settingsSource, /normalizePreviewMaxWidth\(savedPreviewMaxWidth\)/);
-		assert.match(settingsSource, /resetPreviewMaxWidth\(\)[\s\S]*this\.previewMaxWidth = DEFAULT_PREVIEW_MAX_WIDTH/);
-	});
 
 	test('preview layout derives width and ToC geometry from the same preference', () => {
 		assert.match(viewerSource, /getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)/);

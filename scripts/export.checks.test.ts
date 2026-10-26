@@ -5,7 +5,6 @@ import { DEFAULT_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } from '../src/lib/uti
 import { plainAppearance } from './exportFixtures.ts';
 import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 import { collectUsedKatexFamilies, katexFontUrlsToEmbed } from '../src/lib/utils/exportFonts.ts';
-import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
 import { useShimDom } from './preview.domShim.ts';
 
 /**
@@ -183,8 +182,6 @@ describe('exported content width', () => {
 
 describe('folds in print and export', () => {
 	const styles = readSource('src/styles.css');
-
-	const exportSource = readSource('src/lib/utils/export.ts');
 
 	// Both export routes have to agree on what is in the file. The HTML route
 	// decides in TypeScript (it renders every fold open); the print/PDF route
@@ -526,14 +523,6 @@ describe('folds in print and export', () => {
 		assert.equal(screenValue(nestedCallout, 'transform'), undefined);
 	});
 
-	test('the HTML export renders every heading fold open', () => {
-		// The HTML route never sees the live DOM, it re-renders from source, and
-		// the Set it passes is the fold state that render is given. An empty one is
-		// what makes every section expanded.
-		assert.match(exportSource, /processMarkdownHtml\(safeHtml, ctx\.tabPath, new Set\(\)\)/);
-		assert.doesNotMatch(exportSource, /processMarkdownHtml\([^)]*foldOverrides/);
-	});
-
 	test('a callout collapsed in the source is still readable in an exported file', () => {
 		// The empty Set only governs heading folds. `> [!note]-` puts `is-collapsed`
 		// in the markup itself, so it survives the re-render — and an exported file
@@ -625,103 +614,8 @@ describe('rich content in the HTML export', () => {
 	});
 });
 
-describe('export sanitizing', () => {
-	const exportSource = readSource('src/lib/utils/export.ts');
-
-	const sanitizeSource = readSource('src/lib/utils/sanitize.ts');
-
-	// DOMPurify itself needs a real DOM, which the Node test runner does not have,
-	// so these tests exercise the two halves of the policy that are checkable here:
-	// the URI decision (a pure regexp, applied exactly the way DOMPurify applies it,
-	// see purify.es.mjs line ~1041) and the configuration that decides what the
-	// filter may keep. The behavioural half was verified against the real DOMPurify
-	// build in Chrome: `sanitizeMarkdownHtml(POC)` returns `<img src="x">` — the
-	// event handler, and with it the whole payload, is gone.
-	const ATTR_WHITESPACE = /[\u0000-\u0020\u00A0\u1680\u180E\u2000-\u2029\u205F\u3000]/g;
-
-	function uriIsAllowed(value: string): boolean {
-		return ALLOWED_MARKDOWN_URI_REGEXP.test(value.replace(ATTR_WHITESPACE, ''));
-	}
-
-	test('the export sanitizes the rendered document before it touches it', () => {
-		// The regression this pins: `render_markdown` output going into
-		// `processMarkdownHtml` — and from there into the file — without passing
-		// through the shared filter first. Order matters as much as presence: the
-		// sanitizer has to see the untrusted document, not our own generated markup.
-		const sanitizeCall = exportSource.indexOf('const safeHtml = sanitizeMarkdownHtml(rendered);');
-		const processCall = exportSource.indexOf('processMarkdownHtml(safeHtml, ctx.tabPath, new Set())');
-
-		assert.ok(sanitizeCall !== -1, 'export must sanitize the raw render_markdown output');
-		assert.ok(processCall !== -1, 'export must feed the sanitized HTML into processMarkdownHtml');
-		assert.ok(sanitizeCall < processCall, 'sanitization must happen before any Markpad-owned processing');
-
-		// The raw renderer output must not reach any other consumer unfiltered.
-		assert.doesNotMatch(exportSource, /processMarkdownHtml\(\s*rendered\b/);
-		assert.match(exportSource, /import \{ sanitizeMarkdownHtml \} from '\.\/sanitize\.js'/);
-	});
-
-	test('the proof-of-concept payload cannot reach an exported file', () => {
-		// The payload's danger is the handler, not the URI: `x` is an ordinary
-		// relative path and is meant to stay allowed. So nothing about the URI
-		// policy stops this one — two other things do, and both are asserted here,
-		// because on the unfixed export path neither was in the way.
-		//
-		// (`assert.match(POC, /onerror=/)` used to sit here. POC is a template
-		// literal three lines above, so the assertion restated the fixture back to
-		// itself and no change to `src/` could reach it.)
-		assert.equal(uriIsAllowed('x'), true);
-
-		// 1. The renderer output carrying the payload goes through the shared
-		//    filter before anything else touches it, and DOMPurify drops `on*`
-		//    handlers unless the config hands them back. Nothing in the shared
-		//    config does: a future `ADD_ATTR: ['onerror']`, `ALLOWED_ATTR`,
-		//    `ADD_TAGS`, `ALLOW_UNKNOWN_PROTOCOLS` or `SANITIZE_DOM: false` would
-		//    fail the key assertion below.
-		assert.match(exportSource, /const safeHtml = sanitizeMarkdownHtml\(rendered\);/);
-		assert.deepEqual(Object.keys(MARKDOWN_SANITIZE_CONFIG).sort(), ['ALLOWED_URI_REGEXP', 'FORBID_TAGS']);
-		assert.deepEqual(MARKDOWN_SANITIZE_CONFIG.FORBID_TAGS, ['style']);
-		assert.equal(MARKDOWN_SANITIZE_CONFIG.ALLOWED_URI_REGEXP, ALLOWED_MARKDOWN_URI_REGEXP);
-
-		// 2. Even if the filter ever lets something through, the exported document
-		//    itself refuses to run it.
-		assert.match(exportSource, /<meta http-equiv="Content-Security-Policy"/);
-		assert.match(exportSource, /"default-src 'none'"/);
-	});
-
-	test('exported files carry a policy that cannot run script', () => {
-		// Second line of defence: verified in Chrome, an exported page with this
-		// meta tag runs neither an inline `<script>` nor an `onerror` handler even
-		// when the body is left unsanitized, while the copied stylesheet, inline
-		// style attributes, embedded data-URI images and remote https images all
-		// still work.
-		assert.match(exportSource, /<meta http-equiv="Content-Security-Policy" content="\$\{EXPORT_CSP\}">/);
-		assert.match(exportSource, /"default-src 'none'"/);
-		assert.match(exportSource, /"style-src 'unsafe-inline'"/);
-		assert.match(exportSource, /'img-src data: https: http:'/);
-		assert.match(exportSource, /'media-src data: https: http:'/);
-		// Script execution must never be granted back.
-		assert.doesNotMatch(exportSource, /script-src/);
-		assert.doesNotMatch(exportSource, /unsafe-eval/);
-	});
-
-	test('the shared policy forbids author stylesheets', () => {
-		// `<style>` is on DOMPurify's default allowlist and its CSS is not filtered.
-		// In the preview the sanitized HTML is injected into the app's own document,
-		// so a document author's stylesheet is not scoped to the article: it can
-		// hide app chrome or beacon out through `background: url(https://…)`.
-		// Verified in Chrome: with the tag forbidden, an author `<style>` block no
-		// longer applies, and nothing Markpad renders depends on it.
-		assert.ok(MARKDOWN_SANITIZE_CONFIG.FORBID_TAGS.includes('style'));
-		// Inline `style` attributes stay allowed on purpose — documents use them
-		// and `processMarkdownHtml` sets one on media elements.
-		assert.doesNotMatch(sanitizeSource, /FORBID_ATTR/);
-	});
-});
-
 describe('exported theme', () => {
 	const styles = readSource('src/styles.css');
-
-	const exportSource = readSource('src/lib/utils/export.ts');
 
 	/** The opening `<html …>` tag of a built export. */
 	function htmlTag(document: string): string {
@@ -774,10 +668,6 @@ describe('exported theme', () => {
 
 		// And the mechanism it delegates to has to still be in the sheet that gets copied.
 		assert.match(styles, /@media \(prefers-color-scheme: dark\)/);
-	});
-
-	test('the export reads the theme off the same element the app themes', () => {
-		assert.match(exportSource, /theme: document\.documentElement\.dataset\.theme/);
 	});
 
 	test('a ticked task dims its content once, not once per nesting level', () => {
@@ -910,21 +800,6 @@ describe('native PDF printing', () => {
 	});
 });
 
-describe('mermaid print theme', () => {
-	test('the PDF export draws the document with the print theme', () => {
-		// Paper is white whatever the screen is wearing, and Mermaid bakes the
-		// theme into the SVG it emits, so the article the print route builds is
-		// rendered with the print theme rather than the app's current one.
-		const exporter = readSource('src/lib/utils/export.ts');
-		const pdf = sliceBetween(exporter, 'export async function exportAsPdf', '\nasync function waitForImages');
-		assert.match(pdf, /mermaidTheme: MERMAID_PRINT_THEME/);
-		assert.match(exporter, /import \{ MERMAID_PRINT_THEME \} from '\.\/mermaidPrint\.js';/);
-		// And the HTML export keeps carrying the author's appearance instead.
-		const html = sliceBetween(exporter, 'export async function exportAsHtml', 'export async function exportAsPdf');
-		assert.doesNotMatch(html, /MERMAID_PRINT_THEME/);
-	});
-});
-
 describe('oversized media in print', () => {
 	const styles = readSource('src/styles.css');
 
@@ -1029,8 +904,6 @@ describe('PDF prints the export article', () => {
 
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	const exporter = readSource('src/lib/utils/export.ts');
-
 	/** The `@media print` block only — not everything that follows it in the file. */
 	function extractPrintBlock(source: string): string {
 		const start = offsetOf(source, '@media print {');
@@ -1046,40 +919,6 @@ describe('PDF prints the export article', () => {
 	}
 
 	const printBlock = extractPrintBlock(styles);
-
-	const pdfExport = sliceBetween(exporter, 'export async function exportAsPdf', '\nasync function waitForImages');
-
-	test('a PDF is rendered from the document, not from the window', () => {
-		// `window.print()` over the live window made the paper whatever was on
-		// screen, and every new part of the interface had to be subtracted back out
-		// in the print sheet. Fifteen issues over five months were that list missing
-		// an entry (#668). The article is built the way the HTML export builds it.
-		assert.match(pdfExport, /await buildExportArticle\(/);
-		assert.match(pdfExport, /ctx\.printRoot\.replaceChildren\(\.\.\.Array\.from\(article\.root\.childNodes\)\)/);
-	});
-
-	test('the article is taken down when printing ends, not when the command returns', () => {
-		// `print_pdf` opens the platform print sheet and returns while it is still
-		// up. Clearing the article at that point races the sheet for the page it is
-		// about to render, and losing that race prints nothing at all.
-		assert.match(pdfExport, /addEventListener\('afterprint', \(\) => ctx\.printRoot\.replaceChildren\(\), \{ once: true \}\)/);
-		assert.doesNotMatch(pdfExport, /\} finally \{/);
-		// A platform that never sends the event leaves it mounted, so the next
-		// export has to start from empty rather than print the last document.
-		const reset = offsetOf(pdfExport, 'ctx.printRoot.replaceChildren();');
-		assert.ok(reset < offsetOf(pdfExport, 'await buildExportArticle('), 'the reset happens before the new article is built');
-	});
-
-	test('the document is on the page before the print command runs', () => {
-		// An image that has not decoded prints as an empty box, which is the
-		// failure that looks most like a successful export.
-		const wait = offsetOf(pdfExport, 'waitForImages(ctx.printRoot)');
-		assert.ok(wait < offsetOf(pdfExport, "invoke('print_pdf')"), 'images decode before the native print');
-		assert.ok(wait < offsetOf(pdfExport, "invoke('export_pdf_windows'"), 'and before the Windows PDF writer');
-		// An unreachable image must not hold the export open for ever.
-		const waitHelper = sliceBetween(exporter, 'async function waitForImages', '\n}');
-		assert.match(waitHelper, /setTimeout\(resolve, IMAGE_LOAD_TIMEOUT_MS\)/);
-	});
 
 	test('the print sheet reveals the article and hides everything else', () => {
 		// `#app` is `display: contents`, so the app's markup and the print article

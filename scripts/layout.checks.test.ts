@@ -3,16 +3,14 @@ import { describe, test } from 'node:test';
 
 import { asBufferLine, tabAnchorForEditorTopLine } from '../src/lib/utils/lineCoordinates.js';
 import { FOLD_TRANSITION_MS } from '../src/lib/utils/foldLayout.js';
-import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.ts';
 import { functionSource, readSource, sliceBetween } from './sourceTree.js';
 
 describe('split pane ratio', () => {
 	test('the bounds are not re-stated here', () => {
 		// `TabManager.setSplitRatio` clamps. A second copy of 0.1/0.9 in this
-		// module would be the shape where the two answers drift apart.
-		assert.equal(splitRatioAfterMove(0.9, 0.5, 'left'), 1.4);
-		assert.equal(splitRatioAfterMove(0.1, -0.5, 'left'), -0.4);
-
+		// module would be the shape where the two answers drift apart. The drag
+		// against the store's bounds is run in layout.spec.ts; an identical copy is
+		// only visible in the text (lint-candidate).
 		const source = readSource(new URL('../src/lib/utils/splitPanes.ts', import.meta.url));
 		assert.equal(/Math\.(min|max)/.test(source), false);
 	});
@@ -31,13 +29,6 @@ describe('split pane ratio', () => {
 });
 
 describe('fold layout', () => {
-	test('fold layout observes rendered content and publishes its measured height', () => {
-		const source = readSource('src/lib/utils/foldLayout.ts');
-
-		assert.match(source, /new ResizeObserver/);
-		assert.match(source, /--fold-content-height/);
-		assert.match(source, /requestAnimationFrame/);
-	});
 
 	test('fold wrapper animates an explicit measured height instead of a fractional grid track', () => {
 		const styles = readSource('src/styles.css');

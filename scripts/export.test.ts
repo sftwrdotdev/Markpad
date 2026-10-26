@@ -11,8 +11,9 @@ import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { absolutizeKatexFontUrls, collectUsedKatexFamilies, findKatexFontFaces, inlineKatexFontFaces, katexFontUrlsToEmbed } from '../src/lib/utils/exportFonts.ts';
 import { renderRichContent } from '../src/lib/utils/richContent.ts';
 import { ALLOWED_MARKDOWN_URI_REGEXP } from '../src/lib/utils/sanitize.js';
-import { readDiagramSource, rememberDiagramSource, resolveMermaidTheme } from '../src/lib/utils/mermaidPrint.js';
+import { MERMAID_PRINT_THEME, readDiagramSource, rememberDiagramSource, resolveMermaidTheme } from '../src/lib/utils/mermaidPrint.js';
 import { useShimDom } from './preview.domShim.ts';
+import DOMPurify from 'dompurify';
 
 /**
  * #467: "Is there a way how to change the width of exported HTML?" — there was
@@ -885,6 +886,60 @@ describe('rich content in the HTML export', () => {
 		assert.match(run.document, /<h1 class="foldable-header"[^>]*>.*Notes<\/h1>/);
 	});
 
+	test('the HTML export renders every heading fold open', async () => {
+		// The HTML route never sees the live DOM, it re-renders from source, and
+		// the fold state that render is given is what the file ships with. A
+		// reader of the file has no app to open a collapsed section with.
+		const run = await runExport({ rendered: '<h2 id="a">A</h2>\n<p>first</p>\n<h2 id="b">B</h2>\n<p>second</p>' });
+
+		const article = run.document.slice(run.document.indexOf('<article'));
+		assert.match(article, /class="foldable-content-wrapper"/, 'precondition: the headings were wrapped as folds');
+		assert.doesNotMatch(article, /is-collapsed/);
+	});
+
+	/** DOMPurify as a recorder that drops `on*` handlers, as the real filter does. */
+	function recordingSanitize(seen: string[]) {
+		(DOMPurify as unknown as { sanitize: (html: string) => string }).sanitize = (html: string) => {
+			seen.push(html);
+			return html.replace(/\son\w+="[^"]*"/g, '');
+		};
+	}
+
+	test('the export sanitizes the rendered document before it touches it', async (t) => {
+		// The regression this pins: `render_markdown` output going into
+		// `processMarkdownHtml` — and from there into the file — without passing
+		// through the shared filter first. Order matters as much as presence: the
+		// sanitizer has to see the untrusted document, not our own generated markup.
+		const identity = (DOMPurify as unknown as { sanitize: unknown }).sanitize;
+		t.after(() => {
+			(DOMPurify as unknown as { sanitize: unknown }).sanitize = identity;
+		});
+		const seen: string[] = [];
+		recordingSanitize(seen);
+
+		await runExport();
+
+		assert.equal(seen[0], RENDERED, 'the filter sees the raw render_markdown output first');
+		assert.doesNotMatch(seen[0], /foldable-header/, 'not markup Markpad generated from it');
+	});
+
+	test('the proof-of-concept payload cannot reach an exported file', async (t) => {
+		// The payload's danger is the handler, not the URI: `x` is an ordinary
+		// relative path and is meant to stay allowed. What stops it is that the
+		// renderer output carrying it goes through the shared filter before
+		// anything else, so nothing downstream writes the handler back.
+		const identity = (DOMPurify as unknown as { sanitize: unknown }).sanitize;
+		t.after(() => {
+			(DOMPurify as unknown as { sanitize: unknown }).sanitize = identity;
+		});
+		recordingSanitize([]);
+
+		const run = await runExport({ rendered: '<p>text</p>\n<p><img src="https://example.com/x.png" onerror="alert(1)"></p>' });
+
+		assert.match(run.document, /<img src="https:\/\/example\.com\/x\.png"/, 'precondition: the image itself is exported');
+		assert.doesNotMatch(run.document, /onerror/);
+	});
+
 	test('a document with math carries only the KaTeX fonts it uses', async () => {
 		const run = await runExport();
 
@@ -1146,6 +1201,36 @@ describe('exported theme', () => {
 		assert.match(build('dark', { title: '' }), /<title>Export<\/title>/);
 	});
 
+	test('exported files carry a policy that cannot run script', () => {
+		// Second line of defence behind the sanitizer: verified in Chrome, an
+		// exported page with this policy runs neither an inline `<script>` nor an
+		// `onerror` handler even when the body is left unsanitized, while the
+		// copied stylesheet, inline style attributes, embedded data-URI images and
+		// remote images all still work.
+		const meta = build('dark').match(/<meta http-equiv="Content-Security-Policy" content="([^"]*)">/);
+		assert.ok(meta, 'the export carries a CSP meta tag');
+		const policy = new Map(
+			meta[1].split(';').map((directive) => {
+				const [name, ...values] = directive.trim().split(/\s+/);
+				return [name, values] as const;
+			}),
+		);
+
+		// Script falls back to default-src, so `'none'` there with no script-src
+		// of its own is what keeps every script and handler dead.
+		assert.deepEqual(policy.get('default-src'), ["'none'"]);
+		assert.equal(policy.get('script-src'), undefined);
+		assert.equal(policy.get('script-src-elem'), undefined);
+		assert.equal(policy.get('script-src-attr'), undefined);
+		for (const [name, values] of policy) {
+			assert.ok(!values.includes("'unsafe-eval'"), `${name} must not grant eval`);
+			if (name !== 'style-src') assert.ok(!values.includes("'unsafe-inline'"), `${name} must not grant inline`);
+		}
+		assert.deepEqual(policy.get('style-src'), ["'unsafe-inline'"]);
+		assert.deepEqual(policy.get('img-src'), ['data:', 'https:', 'http:']);
+		assert.deepEqual(policy.get('media-src'), ['data:', 'https:', 'http:']);
+	});
+
 	test('the copied stylesheet and the article still land in the document', () => {
 		const doc = build('dark', { styles: '.sentinel { color: red; }', articleHtml: '<p id="sentinel">hello</p>' });
 		assert.match(doc, /<style>[\s\S]*\.sentinel \{ color: red; \}/);
@@ -1271,5 +1356,145 @@ describe('PDF export result', () => {
 			events.filter((e) => e !== 'render_markdown'),
 			['start', 'print_pdf'],
 		);
+	});
+});
+
+describe('PDF prints the export article', () => {
+	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' } }, { identitySanitize: true });
+
+	/** A not-yet-decoded image in the print root, loaded when the test says so. */
+	function pendingImage() {
+		const listeners = new Map<string, () => void>();
+		return {
+			complete: false,
+			addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
+			load: () => listeners.get('load')?.(),
+		};
+	}
+
+	/** Lets every await the export can make without a timer run. */
+	async function settle() {
+		for (let i = 0; i < 20; i += 1) await new Promise((resolve) => setImmediate(resolve));
+	}
+
+	// Drawn diagrams are cached per source and theme, so each print draws a new one.
+	let prints = 0;
+
+	function printPdf(osType: 'windows' | 'macos', images: unknown[] = []) {
+		prints += 1;
+		const log: string[] = [];
+		const mermaidThemes: string[] = [];
+		const afterprint: Array<() => void> = [];
+		(globalThis as any).addEventListener = (type: string, listener: () => void) => {
+			if (type === 'afterprint') afterprint.push(listener);
+		};
+		(globalThis as any).window.__TAURI_INTERNALS__ = {
+			invoke: async (command: string) => {
+				log.push(command);
+				if (command === 'plugin:dialog|save') return 'C:/Docs/notes.pdf';
+				if (command === 'render_markdown') return `<p>body</p>\n<pre><code class="language-mermaid">graph TD; Paper${prints}--&gt;Print;</code></pre>`;
+				if (command === 'print_pdf' || command === 'export_pdf_windows') return null;
+				throw new Error(`unexpected command ${command}`);
+			},
+		};
+		const printRoot = {
+			nodes: [{ textContent: 'the last document' }] as Array<{ textContent: string | null }>,
+			style: { setProperty() {} },
+			replaceChildren(...nodes: Array<{ textContent: string | null }>) {
+				log.push(`printRoot holds ${nodes.length}`);
+				this.nodes = nodes;
+			},
+			querySelectorAll: (selector: string) => (selector === 'img' ? images : []),
+		};
+		const result = exportAsPdf({
+			rawContent: 'body\n',
+			tabTitle: 'Notes',
+			tabPath: 'C:/Docs/notes.md',
+			// What the screen is wearing; paper must not get it.
+			mermaidTheme: 'dark',
+			newlineBreaks: true,
+			libraries: {
+				hljs: { getLanguage: () => null },
+				katex: { renderToString: () => '' },
+				renderMathInElement() {},
+				mermaid: {
+					initialize(config: { theme: string }) {
+						mermaidThemes.push(config.theme);
+					},
+					async render(id: string) {
+						return { svg: `<svg id="${id}"></svg>` };
+					},
+				},
+			} as any,
+			contentWidth: null,
+			appearance: plainAppearance,
+			osType,
+			printRoot: printRoot as any,
+		});
+		const text = () => printRoot.nodes.map((node) => node.textContent ?? '').join('');
+		return { result, log, mermaidThemes, afterprint, text };
+	}
+
+	test('a PDF is rendered from the document, not from the window', async () => {
+		// `window.print()` over the live window made the paper whatever was on
+		// screen (#668). The article is built from the document's source, the way
+		// the HTML export builds it, and is what the print root holds when the
+		// print command runs.
+		const run = printPdf('macos');
+		await run.result;
+		assert.ok(run.log.includes('render_markdown'));
+		assert.match(run.text(), /body/);
+		assert.doesNotMatch(run.text(), /the last document/);
+	});
+
+	test('the PDF export draws the document with the print theme', async () => {
+		// Paper is white whatever the screen is wearing, and Mermaid bakes the
+		// theme into the SVG it emits. (The HTML export keeps the window's theme:
+		// "an exported file contains drawn diagrams, not mermaid source".)
+		const run = printPdf('macos');
+		await run.result;
+		assert.deepEqual(run.mermaidThemes, [MERMAID_PRINT_THEME]);
+	});
+
+	test('the article is taken down when printing ends, not when the command returns', async () => {
+		// `print_pdf` opens the platform print sheet and returns while it is still
+		// up. Clearing the article at that point races the sheet for the page it is
+		// about to render, and losing that race prints nothing at all.
+		const run = printPdf('macos');
+		await run.result;
+		assert.match(run.text(), /body/, 'still mounted after print_pdf returned');
+		assert.equal(run.afterprint.length, 1);
+		run.afterprint[0]();
+		assert.equal(run.text(), '');
+
+		// A platform that never sends the event leaves it mounted, so the next
+		// export starts from empty before it renders anything.
+		assert.ok(run.log.indexOf('printRoot holds 0') < run.log.indexOf('render_markdown'));
+	});
+
+	for (const [osType, command] of [['macos', 'print_pdf'], ['windows', 'export_pdf_windows']] as const) {
+		test(`the document is on the page before ${command} runs`, async () => {
+			// An image that has not decoded prints as an empty box, which is the
+			// failure that looks most like a successful export.
+			const image = pendingImage();
+			const run = printPdf(osType, [image]);
+			await settle();
+			assert.ok(!run.log.includes(command), 'the print waits for the image');
+
+			image.load();
+			await run.result;
+			assert.ok(run.log.includes(command));
+		});
+	}
+
+	test('an image that never loads does not hold the print open', { timeout: 2000 }, async (t) => {
+		t.mock.timers.enable({ apis: ['setTimeout'] });
+		const run = printPdf('macos', [pendingImage()]);
+		await settle();
+		assert.ok(!run.log.includes('print_pdf'));
+
+		t.mock.timers.tick(3000);
+		await run.result;
+		assert.ok(run.log.includes('print_pdf'));
 	});
 });

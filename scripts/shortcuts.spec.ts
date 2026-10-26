@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { flushSync } from 'svelte';
 import { beforeAll, describe, onTestFinished, test } from 'vitest';
 
+import { handleModalBackdropContextMenu } from '../src/lib/utils/modalContextMenu.js';
 import { canUsePreviewWidthShortcut, type KeyContext, type KeyStroke, type ViewerCommand, viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { PLATFORMS } from './keymapHarness.js';
 
@@ -433,5 +434,35 @@ describe('os type fallback', async () => {
 
 		assert.equal(store.osType, 'macos');
 		assert.equal(store.editorFont, DEFAULT_FONTS.macos.editorFont);
+	});
+});
+
+describe('modal backdrop', () => {
+	test('modal backdrop consumes context-menu events outside text fields', () => {
+		const backdrop = document.createElement('div');
+		backdrop.innerHTML = '<div class="modal-content"><p>Rename</p><input /><textarea></textarea></div>';
+		document.body.append(backdrop);
+		onTestFinished(() => backdrop.remove());
+		backdrop.addEventListener('contextmenu', handleModalBackdropContextMenu);
+		let reachedDocument = 0;
+		const count = () => reachedDocument++;
+		document.addEventListener('contextmenu', count);
+		onTestFinished(() => document.removeEventListener('contextmenu', count));
+
+		const rightClick = (target: Element) => {
+			const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+			target.dispatchEvent(event);
+			return event.defaultPrevented;
+		};
+
+		// No native menu over the dialog, and the app's own menus never hear it.
+		assert.equal(rightClick(backdrop.querySelector('p')!), true);
+		assert.equal(rightClick(backdrop), true);
+		assert.equal(reachedDocument, 0);
+
+		// The prompt input keeps the webview's Cut/Copy/Paste.
+		assert.equal(rightClick(backdrop.querySelector('input')!), false);
+		assert.equal(rightClick(backdrop.querySelector('textarea')!), false);
+		assert.equal(reachedDocument, 2);
 	});
 });

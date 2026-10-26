@@ -10,6 +10,7 @@
 	import { isHomePath } from '../utils/homeTab.js';
 	import { modifierFor, shortcutLabel } from '../utils/shortcuts.js';
 	import { windowDisplay, type ViewerWindowEntry } from '../utils/viewerWindows.js';
+	import { tabMenuItems } from '../utils/tabContextMenu.js';
 
 	let { tab, folderSuffix, isActive, onclick, onclose, vertical = false } = $props<{
 		tab: Tab;
@@ -83,10 +84,6 @@
 		e.stopPropagation();
 
 		const currentLang = settings.language;
-		// ContextMenu prints `shortcut` into the same `<span class="menu-shortcut">`
-		// the app menu uses, so a literal here sits a keystroke away from the app
-		// menu's registry-derived chord and disagrees with it on macOS.
-		const modifier = modifierFor(settings.osType);
 		const fileActionItems: ContextMenuItem[] = getTabFileActions(tab.path).map((action) => ({
 			label: t(action.labelKey, currentLang),
 			disabled: action.disabled,
@@ -112,32 +109,15 @@
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
-			items: [
-				{ label: t('menu.newFile', currentLang), shortcut: shortcutLabel('file-new', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-new') },
-				{ label: t('menu.undoCloseTab', currentLang), shortcut: shortcutLabel('tab-undo-close', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-undo') },
-				{
-					label: t('menu.rename', currentLang),
-					// Rename renames the file on disk; untitled and home tabs have
-					// no file.
-					disabled: !hasRealFilePath(tab.path),
-					onClick: () => emitTo(selfLabel, 'menu-tab-rename', tab.id),
-				},
-				{ separator: true },
-				...fileActionItems,
-				{ separator: true },
-				{
-					label: t('menu.moveToNewWindow', currentLang),
-					// Moving the only tab would just churn windows, and the home
-					// tab is recreatable anywhere; both stay in place.
-					disabled: isHomePath(tab.path) || tabManager.tabs.length < 2,
-					onClick: () => emitTo(selfLabel, 'menu-tab-detach', tab.id),
-				},
-				...moveToWindowItems,
-				{ separator: true },
-				{ label: t('menu.closeFile', currentLang), shortcut: shortcutLabel('file-close', modifier), onClick: () => emitTo(selfLabel, 'menu-tab-close', tab.id) },
-				{ label: t('menu.closeOtherTabs', currentLang), onClick: () => emitTo(selfLabel, 'menu-tab-close-others', tab.id) },
-				{ label: t('menu.closeTabsToRight', currentLang), onClick: () => emitTo(selfLabel, 'menu-tab-close-right', tab.id) },
-			],
+			items: tabMenuItems({
+				tab,
+				language: currentLang,
+				osType: settings.osType,
+				tabCount: tabManager.tabs.length,
+				fileActionItems,
+				moveToWindowItems,
+				emit: (event, payload) => emitTo(selfLabel, event, payload),
+			}),
 		};
 	}
 

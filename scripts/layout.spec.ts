@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
+import { observeFoldLayout } from '../src/lib/utils/foldLayout.js';
+import { splitRatioAfterMove } from '../src/lib/utils/splitPanes.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -115,6 +117,23 @@ describe('split scroll-sync preference', async () => {
 		// Un-splitting keeps whatever the tab ended up with, as it always did.
 		tabManager.setSplitEnabled(id, false);
 		assert.equal(tabManager.splitScrollSyncPreference, true);
+	});
+
+	test('a splitter dragged past the end stops at the store bounds', () => {
+		// The move is unclamped and the store holds 0.1-0.9, so the two cannot
+		// disagree about where the bar stops.
+		reset();
+		const { id, tab } = splitTab('/notes/dragged.md');
+
+		assert.equal(splitRatioAfterMove(0.9, 0.5, 'left'), 1.4);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.9, 0.5, 'left'));
+		assert.equal(tab().splitRatio, 0.9);
+
+		assert.equal(splitRatioAfterMove(0.1, -0.5, 'left'), -0.4);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.1, -0.5, 'right'));
+		assert.equal(tab().splitRatio, 0.6);
+		tabManager.setSplitRatio(id, splitRatioAfterMove(0.1, -0.5, 'left'));
+		assert.equal(tab().splitRatio, 0.1);
 	});
 });
 
@@ -1020,5 +1039,50 @@ describe('outline render signal', () => {
 
 		expect(toc.entries()).toEqual(['One', 'Two']);
 		toc.stop();
+	});
+});
+
+describe('fold layout', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		document.body.innerHTML = '';
+	});
+
+	test('fold layout observes rendered content and publishes its measured height', () => {
+		// The wrapper animates `height: var(--fold-content-height)`, so it opens to
+		// the height its content measures, and re-measures when that content
+		// changes size (an image loading, a diagram drawing, the window narrowing).
+		const frames: FrameRequestCallback[] = [];
+		const observers: ResizeObserverCallback[] = [];
+		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+		vi.stubGlobal('cancelAnimationFrame', () => {});
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				constructor(callback: ResizeObserverCallback) {
+					observers.push(callback);
+				}
+				observe() {}
+				disconnect() {}
+			},
+		);
+		const runFrames = () => frames.splice(0).forEach((frame) => frame(0));
+
+		document.body.innerHTML =
+			'<div class="markdown-body"><div class="foldable-content-wrapper"><div class="content-inner"><p>x</p></div></div></div>';
+		const root = document.querySelector<HTMLElement>('.markdown-body')!;
+		const wrapper = root.querySelector<HTMLElement>('.foldable-content-wrapper')!;
+		let height = 120;
+		root.querySelector<HTMLElement>('.content-inner')!.getBoundingClientRect = () => ({ height }) as DOMRect;
+
+		const layout = observeFoldLayout(root);
+		runFrames();
+		assert.equal(wrapper.style.getPropertyValue('--fold-content-height'), '120px');
+
+		height = 200;
+		for (const callback of observers) callback([], {} as ResizeObserver);
+		runFrames();
+		assert.equal(wrapper.style.getPropertyValue('--fold-content-height'), '200px');
+		layout.stop();
 	});
 });

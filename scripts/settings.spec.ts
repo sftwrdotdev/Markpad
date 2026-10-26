@@ -251,6 +251,25 @@ describe('settings persistence', async () => {
 		assert.equal(restarted.language, 'ja');
 	});
 
+	test('the store has no single effect that writes every key', () => {
+		// The same two windows as above, but through the store's own effects. One
+		// effect reading every field would rewrite font size from B's stale copy the
+		// moment B touched anything. (A same-document write fires no storage event,
+		// so B really is unaware here.)
+		resetStorage();
+		const windowA = createStore();
+		const windowB = createStore();
+		flushSync();
+
+		windowA.editorFontSize = 30;
+		flushSync();
+		windowB.minimap = !windowB.minimap;
+		flushSync();
+
+		assert.equal(localStorage.getItem('editor.fontSize'), '30');
+		assert.equal(localStorage.getItem('editor.minimap'), String(windowB.minimap));
+	});
+
 	test('storage events fold another window changes into this instance', () => {
 		resetStorage();
 		const store = createStore();
@@ -575,6 +594,25 @@ describe('settings persistence', async () => {
 		assert.equal(store.previewFullWidth, true);
 		store.previewFullWidth = !store.previewFullWidth;
 		assert.equal(store.previewFullWidth, false);
+	});
+
+	test('settings load, persist, and reset the preview width through one normalizer', () => {
+		resetStorage({ 'preview.maxWidth': 'banana' });
+		assert.equal(createStore().previewMaxWidth, 880, 'garbage loads as the default');
+
+		resetStorage({ 'preview.maxWidth': '99999' });
+		const store = createStore();
+		assert.equal(store.previewMaxWidth, 1600, 'an out-of-range width loads clamped');
+
+		store.previewMaxWidth = 1200;
+		flushSync();
+		assert.equal(localStorage.getItem('preview.maxWidth'), '1200');
+		assert.equal(createStore().previewMaxWidth, 1200, 'a restart keeps it');
+
+		store.resetPreviewMaxWidth();
+		flushSync();
+		assert.equal(store.previewMaxWidth, 880);
+		assert.equal(localStorage.getItem('preview.maxWidth'), '880');
 	});
 
 	test('the legacy full-width key is honoured once and then superseded', () => {

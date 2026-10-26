@@ -674,14 +674,7 @@ describe('one version across the manifests', () => {
 		const pkg = JSON.parse(readSource('package.json'));
 		assert.equal(pkg.scripts.release, 'node scripts/release.mjs');
 
-		// It has to touch all three, or it is a bump that reintroduces the skew.
-		const script = readSource('scripts/release.mjs');
-		for (const file of ['package.json', 'src-tauri/Cargo.toml', 'Cargo.lock']) {
-			assert.ok(script.includes(file), `scripts/release.mjs never mentions ${file}`);
-		}
-		// The lock is cargo's format; a hand-rolled rewrite of it is the bug, not the
-		// fix.
-		assert.match(script, /cargo['"],\s*\['update'/);
+		// That it writes all three is run in release.test.ts.
 
 		// And the runbook points at the command rather than at the two files.
 		assert.match(readSource('RELEASING.md'), /npm run release X\.Y\.Z/);
@@ -939,21 +932,6 @@ describe('a package-managed install is not offered an update', () => {
 	const rust = readRustBackend();
 	const i18n = readDictionarySource();
 
-	test('the updater asks whether it can install before it checks', () => {
-		// The whole defect is a sequence: check first, discover the impossibility
-		// second. Asserting that both calls exist would pass on the broken order,
-		// so the assertion is where they sit relative to each other.
-		const runCheck = sliceBetween(store, 'async runCheck()', 'async startDownload(');
-		const gate = runCheck.indexOf("invoke<boolean>('self_update_supported')");
-		const checkCall = runCheck.indexOf('await check()');
-		assert.ok(gate !== -1, 'runCheck must ask self_update_supported');
-		assert.ok(checkCall !== -1, 'runCheck must still call check() when self-update is possible');
-		assert.ok(
-			gate < checkCall,
-			'self_update_supported must be consulted before check(), or the user is offered an update that cannot be installed',
-		);
-	});
-
 	test('the command exists on the Rust side and is reachable', () => {
 		// A Tauri command is addressed by a string, so nothing in the type system
 		// connects the two halves: an unregistered command fails at runtime, and
@@ -963,17 +941,13 @@ describe('a package-managed install is not offered an update', () => {
 		assert.match(handler, /self_update_supported/);
 	});
 
-	test('only Linux is gated', () => {
-		// Windows runs the downloaded NSIS installer rather than overwriting
-		// anything in place, and macOS is the one platform where bundle_type()
-		// answers without the build-time patch. Gating either would break a working
-		// updater for 95% of downloads.
-		const command = sliceBetween(rust, 'fn self_update_supported', '\npub fn get_os_type');
-		assert.match(command, /#\[cfg\(target_os = "linux"\)\]/);
-		assert.match(command, /appimage\.is_some\(\)/);
-		assert.match(command, /#\[cfg\(not\(target_os = "linux"\)\)\]/);
-		// Read through tauri's Env, which also verifies the executable is under
+	test('the AppImage is detected through tauri\'s Env, not a raw variable', () => {
+		// Which platforms are gated is `only_linux_gates_self_update` in
+		// commands.rs. What stays here is the convention that the AppImage is
+		// read through tauri's Env, which also verifies the executable is under
 		// $TMPDIR/.mount_. `std::env::var("APPIMAGE")` alone is settable by hand.
+		const command = sliceBetween(rust, 'fn self_update_supported', '\npub fn get_os_type');
+		assert.match(command, /appimage\.is_some\(\)/);
 		assert.doesNotMatch(command, /env::var/);
 	});
 
