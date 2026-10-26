@@ -130,7 +130,7 @@ describe('exported content width', () => {
 
 	test('the export cap loses to the print block, so the PDF route is unchanged', () => {
 		// `@media print` in styles.css already forces `.markdown-body` to
-		// `max-width: 100% !important` with its own 1cm padding, and that block
+		// `max-width: 100% !important` with its own page-margin padding, and that block
 		// travels into the export with the rest of the sheet. Printing an exported
 		// file therefore never saw the 900px and must not start seeing the setting
 		// either — the two routes stay separate concerns.
@@ -138,7 +138,7 @@ describe('exported content width', () => {
 		const printed = declarationsFor(css, 'max-width', 'print');
 		assert.ok(printed.length >= 1, 'the print block must still cap .markdown-body');
 		assert.deepEqual(printed.at(-1), { value: '100%', important: true });
-		assert.deepEqual(declarationsFor(css, 'padding', 'print').at(-1), { value: '1cm', important: true });
+		assert.deepEqual(declarationsFor(css, 'padding', 'print').at(-1), { value: 'var(--page-margin)', important: true });
 	});
 
 	test('the app stylesheet copied into an export does not out-rank the cap', () => {
