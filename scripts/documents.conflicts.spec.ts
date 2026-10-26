@@ -341,6 +341,7 @@ describe('save from reading mode', () => {
 					return true;
 				},
 				allowOverwriteOnce: () => {},
+				resolveExternalChange: async () => ({ action: 'ignore' as const }),
 			},
 			loadMarkdown: async () => {},
 			canCloseTab: async () => true,
