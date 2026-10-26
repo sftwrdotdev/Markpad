@@ -333,8 +333,6 @@ describe('preview width', () => {
 
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 
-	const tocOverlaySource = readSource(new URL('../src/lib/utils/tocOverlay.ts', import.meta.url));
-
 	test('settings load, persist, and reset the preview width through one normalizer', () => {
 		assert.match(settingsSource, /previewMaxWidth = \$state\(DEFAULT_PREVIEW_MAX_WIDTH\)/);
 		// Persistence moved from one all-fields effect to one entry per localStorage
@@ -348,15 +346,10 @@ describe('preview width', () => {
 		assert.match(settingsSource, /resetPreviewMaxWidth\(\)[\s\S]*this\.previewMaxWidth = DEFAULT_PREVIEW_MAX_WIDTH/);
 	});
 
-	test('preview layout derives width and ToC geometry from the same preference', () => {
-		assert.match(viewerSource, /getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)/);
-		// The gutter arithmetic moved to `tocOverlay.ts` with #176, which added the
-		// question the inline expression could not answer: whether the pane under
-		// the outline is the preview at all. Both halves still feed on this same
-		// preference — see scripts/tocOverlay.test.ts for the geometry itself.
-		assert.match(viewerSource, /isTocOverhanging\(\{[\s\S]*?previewContentWidth,[\s\S]*?\}\)/);
-		assert.match(tocOverlaySource, /input\.viewerWidth - input\.previewContentWidth/);
-		assert.match(viewerSource, /--preview-max-width:/);
+	test('the stylesheet reads the width the markup writes', () => {
+		// Contract between the inline style and the component's <style>: the
+		// width itself is previewLayout's (preview.test.ts "preview layout").
+		assert.match(viewerSource, /--preview-max-width: \{layout\.maxWidthCss\}/);
 		assert.match(viewerSource, /--measure: min\(100cqi, var\(--preview-max-width, 880px\)\)/);
 	});
 

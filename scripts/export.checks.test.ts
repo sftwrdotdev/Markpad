@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildExportDocument, exportThemeAttribute } from '../src/lib/utils/export.ts';
 import { DEFAULT_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH } from '../src/lib/utils/previewWidth.js';
 import { plainAppearance } from './exportFixtures.ts';
-import { functionSource, offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
+import { offsetOf, readRustBackend, readSource, sliceBetween, sliceFrom } from './sourceTree.js';
 import { collectUsedKatexFamilies, katexFontUrlsToEmbed } from '../src/lib/utils/exportFonts.ts';
 import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
 import { useShimDom } from './preview.domShim.ts';
@@ -30,8 +30,6 @@ describe('exported content width', () => {
 	useShimDom({ window: globalThis, location: { href: 'http://tauri.localhost/' } }, { identitySanitize: true });
 
 	const appStyles = readSource(new URL('../src/styles.css', import.meta.url));
-
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
 	type Rule = { selectors: string[]; declarations: string; media: 'screen' | 'print' };
 
@@ -162,23 +160,6 @@ describe('exported content width', () => {
 			appearance: plainAppearance,
 		});
 	}
-
-	test('the exporter is handed the preview\'s own derived width', () => {
-		// The one link in the chain that cannot be executed here: `exportAsHtml`
-		// lives in a `.svelte` component, which the Node test runner cannot import
-		// (see sourceTree.ts). So the field is checked in the source of that one
-		// function — `functionSource` rather than a whole-file match, so a
-		// `contentWidth:` appearing anywhere else in a 3700-line component cannot
-		// satisfy it.
-		const exportCall = functionSource(viewerSource, 'exportAsHtml');
-		assert.match(exportCall, /contentWidth: previewContentWidth,/);
-
-		// And `previewContentWidth` is the same derived value the live preview
-		// renders with, which is what makes "one source of truth" true rather than
-		// merely intended. (previewWidth.test.ts holds the other end of this.)
-		assert.match(viewerSource, /previewContentWidth = \$derived\(getPreviewContentWidth\(settings\.previewMaxWidth, settings\.previewFullWidth\)\)/);
-		assert.match(viewerSource, /--preview-max-width: \{previewContentWidth === null \? '100%' : `\$\{previewContentWidth\}px`\}/);
-	});
 });
 
 describe('folds in print and export', () => {

@@ -50,7 +50,6 @@ import {
 	type FoldHost,
 } from './utils/foldState.js';
 import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
-import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingSlug, headingText, referenceForTab } from './utils/headingReference.js';
 import {
 	findSourceLineRange,
@@ -117,8 +116,9 @@ import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
 import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSlide.js';
-import { adjustPreviewMaxWidth, getPreviewContentWidth } from './utils/previewWidth.js';
-import { isTocOverhanging } from './utils/tocOverlay.js';
+import { adjustPreviewMaxWidth } from './utils/previewWidth.js';
+import { dismissesToc, tocAutoCollapses } from './utils/tocOverlay.js';
+import { exportContextFrom, previewAppearanceFrom, previewLayout } from './utils/previewLayout.js';
 import { splitRatioAfterMove } from './utils/splitPanes.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
@@ -170,18 +170,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	);
 	const foldLayout: { current: FoldLayoutObservation | null } = { current: null };
 	
-	const highlightColorMap: Record<string, string> = {
-		default: 'color-mix(in srgb, var(--color-accent-fg) 40%, transparent)',
-		yellow: 'rgba(255, 208, 0, 0.4)',
-		orange: 'rgba(255, 140, 0, 0.4)',
-		red: 'rgba(255, 60, 60, 0.4)',
-		pink: 'rgba(255, 105, 180, 0.4)',
-		purple: 'rgba(164, 108, 244, 0.4)',
-		blue: 'rgba(67, 138, 243, 0.4)',
-		cyan: 'rgba(43, 185, 178, 0.4)',
-		green: 'rgba(77, 177, 88, 0.4)',
-	};
-
 	let editorPane = $state<{ 
 		syncScrollToPosition: (position: ScrollSyncPosition, options?: { cursorIntoView?: boolean }) => void;
 		setCursor: (line: number, column: number) => void;
@@ -385,26 +373,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let paneTopChrome = $derived(
 		hasEditorPane && settings.showEditorToolbar ? editorToolbarHeight : 0,
 	);
-	let previewContentWidth = $derived(getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth));
-	let previewAppearance = $derived({
-		fontFamily: fontFamilyValue(settings.previewFont, 'sans-serif'),
-		fontSize: settings.previewFontSize,
-		codeFontFamily: fontFamilyValue(settings.codeFont, 'monospace'),
-		codeFontSize: settings.codeFontSize,
-		highlightColor: highlightColorMap[settings.highlightColor] || highlightColorMap.yellow,
-	});
-	let isOverhanging = $derived(
-		isTocOverhanging({
-			isEditing,
-			isSplit,
-			tocSide: settings.tocSide,
-			splitEditorSide: settings.splitEditorSide,
-			isFullWidth: settings.previewFullWidth,
-			viewerWidth,
-			previewContentWidth,
-			tocWidth: settings.tocWidth,
-		}),
-	);
+	let previewAppearance = $derived(previewAppearanceFrom(settings));
+	let layout = $derived(previewLayout(settings, { isEditing, isSplit, viewerWidth }));
+	let isOverhanging = $derived(layout.isOverhanging);
 
 	/**
 	 * Reaching past a floating outline to touch what it is covering is a request
@@ -412,15 +383,9 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * sidebar, and one sitting in the margin is not in anybody's way.
 	 */
 	$effect(() => {
-		if (!settings.showToc || settings.pinnedToc || !isOverhanging) return;
+		if (!settings.showToc || !tocAutoCollapses(isOverhanging, settings.pinnedToc)) return;
 		const dismiss = (e: PointerEvent) => {
-			const target = e.target as Node | null;
-			if (!target) return;
-			// The toggle button owns its own click; closing here as well would
-			// open and shut the panel in one gesture. Anything inside the panel —
-			// the resize handle included — is use, not dismissal.
-			if (tocWrapperEl?.contains(target) || tocToggleEl?.contains(target)) return;
-			settings.showToc = false;
+			if (dismissesToc(e.target as Node | null, tocWrapperEl, tocToggleEl)) settings.showToc = false;
 		};
 		// Capture, so a handler that stops propagation on its way up cannot leave
 		// the outline stranded over the text.
@@ -2587,21 +2552,17 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 
 	async function exportAsHtml() {
 		const tab = tabManager.activeTab;
-		const result = await _exportHtml({
-			rawContent,
-			tabTitle: tab?.title || '',
-			tabPath: tab?.path || '',
-			// The exported page carries the appearance it was made in (see
-			// `exportThemeAttribute`), and Mermaid bakes its theme into the SVG,
-			// so the diagrams have to be rendered for the same appearance.
-			mermaidTheme: currentMermaidTheme(),
-			// The same value the live preview is wearing as `--preview-max-width`,
-			// so the exported file is read at the measure it was written at.
-			contentWidth: previewContentWidth,
-			appearance: previewAppearance,
-			newlineBreaks: settings.previewNewlineBreaks,
-			frontMatterTitle: t('frontMatter.properties', settings.language),
-		});
+		const result = await _exportHtml(
+			exportContextFrom(settings, {
+				rawContent,
+				tabTitle: tab?.title || '',
+				tabPath: tab?.path || '',
+				// The exported page carries the appearance it was made in (see
+				// `exportThemeAttribute`), and Mermaid bakes its theme into the SVG,
+				// so the diagrams have to be rendered for the same appearance.
+				mermaidTheme: currentMermaidTheme(),
+			}),
+		);
 		if (result?.missingImages) {
 			addToast(
 				t('toast.exportedHtmlMissingImages', settings.language).replace(
@@ -2648,14 +2609,12 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			// from the buffer through the same path, so neither the preview's
 			// state nor the window's has anything to do with what prints (#668).
 			path = await _exportPdf({
-				rawContent,
-				tabTitle: tab?.title || '',
-				tabPath: tab?.path || '',
-				mermaidTheme: currentMermaidTheme(),
-					contentWidth: previewContentWidth,
-				appearance: previewAppearance,
-				newlineBreaks: settings.previewNewlineBreaks,
-				frontMatterTitle: t('frontMatter.properties', settings.language),
+				...exportContextFrom(settings, {
+					rawContent,
+					tabTitle: tab?.title || '',
+					tabPath: tab?.path || '',
+					mermaidTheme: currentMermaidTheme(),
+				}),
 				osType: settings.osType,
 				printRoot: printRootEl,
 				onStart: () => {
@@ -3988,7 +3947,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 										if(e.key === 'Enter' || e.key === ' ') handleLinkClick(e as unknown as MouseEvent);
 									}}
 									tabindex="-1"
-									style="outline: none; font-family: {previewAppearance.fontFamily}; font-size: {previewAppearance.fontSize}px; flex: 1; --preview-max-width: {previewContentWidth === null ? '100%' : `${previewContentWidth}px`};">
+									style="outline: none; font-family: {previewAppearance.fontFamily}; font-size: {previewAppearance.fontSize}px; flex: 1; --preview-max-width: {layout.maxWidthCss};">
 									{#if frontMatterInfo.exists}
 										<details
 											class="frontmatter-panel"
@@ -4189,7 +4148,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 											// sidebar and stays; not overhanging it is sitting in the
 											// margin harming nothing, and closing it would take away a
 											// behaviour that was already fine.
-											if (isOverhanging && !settings.pinnedToc) settings.showToc = false;
+											if (tocAutoCollapses(isOverhanging, settings.pinnedToc)) settings.showToc = false;
 											if (hasEditorPane && editorPane) {
 												// Same renderer-to-buffer shift as the context menu: the
 												// outline reads `data-sourcepos` too, and has been landing

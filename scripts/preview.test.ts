@@ -9,6 +9,7 @@ import { type KeyContext, viewerCommandFor } from '../src/lib/utils/viewerKeymap
 import { viewerCommandTable } from './keymapHarness.js';
 import { adjustPreviewMaxWidth, DEFAULT_PREVIEW_MAX_WIDTH, getPreviewContentWidth, getStoredPreviewFullWidth, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH, normalizePreviewMaxWidth } from '../src/lib/utils/previewWidth.js';
 import { normalizeAssetPath } from '../src/lib/utils/exportHtml.js';
+import { previewLayout } from '../src/lib/utils/previewLayout.ts';
 import { processMarkdownHtml } from '../src/lib/utils/markdown.ts';
 import { parseHtml, type ShimElement } from './renderProtocolDom.ts';
 import { useShimDom } from './preview.domShim.ts';
@@ -910,5 +911,21 @@ describe('preview link clicks', () => {
 	test('a link to the open file under another spelling scrolls instead of reloading', async () => {
 		assert.deepEqual(await openRelative('/notes/Readme.md', 'readme.md'), ['scroll']);
 		assert.deepEqual(await openRelative('/notes/Readme.md', 'other.md'), ['ask to close', 'load', 'scroll']);
+	});
+});
+
+describe('preview layout', () => {
+	test('preview layout derives width and ToC geometry from the same preference', () => {
+		// A 1400px pane and a 240px outline: at 880px the text leaves a 260px
+		// gutter the outline fits in; widened to 1240px the gutter is 80px and the
+		// outline covers the text. One preference moves both answers.
+		const reading = { isEditing: false, isSplit: false, viewerWidth: 1400 };
+		const base = { previewMaxWidth: 880, previewFullWidth: false, tocSide: 'left' as const, splitEditorSide: 'left' as const, tocWidth: 240 };
+		const narrow = previewLayout(base, reading);
+		assert.deepEqual([narrow.maxWidthCss, narrow.isOverhanging], ['880px', false]);
+		const wide = previewLayout({ ...base, previewMaxWidth: 1240 }, reading);
+		assert.deepEqual([wide.maxWidthCss, wide.isOverhanging], ['1240px', true]);
+		const full = previewLayout({ ...base, previewFullWidth: true }, reading);
+		assert.deepEqual([full.maxWidthCss, full.isOverhanging], ['100%', true]);
 	});
 });

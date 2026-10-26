@@ -7,6 +7,8 @@ import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
 import { observeFoldLayout, type FoldLayoutObservation } from '../src/lib/utils/foldLayout.js';
+import { previewLayout } from '../src/lib/utils/previewLayout.js';
+import { dismissesToc, tocAutoCollapses } from '../src/lib/utils/tocOverlay.js';
 import { followFoldLayout, previewPaneShown } from '../src/lib/utils/foldLayoutEffect.svelte.js';
 import { runeEffect } from './runeEffect.svelte.js';
 import { patchHost } from '../src/lib/utils/previewPatch.js';
@@ -1134,5 +1136,29 @@ describe('fold layout observation', () => {
 		assert.equal(run.holder.current, null);
 		assert.equal(run.disconnects(), 1);
 		run.dispose();
+	});
+});
+
+describe('outline overlay placement', () => {
+	test('the outline collapses itself only when it is in the way', () => {
+		const settings = { previewMaxWidth: 880, previewFullWidth: false, tocSide: 'left' as const, splitEditorSide: 'left' as const, tocWidth: 240 };
+		const wide = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1400 });
+		const narrow = previewLayout(settings, { isEditing: false, isSplit: false, viewerWidth: 1000 });
+		// A window wide enough to hold the outline beside the text keeps it open.
+		assert.equal(tocAutoCollapses(wide.isOverhanging, false), false);
+		assert.equal(tocAutoCollapses(narrow.isOverhanging, false), true);
+		// Pinned, it is a sidebar and stays.
+		assert.equal(tocAutoCollapses(narrow.isOverhanging, true), false);
+
+		// Click-outside must not fight the toggle button, which owns its own click.
+		const panel = document.createElement('nav');
+		const handle = panel.appendChild(document.createElement('div'));
+		const toggle = document.createElement('button');
+		const icon = toggle.appendChild(document.createElement('span'));
+		const text = document.createElement('p');
+		assert.equal(dismissesToc(icon, panel, toggle), false);
+		assert.equal(dismissesToc(handle, panel, toggle), false);
+		assert.equal(dismissesToc(text, panel, toggle), true);
+		assert.equal(dismissesToc(null, panel, toggle), false);
 	});
 });

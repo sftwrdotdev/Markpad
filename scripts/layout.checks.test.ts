@@ -272,14 +272,6 @@ describe('outline jump motion', () => {
 });
 
 describe('outline overlay placement', () => {
-	test('the outline collapses itself only when it is in the way', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		// Both auto-collapse paths are gated on the same predicate, so a window wide
-		// enough to hold the outline beside the text keeps the old behaviour.
-		assert.match(viewer, /isOverhanging && !settings\.pinnedToc/);
-		// Click-outside must not fight the toggle button, which owns its own click.
-		assert.match(viewer, /tocToggleEl\?\.contains\(target\)/);
-	});
 
 	test('the outline\'s toggle drops the editor toolbar\'s offset once it is over the outline', () => {
 		// Collapsed, the button floats over the editor pane and `--pane-top-chrome`

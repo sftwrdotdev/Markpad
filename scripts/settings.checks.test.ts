@@ -113,13 +113,10 @@ describe('font family values', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 	const editorOptionsSource = readSource(new URL('../src/lib/utils/editorOptions.ts', import.meta.url));
 
-	test('every place a chosen family reaches CSS goes through the one helper', () => {
-		assert.match(viewerSource, /fontFamily: fontFamilyValue\(settings\.previewFont, 'sans-serif'\),/);
-		assert.match(viewerSource, /codeFontFamily: fontFamilyValue\(settings\.codeFont, 'monospace'\),/);
-		assert.match(editorOptionsSource, /fontFamily: fontFamilyValue\(settings\.editorFont, "monospace"\),/);
-		// The absence claim is the point of this one: a second bare interpolation of
-		// a font preference is the defect returning, and it cannot be observed by
-		// running the helper that does exist.
+	test('no font preference reaches CSS bare', () => {
+		// The values are settings.test.ts "a chosen family reaches the preview, its
+		// code and the editor quoted". This is the absence claim: a second bare
+		// interpolation of a font preference is the defect returning.
 		assert.doesNotMatch(viewerSource, /font-family: \{settings\./);
 		assert.doesNotMatch(viewerSource, /--code-font: \{settings\./);
 		assert.doesNotMatch(editorOptionsSource, /fontFamily: settings\./);
