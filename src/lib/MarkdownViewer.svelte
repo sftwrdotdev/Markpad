@@ -3395,21 +3395,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			document.addEventListener('visibilitychange', checkpointWhenHidden);
 			unlisteners.push(() => document.removeEventListener('visibilitychange', checkpointWhenHidden));
 			unlisteners.push(
-				await appWindow.listen('file-changed', async (event) => {
-					const changedPath = event.payload as string;
-					// The event names the changed file. Which tab that touches —
-					// and whether it may be reloaded at all — is decided by the
-					// session: it owns the self-write grace window (so our own
-					// auto-save does not bounce back) and it refuses to reload a
-					// tab with unsaved edits.
-					const outcome = await documentSession.resolveExternalChange(changedPath);
-					if (outcome.action === 'ignore') return;
-					if (outcome.action === 'conflict') {
-						noteExternalChangeConflict(outcome.tabId);
-						return;
-					}
-					if (liveMode) loadMarkdown(outcome.path);
-				}),
+				await appWindow.listen('file-changed', (event) => externalChange.handleFileChanged(event.payload as string, liveMode)),
 			);
 
 			const listeners: [string, EventCallback<any>][] = [

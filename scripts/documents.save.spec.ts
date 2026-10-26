@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, test } from 'vitest';
 const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
+const { createExternalChange } = await import('../src/lib/sessions/externalChange.svelte.js');
 const { buildTransferredTab, snapshotTab, validateTransferPayload } = await import(
 	'../src/lib/utils/tabTransfer.js'
 );
@@ -814,6 +815,8 @@ describe('lossy save refusal scope', () => {
 
 	/** Whether `save_file_content` succeeds. Set per test. */
 	let writeFails = false;
+	/** Every `save_file_content` that reached the backend. */
+	let writes = 0;
 	const LOSSY = 'text with � in it';
 
 	beforeAll(() => {
@@ -826,6 +829,7 @@ describe('lossy save refusal scope', () => {
 				if (cmd === 'open_markdown_preview') return Promise.resolve([LOSSY, true, true]);
 				if (cmd === 'read_file_content_checked') return Promise.resolve([LOSSY, true]);
 				if (cmd === 'save_file_content') {
+					writes++;
 					return writeFails ? Promise.reject(new Error('Os { code: 28, kind: StorageFull }')) : Promise.resolve(null);
 				}
 				return Promise.resolve(null);
@@ -934,6 +938,55 @@ describe('lossy save refusal scope', () => {
 		assert.equal(session.isLossySaveRefused(tab.id), true);
 		assert.equal(await session.saveContent(tab.id), false);
 		assert.equal(toasts.length, 1, 'still only the one explanation');
+	});
+
+	test('saveContent is the choke point auto-save and the close dialogs share', async () => {
+		// Auto-save (saveSilently, the debounce's writer) and the close dialog's
+		// Save both reach saveContent, so the lossy guard covers them without
+		// either repeating it.
+		const { tab } = await refusedTab();
+		writes = 0;
+		const autoSave = settings.autoSave;
+		settings.autoSave = true;
+		try {
+			const session = createDocumentSession({
+				setShowHome: () => {},
+				currentFile: () => tabManager.activeTab?.path ?? '',
+				resetScrollHistory: () => {},
+				renderMarkdown: async () => '',
+				afterLoad: async () => {},
+				saveRecentFile: () => {},
+				deleteRecentFile: () => {},
+				setLoadingTabs: () => {},
+				measureInitialViewport: () => {},
+				isScrolling: () => false,
+				onError: () => {},
+				onDiskChangedUnderSave: () => {},
+				cancelPendingAutoSave: () => {},
+				askClose: async () => 'save' as const,
+				onCloseSaveNewerEdits: () => {},
+				onCloseAutoSaveFailed: () => {},
+				onPartialCopySaved: () => {},
+			});
+			const silent = createExternalChange({
+				tabManager,
+				settings: { autoSave: true, language: 'en' },
+				documentSession: session,
+				loadMarkdown: async () => {},
+				canCloseTab: async () => true,
+				readFile: async () => [LOSSY, true, 'UTF-8'],
+				editorLanguageFor: () => 'markdown',
+				addToast: () => {},
+				t: (key) => key,
+			});
+
+			assert.equal(await silent.saveSilently(tab.id), false, 'auto-save is refused');
+			assert.equal(await session.canCloseTab(tab.id), false, 'Save in the close dialog is refused');
+			assert.equal(writes, 0);
+			assert.equal(tab.rawContent, 'edited');
+		} finally {
+			settings.autoSave = autoSave;
+		}
 	});
 
 	test('a closed tab is not remembered as refused', async () => {

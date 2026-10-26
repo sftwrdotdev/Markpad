@@ -265,14 +265,10 @@ describe('lossy decode save guard', () => {
 	});
 
 	test('saveContent is the choke point auto-save and the close dialogs share', () => {
-		// Auto-save lives in MarkdownViewer.svelte's debounce effect and the close
-		// flow in canCloseTab; both reach saveContent, so guarding it covers them
-		// without touching either.
-		assert.match(session, /const success = await saveContent\(tabId\);/);
+		// saveSilently and canCloseTab run in documents.save.spec.ts. What stays is
+		// the debounce effect's wiring in the component: its writer is saveSilently.
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
-		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
-		assert.match(functionSource(saves, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 	});
 
 	test('Save As to a new file stays open as the escape hatch', () => {
@@ -330,20 +326,10 @@ describe('live mode watched path', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	test('a watcher notification is routed to its watched path', () => {
+		// The event name across Rust and TypeScript. What the viewer does with the
+		// event runs in documents.conflicts.spec.ts (handleFileChanged).
 		assert.match(runtime, /emit_to\(event_label\.as_str\(\), "file-changed", watched_path\.clone\(\)\)/);
-		// `async` because deciding what an event means now reads the file: the
-		// answer to "did somebody else write this" is the file itself, not a clock.
-		assert.match(viewer, /await appWindow\.listen\('file-changed', async \(event\) => \{/);
-		assert.match(viewer, /const changedPath = event\.payload as string;/);
-		// The listener no longer compares the payload with the active file itself:
-		// resolveExternalChange looks up the tab that OWNS the changed path (and
-		// refuses to reload it when it has unsaved edits). See
-		// externalChangeReload.spec.ts for the routing behaviour.
-		assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
-		// A conflict is reported with Live Mode off too; Live Mode gates only the reload.
-		assert.match(viewer, /if \(liveMode\) loadMarkdown\(outcome\.path\);/);
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-		assert.match(session, /tabManager\.tabs\.find\(\(tab\) => tab\.path === changedPath\)/);
+		assert.match(viewer, /await appWindow\.listen\('file-changed', \(event\) => externalChange\.handleFileChanged\(event\.payload as string, liveMode\)\)/);
 	});
 
 	test('the watcher follows the active file instead of retaining a previous tab watcher', () => {
@@ -662,7 +648,7 @@ describe('document encoding round trip', () => {
 });
 
 describe('explicit save cancels auto-save', () => {
-	test('no call site takes the cancel duty back from saveContent', async () => {
+	test('no call site takes the cancel duty back from saveContent', () => {
 		// The regression this guards is not a broken save — it is the duty
 		// drifting back out to the call sites, where the next entry point can
 		// forget it again. A cancel immediately before a `saveContent` is the
@@ -675,16 +661,6 @@ describe('explicit save cancels auto-save', () => {
 				`${path} pairs a manual cancel with a save; saveContent already does this`,
 			);
 		}
-
-		// And the duty is discharged before the write, not after — the source-level
-		// mirror of the ordering test above, so a refactor that reorders the two
-		// inside `saveContent` is caught even if the stub harness stops seeing it.
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-		const saveContentBody = session.slice(session.indexOf('async function saveContent('));
-		const cancel = saveContentBody.indexOf('options.cancelPendingAutoSave(');
-		const write = saveContentBody.indexOf("invoke('save_file_content'");
-		assert.ok(cancel !== -1, 'saveContent must cancel the pending auto-save');
-		assert.ok(cancel < write, 'the cancel must come before the write it protects');
 	});
 });
 
@@ -692,13 +668,6 @@ describe('external change reload', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	// --- wiring that cannot be executed outside a Svelte runtime ---
-
-	test('the watcher listener routes every event through the guarded resolution', () => {
-		const body = sliceBetween(viewer, "listen('file-changed'", '}),');
-		assert.match(body, /resolveExternalChange/);
-		// The old body called loadMarkdown(currentFile) directly.
-		assert.doesNotMatch(body, /loadMarkdown\(currentFile\)/);
-	});
 
 	test('turning Live Mode on does not reload', () => {
 		// Enabling reload is not a request to discard the buffer, and this was

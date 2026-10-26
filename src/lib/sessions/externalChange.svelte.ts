@@ -13,6 +13,9 @@ export type ExternalChangeOptions = {
 	documentSession: {
 		saveContent: (tabId: string) => Promise<boolean>;
 		allowOverwriteOnce: (tabId: string) => void;
+		resolveExternalChange: (
+			changedPath: string,
+		) => Promise<{ action: 'ignore' } | { action: 'reload' | 'conflict'; tabId: string; path: string }>;
 	};
 	loadMarkdown: (path: string, options: LoadMarkdownOptions) => Promise<unknown>;
 	canCloseTab: (tabId: string) => Promise<boolean>;
@@ -224,6 +227,24 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		clearExternalChangeConflict(id);
 	}
 
+	/**
+	 * A `file-changed` event from the watcher. The event names the changed
+	 * file. Which tab that touches — and whether it may be reloaded at all —
+	 * is decided by the session: it owns the self-write grace window (so our
+	 * own auto-save does not bounce back) and it refuses to reload a tab with
+	 * unsaved edits. A conflict is noted with Live Mode off too; Live Mode
+	 * gates only the reload.
+	 */
+	async function handleFileChanged(changedPath: string, liveMode: boolean) {
+		const outcome = await options.documentSession.resolveExternalChange(changedPath);
+		if (outcome.action === 'ignore') return;
+		if (outcome.action === 'conflict') {
+			noteExternalChangeConflict(outcome.tabId);
+			return;
+		}
+		if (liveMode) options.loadMarkdown(outcome.path, {});
+	}
+
 	return {
 		get comparison() {
 			return comparison;
@@ -241,5 +262,6 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		reloadFromDisk,
 		compareExternalChange,
 		resolveExternalChangeByKeepingBuffer,
+		handleFileChanged,
 	};
 }

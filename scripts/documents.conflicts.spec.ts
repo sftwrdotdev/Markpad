@@ -275,6 +275,57 @@ describe('external change conflicts', () => {
 		assert.equal(tab.rawContent, 'theirs');
 		assert.deepEqual(viewer.toasts, ['toast.reloadedFromDisk']);
 	});
+
+	// --- the watcher's `file-changed` event ---
+
+	/** a.md in the background, b.md on screen, both saved and clean. */
+	function twoSavedTabs() {
+		tabManager.closeAll();
+		disk.clear();
+		for (const path of ['/notes/a.md', '/notes/b.md']) {
+			disk.set(path, `saved ${path}`);
+			tabManager.addTab(path, `saved ${path}`);
+			tabManager.activeTab!.originalContent = `saved ${path}`;
+		}
+		return tabManager.tabs;
+	}
+
+	test('a watcher notification is routed to its watched path', async () => {
+		const viewer = makeViewer();
+		const [a, b] = twoSavedTabs();
+		disk.set('/notes/b.md', 'changed by another program');
+
+		await viewer.conflicts.handleFileChanged('/notes/b.md', false);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(b.rawContent, 'saved /notes/b.md', 'Live Mode off: the change is not loaded');
+
+		await viewer.conflicts.handleFileChanged('/notes/b.md', true);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(b.rawContent, 'changed by another program');
+		assert.equal(a.rawContent, 'saved /notes/a.md', 'only the tab that owns the path is touched');
+
+		// An event for the background file does not reload the one on screen.
+		disk.set('/notes/a.md', 'a changed');
+		disk.set('/notes/b.md', 'b changed again');
+		await viewer.conflicts.handleFileChanged('/notes/a.md', true);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(b.rawContent, 'changed by another program');
+	});
+
+	test('the watcher listener routes every event through the guarded resolution', async () => {
+		// A watcher event never reloads over unsaved edits, Live Mode or not: the
+		// tab is marked conflicted instead.
+		const viewer = makeViewer();
+		const [, b] = twoSavedTabs();
+		tabManager.updateTabRawContent(b.id, 'typed here');
+		disk.set('/notes/b.md', 'changed by another program');
+
+		await viewer.conflicts.handleFileChanged('/notes/b.md', true);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		assert.equal(b.rawContent, 'typed here');
+		assert.equal(viewer.conflicts.hasExternalChangeConflict(b.id), true);
+	});
 });
 
 // Ctrl+S from any mode, on the tab in front.
