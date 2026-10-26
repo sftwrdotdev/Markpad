@@ -3,16 +3,26 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { clearVscodeTheme, loadVscodeTheme } from '../src/lib/utils/theme.js';
 
 // Module-level on purpose: vitest hoists `vi.mock` and `vi.hoisted` to the top of the file.
+// `hold()` starts a new pending import; `release()` lets the current one finish.
 const monaco = vi.hoisted(() => {
-	let release!: () => void;
-	const loaded = new Promise<void>((resolve) => (release = resolve));
-	return { loaded, release, setTheme: vi.fn(), defineTheme: vi.fn() };
+	const m = {
+		loaded: Promise.resolve(),
+		release: () => {},
+		hold() {
+			m.loaded = new Promise<void>((resolve) => (m.release = resolve));
+		},
+		setTheme: vi.fn(),
+		defineTheme: vi.fn(),
+		async factory() {
+			await m.loaded;
+			return { editor: { setTheme: m.setTheme, defineTheme: m.defineTheme } };
+		},
+	};
+	m.hold();
+	return m;
 });
 
-vi.mock('monaco-editor', async () => {
-	await monaco.loaded;
-	return { editor: { setTheme: monaco.setTheme, defineTheme: monaco.defineTheme } };
-});
+vi.mock('monaco-editor', () => monaco.factory());
 
 /**
  * Choosing a VS Code theme and then another theme before the first finished
@@ -27,10 +37,10 @@ describe('stale theme load', () => {
 	const THEME = JSON.stringify({ type: 'dark', colors: { 'editor.background': '#101010' } });
 
 	/** What the `light` branch of the viewer's theme effect does. */
-	function chooseLight() {
+	function chooseLight(clear = clearVscodeTheme) {
 		document.documentElement.dataset.theme = 'light';
 		document.documentElement.dataset.themeType = 'light';
-		clearVscodeTheme();
+		clear();
 	}
 
 	function deferred<T>() {
@@ -76,18 +86,26 @@ describe('stale theme load', () => {
 	});
 
 	test('Monaco loading for the first time does not repaint the editor after a newer choice', async () => {
-		const load = loadVscodeTheme('Dark Thing', async () => THEME);
+		// Another test may already have loaded Monaco. A fresh module registry, a
+		// re-registered mock and a held import make this load the first one again.
+		monaco.hold();
+		monaco.setTheme.mockClear();
+		vi.resetModules();
+		vi.doMock('monaco-editor', () => monaco.factory());
+		const theme = await import('../src/lib/utils/theme.js');
+
+		const load = theme.loadVscodeTheme('Dark Thing', async () => THEME);
 		// Let the read land and the parse reach `import('monaco-editor')`.
 		await vi.waitFor(() => expect(document.documentElement.dataset.theme).toBe('vscode'));
 
-		chooseLight();
+		chooseLight(theme.clearVscodeTheme);
 		monaco.release();
 
 		expect(await load).toBe(false);
 		expect(monaco.setTheme).not.toHaveBeenCalled();
 
 		// And a load nobody replaced still reaches the editor.
-		expect(await loadVscodeTheme('Dark Thing', async () => THEME)).toBe(true);
+		expect(await theme.loadVscodeTheme('Dark Thing', async () => THEME)).toBe(true);
 		expect(monaco.setTheme).toHaveBeenCalledWith('vscode-custom');
 	});
 });

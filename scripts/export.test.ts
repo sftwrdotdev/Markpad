@@ -11,6 +11,7 @@ import { askToOpenExportedFile } from '../src/lib/utils/openExportedFile.js';
 import { fontFamilyValue } from '../src/lib/utils/fontFamily.js';
 import { absolutizeKatexFontUrls, collectUsedKatexFamilies, findKatexFontFaces, inlineKatexFontFaces, katexFontUrlsToEmbed } from '../src/lib/utils/exportFonts.ts';
 import { renderRichContent } from '../src/lib/utils/richContent.ts';
+import { resetRichContentCache } from '../src/lib/utils/richContentCache.ts';
 import { ALLOWED_MARKDOWN_URI_REGEXP } from '../src/lib/utils/sanitize.js';
 import { MERMAID_PRINT_THEME, readDiagramSource, rememberDiagramSource, resolveMermaidTheme } from '../src/lib/utils/mermaidPrint.js';
 import { useShimDom } from './preview.domShim.ts';
@@ -739,6 +740,9 @@ describe('rich content in the HTML export', () => {
 	async function runExport(
 		options: { css?: string; theme?: string; mermaidTheme?: string; newlineBreaks?: boolean; rendered?: string } = {},
 	): Promise<ExportRun> {
+		// The KaTeX and highlight memo is module-level: without this, a formula an
+		// earlier test rendered never reaches this run's KaTeX.
+		resetRichContentCache();
 		const record = { mermaidThemes: [] as string[], mathCalls: [] as string[] };
 		const fetched: string[] = [];
 		let saved: { path: string; content: string } | null = null;

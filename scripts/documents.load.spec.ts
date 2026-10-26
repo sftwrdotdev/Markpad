@@ -274,7 +274,7 @@ describe('external change reload', () => {
 	 */
 	const disk = new Map<string, string>();
 
-	let handleInvoke: (cmd: string, args: any) => unknown = (cmd, args) => {
+	const diskInvoke = (cmd: string, args: any): unknown => {
 		if (cmd === 'canonicalize_path') return args.path;
 		if (cmd === 'read_file_content_checked') {
 			if (!disk.has(args.path)) throw new Error(`no such file: ${args.path}`);
@@ -286,6 +286,7 @@ describe('external change reload', () => {
 		}
 		throw new Error(`unexpected invoke: ${cmd}`);
 	};
+	let handleInvoke = diskInvoke;
 	beforeAll(() => {
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
@@ -335,6 +336,7 @@ describe('external change reload', () => {
 	function reset() {
 		tabManager.closeAll();
 		disk.clear();
+		handleInvoke = diskInvoke;
 		refusedSaves = [];
 		closeQuestions = [];
 		closeAnswer = 'discard';
@@ -582,6 +584,7 @@ describe('external change reload', () => {
 		//
 		// `loadMarkdown(path)` with no options is exactly the call the
 		// `file-changed` listener makes for a `reload` outcome.
+		reset();
 		const session = makeSession();
 		const tab = open('/notes/live.md', 'before');
 		tab.isEditing = true;
