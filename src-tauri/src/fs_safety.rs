@@ -349,13 +349,13 @@ pub(crate) fn decode_text(bytes: &[u8]) -> DecodedText {
 
 /// What `encode_text` refuses with when the buffer holds a character the
 /// document's encoding has no representation for — an emoji pasted into a GBK
-/// file, say. Matched by `documentSession.saveContent`, which turns it into a
-/// translated toast.
+/// file, say. Matched by `documentSession.saveContent` through the generated
+/// constant in bindings.ts, which turns it into a translated toast.
 ///
 /// A marker, carrying nothing. The label was in here at first and it was
 /// redundant: the frontend passed the encoding INTO this call, so it already
 /// knows which one refused.
-const UNMAPPABLE_CODE: &str = "ENCODING_UNMAPPABLE";
+pub(crate) const UNMAPPABLE_CODE: &str = "ENCODING_UNMAPPABLE";
 
 /// Turn a buffer back into bytes in `label`'s encoding, or refuse.
 ///

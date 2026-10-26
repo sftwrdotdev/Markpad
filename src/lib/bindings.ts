@@ -311,6 +311,17 @@ export const events = {
 	tabTransferOffer: makeEvent<TabTransferOffer, TabTransferOffer>("tab-transfer-offer"),
 };
 
+/* Constants */
+export const BULLET_MARKER = "[-+*]" as const;
+
+export const MARKDOWN_LINK_EXTENSIONS = ["md","markdown","mdown","mkd","txt"] as const;
+
+export const ORDERED_MARKER = "\\d+[.)]" as const;
+
+export const TASK_BOX = "\\[[ xX]\\]" as const;
+
+export const UNMAPPABLE_CODE = "ENCODING_UNMAPPABLE" as const;
+
 /* Types */
 /**  What `save_theme` writes to `theme.txt` and `app.rs` reads back, one word. */
 export type Appearance = "system" | "light" | "dark";
@@ -395,16 +406,20 @@ export type PinnedTagRename = "renamed" |
 export type RefreshOutcome = "updated" | "revoked" | "gone";
 
 /**
+ *  What a span is, as the legend in `utils/semanticTokens.ts` spells it: a token
+ *  type, plus `.marker` for the `marker` modifier, which is how Monaco's theme
+ *  lookup spells it (`tokenTheme._match("heading.marker")`). The frontend gets
+ *  this as a string union, so a kind added here without a legend entry fails
+ *  svelte-check there.
+ */
+export type SemanticKind = "heading" | "heading.marker" | "list.marker" | "task.marker" | "quote.marker" | "rule" | "fence" | "frontmatter" | "table.marker" | "code" | "code.marker" | "strong" | "strong.marker" | "emph" | "emph.marker" | "strongemph" | "strike" | "strike.marker" | "highlight" | "highlight.marker" | "insert" | "insert.marker" | "link" | "link.marker" | "image" | "image.marker" | "math" | "math.marker" | "wikilink" | "wikilink.marker" | "footnote" | "html";
+
+/**
  *  One coloured range, in the coordinates Monaco's semantic tokens speak:
  *  zero-based line, zero-based UTF-16 column, length in UTF-16 code units.
  */
 export type SemanticSpan = {
-	/**
-	 *  A legend entry in `utils/semanticTokens.ts`. `kind.marker` there is a
-	 *  token type plus its `marker` modifier, which is how Monaco's theme
-	 *  lookup spells it (`tokenTheme._match("heading.marker")`).
-	 */
-	kind: string,
+	kind: SemanticKind,
 	line: number,
 	start: number,
 	len: number,

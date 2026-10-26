@@ -174,6 +174,15 @@ fn bindings_builder() -> tauri_specta::Builder<tauri::Wry> {
             window_runtime::TabTransferOffer,
             tab_transfer::TabTransferClaimed,
         ])
+        // Vocabulary the frontend matches against, so it has one definition.
+        .constant("UNMAPPABLE_CODE", crate::fs_safety::UNMAPPABLE_CODE)
+        .constant("BULLET_MARKER", crate::markdown::BULLET_MARKER)
+        .constant("ORDERED_MARKER", crate::markdown::ORDERED_MARKER)
+        .constant("TASK_BOX", crate::markdown::TASK_BOX)
+        .constant(
+            "MARKDOWN_LINK_EXTENSIONS",
+            crate::markdown::MARKDOWN_LINK_EXTENSIONS,
+        )
         // Commands reject with their error string, as `invoke` always did.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         // One type per Rust type: a command type is either only returned or

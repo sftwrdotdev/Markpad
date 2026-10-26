@@ -30,26 +30,24 @@
  * belongs to the call site, and only the marker vocabulary lives here.
  */
 
-/** `-`, `+`, `*` — the three bullet characters, which are interchangeable. */
-export const BULLET_MARKER = String.raw`[-+*]`;
+import { BULLET_MARKER, ORDERED_MARKER, TASK_BOX } from '../bindings.js';
 
 /**
- * `1.` and `1)`. CommonMark defines both delimiters and the renderer reads both;
- * a document written with `1)` is an ordered list everywhere except in a toolbar
- * that forgot the second half.
+ * `BULLET_MARKER` (`-`, `+`, `*`, interchangeable), `ORDERED_MARKER` (`1.` and
+ * `1)`: CommonMark defines both delimiters, and a document written with `1)` is
+ * an ordered list everywhere except in a toolbar that forgot the second half)
+ * and `TASK_BOX` come from the Rust renderer's `TASK_SOURCE_RE` fragments in
+ * markdown.rs, through bindings.ts: one definition on both sides of the
+ * boundary.
+ *
+ * The checkbox is part of the marker rather than part of the text: a toggle
+ * that took `- ` off `- [ ] foo` would leave the orphan `[ ] foo`, which
+ * nothing recognises.
  */
-export const ORDERED_MARKER = String.raw`\d+[.)]`;
+export { BULLET_MARKER, ORDERED_MARKER, TASK_BOX };
 
 /** Either kind of list marker, without its trailing space. */
 export const LIST_MARKER = String.raw`(?:${BULLET_MARKER}|${ORDERED_MARKER})`;
-
-/**
- * The checkbox of a task list item, unchecked or checked in either case.
- *
- * Part of the marker rather than part of the text: a toggle that took `- ` off
- * `- [ ] foo` would leave the orphan `[ ] foo`, which nothing recognises.
- */
-export const TASK_BOX = String.raw`\[[ xX]\]`;
 
 /**
  * One level of block quote: the `>` and whatever separates it from what follows.

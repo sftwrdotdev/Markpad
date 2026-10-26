@@ -1,4 +1,4 @@
-import { commands } from '../bindings.js';
+import { commands, UNMAPPABLE_CODE } from '../bindings.js';
 import { save } from '@tauri-apps/plugin-dialog';
 import { settings } from '../stores/settings.svelte.js';
 import { tabManager, type Tab } from '../stores/tabs.svelte.js';
@@ -240,7 +240,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		try {
 			// The same read the reload does, so the two strings are comparable:
 			// decoded with the file's own encoding rather than assumed UTF-8.
-			const [content] = (await commands.readFileContentChecked(path)) as [string, boolean, string];
+			const [content] = await commands.readFileContentChecked(path);
 			return content !== tab.originalContent;
 		} catch {
 			// Unreadable right now — mid-write, or gone. "Changed" is the safe
@@ -336,7 +336,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 			// the fidelity again costs nothing and makes the flag a property of
 			// the buffer instead of a memory of how it was obtained; it also
 			// CLEARS the flag for a file converted to UTF-8 since the load.
-			const [full, lossy, encoding] = (await commands.readFileContentChecked(tab.path)) as [string, boolean, string];
+			const [full, lossy, encoding] = await commands.readFileContentChecked(tab.path);
 			// Overtaken, edited or closed while the read was out. Whether the
 			// buffer is whole is still the question asked, so the tab answers it.
 			if (!mayApply()) return tabManager.tabs.find((item) => item.id === tabId)?.isTruncated === false;
@@ -382,13 +382,6 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	 * `targetPath !== tab.path` stays as the cheap first test so the common
 	 * Ctrl+S case never consults anything further.
 	 */
-	/**
-	 * The prefix `encode_text` refuses with when the document's encoding has no
-	 * representation for something the buffer now holds — an emoji pasted into
-	 * a GBK file being the way most people will meet it.
-	 */
-	const UNMAPPABLE_CODE = 'ENCODING_UNMAPPABLE';
-
 	/**
 	 * A save failure, said in a way the user can act on, and what to show
 	 * beside it.
@@ -610,10 +603,10 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				let lossy: boolean;
 				let encoding: string;
 				if (initialIsEditing || initialIsSplit) {
-					[content, lossy, encoding] = (await commands.readFileContentChecked(filePath)) as [string, boolean, string];
+					[content, lossy, encoding] = await commands.readFileContentChecked(filePath);
 					isFull = true;
 				} else {
-					[content, isFull, lossy, encoding] = (await commands.openMarkdownPreview(filePath, 5_000_000)) as [string, boolean, boolean, string];
+					[content, isFull, lossy, encoding] = await commands.openMarkdownPreview(filePath, 5_000_000);
 				}
 				if (!mayApply()) return;
 				const rendered = await options.renderMarkdown(content);
@@ -659,7 +652,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					// view only speaks for this load while this load's tab is the
 					// view.
 					if (tabManager.activeTabId === activeId) options.measureInitialViewport();
-					(commands.readFileContentChecked(filePath) as Promise<[string, boolean, string]>)
+					commands.readFileContentChecked(filePath)
 						.then(([fullContent, fullLossy, fullEncoding]) => {
 							const applyFull = () => {
 								try {
@@ -697,7 +690,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 						});
 				}
 			} else {
-				const [content, lossy, encoding] = (await commands.readFileContentChecked(filePath)) as [string, boolean, string];
+				const [content, lossy, encoding] = await commands.readFileContentChecked(filePath);
 				// Same race, same guard: this branch reads the whole file, so it
 				// cannot strand a slice, but a stale one still overwrites the
 				// winner's buffer and encoding and flips the tab into the editor.

@@ -1,16 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
-import {
-	readDictionarySource,
-	readRustBackend,
-	readSource,
-	readSourceFiles,
-	sliceBetween,
-	sliceFrom,
-} from './sourceTree.js';
+import { readDictionarySource, readSource, sliceBetween } from './sourceTree.js';
 
 /*
  * #379 made every read that fills a WRITABLE buffer report whether the decode
@@ -53,25 +45,6 @@ describe('checked read migration', () => {
 
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	test('the unchecked read command is gone, and nothing calls it', () => {
-		// This was a three-file allowlist — the files #379 migrated. That is the
-		// wrong shape for a rule that means "nobody, anywhere": a fourth file
-		// added the call and the test still passed. Two changes fix it. The scan
-		// below covers the whole tree, so a new file cannot slip under it. And the
-		// Rust command itself is deleted, which is what turns the rule from a
-		// convention into a fact: `read_file_content` is not registered any more,
-		// so invoking it fails loudly instead of quietly filling a buffer with
-		// mojibake nothing flagged.
-		const offenders = readSourceFiles('src')
-			.filter(({ text }) => /invoke\('read_file_content'/.test(text))
-			.map(({ path }) => path);
-		assert.deepEqual(offenders, [], 'read_file_content no longer exists; read_file_content_checked is the read');
-
-		const rust = readRustBackend();
-		assert.doesNotMatch(rust, /\basync fn read_file_content\(/, 'the unchecked command must stay deleted');
-		assert.doesNotMatch(rust, /^\s*read_file_content,\s*$/m, 'and must not be registered again');
-	});
-
 	// --- the repeating toast ------------------------------------------------------
 
 	test('a tab that can only be refused stops re-arming the timer', () => {
@@ -106,13 +79,6 @@ describe('checked read migration', () => {
 // it is the user's only way out.
 describe('lossy decode save guard', () => {
 	const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-	const rust = readRustBackend();
-
-	test('both read commands can report fidelity', () => {
-		assert.match(rust, /async fn open_markdown_preview\([^)]*\)\s*-> Result<\(String, bool, bool, String\), String>/s);
-		assert.match(rust, /async fn read_file_content_checked\(path: String\) -> Result<\(String, bool, String\), String>/);
-		assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
-	});
 
 	test('the refusal names Save As, the only exit', () => {
 		// i18n wording. That the session raises this message once per tab is
@@ -261,16 +227,6 @@ describe('document encoding round trip', () => {
 	// generic English `Failed to save file: <OS message>` stays for genuine I/O
 	// failures, which the user cannot act on beyond reading the OS.
 
-	test('the unmappable-character refusal crosses as a code, not as English prose', () => {
-		const rust = readRustBackend();
-		assert.match(rust, /const UNMAPPABLE_CODE: &str = "ENCODING_UNMAPPABLE";/);
-		assert.match(rust, /return Err\(UNMAPPABLE_CODE\.to_owned\(\)\)/, 'a marker, carrying nothing');
-
-		// The sentence it replaced must not come back: a translated toast and an
-		// English one saying the same thing is worse than either alone.
-		assert.doesNotMatch(rust, /cannot represent every character it now contains/);
-	});
-
 	test('every locale can say which encoding refused the save', () => {
 		const i18n = readDictionarySource();
 		const locales = i18n.match(/lossySaveBlocked:/g) ?? [];
@@ -355,31 +311,3 @@ describe('reopening a dirty document', () => {
 	});
 });
 
-describe('task toggle line endings', () => {
-	test('the marker grammar the renderer reads still matches listSyntax.ts', () => {
-		// The last cross-language copy of this vocabulary. The rewrite above only
-		// gets a chance to run on lines the *renderer* turned into a task item, and
-		// `TASK_SOURCE_RE` is what decides that — so a marker one side accepts and
-		// the other does not is a checkbox that draws and then refuses to toggle.
-		// Every TypeScript reader imports the fragments from utils/listSyntax.ts
-		// (pinned by release.checks.test.ts); Rust cannot, so the
-		// drift is caught here instead, by reading the pattern back out of the
-		// source and looking for the fragments inside it.
-		//
-		// Fragments rather than the whole pattern, deliberately: what surrounds them
-		// is allowed to differ. Rust asks a yes/no question about one line and may
-		// spell its whitespace `\s`; the rewrite above works over the whole body
-		// with `/m` and may not (see the comment at the call site). The marker
-		// itself is the only part that has to be the same on both sides.
-		const declared = sliceFrom(readRustBackend(), 'static TASK_SOURCE_RE');
-		const pattern = /Regex::new\(r"([^"]*)"\)/.exec(declared);
-		assert.notEqual(pattern, null, 'TASK_SOURCE_RE no longer holds a raw regex literal');
-
-		for (const fragment of [LIST_MARKER, TASK_BOX]) {
-			assert.ok(
-				pattern![1].includes(fragment),
-				`the Rust renderer reads ${JSON.stringify(pattern![1])}, which does not contain ${fragment} — the two sides disagree about what a list item is`,
-			);
-		}
-	});
-});

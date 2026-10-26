@@ -1,3 +1,5 @@
+import { MARKDOWN_LINK_EXTENSIONS as RUST_MARKDOWN_LINK_EXTENSIONS } from '../bindings.js';
+
 export type MarkdownLinkTarget = {
 	path: string;
 	hash: string;
@@ -11,11 +13,10 @@ export type MarkdownLinkTarget = {
 // documented as a copy and pinned by a test; a list is cheaper to share than to
 // police.
 //
-// The Rust renderer keeps the only other copy, in `MARKDOWN_LINK_EXTENSIONS`
-// in src-tauri/src/markdown.rs, because no import crosses that boundary. It is
-// pinned against this one by `the extension list the rewriter mirrors still
-// matches markdownLinks.ts` in scripts/editing.test.ts.
-export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
+// The list itself is the Rust renderer's `MARKDOWN_LINK_EXTENSIONS`
+// (src-tauri/src/markdown.rs), through bindings.ts, so the wikilink rewriter
+// and this side cannot disagree.
+export const MARKDOWN_LINK_EXTENSIONS: string[] = [...RUST_MARKDOWN_LINK_EXTENSIONS];
 
 /**
  * The Open dialog's filters: the one list every other part of the app already

@@ -144,14 +144,3 @@ describe('window state restore', () => {
 	});
 
 });
-
-describe('window tags and pinned sessions', () => {
-	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const home = readSource('src/lib/components/HomePage.svelte');
-
-	test('only explicitly pinned tags create reusable sessions', () => {
-		assert.match(runtime, /pub fn save_pinned_tag/);
-		assert.match(runtime, /pub fn remove_pinned_tag/);
-		assert.match(home, /onopenPinnedTag/);
-	});
-});

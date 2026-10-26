@@ -373,7 +373,7 @@ async function buildExportArticle(
 	{ embedImages = true }: { embedImages?: boolean } = {},
 ): Promise<{ root: HTMLElement; embeddedImages: number; missingImages: number }> {
 	const body = getMarkdownBodyWithoutFrontMatter(ctx.rawContent);
-	const rendered = (await commands.renderMarkdown(body, null)) as string;
+	const rendered = await commands.renderMarkdown(body, null);
 	// The export used to write `rendered` to disk untouched. comrak runs with
 	// `unsafe_ = true`, so a script the preview had filtered out was still live
 	// in the exported file — and the exported file has no CSP of the app's, gets
@@ -427,7 +427,7 @@ async function buildExportArticle(
 		if (!localPath) continue;
 
 		try {
-			const dataUrl = (await commands.readFileAsDataUrl(localPath)) as string;
+			const dataUrl = await commands.readFileAsDataUrl(localPath);
 			img.setAttribute('src', dataUrl);
 			embeddedImages += 1;
 		} catch (e) {

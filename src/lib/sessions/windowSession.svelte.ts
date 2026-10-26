@@ -144,7 +144,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	 */
 	async function readProgress(): Promise<RestoreProgress | null> {
 		const raw =
-			((await commands.loadRestoreProgress().catch(() => null)) as string | null) ??
+			(await commands.loadRestoreProgress().catch(() => null)) ??
 			localStorage.getItem(options.restoreInProgressKey);
 		if (!raw) return null;
 		try {
@@ -298,7 +298,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		const savedData =
 			localStorage.getItem(options.windowStateKey) ??
 			localStorage.getItem(options.legacyStateKey) ??
-			((await commands.loadWindowState().catch(() => null)) as string | null);
+			(await commands.loadWindowState().catch(() => null));
 		if (savedData) {
 			try {
 				options.restoreState(savedData);
@@ -376,7 +376,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 	async function acceptOfferedTransfer(token: string): Promise<boolean> {
 		let claimed = false;
 		try {
-			const payload = (await commands.claimDetachedTab(token)) as string | null;
+			const payload = await commands.claimDetachedTab(token);
 			// Distinguish "no such token" from a claim that succeeded: only the
 			// latter leaves something to release.
 			if (payload === null) {
@@ -458,7 +458,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 		// change is pushed to the broker as it happens: before the claim it
 		// replaces the payload, after it the broker withdraws the transfer.
 		let sent = transferRevision(tabId);
-		const token = (await commands.stageDetachedTab(options.transferPayload(tabId))) as string;
+		const token = await commands.stageDetachedTab(options.transferPayload(tabId));
 		let settled = false;
 		let resolveTransfer: (moved: boolean) => void;
 		const settle = (moved: boolean) => {

@@ -65,19 +65,19 @@ export async function pasteFromClipboard(deps: EditorClipboardDeps) {
 				// not pixels (#768). Read it first and copy it as a drop does, so
 				// it keeps its own name and bytes rather than whatever preview the
 				// file manager put beside it.
-				const files = await commands.clipboardReadFileList().catch(() => null) as string[] | null;
+				const files = await commands.clipboardReadFileList().catch(() => null);
 				for (const srcPath of files ?? []) {
 					if (routeDroppedFile(srcPath, "editor") !== "insert") continue;
-					const relPath = (await commands.copyFileToImg(srcPath, parentDir, imgDirName)) as string;
+					const relPath = await commands.copyFileToImg(srcPath, parentDir, imgDirName);
 					embeds.push(imageEmbed(relPath));
 				}
 
 				if (embeds.length === 0) {
 					// check for image in clipboard via Rust
-					const base64Image = await commands.clipboardReadImage(deps.settings.macosImageScaling).catch(() => null) as string | null;
+					const base64Image = await commands.clipboardReadImage(deps.settings.macosImageScaling).catch(() => null);
 					if (base64Image) {
 						const filename = `paste_${Date.now()}.png`; // output of Rust command is always PNG
-						const relPath = (await commands.saveImage(parentDir, filename, base64Image, imgDirName)) as string;
+						const relPath = await commands.saveImage(parentDir, filename, base64Image, imgDirName);
 						embeds.push(imageEmbed(relPath));
 					}
 				}
@@ -112,7 +112,7 @@ export async function pasteFromClipboard(deps: EditorClipboardDeps) {
 			}
 
 			// fall through to text paste via Rust
-			const rawText = await commands.clipboardReadText().catch(() => "") as string;
+			const rawText = await commands.clipboardReadText().catch(() => "");
 			if (!rawText) return;
 			// Every edit below is a paste, and a paste is its own undo step:
 			// `executeEdits` appends to the step typing left open, so without
@@ -253,7 +253,7 @@ export async function handleDroppedFile(deps: EditorClipboardDeps, path: string,
 			deps.settings.imageDirectory,
 			tabPath,
 		);
-		const relPath = (await commands.copyFileToImg(path, parentDir, imgDirName)) as string;
+		const relPath = await commands.copyFileToImg(path, parentDir, imgDirName);
 		// As in `pasteFromClipboard`: a tab switch during the copy leaves the
 		// file where it was copied and the link out of the other document.
 		if (editor.getModel() !== dropModel) return;

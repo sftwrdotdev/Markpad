@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { readRustBackend, readSource, sliceFrom } from './sourceTree.js';
-import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
+import { readSource, sliceFrom } from './sourceTree.js';
 
 /*
  * Issue #604: Enter, Tab and Shift+Tab on list items and tables. The handlers
@@ -23,33 +22,6 @@ describe('list keys in the editor', () => {
 		const outdent = core.slice(core.indexOf("id: 'outdent'"), core.indexOf("id: 'tab'"));
 		assert.match(outdent, /KeyMod\.Shift \*\/ \| 2 \/\* KeyCode\.Tab/);
 		assert.match(outdent, /EditorContextKeys\.editorTextFocus, EditorContextKeys\.tabDoesNotMoveFocus/);
-	});
-});
-
-/**
- * #200: "implement some function which slugify titles and purpose those as
- * #targets for URL of link".
- *
- * Half of it already worked — comrak renders an `id` onto every heading and
- * `[…](#that-id)` jumps to it — but nothing offered the ids, so writing one
- * meant doing comrak's anchorizer by hand: lowercase, drop the punctuation it
- * drops, hyphenate the spaces, and remember that a repeated heading is
- * numbered. Getting it wrong produces a link that looks right and lands
- * nowhere.
- *
- * The list comes from Rust, from the renderer's own parse and anchorizer
- * (`outline`, pinned against the rendered `id=` attributes in
- * `lib.rs`). What is asserted here is the other half: WHERE a heading is the
- * answer, and what gets written when it is — the two link syntaxes take
- * different text, which is the part that is easy to get backwards.
- */
-describe('heading link completion wiring', () => {
-	const rustSource = readRustBackend();
-
-	test('the outline command Rust answers takes the markdown the editor sends', () => {
-		// The TypeScript half (`createDocumentOutline` sends `{ markdown, … }`)
-		// runs in editing.test.ts; this is the Rust half of the command contract.
-		assert.match(rustSource, /async fn markdown_outline\(\s*markdown: String,/);
 	});
 });
 
@@ -132,46 +104,5 @@ describe('find widget tooltip clip', () => {
 		// Monaco writes `z-index: 2576` inline on the node, so the rule only lands
 		// if it is marked important.
 		assert.match(styles, /\.context-view \{\s*\n\s*z-index: \d+ !important;/);
-	});
-});
-
-// `[[Notes#Setup]]` — the exact string the "Copy Reference" context-menu item
-// writes to the clipboard — used to render as literal text: the Rust
-// preprocessor only understood the same-document form `[[#Setup]]`. It now
-// emits a plain markdown link, and these tests pin the *shape* of the href it
-// emits against the frontend that has to claim it. The Rust side owns the
-// other half of this contract in src-tauri/src/lib.rs (`copy_reference_output_
-// becomes_a_real_link` and friends); if either half moves, the other fails.
-//
-// Scope: only the heading-bearing forms (`[[#h]]`, `[[file#h]]`, and their
-// `|alias` variants) are rewritten. Obsidian's bare note link `[[Notes]]` is
-// a separate feature, not this defect, and is left literal.
-//
-// Not covered here: whether the file exists, and the actual tab-opening (that
-// runs inside MarkdownViewer.svelte and needs a live webview). These tests
-// only prove the href is recognized as a local markdown target and decodes
-// back to the path and anchor the document asked for.
-describe('wikilink extension and reference contracts', () => {
-	const rustSource = readRustBackend();
-
-	test('the extension list the rewriter mirrors still matches markdownLinks.ts', () => {
-		// The last cross-language copy of this list. Every TypeScript reader — the
-		// sanitizer's URI pattern, the export's `.md` -> `.html` rewrite, the Open
-		// dialog filter — now imports MARKDOWN_LINK_EXTENSIONS from markdownLinks.ts,
-		// so a drift between two of them is no longer expressible. Rust cannot
-		// import it, so the drift is caught here instead, by reading the array back
-		// out of the source and comparing the two *sets*: a third-party extension
-		// added to either side alone fails, in whichever direction it was added.
-		const declared = rustSource.match(/const MARKDOWN_LINK_EXTENSIONS: \[&str; \d+\] = \[([^\]]*)\]/);
-		assert.notEqual(declared, null, 'MARKDOWN_LINK_EXTENSIONS disappeared from the Rust backend');
-		const extensions = [...declared![1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-		assert.deepEqual(
-			[...extensions].sort(),
-			[...MARKDOWN_LINK_EXTENSIONS].sort(),
-			'the Rust and TypeScript extension lists disagree — add the extension to both',
-		);
-		for (const extension of extensions) {
-			assert.equal(hasMarkdownLinkExtension(`file.${extension}`), true, extension);
-		}
 	});
 });

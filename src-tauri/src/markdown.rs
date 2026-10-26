@@ -70,8 +70,21 @@ static TASK_ITEM_RE: LazyLock<Regex> = LazyLock::new(|| {
     )
     .expect("valid regex literal")
 });
+/// The list-marker vocabulary, shared with the frontend through bindings.ts
+/// (`utils/listSyntax.ts` re-exports it): a marker one side accepts and the
+/// other does not is a checkbox that draws and then refuses to toggle. Only the
+/// marker is shared; the whitespace around it is each reader's own.
+pub(crate) const BULLET_MARKER: &str = r"[-+*]";
+/// `1.` and `1)`: CommonMark defines both delimiters.
+pub(crate) const ORDERED_MARKER: &str = r"\d+[.)]";
+/// The checkbox of a task list item, unchecked or checked in either case.
+pub(crate) const TASK_BOX: &str = r"\[[ xX]\]";
+
 static TASK_SOURCE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"^\s*(?:>\s*)*(?:[-+*]|\d+[.)])\s+\[[ xX]\](?:\s|$)").expect("valid regex literal")
+    Regex::new(&format!(
+        r"^\s*(?:>\s*)*(?:{BULLET_MARKER}|{ORDERED_MARKER})\s+{TASK_BOX}(?:\s|$)"
+    ))
+    .expect("valid regex")
 });
 
 /// HTML-escapes `value` for use inside a double-quoted attribute. Embed
@@ -190,12 +203,13 @@ fn heading_anchor_id(target: &str) -> String {
     Anchorizer::new().anchorize(target.trim())
 }
 
-/// File extensions the viewer will open as a document. Mirrors
-/// `hasMarkdownLinkExtension` in src/lib/utils/markdownLinks.ts — a wikilink
-/// whose href does not end in one of these is not claimed by the frontend's
-/// local-navigation path at all, so emitting one would produce a link that
-/// escapes to the external-URL opener instead of opening a tab.
-const MARKDOWN_LINK_EXTENSIONS: [&str; 5] = ["md", "markdown", "mdown", "mkd", "txt"];
+/// File extensions the viewer will open as a document. The frontend's list
+/// (`MARKDOWN_LINK_EXTENSIONS` in src/lib/utils/markdownLinks.ts) is this one,
+/// through bindings.ts — a wikilink whose href does not end in one of these is
+/// not claimed by the frontend's local-navigation path at all, so emitting one
+/// would produce a link that escapes to the external-URL opener instead of
+/// opening a tab.
+pub(crate) const MARKDOWN_LINK_EXTENSIONS: [&str; 5] = ["md", "markdown", "mdown", "mkd", "txt"];
 
 /// The extension of the last path component, if the trailing `.segment` really
 /// reads as one. `v1.2 spec` has none (the tail is not alphanumeric) and

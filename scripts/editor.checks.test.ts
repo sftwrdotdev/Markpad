@@ -5,11 +5,11 @@ import { describe, test } from 'node:test';
 
 import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
 
-import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
+import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, readDictionarySource, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
 import { markdownTokenRules } from '../src/lib/utils/editorTheme.js';
 import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
 import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js';
-import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
+import { SEMANTIC_KINDS } from '../src/lib/utils/semanticTokens.js';
 import { DEFAULT_IMAGE_DIRECTORY } from '../src/lib/utils/imageEmbed.js';
 
 // Editor.svelte translates the settings store into Monaco options and
@@ -509,26 +509,11 @@ describe('Monaco startup graph', () => {
 });
 
 // The layer that colours from the renderer's answer instead of the grammar's
-// guess. Three seams, each invisible to the compiler: the kinds Rust emits
-// against the legend the encoder indexes, the legend against the theme rules
-// that style it, and the delta encoding Monaco decodes.
+// guess. The kinds Rust emits against the legend the encoder indexes is
+// svelte-check's (`SemanticKind` in bindings.ts, checked in semanticTokens.ts).
+// What is left: the legend against the theme rules that style it, and the
+// delta encoding Monaco decodes.
 describe('semantic token contracts', () => {
-	test('every kind Rust emits is in the legend', () => {
-		// A kind the legend does not know is dropped by the encoder — silently, and
-		// only for that construct, which is exactly the kind of gap nobody notices.
-		const rust = readRustBackend();
-		const emitted = new Set(
-			[...rust.matchAll(/"([a-z]+)(?:\.(marker))?"\s*,?\s*out\s*\)/g)].map((match) => match[1]),
-		);
-		assert.ok(emitted.size > 0, 'the extractor must still name its kinds as literals');
-		for (const kind of emitted) {
-			assert.ok(
-				(TOKEN_TYPES as readonly string[]).includes(kind),
-				`semantic.rs emits \`${kind}\`, which the legend does not list`,
-			);
-		}
-	});
-
 	test('no kind falls through to an imported theme that has nothing to say', () => {
 		// The failure this guards is silent and total. A semantic token whose type
 		// the theme does not name resolves to the theme's *root* rule, whose
@@ -538,11 +523,7 @@ describe('semantic token contracts', () => {
 		// paints that plain default over it. An imported theme lost its heading,
 		// link, quote and inline-code colours to this path the moment the semantic
 		// layer shipped, and nothing in either file said so.
-		const rust = readRustBackend();
-		const emitted = [
-			...new Set([...rust.matchAll(/"([a-z]+(?:\.marker)?)"\s*,?\s*out\s*\)/g)].map((match) => match[1])),
-		];
-		assert.ok(emitted.length > 0, 'the extractor must still name its kinds as literals');
+		const emitted: readonly string[] = SEMANTIC_KINDS;
 
 		const rules = importedThemeRules(
 			[{ scope: 'markup.bold', settings: { foreground: '#e06c75', fontStyle: 'bold' } }],
