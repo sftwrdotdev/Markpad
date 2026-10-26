@@ -161,11 +161,16 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 - **CI**: Runs `npm audit`, `npm run check`, `npm test`, `npm run test:vitest` and
   `cargo test` on PRs
 
-Two kinds of assertion live in this suite: behavior tests, which import and run the real
-modules, and source-shape assertions, which match the source text for a contract the
-compiler cannot check — a Tauri command name, an i18n key, a second copy of a fixed
-behavior. A green run is not a claim that every behavior is covered; a source-shape
-assertion passes as long as the line it matches is still spelled that way.
+Tests run the real code and assert what it does. A test does not read source as text —
+no regex over a file, no slicing a function body, no cutting code out of a component and
+evaluating it: such a test guards a spelling, goes red on a rename and stays green on a
+regression. When the logic sits in a component where a test cannot call it, move it into a
+`.ts` or `.svelte.ts` module the component calls, and test the module.
+
+The `*.checks.*` files are the one exception, and are meant to shrink: they hold contract
+checks (a Tauri command or event name, a config key, an i18n key — the spelling that joins
+Rust and TypeScript) and convention checks ("one implementation of this behavior"), until
+those move to generated bindings and lint rules.
 
 ### Where a test goes
 
@@ -198,22 +203,11 @@ what an effect writes cannot fail. Under vitest the module is compiled for real 
 **Leave it as `*.test.ts` (`node --test`) otherwise.** Plain TypeScript modules run fine
 there, the runner is already configured, and moving a passing file buys nothing.
 
-**Do not migrate `.svelte` component tests.** Mounting a component here means jsdom
-standing in for Monaco, mermaid and KaTeX, and the assertion it earns — "the handler is
-wired up" — is weaker than the source-shape assertion it replaced, not stronger.
-
-### What must never be migrated
-
-Two categories are correct *because* they are text assertions, and a runtime test cannot
-express them at all:
-
-- **Cross-language contracts.** A `#[tauri::command]` name, an event name, a config key: one
-  side is Rust and the other is TypeScript, and nothing but the spelling connects them.
-  Running the TypeScript proves the TypeScript.
-- **Single-implementation conventions.** "There is exactly one copy of this behavior", "no
-  other caller passes this flag", "this constant is not hard-coded a second time". These are
-  claims about the *absence* of a second implementation. Executing the one implementation
-  that exists cannot observe a second one; only reading the source can.
+**Mount a component only for its markup wiring, and only one that does not need Monaco,
+mermaid or KaTeX.** The suite mounts `Toc`, `HomePage`, `Settings`, `TitleBar`, `Tab`,
+`UpdateDialog` and `ContextMenu` this way (vitest, jsdom; stub `Element.prototype.animate`
+for transitions). `MarkdownViewer.svelte` and `Editor.svelte` are not mounted: their logic is
+tested through the modules they call.
 
 ### Migrating a file
 
