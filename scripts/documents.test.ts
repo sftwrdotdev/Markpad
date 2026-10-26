@@ -24,12 +24,19 @@ import {
 	isOpenFileMode,
 	resolveOpenFileMode,
 } from '../src/lib/utils/openFileMode.js';
+import { t } from '../src/lib/utils/i18n.js';
 import { MARKDOWN_OPEN_FILTERS } from '../src/lib/utils/markdownLinks.js';
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { dispatchViewerKey, viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
 
 describe('lossy decode save guard', () => {
+	test('the refusal names Save As, the only exit', () => {
+		// The session raises this once per tab (documents.session.spec.ts). Saving
+		// over the file is refused, so the message has to say what still works.
+		assert.match(t('toast.lossySaveBlocked', 'en'), /use "Save As" to write a copy/);
+	});
+
 	// --- Behavioural: the flag survives a cross-window move ------------------
 	// tabTransfer.ts is pure, so these run the real code instead of reading it.
 	// A moved tab carries its unsaved buffer; if the flag did not travel with it,

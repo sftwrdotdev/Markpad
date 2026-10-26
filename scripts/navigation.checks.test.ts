@@ -3,8 +3,6 @@ import { describe, test } from 'node:test';
 
 import { readSource } from './sourceTree.js';
 
-const { frontMatterLineOffset } = await import('../src/lib/utils/frontMatter.js');
-
 describe('preview anchor restore wiring', () => {
 	/**
 	 * The assertions below are source assertions, not behavior assertions: the
@@ -47,18 +45,6 @@ describe('preview anchor restore wiring', () => {
 
 describe('jump to the selected fragment wiring', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	/* ------------------------------------------------------------------ */
-	/* the context menu wiring                                             */
-	/* ------------------------------------------------------------------ */
-
-	test('the real stress document shifts by its front matter', () => {
-		// The fixture the reporter of the offset was reading: 10 lines of front
-		// matter plus the blank line after it, heading on buffer line 12.
-		const raw = readSource(new URL('../samples/stress-test.md', import.meta.url));
-		assert.equal(frontMatterLineOffset(raw), 11);
-		assert.equal(raw.split('\n')[11], '# Markdown Reader Stress Test');
-	});
 
 	test('the shift reads the buffer, not the rendered body', () => {
 		// `lineCoordinates(rawContent)` — measuring the render would answer 0

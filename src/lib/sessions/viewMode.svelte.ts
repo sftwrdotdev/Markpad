@@ -1,6 +1,6 @@
 import type { settings as Settings } from '../stores/settings.svelte.js';
 import type { Tab, tabManager as TabManager } from '../stores/tabs.svelte.js';
-import type { LanguageCode } from '../utils/i18n.js';
+import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 import {
 	asBufferLine,
 	tabAnchorForEditorTopLine,
@@ -31,7 +31,7 @@ export type ViewModeOptions = {
 	renderTabPreviewFromRaw: (tab: Tab) => Promise<void>;
 	tick: () => Promise<void>;
 	addToast: (message: string, type?: 'info' | 'error' | 'warning') => unknown;
-	t: (key: string, language: LanguageCode) => string;
+	t: (key: TranslationKey, language: LanguageCode) => string;
 	// The viewer's panes and measurements, read when a handler runs.
 	readonly editorPane: ViewModeEditorPane | null | undefined;
 	readonly markdownBody: HTMLElement | null | undefined;

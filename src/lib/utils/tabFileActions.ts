@@ -1,10 +1,11 @@
 import { isHomePath } from './homeTab.js';
+import type { TranslationKey } from './i18n.js';
 
 type TabFileActionId = 'copy-path' | 'open-location';
 
 type TabFileAction = {
 	id: TabFileActionId;
-	labelKey: string;
+	labelKey: TranslationKey;
 	disabled: boolean;
 };
 

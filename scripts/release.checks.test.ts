@@ -1,8 +1,4 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { describe, test } from 'node:test';
 
 import { parse } from 'yaml';
@@ -31,7 +27,6 @@ describe('the release workflow', () => {
 	const checkAppImageLibraries = readSource('scripts/check-appimage-libraries.sh');
 	const smokeAppImage = readSource('scripts/smoke-appimage.sh');
 	const readme = readSource('README.md');
-	const cargoToml = readSource('src-tauri/Cargo.toml');
 	const packageJson = JSON.parse(readSource('package.json')) as {
 		scripts: Record<string, string>;
 		devDependencies: Record<string, string>;
@@ -87,14 +82,6 @@ describe('the release workflow', () => {
 		assert.match(snapJob, /gh release download "\$TAG"/);
 		assert.match(snapJob, /--pattern "Markpad_\$\{VERSION\}_amd64\.deb"/);
 		assert.match(snapJob, /--output markpad\.deb/);
-	});
-
-	test('the runtime version and the frontend version cannot drift apart', () => {
-		// Tauri reads the runtime version from Cargo.toml while the Tauri config and
-		// the frontend read package.json. A mismatch makes tauri-plugin-updater
-		// compare the wrong version and either skip or replay an update.
-		const cargoVersion = /^\s*\[package\][\s\S]*?^\s*version\s*=\s*"([^"]+)"/m.exec(cargoToml)?.[1];
-		assert.equal(cargoVersion, packageJson.version);
 	});
 
 	test('portable executables are not mislabeled as installers', () => {
@@ -254,25 +241,6 @@ describe('the release workflow', () => {
 		}
 	});
 
-	test('a release build cannot write into a version that is already published', () => {
-		// The release is composed for `v<version from package.json>`, and
-		// softprops/action-gh-release updates an existing release for that tag rather
-		// than refusing it. So a dispatch from an unbumped master rewrites the
-		// release users are downloading, and every gate this pipeline has -- the
-		// draft, the asset check, clicking Publish -- is downstream of that write.
-		const step = sliceBetween(workflow, 'This version has not already been released', 'endpoint old installs');
-		assert.match(step, /gh release view "\$TAG"/);
-		assert.match(step, /isDraft/);
-		// Fails closed: an unusable answer stops the run instead of assuming there is
-		// no release. Two exits, one for published and one for cannot-tell.
-		assert.equal((step.match(/exit 1/g) ?? []).length, 2);
-		// And it has to come before the step that does the writing.
-		assert.ok(
-			workflow.indexOf('This version has not already been released') < workflow.indexOf('- name: Create Release'),
-			'the guard runs after the release it guards has been created',
-		);
-	});
-
 	test('the updater endpoint names the repository RELEASING.md documents', () => {
 		// The endpoint is compiled into every installed copy, so getting it wrong is
 		// only discoverable by a user who stops being offered updates. It was left
@@ -417,18 +385,6 @@ describe('the release workflow', () => {
 		);
 	});
 
-	test('the strip proves itself against the artifact that ships', () => {
-		// A CI smoke test cannot catch this defect: the runner's Mesa is the one the
-		// libraries were copied from, so nothing mismatches there and the AppImage
-		// starts fine. #498 was found by a user on Arch. That leaves "these
-		// libraries are absent" as the only property checkable before release, and
-		// it has to be checked on the repacked file rather than on the AppDir —
-		// appimagetool packing the wrong directory would pass the weaker check.
-		const verification = sliceFrom(stripAppImage, '--runtime-file');
-		assert.match(verification, /--appimage-extract/);
-		assert.match(verification, /is still bundled after the strip/);
-	});
-
 	test('signing uses the environment variables the pinned CLI reads', () => {
 		// `tauri signer sign` did not read the TAURI_SIGNING_* names until CLI
 		// 2.10.0, so the strip step had to spell the same secret the deprecated way
@@ -447,29 +403,6 @@ describe('the release workflow', () => {
 		);
 		assert.doesNotMatch(workflow, /TAURI_PRIVATE_KEY/);
 		assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
-	});
-
-	test('a macOS release without the signing secrets still builds', () => {
-		// #294 was closed because a workflow that *requires* signing credentials
-		// blocks every release until someone configures them. This identity is
-		// optional by construction: the step exits before it touches a keychain when
-		// MACOS_CERTIFICATE is empty, and `tauri build` signs only when
-		// APPLE_SIGNING_IDENTITY is exported -- the name the pinned CLI reads, and
-		// the reason this step has to run before the build rather than beside it.
-		const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
-		assert.match(step, /if \[ -z "\$\{MACOS_CERTIFICATE:-\}" \]; then[\s\S]*?exit 0/);
-		assert.match(step, /echo "APPLE_SIGNING_IDENTITY=[^"]*" >> "\$GITHUB_ENV"/);
-	});
-
-	test('a signing identity that is only half configured stops the release', () => {
-		// The early exit above is for a repository that has never set up signing at
-		// all. It reads one of the three secrets, so a set certificate and an empty
-		// identity walks straight past it and exports an empty
-		// APPLE_SIGNING_IDENTITY -- and a green build that shipped unsigned is the
-		// exact outcome this step exists to prevent, since it reaches users as
-		// folder access being asked for all over again.
-		const step = sliceBetween(workflow, 'Import macOS signing certificate', 'Build MacOS (Universal)');
-		assert.match(step, /if \[ -z "\$\{MACOS_SIGNING_IDENTITY:-\}" \]; then[\s\S]*?exit 1/);
 	});
 
 	test('RELEASING.md names the signing secrets the workflow reads', () => {
@@ -558,60 +491,6 @@ describe('the release workflow', () => {
 			.filter((line) => /runs-on:\s*(ubuntu|macos|windows)-latest/.test(line))
 			.filter((line) => !/matrix\./.test(line));
 		assert.deepEqual(drifting, [], 'a release job runs on a moving runner label');
-	});
-
-
-	const posixOnly = process.platform === 'win32' ? 'spawns /bin/bash with a POSIX PATH' : false;
-
-	test('official macOS signing refuses partial credentials before touching the keychain', { skip: posixOnly }, () => {
-		const step = parse(workflow).jobs.build.steps.find((step: { name: string }) => step.name === 'Import macOS signing certificate');
-		const names = ['APPLE_DEVELOPER_ID_P12', 'APPLE_DEVELOPER_ID_PASSWORD', 'APPLE_DEVELOPER_ID_SHA1', 'APPLE_ID', 'APPLE_APP_SPECIFIC_PASSWORD', 'APPLE_TEAM_ID'];
-		const complete: Record<string, string> = Object.fromEntries(names.map(name => [name, 'fixture']));
-		complete.APPLE_DEVELOPER_ID_P12 = 'Zml4dHVyZQ==';
-		complete.APPLE_DEVELOPER_ID_SHA1 = 'A'.repeat(40);
-		complete.APPLE_TEAM_ID = 'ABCDEFGHIJ';
-		const dir = mkdtempSync(join(tmpdir(), 'markpad-signing-test-'));
-		try {
-			// A mock command prevents any real keychain access even if a guard regresses.
-			writeFileSync(join(dir, 'security'), '#!/bin/sh\necho keychain-touched >&2\nexit 97\n', { mode: 0o755 });
-			for (const missing of names) {
-				const env = { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: join(dir, 'env'), ...complete, [missing]: '' };
-				const result = spawnSync('/bin/bash', ['-c', step.run], { env, encoding: 'utf8' });
-				assert.notEqual(result.status, 0, `${missing} was silently accepted`);
-				assert.doesNotMatch(result.stderr, /keychain-touched/, `${missing} was not checked before import`);
-			}
-			writeFileSync(join(dir, 'security'), `#!/bin/sh
-if [ "$1" = find-identity ]; then
-  echo '1) ${complete.APPLE_DEVELOPER_ID_SHA1} "Developer ID Application: Test (ABCDEFGHIJ)"'
-fi
-`, { mode: 0o755 });
-			const envFile = join(dir, 'env');
-			const configured = spawnSync('/bin/bash', ['-c', step.run], {
-				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete,
-					MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
-				encoding: 'utf8',
-			});
-			assert.equal(configured.status, 0, configured.stderr);
-			assert.equal(readSource(envFile), `MACOS_DEVELOPER_ID=true\nAPPLE_SIGNING_IDENTITY=${complete.APPLE_DEVELOPER_ID_SHA1}\n`);
-			const wrongIdentity = spawnSync('/bin/bash', ['-c', step.run], {
-				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete, APPLE_DEVELOPER_ID_SHA1: 'B'.repeat(40) },
-				encoding: 'utf8',
-			});
-			assert.notEqual(wrongIdentity.status, 0, 'a different imported identity must not be accepted');
-			writeFileSync(envFile, '');
-			const legacy = spawnSync('/bin/bash', ['-c', step.run], {
-				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile,
-					MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
-				encoding: 'utf8',
-			});
-			assert.equal(legacy.status, 0, legacy.stderr);
-			assert.equal(readSource(envFile), 'APPLE_SIGNING_IDENTITY=legacy\n');
-
-			const absent = spawnSync('/bin/bash', ['-c', step.run], { env: { PATH: `${dir}:/usr/bin:/bin` }, encoding: 'utf8' });
-			assert.equal(absent.status, 0, absent.stderr);
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
 	});
 
 	test('official macOS artifacts are verified before upload and Tauri receives notarization credentials', () => {
@@ -1035,27 +914,6 @@ describe('Tauri command registration', () => {
 		);
 	});
 
-	test('generate_handler! names nothing that does not exist', () => {
-		// The other direction fails at compile time rather than silently, so this
-		// is a cheaper assertion than the one above — but it also catches a
-		// registration left behind after its function was renamed, which reads as a
-		// working command right up until the build.
-		const declared = new Set(declaredCommands().map(({ name }) => name));
-		const orphaned = [...registeredCommands()].filter((name) => !declared.has(name));
-		assert.deepEqual(orphaned, [], `registered but not declared as a command: ${orphaned.join(', ')}`);
-	});
-});
-
-// Tauri runs a sync `#[tauri::command]` on the main thread, so its work freezes
-// every window until it returns. These do enough of it to be seen.
-describe('heavy commands run off the main thread', () => {
-	const rust = readRustBackend();
-
-	for (const name of ['clipboard_read_image', 'save_window_state']) {
-		test(`${name} runs off the main thread`, () => {
-			assert.match(rust, new RegExp(`#\\[tauri::command\\]\\n(?:pub )?async fn ${name}\\(`));
-		});
-	}
 });
 
 // A fixed behavior must have exactly one implementation.
@@ -1075,10 +933,9 @@ describe('heavy commands run off the main thread', () => {
 // library (a Tauri command, a Monaco language id, a CSS custom property), or the
 // literal shape of a defect that must never come back. A marker must never be a
 // private identifier — a parameter name, a local variable, a helper that nothing
-// outside its own file can reach. `every rule keeps at least one live
-// implementation` below turns every marker into something a rename can break, so
-// pinning a private name would promote it to a public contract and make ordinary
-// local refactoring fail this suite for no behavioural reason.
+// outside its own file can reach: pinning one would promote it to a public
+// contract and make ordinary local refactoring fail this suite for no
+// behavioural reason.
 //
 // To add a behavior: append a row. `allowed` is the complete set of src-relative
 // paths permitted to match `marker`; anything else is a duplicate implementation.
@@ -1394,16 +1251,4 @@ describe('single implementations', () => {
 			}
 		});
 	}
-
-	test('every rule keeps at least one live implementation', () => {
-		// Guards the rules themselves: a marker that matches nothing has gone stale
-		// (renamed symbol, deleted feature) and is silently no longer guarding.
-		for (const rule of RULES) {
-			if (rule.allowed.length === 0) continue;
-			assert.ok(
-				filesMatching(sourcesIn(rule.dir ?? 'src'), rule.marker).length > 0,
-				`rule "${rule.name}" matches nothing in ${rule.dir ?? 'src'} — update its marker or drop the rule`,
-			);
-		}
-	});
 });

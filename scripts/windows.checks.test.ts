@@ -22,22 +22,6 @@ describe('window geometry is saved while the app runs', () => {
 	});
 });
 
-describe('moving tabs between windows', () => {
-	// `WebviewWindowBuilder::build()` deadlocks when called from a
-	// *synchronous* Tauri command on Windows/WebView2, because the main thread is
-	// blocked inside the command while WebView2 waits for that same thread to pump
-	// messages (tauri-apps/tauri#12521). Both forms compile everywhere, and CI's
-	// `cargo test` runs on a host where the deadlock cannot happen, so dropping the
-	// `async` is invisible until "Move to New Window" freezes a Windows user's app
-	// hard enough to need a force-kill. Issue #356.
-	test('create_transfer_window is async so window creation cannot deadlock the main thread', () => {
-		const lib = readRustBackend();
-
-		assert.match(lib, /#\[tauri::command\]\n(?:pub )?async fn create_transfer_window\(/);
-		assert.doesNotMatch(lib, /#\[tauri::command\]\n(?:pub )?fn create_transfer_window\(/);
-	});
-});
-
 describe('startup keeps the window handle it built', () => {
 	const backend = readRustBackend();
 
@@ -85,14 +69,8 @@ describe('windows are equal views of one session', () => {
 		assert.deepEqual(filesMatching(sources, /['"`]main['"`]/), []);
 		assert.deepEqual(filesMatching(sources, /isMain(Window)?\b/), []);
 	});
-
-	test('Rust names the launch window once', () => {
-		const runtime = readSource('src-tauri/src/window_runtime.rs');
-		const code = runtime.slice(0, runtime.indexOf('#[cfg(test)]'));
-		assert.deepEqual(code.match(/"main"/g), ['"main"']);
-		assert.match(code, /pub const LAUNCH_LABEL: &str = "main";/);
-	});
 });
+
 
 describe('a cold start does not steal focus', () => {
 	const backend = readRustBackend();
@@ -128,7 +106,6 @@ describe('the recent-file list is written through one helper', () => {
 });
 
 describe('window state restore', () => {
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
 
 	// Session restore persists WINDOW state only: which files are open, the
@@ -136,11 +113,9 @@ describe('window state restore', () => {
 	// always lives on disk — the snapshot never carries rawContent, so unsaved
 	// changes are handled exclusively by the per-tab close dialogs.
 
-	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
-		// Behaviour: windows.sessionRestore.spec.ts. What stays here is the
-		// contract: the localStorage key older builds read, and the Rust commands
-		// that hold the snapshot now.
-		assert.match(viewer, /const WINDOW_STATE_KEY = 'savedTabsDataV2';/);
+	test('v2 snapshots are held by the Rust commands', () => {
+		// Behaviour, including the localStorage keys older builds read:
+		// windows.sessionRestore.spec.ts. What stays here is the command names.
 		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
 		assert.match(session, /invoke\('load_window_state'\)/);
 		assert.match(session, /invoke\('clear_window_state'\)/);

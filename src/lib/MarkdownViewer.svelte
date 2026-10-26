@@ -505,10 +505,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	let identifyFlash = $state('');
 	let identifyFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
-	// Old localStorage snapshot keys. The snapshot is written through Rust now;
-	// these are read once for migration and removed after the first Rust write.
-	const WINDOW_STATE_KEY = 'savedTabsDataV2';
-	const LEGACY_STATE_KEY = 'savedTabsData';
 	const RESTORE_IN_PROGRESS_KEY = 'markpad-window-restore-in-progress';
 
 	// Each window persists and restores its own snapshot, keyed by its label.
@@ -572,8 +568,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	});
 
 	const windowSession = createWindowSession({
-		windowStateKey: WINDOW_STATE_KEY,
-		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
 		serializeState: transferOptions.serializeState,
 		shouldRestoreState: () => settings.restoreStateOnReopen,

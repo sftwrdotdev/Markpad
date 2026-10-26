@@ -17,6 +17,7 @@ import { type DomPoint, pointAtSource, sourceAtPoint, type SourcePoint } from '.
 import { ALLOWED_MARKDOWN_URI_REGEXP, sanitizeMarkdownFragment, sanitizeMarkdownHtml } from '../src/lib/utils/sanitize.js';
 import blocks from './fixtures/markdown-syntax.blocks.json';
 import DOMPurify from 'dompurify';
+import { readSource } from './sourceTree.js';
 
 /**
  * Clicking a code block's Copy label twice within 1.5 s left it reading
@@ -1568,5 +1569,38 @@ describe('save image as', () => {
 		assert.deepEqual(itemsFor('http://asset.localhost/C%3A%2Fcat.jpg'), ['Save Image As...', '-']);
 		assert.deepEqual(itemsFor('https://example.test/cat.jpg'), []);
 		assert.deepEqual(itemsFor('data:image/png;base64,AA=='), []);
+	});
+});
+
+// #681 floated inline code above the words of a heading, #791 ate the spaces
+// around `*not*` and broke it into `n`/`o`/`t` on a narrow pane. Both came from
+// a flex heading: every text run, `<em>`, `<code>` and image becomes its own
+// flex item. The fold chevron is absolutely positioned, so inline layout costs
+// it nothing.
+describe('inline content in headings', () => {
+	afterEach(() => {
+		document.head.innerHTML = '';
+		document.body.innerHTML = '';
+	});
+
+	test('a rendered heading lays its content out as one line of text under the app stylesheet', () => {
+		// The stylesheet the app loads, run by jsdom's cascade (`?raw` comes back
+		// empty under vitest's CSS handling).
+		const style = document.createElement('style');
+		style.textContent = readSource('src/styles.css');
+		document.head.append(style);
+		const body = document.createElement('div');
+		body.className = 'markdown-body';
+		body.innerHTML = processMarkdownHtml(
+			[1, 2, 3, 4, 5, 6].map((level) => `<h${level}>Use <code>x</code> and <em>not</em> y</h${level}>`).join('\n'),
+			'/doc.md',
+			new Set(),
+		);
+		document.body.append(body);
+		const headings = Array.from(body.querySelectorAll<HTMLElement>('.foldable-header'));
+		assert.equal(headings.length, 6, 'precondition: every level is a foldable heading');
+		for (const heading of headings) {
+			assert.doesNotMatch(getComputedStyle(heading).display, /flex|grid/, `${heading.tagName} lays its words out as flex items`);
+		}
 	});
 });

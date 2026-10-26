@@ -1,4 +1,4 @@
-import type { LanguageCode } from '../utils/i18n.js';
+import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 import type { LoadMarkdownOptions } from './documentSession.svelte.js';
 
 type ConflictTab = { id: string; path: string; originalContent: string; rawContent: string; isDirty: boolean };
@@ -23,7 +23,7 @@ export type ExternalChangeOptions = {
 	readFile: (path: string) => Promise<[string, boolean, string]>;
 	editorLanguageFor: (path: string) => string;
 	addToast: (message: string, type?: 'info' | 'error' | 'warning') => unknown;
-	t: (key: string, language: LanguageCode) => string;
+	t: (key: TranslationKey, language: LanguageCode) => string;
 };
 
 export type Comparison = { tabId: string; onDisk: string; mine: string; language: string };

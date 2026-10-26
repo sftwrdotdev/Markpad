@@ -954,8 +954,6 @@ describe('a read lands in its own tab', () => {
 		const session = makeSession();
 
 		const windowSession = createWindowSession({
-			windowStateKey: 'readLandsState',
-			legacyStateKey: 'readLandsLegacy',
 			restoreInProgressKey: 'readLandsProgress',
 			serializeState: () => tabManager.serializeState(),
 			shouldRestoreState: () => true,
@@ -1185,8 +1183,6 @@ describe('tab transfer races', () => {
 	function makeSession(accept: () => Promise<string | null> = async () => null) {
 		const claimed: string[] = [];
 		const session = createWindowSession({
-			windowStateKey: 'savedTabsDataV2',
-			legacyStateKey: 'savedTabsData',
 			restoreInProgressKey: 'markpad-window-restore-in-progress',
 			serializeState: () => '',
 			shouldRestoreState: () => false,

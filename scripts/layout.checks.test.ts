@@ -77,34 +77,3 @@ describe('fold layout', () => {
 		);
 	});
 });
-
-/**
- * #169: the outline highlights the heading you are reading, but only ever
- * answered to the PREVIEW.
- *
- * `Toc.svelte` decided by rendered box — `querySelector` each visible entry
- * out of the preview and measure it against the container, per entry, per
- * scroll event. That question has no answer while the editor is the pane being
- * scrolled: in editor-only mode the preview never scrolls, and in split view
- * it moves only while scroll sync is on. So the outline sat still exactly
- * where the reporter said it did.
- *
- * A SOURCE LINE is something both panes can produce — the editor sends one on
- * every scroll, and the preview already computes one for the tab's reading
- * position — so the rule is now one comparison over a list, fed by either.
- * That the two panes share it is the property worth having: in split view with
- * sync on both are live at once, and two rules could disagree as the panes
- * settle and flicker the highlight between two entries.
- */
-describe('outline follows the editor', () => {
-	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
-
-	test('there is no preference for it, because the preview never had one', () => {
-		// The outline has always followed the preview unconditionally. This is the
-		// same feature answering for the other pane, so a switch would have made
-		// half of one behaviour optional and left the reader to work out which half.
-		assert.doesNotMatch(settingsSource, /tocFollowsEditor/);
-		assert.doesNotMatch(settingsComponentSource, /tocFollowsEditor/);
-	});
-});

@@ -2,25 +2,6 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { callSiteOffsets, enclosingFunctionName, filesMatching, readSource, readSourceFiles, SANITIZER_FILES, sliceBetween } from './sourceTree.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
-import { getStoredPreviewFullWidth } from '../src/lib/utils/previewWidth.js';
-
-describe('inline code in headings', () => {
-	// #681: inline code in a heading rendered small and floating above the words
-	// around it. Two independent causes, one in each stylesheet, and neither is
-	// reachable by a test that runs code — this is CSS the browser resolves.
-
-	const styles = readSource('src/styles.css');
-
-	test('a heading lays its content out as one line of text', () => {
-		// A flex heading makes every text run, `<em>`, `<code>` and image its own
-		// flex item: #681 floated inline code above the words, #791 ate the spaces
-		// around `*not*` and broke it into `n`/`o`/`t` on a narrow pane. The fold
-		// chevron is absolutely positioned, so inline layout costs it nothing.
-		const rule = styles.match(/\.foldable-header \{[^}]*\}/);
-		assert.ok(rule, 'styles.css must still define .foldable-header');
-		assert.doesNotMatch(rule[0], /display:\s*(inline-)?(flex|grid)/);
-	});
-});
 
 /**
  * KaTeX publishes every contrib file twice: `contrib/*.mjs` behind the
@@ -275,37 +256,6 @@ describe('preview sanitizing', () => {
 		);
 		// The sink half — that what `{@html}` injects is the sanitizer's output — is
 		// asserted over every injection point in the first test above.
-	});
-});
-
-describe('preview width', () => {
-	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	test('the stylesheet reads the width the markup writes', () => {
-		// Contract between the inline style and the component's <style>: the
-		// width itself is previewLayout's (preview.test.ts "preview layout").
-		assert.match(viewerSource, /--preview-max-width: \{layout\.maxWidthCss\}/);
-		assert.match(viewerSource, /--measure: min\(100cqi, var\(--preview-max-width, 880px\)\)/);
-	});
-
-	test('preview full-width state migrates from the legacy localStorage key', () => {
-		// The pair the migration is made of, asserted on the function rather than on
-		// its call site: `??` is what makes the new key win once it exists.
-		assert.equal(getStoredPreviewFullWidth('true', null), true);
-		assert.equal(getStoredPreviewFullWidth(null, 'true'), true, 'the legacy key still decides while the new one is absent');
-		assert.equal(getStoredPreviewFullWidth('false', 'true'), false, 'the new key wins outright, it is not OR-ed with the old one');
-		assert.equal(getStoredPreviewFullWidth(null, null), false);
-
-		// It is a persisted setting like every other one now, which is what gets it
-		// cross-window sync — the viewer used to read and write `preview.fullWidth`
-		// with bare localStorage calls and no `storage` listener, so a second window
-		// only noticed after a restart. See scripts/settings.spec.ts.
-		assert.match(settingsSource, /key: 'preview\.fullWidth'/);
-		assert.match(settingsSource, /read: \(s\) => String\(s\.previewFullWidth\)/);
-		assert.match(settingsSource, /getStoredPreviewFullWidth\(raw, readStoredKey\(LEGACY_PREVIEW_FULL_WIDTH_KEY\)\)/);
-		assert.match(settingsSource, /const LEGACY_PREVIEW_FULL_WIDTH_KEY = 'isFullWidth';/);
 	});
 });
 

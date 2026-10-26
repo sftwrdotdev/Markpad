@@ -1,4 +1,4 @@
-import type { Translation } from '../utils/i18n.js';
+import type { LocaleTable } from '../utils/i18n.js';
 
 export default {
     settings: {
@@ -373,4 +373,4 @@ export default {
         decrease: '줄이기',
         increase: '늘리기'
     }
-} satisfies Translation;
+} satisfies LocaleTable;

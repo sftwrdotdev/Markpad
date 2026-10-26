@@ -11,6 +11,7 @@ import {
 	type SettingsStore,
 } from '../stores/settings.svelte.js';
 import { OPEN_FILE_MODE_OPTIONS } from './openFileMode.js';
+import type { TranslationKey } from './i18n.js';
 import {
 	DEFAULT_PREVIEW_MAX_WIDTH,
 	MAX_PREVIEW_MAX_WIDTH,
@@ -32,18 +33,18 @@ type SelectKey = 'wordWrap' | 'tabPosition' | 'folderSide' | 'sidebarStackOrder'
 
 type RowBase = {
 	id: string;
-	labelKey: string;
+	labelKey: TranslationKey;
 	/** Second line under the label. */
-	hintKey?: string;
+	hintKey?: TranslationKey;
 	/** The label's tooltip. */
-	titleKey?: string;
+	titleKey?: TranslationKey;
 	/** The label's tooltip while the row is inactive. */
-	inactiveTitleKey?: string;
+	inactiveTitleKey?: TranslationKey;
 	/** Dims the row and disables its control: the setting does nothing in this state. */
 	inactive?: (s: SettingsStore) => boolean;
 };
 
-export type SelectOption = { value: string; labelKey: string };
+export type SelectOption = { value: string; labelKey: TranslationKey };
 
 export type FontRow = RowBase & { kind: 'font'; key: FontKey };
 export type NumberRow = RowBase & { kind: 'number'; key: NumberKey; range: NumericSettingRange; unit: string };

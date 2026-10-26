@@ -1,4 +1,4 @@
-import type { Translation } from '../utils/i18n.js';
+import type { LocaleTable } from '../utils/i18n.js';
 
 export default {
     settings: {
@@ -434,4 +434,4 @@ export default {
         decrease: '减少',
         increase: '增加'
     }
-} satisfies Translation;
+} satisfies LocaleTable;

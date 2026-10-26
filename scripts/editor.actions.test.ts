@@ -5,7 +5,7 @@ import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standalon
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
 
 import { editorActions, type EditorActionDeps } from '../src/lib/utils/editorActions.js';
-import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
+import { getSupportedLanguages, type LanguageCode, t, type Translation, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
 import { bareCommands, chordOf, editorKeymap, PLATFORMS, registeredActions } from './keymapHarness.js';
 
@@ -39,7 +39,7 @@ function defines(lang: LanguageCode, key: string): boolean {
 
 describe('context menu actions', () => {
 	// The markdown formatting entries that used to be English string literals.
-	const FORMATTING_ACTIONS: ReadonlyArray<[actionId: string, key: string]> = [
+	const FORMATTING_ACTIONS: ReadonlyArray<[actionId: string, key: TranslationKey]> = [
 		['fmt-strikethrough', 'menu.strikethrough'],
 		['fmt-inline-code', 'menu.inlineCode'],
 		['fmt-code-block', 'menu.codeBlock'],

@@ -1,4 +1,4 @@
-import type { Translation } from '../utils/i18n.js';
+import type { LocaleTable } from '../utils/i18n.js';
 
 export default {
     settings: {
@@ -289,4 +289,4 @@ export default {
         noHeadingsFound: 'Nenalezen název',
         resizeTableOfContents: 'Změnit velikost obsahu'
     }
-} satisfies Translation;
+} satisfies LocaleTable;
