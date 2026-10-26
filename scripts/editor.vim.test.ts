@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { registerHooks } from 'node:module';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { readSource } from './sourceTree.js';
 
 /*
  * `"+` and `"*` against the real monaco-vim package (#775). Every yank, delete
@@ -594,7 +595,7 @@ describe('monaco-vim against the installed monaco-editor', () => {
 		try {
 			const entry = await server.pluginContainer.resolveId('monaco-vim', join(root, 'src/lib/components/Editor.svelte'));
 			assert.ok(entry, 'Vite cannot resolve monaco-vim at all');
-			const specifiers = new Set([...readFileSync(entry.id, 'utf8').matchAll(/['"](monaco-editor\/[^'"]+)['"]/g)].map((m) => m[1]));
+			const specifiers = new Set([...readSource(entry.id).matchAll(/['"](monaco-editor\/[^'"]+)['"]/g)].map((m) => m[1]));
 			assert.ok(specifiers.size > 0, `found no monaco import in ${entry.id}; this test has nothing to ask about`);
 			const unresolved: string[] = [];
 			for (const specifier of specifiers) {
