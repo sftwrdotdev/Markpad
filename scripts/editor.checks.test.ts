@@ -3,15 +3,11 @@ import { existsSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
 
-import { EditorOptions, inUntrustedWorkspace, type UnicodeHighlightOptions } from 'monaco-editor/esm/vs/editor/common/config/editorOptions.js';
-import { type UnicodeHighlightResult, UnicodeTextModelHighlighter } from 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHighlighter.js';
-import ts from 'typescript';
 import { parseTokenTheme, TokenTheme } from 'monaco-editor/esm/vs/editor/common/languages/supports/tokenization.js';
 
 import { getSupportedLanguages, type LanguageCode, t, type Translation } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
 import { callbackBodies, enclosingFunctionName, filesMatching, functionSource, offsetOf, readDictionarySource, readRustBackend, readSource, readSourceFiles, sliceBetween, walkSourceFiles } from './sourceTree.js';
-import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
 import { markdownTokenRules, monacoThemeName } from '../src/lib/utils/editorTheme.js';
 import { runEditorHandler } from './keymapHarness.js';
 import { MONACO_IME_PATCH, MONACO_TEXTAREA_FILE, patchMonacoTextAreaForIme } from './monacoImePatch.mjs';
@@ -216,99 +212,18 @@ describe('context menu actions', () => {
 describe('editor option wiring', () => {
 	const editor = readSource('src/lib/components/Editor.svelte');
 
-	const settingsStore = readSource('src/lib/stores/settings.svelte.ts');
-
 	function count(source: string, pattern: RegExp): number {
 		return source.match(pattern)?.length ?? 0;
 	}
-
-	/** A settled settings store, so each test names only the field it is about. */
-	const SETTINGS = {
-		minimap: false,
-		wordWrap: 'on',
-		editorMaxWidth: 80,
-		lineNumbers: 'on',
-		renderLineHighlight: 'line',
-		occurrencesHighlight: false,
-		editorFontSize: 14,
-		editorFont: 'Menlo',
-		showWhitespace: false,
-		animateJumpScroll: true,
-		animateCursor: true,
-		typewriterMode: false,
-	};
-
-	test('an option a setting can change is one `updateOptions` re-applies', () => {
-		// `smoothScrolling` used to be a bare `true` in the creation literal, where
-		// options that are set once and never re-applied live. Left there, the
-		// toggle would have taken effect only on a newly created editor — the same
-		// shape as the `fontSize` divergence this file was written for.
-		assert.doesNotMatch(
-			editor,
-			/smoothScrolling/,
-			'smoothScrolling is spelled in the component again, outside the set the update effect re-applies',
-		);
-	});
-
-	test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
-		// The store holds 'line' / 'none'. Any non-empty string is truthy, so a
-		// ternary on it can only ever produce "line" and silently defeats both the
-		// line-highlight toggle and Zen mode (which sets it to 'none').
-		assert.match(settingsStore, /renderLineHighlight = \$state\('line'\)/);
-		assert.match(settingsStore, /this\.renderLineHighlight = this\.renderLineHighlight === 'line' \? 'none' : 'line'/);
-		assert.match(settingsStore, /this\.renderLineHighlight = 'none'/, 'zen mode sets the string to none');
-
-		// Both stored values have to survive the trip. A ternary passes for 'line'
-		// and fails for 'none', which is why one evaluation cannot judge this.
-		for (const stored of ['line', 'none'] as const) {
-			assert.equal(
-				editorOptionsFromSettings({ ...SETTINGS, renderLineHighlight: stored }, 100).renderLineHighlight,
-				stored,
-				`the stored string ${stored} is forwarded unchanged`,
-			);
-			assert.equal(
-				(createdEditorOptions({ renderLineHighlight: stored }) as { renderLineHighlight?: string })
-					.renderLineHighlight,
-				stored,
-				`and reaches the created editor as ${stored}`,
-			);
-		}
-	});
 
 	test('editor options are applied by a single updateOptions effect', () => {
 		// Two competing effects (one nested in onMount, one top level) wrote the
 		// same Monaco options with different values — notably fontSize with and
 		// without the zoom factor — so the winner depended on effect ordering.
+		// What that one call applies is editor.test.ts "editor options are applied by a
+		// single updateOptions effect"; how many call sites there are is only in the
+		// component's source.
 		assert.equal(count(editor, /editor\.updateOptions\(/g), 1, 'exactly one updateOptions call site');
-
-		// What that one call applies, evaluated rather than read: every option the
-		// two effects used to fight over, and the zoom-aware font size that was the
-		// value they disagreed on.
-		const applied = editorOptionsFromSettings({ ...SETTINGS, editorFontSize: 20, editorMaxWidth: 90 }, 150);
-		assert.equal(applied.fontSize, 30, 'the surviving font size carries the zoom factor');
-		assert.equal(applied.wordWrapColumn, 90, 'wordWrapColumn survived the merge');
-		assert.deepEqual(
-			Object.keys(applied).sort(),
-			[
-				'cursorSmoothCaretAnimation',
-				'cursorSurroundingLines',
-				'cursorSurroundingLinesStyle',
-				'fontFamily',
-				'fontSize',
-				'lineDecorationsWidth',
-				'lineNumbers',
-				'minimap',
-				'occurrencesHighlight',
-				'renderLineHighlight',
-				'renderWhitespace',
-				'selectionHighlight',
-				'smoothScrolling',
-				'wordWrap',
-				'wordWrapColumn',
-				'wrappingStrategy',
-			],
-			'and the set is exactly the options both call sites share',
-		);
 	});
 
 	test('the editor has its final layout before anything is placed in it', () => {
@@ -319,7 +234,7 @@ describe('editor option wiring', () => {
 		// Monaco keeps the pixels, not the line, so every Ctrl+E landed further
 		// down (zoom below 100, or a proportional font) or further up (above 100).
 		const mount = sliceBetween(editor, 'monaco.editor.create(container', 'editorReady = true;');
-		assert.match(mount, /\.\.\.editorOptionsFromSettings\(settings, zoomLevel\)/, 'created at the real zoom');
+		assert.match(mount, /\.\.\.createdEditorOptions\(settings, zoomLevel, readOnly\)/, 'created at the real zoom');
 
 		const measured = mount.indexOf('if (!fontIsMonospace) applySettingsOptions();');
 		const restored = mount.indexOf('editor.restoreViewState(');
@@ -341,18 +256,6 @@ describe('editor option wiring', () => {
 		assert.ok(placed !== -1, 'the shared cursor is put down on mount');
 		assert.ok(placed > mount.indexOf('editor.restoreViewState('), 'after the view state is restored');
 		assert.ok(placed < mount.indexOf('oncursor?.(asBufferLine(mounted'), 'and before the editor reports its cursor');
-	});
-
-	test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
-		// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
-		// window edge. Both values are asserted because 'advanced' everywhere would
-		// also fix the report, and would make every large file pay for it.
-		assert.equal(editorOptionsFromSettings(SETTINGS, 100, true).wrappingStrategy, 'simple');
-		assert.equal(editorOptionsFromSettings(SETTINGS, 100, false).wrappingStrategy, 'advanced');
-
-		// The measurement only helps if the update effect passes it: its stub is
-		// false, so a call that drops the argument falls back to 'simple' here.
-		assert.equal(optionsPassedTo('editor.updateOptions', SETTINGS).wrappingStrategy, 'advanced');
 	});
 
 	test('tab cycling avoids Cmd+Tab, which macOS never delivers to the app', () => {
@@ -457,338 +360,6 @@ describe('editor option wiring', () => {
 		assert.match(functionSource(editor, 'cutToClipboard'), /clipboardTextForSelection\(\)/);
 	});
 
-	test('Show Whitespace renders every whitespace run, not just trailing', () => {
-		// The setting is labelled without qualification ("Show Whitespace" /
-		// "显示空白字符"), so "trailing" left interior spaces unmarked.
-		assert.doesNotMatch(editor, /renderWhitespace: settings\.showWhitespace \? "trailing"/);
-		assert.doesNotMatch(editor, /"trailing"/, 'no trailing-only whitespace rendering remains');
-		assert.equal(editorOptionsFromSettings({ ...SETTINGS, showWhitespace: true }, 100).renderWhitespace, 'all');
-		assert.equal(editorOptionsFromSettings({ ...SETTINGS, showWhitespace: false }, 100).renderWhitespace, 'none');
-		// Both call sites read the same function now, so agreeing is structural
-		// rather than something a count has to police.
-		assert.equal(
-			(createdEditorOptions({ showWhitespace: true }) as { renderWhitespace?: string }).renderWhitespace,
-			'all',
-		);
-	});
-
-	// ----------------------------------------------------------------- executed
-	//
-	// Everything above matches Editor.svelte as text, because a keybinding and a
-	// settings-driven enum cannot be exercised without a DOM. `unicodeHighlight`
-	// can do better, and the weak form would be particularly bad here: asserting
-	// that the string "ambiguousCharacters" occurs in the file says nothing about
-	// which characters Monaco ends up outlining, which is the entire contract.
-	//
-	// So the option literal is lifted out of the real `monaco.editor.create` call,
-	// evaluated, and pushed through the same two pieces of Monaco the running
-	// editor uses — `EditorOptions.unicodeHighlight.applyUpdate` to merge it over
-	// the shipped defaults, and `UnicodeTextModelHighlighter` to decide what gets a
-	// box. A regression has to survive Monaco's own code to reach the assertions.
-
-	/**
-	 * The one option literal Editor.svelte passes to `callee`, evaluated against a
-	 * given settings store.
-	 *
-	 * `settings` is a plain object rather than a fixture of the real store: an
-	 * absent key reads as `undefined`, which is what a falsy setting does to every
-	 * ternary in these literals anyway, so naming only the keys a test cares about
-	 * keeps that test readable. It is a parameter at all because a settings-driven
-	 * option cannot be judged from one evaluation — wiring that is right for one
-	 * value of a setting and wrong for the other is the defect shape this whole
-	 * file exists for.
-	 */
-	function optionsPassedTo(callee: string, settings: Record<string, unknown> = {}): Record<string, unknown> {
-		const script = sliceBetween(editor, '<script lang="ts">', '</script>');
-		const source = ts.createSourceFile('Editor.ts', script, ts.ScriptTarget.Latest, true);
-
-		const literals: ts.Expression[] = [];
-		const visit = (node: ts.Node): void => {
-			if (ts.isCallExpression(node) && node.expression.getText(source) === callee) {
-				assert.equal(
-					node.arguments.length,
-					callee === 'monaco.editor.create' ? 2 : 1,
-					`${callee} takes the options object last`,
-				);
-				literals.push(node.arguments[node.arguments.length - 1]);
-			}
-			ts.forEachChild(node, visit);
-		};
-		visit(source);
-
-		// Also the check that this file is looking at the only editor in the app: a
-		// second `create` call would need the same options and would not be covered
-		// by anything below. The same holds for a second `updateOptions`, which is
-		// the effect race #369 removed.
-		assert.equal(literals.length, 1, `exactly one ${callee} call site in Editor.svelte`);
-
-		// Bound to a name, not returned as an expression: TypeScript 6 prefixes the
-		// output with "use strict", and `return ${js}` would return that string.
-		const js = ts.transpileModule(`const options = (${literals[0].getText(source)});`, {
-			compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
-		}).outputText;
-
-		// The literals close over eight locals and one import, stubbed rather than
-		// reconstructed — except the import, which is the real function: the
-		// settings-derived options live there now, and stubbing them would leave
-		// the evaluated object missing exactly what these tests read.
-		// `documentOptions` is the spread that hands the editor the active tab's
-		// model (or `value`/`language` when there is no tab); an empty object is the
-		// right stub because nothing it can contain is an option this file asserts
-		// on. `zoomLevel` is 100, the neutral factor, for the same reason.
-		// `fontIsMonospace` is false, the opposite of the parameter's default, so a
-		// literal that forgets to pass it is visible. `readOnly` is false, the
-		// editor on a whole buffer.
-		return new Function(
-			'settings',
-			'value',
-			'language',
-			'getTheme',
-			'documentOptions',
-			'zoomLevel',
-			'fontIsMonospace',
-			'editorOptionsFromSettings',
-			'readOnly',
-			`${js}\nreturn options;`,
-		)(settings, '', 'markdown', () => 'app-theme-dark', {}, 100, false, editorOptionsFromSettings, false) as Record<
-			string,
-			unknown
-		>;
-	}
-
-	/** The options object Editor.svelte hands to `monaco.editor.create`, evaluated. */
-	function createdEditorOptions(settings: Record<string, unknown> = {}): Record<string, unknown> {
-		return optionsPassedTo('monaco.editor.create', { ...SETTINGS, ...settings });
-	}
-
-	/**
-	 * Monaco's shipped defaults with the component's option merged over them.
-	 *
-	 * `?? {}` models the real absence case rather than guarding: a component that
-	 * passes no `unicodeHighlight` gets Monaco's defaults, which is the state this
-	 * whole section exists to move away from. Without it, deleting the option from
-	 * Editor.svelte fails the tests below with a TypeError raised inside Monaco
-	 * instead of the assertion naming the characters that came back.
-	 */
-	function effectiveUnicodeHighlight(passed: unknown): UnicodeHighlightOptions {
-		const option = EditorOptions.unicodeHighlight;
-		return option.applyUpdate(option.defaultValue, passed ?? {}).newValue;
-	}
-
-	/**
-	 * What Monaco would outline in `lines`, given an effective option set.
-	 *
-	 * Mirrors `resolveOptions()` in unicodeHighlighter.ts, which is not exported.
-	 * `trusted` is true because that is what standalone Monaco reports —
-	 * `StandaloneWorkspaceTrustManagementService.isWorkspaceTrusted()` returns true
-	 * unconditionally. That is why `nonBasicASCII`, whose default is the
-	 * `inUntrustedWorkspace` sentinel, is already off and needs no setting in
-	 * Editor.svelte: it resolves through `!trusted`.
-	 */
-	function outlined(lines: string[], effective: UnicodeHighlightOptions): UnicodeHighlightResult {
-		const trusted = true;
-		const through = (value: boolean | 'inUntrustedWorkspace') =>
-			value === inUntrustedWorkspace ? !trusted : value;
-		return UnicodeTextModelHighlighter.computeUnicodeHighlights(
-			{ getLineCount: () => lines.length, getLineContent: (n: number) => lines[n - 1] },
-			{
-				nonBasicASCII: through(effective.nonBasicASCII),
-				ambiguousCharacters: effective.ambiguousCharacters,
-				invisibleCharacters: effective.invisibleCharacters,
-				includeComments: through(effective.includeComments),
-				includeStrings: through(effective.includeStrings),
-				allowedCodePoints: Object.keys(effective.allowedCharacters).map((c) => c.codePointAt(0)),
-				// The real value is derived from the OS locale and Monaco's UI
-				// language. It is pinned here because it makes no difference: the
-				// fullwidth forms are confusable in every locale Monaco ships, zh-CN
-				// and ja-JP included, which is why the reporters saw boxes on
-				// CJK systems in the first place.
-				allowedLocales: ['en'],
-			},
-		);
-	}
-
-	// Prose a CJK author actually types. The boxes need a basic-ASCII character in
-	// the same word as the fullwidth punctuation — `shouldHighlightNonBasicASCII`
-	// suppresses the highlight when the surrounding word is entirely non-ASCII —
-	// so a Latin technical term or a Markdown emphasis marker is what triggers it.
-	const CJK_PROSE = [
-		'使用 Monaco，然后保存。',
-		'安装依赖（npm ci），再运行测试。',
-		'这是 Markdown，不是 HTML。',
-		'打开 Settings：Editor，字体大小。',
-		'**粗体**，*斜体*，`代码`。',
-		'标题（English Title）说明',
-		'你好，世界。（测试）！？',
-	];
-
-	test('the editor narrows the Unicode highlighter without switching it off', () => {
-		// Reports #186 and #94 are both Monaco outlining fullwidth punctuation.
-		// Narrowness is the assertion: `unicodeHighlight: false`, or turning
-		// `invisibleCharacters` off, would also make the boxes go away and would
-		// take the NBSP warning with it. Two overrides are allowed, and only two:
-		// the confusable rule off, and one character exempted from the invisible
-		// rule (#393 — U+3000 is the space bar under a CJK IME).
-		const options = createdEditorOptions();
-		assert.deepEqual(
-			Object.keys(options.unicodeHighlight as object).sort(),
-			['allowedCharacters', 'ambiguousCharacters'],
-			'no third sub-option, and invisibleCharacters is not among them',
-		);
-		assert.equal((options.unicodeHighlight as UnicodeHighlightOptions).ambiguousCharacters, false);
-		assert.deepEqual(
-			(options.unicodeHighlight as { allowedCharacters: Record<string, true> }).allowedCharacters,
-			{ '　': true },
-			'exactly one character is exempted',
-		);
-	});
-
-	test('no box is drawn on fullwidth CJK punctuation', () => {
-		const effective = effectiveUnicodeHighlight(createdEditorOptions().unicodeHighlight);
-		const found = outlined(CJK_PROSE, effective);
-		assert.equal(
-			found.ranges.length,
-			0,
-			`nothing outlined in CJK prose, got ${JSON.stringify(
-				found.ranges.map((r) => CJK_PROSE[r.startLineNumber - 1].slice(r.startColumn - 1, r.endColumn - 1)),
-			)}`,
-		);
-		assert.equal(found.ambiguousCharacterCount, 0);
-	});
-
-	test('the invisible-character warning survives the fix', () => {
-		// A stray NBSP or zero-width space is a real hazard in Markdown — an NBSP
-		// after `-` stops a list from parsing — and unlike the punctuation it is
-		// never something the author typed on purpose. Turning the whole feature
-		// off would have taken it with it.
-		const effective = effectiveUnicodeHighlight(createdEditorOptions().unicodeHighlight);
-		assert.equal(effective.invisibleCharacters, true, 'left at the Monaco default');
-
-		const found = outlined(['a b', 'x​z'], effective);
-		assert.equal(found.invisibleCharacterCount, 2, 'NBSP and zero-width space are still flagged');
-	});
-
-	// U+3000 IDEOGRAPHIC SPACE is what a CJK IME puts on the page when the author
-	// presses the space bar, and it is in Monaco's invisible set — so #462 took the
-	// boxes off the punctuation and left them on the space. `allowedLocales` cannot
-	// help: `strings.js` getData() flattens every locale bucket into one 465-entry
-	// set, so U+3000 is in it unconditionally. Only `allowedCharacters` reaches it.
-	//
-	// Note the fixtures above are Latin. Measured while fixing #393, a zero-width
-	// space inside CJK text is not flagged at all — shouldHighlightNonBasicASCII()
-	// suppresses it when the surrounding word holds no basic ASCII. So the hazard
-	// this option guards is real, but not everywhere the comment above implies.
-	const CJK_IDEOGRAPHIC_SPACE = [
-		'\u4eca\u5929\u3000\u5929\u6c14\u5f88\u597d\u3002',
-		'\u3000\u6bb5\u843d\u9996\u884c\u7f29\u8fdb\u4e24\u683c\u3002',
-		'\u5b89\u88c5\u4f9d\u8d56\u3000\u7136\u540e\u8fd0\u884c\u6d4b\u8bd5\u3002',
-	];
-
-	test('the space bar under a CJK IME is not outlined', () => {
-		const effective = effectiveUnicodeHighlight(createdEditorOptions().unicodeHighlight);
-		const found = outlined(CJK_IDEOGRAPHIC_SPACE, effective);
-		assert.equal(
-			found.ranges.length,
-			0,
-			`nothing outlined around U+3000, got ${JSON.stringify(
-				found.ranges.map((r) => CJK_IDEOGRAPHIC_SPACE[r.startLineNumber - 1]),
-			)}`,
-		);
-	});
-
-	test('exempting U+3000 does not exempt the NBSP that breaks a list', () => {
-		// The narrow exemption has to stay narrow: an NBSP after `-` stops the list
-		// from parsing, and that is why invisibleCharacters is still on.
-		const effective = effectiveUnicodeHighlight(createdEditorOptions().unicodeHighlight);
-		const found = outlined(['-\u00a0item', '\u4eca\u5929\u3000\u5929\u6c14'], effective);
-		assert.equal(found.invisibleCharacterCount, 1, 'the NBSP is flagged, the U+3000 is not');
-		assert.equal(found.ranges[0].startLineNumber, 1, 'and it is the NBSP line');
-	});
-
-	// ------------------------------------------------- the defaults left in force
-	//
-	// Everything above is an option Editor.svelte was passing wrongly. The two
-	// below are options it was not passing at all, so `monaco.editor.create`'s
-	// default was deciding — and deciding against something the app states
-	// elsewhere.
-	//
-	// Both are read through the option's own `validate`, the function the real
-	// `create` runs over what it is handed. That is not ceremony: `validate`
-	// silently returns the option's *default* for anything outside its accepted
-	// set, so `"Off"`, `0`, or an enum member renamed in a Monaco upgrade would
-	// leave the editor exactly as it is today while an `assert.equal` on the
-	// literal stayed green.
-
-	/**
-	 * What both occurrence-highlighting options resolve to, for one value of the
-	 * one setting that is supposed to drive them.
-	 */
-	function occurrenceHighlighting(
-		callee: string,
-		occurrencesHighlight: boolean,
-	): { occurrencesHighlight: string; selectionHighlight: boolean } {
-		// The full fixture, not the one setting under test: `editorOptionsFromSettings`
-		// reads the chosen font family now, and a stub missing it is a `string` field
-		// that is `undefined` — a shape the type forbids and production cannot hand it.
-		const options = optionsPassedTo(callee, { ...SETTINGS, occurrencesHighlight });
-		return {
-			occurrencesHighlight: EditorOptions.occurrencesHighlight.validate(options.occurrencesHighlight),
-			selectionHighlight: EditorOptions.selectionHighlight.validate(options.selectionHighlight),
-		};
-	}
-
-	test('"Highlight Occurrences" off leaves nothing highlighting occurrences', () => {
-		// The setting (`settings.occurrencesHighlight`, default false, labelled
-		// "Highlight Occurrences" / 高亮匹配项 / 一致箇所の強調) drove Monaco's
-		// `occurrencesHighlight` alone. Monaco splits the feature in two:
-		// `SelectionHighlighter` gates itself on `selectionHighlight` and consults
-		// `occurrencesHighlight` only to choose which decoration style to draw with.
-		// So at the setting's own default, selecting a word still highlighted every
-		// other copy of it — the promise the label makes was kept by half the
-		// editor.
-		//
-		// Both call sites, because they can disagree: two effects writing one option
-		// with different values is what #369 found in `fontSize`, and an option set
-		// only at construction stops tracking the setting the moment a user toggles
-		// it.
-		for (const callee of ['monaco.editor.create', 'editor.updateOptions']) {
-			assert.deepEqual(
-				occurrenceHighlighting(callee, false),
-				{ occurrencesHighlight: 'off', selectionHighlight: false },
-				`${callee}: with the setting off both occurrence highlighters must be off — ` +
-					'selectionHighlight is the one SelectionHighlighter actually gates on',
-			);
-			assert.deepEqual(
-				occurrenceHighlighting(callee, true),
-				{ occurrencesHighlight: 'singleFile', selectionHighlight: true },
-				`${callee}: with the setting on the same one switch must turn both on`,
-			);
-		}
-	});
-
-	test('the editor does not offer to rewrite a document containing U+2028', () => {
-		// `unusualLineTerminators` defaults to 'prompt'. On 'prompt',
-		// UnusualLineTerminatorsDetector calls IDialogService.confirm, which in a
-		// standalone build is StandaloneDialogService — `mainWindow.confirm(...)`,
-		// an unstyled browser dialog carrying Monaco's English string, inside an app
-		// whose own UI ships 26 locales, offering to delete characters out of the
-		// user's file. The guard exists to protect JavaScript string literals, which
-		// U+2028 and U+2029 terminate; Markdown has no such hazard.
-		//
-		// 'auto' is not the alternative: it makes the same edit with no dialog.
-		assert.equal(
-			EditorOptions.unusualLineTerminators.validate(createdEditorOptions().unusualLineTerminators),
-			'off',
-			'the detector must return early instead of reaching the dialog',
-		);
-
-		// The default this moves away from, and the reason the assertion above is
-		// not spelled against the literal: anything Monaco does not recognise
-		// resolves straight back to the dialog.
-		assert.equal(EditorOptions.unusualLineTerminators.validate(undefined), 'prompt');
-		assert.equal(EditorOptions.unusualLineTerminators.validate('never'), 'prompt');
-		assert.equal(EditorOptions.unusualLineTerminators.validate('Off'), 'prompt');
-	});
 });
 
 // The editor's Markdown colours. Two things can make a rule here do nothing at
@@ -1396,11 +967,10 @@ describe('semantic token contracts', () => {
 		}
 	});
 
-	test('the editor turns the layer on, because the default is off', () => {
-		// `StandaloneTheme.semanticHighlighting` is hard-coded false, so
-		// `'configuredByTheme'` cannot reach it and the provider is never asked.
+	test('the editor registers the semantic tokens provider', () => {
+		// The switch half is editor.test.ts "the editor turns the semantic layer
+		// on, because the default is off". The registration happens in the mount.
 		const editor = readSource('src/lib/components/Editor.svelte');
-		assert.match(editor, /'semanticHighlighting\.enabled': true/);
 		assert.match(editor, /registerDocumentSemanticTokensProvider\(/);
 	});
 

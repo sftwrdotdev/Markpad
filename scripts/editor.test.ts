@@ -17,7 +17,7 @@ import { getSupportedLanguages, type LanguageCode, t, type Translation } from '.
 import { translations } from './allTranslations.js';
 import { editorLanguageFor } from '../src/lib/utils/editorLanguage.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
-import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
+import { createdEditorOptions, editorOptionsFromSettings, editorReadOnly, updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
 import { importedThemeRules, MARKDOWN_SCOPE_ALIASES, markdownKindColors, monacoTokenRules } from '../src/lib/utils/theme.js';
 import { encodeSemanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
@@ -182,7 +182,9 @@ describe('editor options', () => {
 	 */
 	function effectiveUnicodeHighlight(passed: unknown): UnicodeHighlightOptions {
 		const option = EditorOptions.unicodeHighlight;
-		return option.applyUpdate(option.defaultValue, passed ?? {}).newValue;
+		// A copy: Monaco's `applyUpdate` merges in place unless the update carries
+		// `allowedCharacters`, and the shipped defaults are one shared object.
+		return option.applyUpdate(structuredClone(option.defaultValue), passed ?? {}).newValue;
 	}
 
 	/**
@@ -415,6 +417,168 @@ describe('editor options', () => {
 		const on = editorOptionsFromSettings({ ...SETTINGS, typewriterMode: true }, 100);
 		assert.ok(on.cursorSurroundingLines! > 1000, 'more lines than any screen, which Monaco caps at half the viewport');
 		assert.equal(on.cursorSurroundingLinesStyle, 'all');
+	});
+
+	/** What `monaco.editor.create` gets for a settings store, on a whole buffer. */
+	function created(settings: Partial<typeof SETTINGS> = {}) {
+		return createdEditorOptions({ ...SETTINGS, stickyScroll: true, ...settings }, 100, false);
+	}
+
+	test('an option a setting can change is one `updateOptions` re-applies', () => {
+		// `smoothScrolling` used to be a bare `true` in the creation literal, where
+		// options that are set once and never re-applied live. Left there, the
+		// toggle would have taken effect only on a newly created editor — the same
+		// shape as the `fontSize` divergence #369 removed. So: change each setting,
+		// and every option that moves at creation has to move the same way in what
+		// the update effect re-applies to the open editor.
+		// `stickyScroll` is left out: it is set only at creation today (known bug,
+		// reported, not fixed here).
+		const OTHER: Record<string, string> = { wordWrap: 'off', lineNumbers: 'off', renderLineHighlight: 'none', editorFont: 'Georgia' };
+		for (const [field, value] of Object.entries(SETTINGS)) {
+			const changed = { ...SETTINGS, [field]: typeof value === 'boolean' ? !value : typeof value === 'number' ? value + 6 : OTHER[field] };
+			const before = created();
+			const after = created(changed);
+			const reapplied = updatedEditorOptions(changed, 100, true, false) as Record<string, unknown>;
+			const moved = Object.keys(after).filter((key) => JSON.stringify(Reflect.get(after, key)) !== JSON.stringify(Reflect.get(before, key)));
+			assert.ok(moved.length > 0, `${field} changes some option`);
+			for (const key of moved) {
+				assert.deepEqual(reapplied[key], Reflect.get(after, key), `changing ${field} re-applies ${key} to an open editor`);
+			}
+		}
+	});
+
+	test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
+		// Any non-empty string is truthy, so a ternary on the stored 'line' / 'none'
+		// can only ever produce "line" — which defeats both the line-highlight
+		// toggle and Zen mode. Both stored values have to survive the trip, at
+		// creation and on update; a ternary passes for 'line' and fails for 'none'.
+		for (const stored of ['line', 'none'] as const) {
+			assert.equal(created({ renderLineHighlight: stored }).renderLineHighlight, stored);
+			assert.equal(updatedEditorOptions({ ...SETTINGS, renderLineHighlight: stored }, 100, true, false).renderLineHighlight, stored);
+		}
+	});
+
+	test('editor options are applied by a single updateOptions effect', () => {
+		// Two competing effects wrote the same Monaco options with different
+		// values — notably fontSize with and without the zoom factor. What the one
+		// update applies: every option the two effects used to fight over, and the
+		// zoom-aware font size that was the value they disagreed on.
+		const applied = updatedEditorOptions({ ...SETTINGS, editorFontSize: 20, editorMaxWidth: 90 }, 150, true, false);
+		assert.equal(applied.fontSize, 30, 'the surviving font size carries the zoom factor');
+		assert.equal(applied.wordWrapColumn, 90, 'wordWrapColumn survived the merge');
+		assert.equal(created({ editorFontSize: 20 }).fontSize, 20, 'and creation derives it the same way');
+	});
+
+	test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
+		// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
+		// window edge. Both values are asserted because 'advanced' everywhere would
+		// also fix the report, and would make every large file pay for it.
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).wrappingStrategy, 'simple');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, false, false).wrappingStrategy, 'advanced');
+	});
+
+	test('Show Whitespace renders every whitespace run, not just trailing', () => {
+		// The setting is labelled without qualification ("Show Whitespace" /
+		// "显示空白字符"), so "trailing" left interior spaces unmarked.
+		assert.equal(created({ showWhitespace: true }).renderWhitespace, 'all');
+		assert.equal(created({ showWhitespace: false }).renderWhitespace, 'none');
+		assert.equal(updatedEditorOptions({ ...SETTINGS, showWhitespace: true }, 100, true, false).renderWhitespace, 'all');
+	});
+
+	test('the editor narrows the Unicode highlighter without switching it off', () => {
+		// Reports #186 and #94 are both Monaco outlining fullwidth punctuation.
+		// Narrowness is the assertion: `unicodeHighlight: false`, or turning
+		// `invisibleCharacters` off, would also make the boxes go away and would
+		// take the NBSP warning with it. Two overrides, and only two: the
+		// confusable rule off, and U+3000 exempted from the invisible rule (#393).
+		const passed = created().unicodeHighlight as object;
+		assert.deepEqual(Object.keys(passed).sort(), ['allowedCharacters', 'ambiguousCharacters'], 'no third sub-option');
+		const effective = effectiveUnicodeHighlight(passed);
+		assert.equal(effective.ambiguousCharacters, false);
+		assert.deepEqual(effective.allowedCharacters, { '　': true }, 'exactly one character is exempted');
+	});
+
+	test('no box is drawn on fullwidth CJK punctuation', () => {
+		const found = outlined(CJK_PROSE, effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(
+			found.ranges.length,
+			0,
+			`nothing outlined in CJK prose, got ${JSON.stringify(
+				found.ranges.map((r) => CJK_PROSE[r.startLineNumber - 1].slice(r.startColumn - 1, r.endColumn - 1)),
+			)}`,
+		);
+		assert.equal(found.ambiguousCharacterCount, 0);
+	});
+
+	test('the invisible-character warning survives the fix', () => {
+		// A stray NBSP or zero-width space is a real hazard in Markdown — an NBSP
+		// after `-` stops a list from parsing.
+		const effective = effectiveUnicodeHighlight(created().unicodeHighlight);
+		assert.equal(effective.invisibleCharacters, true, 'left at the Monaco default');
+		const found = outlined(['a b', 'x​z'], effective);
+		assert.equal(found.invisibleCharacterCount, 2, 'NBSP and zero-width space are still flagged');
+	});
+
+	test('the space bar under a CJK IME is not outlined', () => {
+		const found = outlined(CJK_IDEOGRAPHIC_SPACE, effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(
+			found.ranges.length,
+			0,
+			`nothing outlined around U+3000, got ${JSON.stringify(found.ranges.map((r) => CJK_IDEOGRAPHIC_SPACE[r.startLineNumber - 1]))}`,
+		);
+	});
+
+	test('exempting U+3000 does not exempt the NBSP that breaks a list', () => {
+		const found = outlined(['- item', '今天　天气'], effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(found.invisibleCharacterCount, 1, 'the NBSP is flagged, the U+3000 is not');
+		assert.equal(found.ranges[0].startLineNumber, 1, 'and it is the NBSP line');
+	});
+
+	test('"Highlight Occurrences" off leaves nothing highlighting occurrences', () => {
+		// Monaco splits the feature in two: `SelectionHighlighter` gates itself on
+		// `selectionHighlight` and consults `occurrencesHighlight` only to choose a
+		// decoration style. So at the setting's own default, selecting a word still
+		// highlighted every other copy of it. Read through each option's own
+		// `validate`, at creation and on update, for both values of the setting.
+		for (const occurrencesHighlight of [false, true]) {
+			for (const options of [created({ occurrencesHighlight }), updatedEditorOptions({ ...SETTINGS, occurrencesHighlight }, 100, true, false)]) {
+				assert.deepEqual(
+					{
+						occurrencesHighlight: EditorOptions.occurrencesHighlight.validate(options.occurrencesHighlight),
+						selectionHighlight: EditorOptions.selectionHighlight.validate(options.selectionHighlight),
+					},
+					occurrencesHighlight
+						? { occurrencesHighlight: 'singleFile', selectionHighlight: true }
+						: { occurrencesHighlight: 'off', selectionHighlight: false },
+				);
+			}
+		}
+	});
+
+	test('the editor does not offer to rewrite a document containing U+2028', () => {
+		// `unusualLineTerminators` defaults to 'prompt', which in standalone Monaco
+		// is a bare `mainWindow.confirm()` offering to delete characters out of the
+		// user's file. 'auto' makes the same edit with no dialog. Read through
+		// `validate`, because anything it does not recognise resolves back to the
+		// dialog.
+		assert.equal(EditorOptions.unusualLineTerminators.validate(created().unusualLineTerminators), 'off');
+	});
+
+	test('the editor turns the semantic layer on, because the default is off', () => {
+		// `StandaloneTheme.semanticHighlighting` is hard-coded false, so
+		// `'configuredByTheme'` cannot reach it and the provider is never asked.
+		assert.equal(Reflect.get(created(), 'semanticHighlighting.enabled'), true);
+	});
+
+	test('an editor on a buffer that is not the whole file refuses typing', () => {
+		// An unread or unreadable tab in edit mode shows an empty buffer that no
+		// save will ever accept. Read-only at the keyboard, not a toast at the save.
+		assert.equal(editorReadOnly({ isTruncated: true }), true);
+		assert.equal(editorReadOnly({ isTruncated: false }), false);
+		assert.equal(editorReadOnly({}), false);
+		assert.equal(createdEditorOptions({ ...SETTINGS, stickyScroll: true }, 100, true).readOnly, true, 'at creation');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, true).readOnly, true, 'and when a tab is read later');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).readOnly, false, 'and typing is back once it is whole');
 	});
 });
 

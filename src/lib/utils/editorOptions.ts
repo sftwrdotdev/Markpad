@@ -101,6 +101,167 @@ export function editorOptionsFromSettings(
 	};
 }
 
+/**
+ * The options `monaco.editor.create()` gets, minus the model and the theme.
+ *
+ * Everything outside `editorOptionsFromSettings` is set once here and never
+ * re-applied.
+ */
+export function createdEditorOptions(
+	settings: EditorOptionSettings & { stickyScroll: boolean },
+	zoomPercent: number,
+	readOnly: boolean,
+): MonacoEditor.IStandaloneEditorConstructionOptions {
+	return {
+		dragAndDrop: true,
+		automaticLayout: true,
+		// Off by default, and `'configuredByTheme'` cannot turn it on here:
+		// `StandaloneTheme.semanticHighlighting` is hard-coded false, so the
+		// switch has to be explicit or the semantic tokens provider is never asked.
+		'semanticHighlighting.enabled': true,
+		...editorOptionsFromSettings(settings, zoomPercent),
+		readOnly,
+		scrollBeyondLastLine: true,
+		stickyScroll: { enabled: settings.stickyScroll },
+		wordBasedSuggestions: "off",
+		quickSuggestions: false,
+		// Monaco's Unicode highlighter is built for source code, where a
+		// character that looks like ASCII but is not is an attack vector. In
+		// prose it fires on the punctuation CJK authors type all day: `，`
+		// `！` `？` `（` `）` `；` `：` are all confusables of an ASCII
+		// counterpart, so Monaco outlines each one (#186, #94).
+		//
+		// It only fires when the confusable shares a word with basic ASCII —
+		// shouldHighlightNonBasicASCII() suppresses the box when the
+		// surrounding word is entirely non-ASCII — which is why pure CJK
+		// looks fine and `使用 Monaco，然后保存。` or `安装依赖（npm ci）` does
+		// not. Latin technical terms inside CJK prose are the normal case,
+		// and `**粗体**，` triggers it with no Latin word at all.
+		//
+		// invisibleCharacters stays on, but not for the reason first written
+		// here. That comment claimed it "never fires on something typed on
+		// purpose"; measured against this Monaco build, U+3000 IDEOGRAPHIC
+		// SPACE — the space bar under every CJK IME — is in the invisible
+		// set and gets outlined, which is the same complaint as #186/#94 one
+		// option over. The set is the flattened union of every locale bucket
+		// (`strings.js` getData()), 465 code points, so `allowedLocales`
+		// cannot exclude it; only `allowedCharacters` can.
+		//
+		// The rest stays on because the NBSP hazard is real: an NBSP after
+		// `-` stops a list from parsing. Worth recording that the other
+		// stated hazard does NOT hold — a zero-width space inside CJK text
+		// is not flagged at all, because shouldHighlightNonBasicASCII()
+		// suppresses it when the surrounding word has no basic ASCII.
+		//
+		// nonBasicASCII needs no setting — it defaults to
+		// `inUntrustedWorkspace` and standalone Monaco's workspace-trust
+		// service returns true unconditionally, so it is already off; were it
+		// on, every ideograph would be boxed rather than the punctuation.
+		unicodeHighlight: {
+			ambiguousCharacters: false,
+			allowedCharacters: { "　": true },
+		},
+		// Word-wise navigation — ⌥←/→, double-click-to-select, ⌥⌫ — splits on
+		// `wordSeparators`, and a language that does not put spaces between
+		// its words has none. So a whole Chinese clause counts as one word:
+		// ⌥→ jumps the sentence, double-click selects it, ⌥⌫ deletes it.
+		//
+		// A non-empty list switches on `Intl.Segmenter` (see
+		// `wordCharacterClassifier.js`), which knows where the words are.
+		//
+		// It is closer to a switch than to a whitelist, and the naming hides
+		// that: ICU dispatches its dictionary breaking by SCRIPT, not by this
+		// list. Thai, Khmer, Lao, Burmese and Tibetan get segmented too and
+		// none of them are named here, while `['zh']`, `['ja']` and
+		// `['zh','ja']` all produce identical output — even on Han text,
+		// where the two dictionaries might have been expected to disagree.
+		// Written as the two the app has locales for, rather than a longer
+		// list that would read as a claim about coverage it does not make.
+		//
+		// Nothing is taken from space-delimited languages: Korean,
+		// Vietnamese, Russian and English segment word-for-word identically
+		// to splitting on whitespace. An unsupported tag is dropped by
+		// Monaco's own `validate()`, so this cannot fail closed.
+		wordSegmenterLocales: ['zh', 'ja'],
+		// Markpad draws the editor's context menu itself, in
+		// MarkdownViewer.svelte, beside the one the preview already had.
+		//
+		// Not a style choice. Monaco's menu offers Cut, Copy and Paste, and
+		// its Paste cannot work here: it reads the clipboard through the
+		// webview, which wry leaves switched off and which Tauri has no
+		// answer for (tauri-apps/tauri#12007). Everything else Monaco would
+		// contribute to that menu — Go to Definition, Go to References,
+		// inlay hints — needs a language provider this app does not
+		// register, so nothing is lost by drawing our own.
+		contextmenu: false,
+		// Monaco writes a styled `text/html` flavour beside the plain text on a
+		// copy. Everything Markpad produces IS plain text, so pasting into Word
+		// or Outlook gave coloured monospace instead of the Markdown that was
+		// copied — the styled flavour has no audience here (#393).
+		//
+		// Still needed after cut/copy/paste were collapsed onto three functions
+		// of our own, which is easy to get wrong: those cover ⌘C and the context
+		// menu, and macOS has a third way in. Edit > Copy in the menu bar is a
+		// predefined Copy item (#527), which asks the webview to perform
+		// its own copy — Monaco's, not ours. Without this the menu bar would put
+		// a different clipboard on the pasteboard than the other two routes.
+		copyWithSyntaxHighlighting: false,
+		// The same argument one option over. U+2028 (LINE SEPARATOR) and
+		// U+2029 (PARAGRAPH SEPARATOR) break a JavaScript string literal,
+		// which is what Monaco's guard is for; in Markdown they are just
+		// characters, and they arrive by ordinary means — several word
+		// processors and PDF text extractors emit U+2028 for a soft line
+		// break, so pasting one in is normal here.
+		//
+		// The default is 'prompt', and in standalone Monaco that prompt is
+		// `StandaloneDialogService.doConfirm`, i.e. a bare
+		// `mainWindow.confirm()`: an unstyled browser dialog inside a Tauri
+		// window, carrying Monaco's English string in an app translated
+		// into 26 locales, offering to rewrite the user's bytes. 'auto'
+		// would rewrite them without asking, which is worse.
+		//
+		// 'off' loses no visibility: the line renderer substitutes U+FFFD
+		// for LINE_SEPARATOR and PARAGRAPH_SEPARATOR unconditionally, so
+		// they stay as visible as they ever were. Only the dialog goes.
+		unusualLineTerminators: "off",
+		padding: { top: 20 },
+		// The overview ruler sits under the vertical scrollbar, and its
+		// border drew a 1px line down the track's left edge.
+		overviewRulerBorder: false,
+		scrollbar: {
+			vertical: "visible",
+			horizontal: "visible",
+			useShadows: false,
+			verticalHasArrows: false,
+			horizontalHasArrows: false,
+			// Same track and thumb as the preview's ::-webkit-scrollbar in styles.css.
+			verticalScrollbarSize: 14,
+			horizontalScrollbarSize: 14,
+			verticalSliderSize: 8,
+			horizontalSliderSize: 8,
+		},
+	};
+}
+
+/** What the update effect re-applies: the settings-derived options, and `readOnly`. */
+export function updatedEditorOptions(
+	settings: EditorOptionSettings,
+	zoomPercent: number,
+	fontIsMonospace: boolean,
+	readOnly: boolean,
+): MonacoEditor.IEditorOptions {
+	return { ...editorOptionsFromSettings(settings, zoomPercent, fontIsMonospace), readOnly };
+}
+
+/**
+ * Whether the editor on `tab` refuses typing. An unread or unreadable tab in
+ * edit mode shows a buffer that is not the whole file, and no save will ever
+ * accept it: read-only at the keyboard, not a toast at the save.
+ */
+export function editorReadOnly(tab: { isTruncated?: boolean }): boolean {
+	return tab.isTruncated === true;
+}
+
 /** The slice of the settings store the options above are derived from. */
 export type EditorOptionSettings = {
 	minimap: boolean;
