@@ -36,6 +36,8 @@ function fakeMonaco(fontIsMonospace: boolean) {
 	const layout = (): Layout => ({ fontSize: options.fontSize, wrappingStrategy: options.wrappingStrategy });
 	const place = (what: string) => placed.push({ what, layout: layout() });
 	const disposable = { dispose() {} };
+	const keyDown: ((e: { browserEvent: KeyboardEvent }) => void)[] = [];
+	const contextKeys = new Map<string, unknown>();
 
 	const editor = {
 		updateOptions: (next: Record<string, unknown>) => void (options = { ...options, ...next }),
@@ -58,9 +60,15 @@ function fakeMonaco(fontIsMonospace: boolean) {
 		onDidChangeCursorPosition: () => disposable,
 		onDidChangeCursorSelection: () => disposable,
 		onDidChangeConfiguration: () => disposable,
-		onKeyDown: () => disposable,
+		onKeyDown: (listener: (e: { browserEvent: KeyboardEvent }) => void) => {
+			keyDown.push(listener);
+			return disposable;
+		},
 		addCommand() {},
-		createContextKey: () => ({ set() {} }),
+		createContextKey: (name: string, initial: unknown) => {
+			contextKeys.set(name, initial);
+			return { set: (value: unknown) => void contextKeys.set(name, value) };
+		},
 		getModel: () => null,
 		dispose() {},
 	};
@@ -94,7 +102,11 @@ function fakeMonaco(fontIsMonospace: boolean) {
 		KeyMod: { CtrlCmd: 2048, Shift: 1024 },
 		KeyCode: { Enter: 3, Tab: 2, KeyV: 52, KeyX: 54 },
 	};
-	return { monaco, editor, placed, semanticProviders, layout, position: () => position };
+	const pressKey = (init: KeyboardEventInit) => {
+		const browserEvent = new KeyboardEvent('keydown', init);
+		for (const listener of keyDown) listener({ browserEvent });
+	};
+	return { monaco, editor, placed, semanticProviders, layout, contextKeys, pressKey, position: () => position };
 }
 
 type Tab = NonNullable<MountEditorDeps['tabs']['activeTab']>;
@@ -228,5 +240,21 @@ describe('editor mount', () => {
 		teardown?.();
 		teardown = undefined;
 		assert.ok(entry.disposed, 'and releases it on unmount');
+	});
+
+	test('AltGr+Z sets the AltGr context key, so the Ctrl+Alt actions refuse it', () => {
+		// Windows sends AltGr as Ctrl+Alt with AltGraph on, so Polish AltGr+Z (ż)
+		// is also Ctrl+Alt+Z, Zen mode. Monaco ignores AltGraph when it resolves
+		// a keystroke; the editor's own keydown sets `altGraphChord`, which every
+		// Ctrl+Alt action's `keybindingContext` refuses (editor.actions.test.ts).
+		// jsdom cannot say whether WebView2 reports AltGraph; the event sets it.
+		const run = mount({ tab: {} });
+		assert.equal(run.contextKeys.get('altGraphChord'), false, 'off until a key is pressed');
+
+		run.pressKey({ key: 'ż', code: 'KeyZ', ctrlKey: true, altKey: true, modifierAltGraph: true });
+		assert.equal(run.contextKeys.get('altGraphChord'), true, 'AltGr+Z is an AltGr chord');
+
+		run.pressKey({ key: 'z', code: 'KeyZ', ctrlKey: true, altKey: true });
+		assert.equal(run.contextKeys.get('altGraphChord'), false, 'a real Ctrl+Alt+Z clears it, so Zen mode still works');
 	});
 });
