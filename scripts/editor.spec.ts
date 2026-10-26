@@ -3,7 +3,8 @@ import { afterAll, describe, test } from 'vitest';
 
 import { countWords } from '../src/lib/utils/wordCount.js';
 import { isAltGraphChord } from '../src/lib/utils/viewerKeymap.js';
-import { contextMenuFor } from '../src/lib/utils/viewerContextMenu.js';
+import { contextMenuFor, editorContextMenuItems, type EditorMenuPane } from '../src/lib/utils/viewerContextMenu.js';
+import { loadLocale, t } from '../src/lib/utils/i18n.js';
 
 /*
  * The status bar counted `text.match(/\S+/g)` and then kept only the tokens
@@ -194,5 +195,65 @@ describe('editor context menu (#261)', () => {
 		for (const target of root.querySelectorAll('span, textarea')) {
 			assert.equal(contextMenuFor(target, { modalOpen: false, inApp: true }), 'editor', target.tagName);
 		}
+	});
+
+	/** A pane that records which of its functions ran. */
+	function recordingPane(): { pane: EditorMenuPane; calls: string[] } {
+		const calls: string[] = [];
+		const record = (name: string) => () => void calls.push(name);
+		return {
+			calls,
+			pane: {
+				undo: record('undo'),
+				redo: record('redo'),
+				cutToClipboard: record('cutToClipboard'),
+				copyToClipboard: record('copyToClipboard'),
+				pasteFromClipboard: record('pasteFromClipboard'),
+				selectAll: record('selectAll'),
+				runEditorAction: (id) => void calls.push(`runEditorAction:${id}`),
+			},
+		};
+	}
+
+	const click = (items: ReturnType<typeof editorContextMenuItems>, label: string) => {
+		const item = items.find((entry) => entry.label === label);
+		assert.ok(item?.onClick, `no "${label}" item`);
+		item.onClick();
+	};
+
+	test('the editor menu runs the same three functions the keyboard runs', () => {
+		// One implementation per operation is the whole point: six entry points
+		// (three keys, three menu items) and three functions. A menu item wired to
+		// its own inline implementation would drift from the shortcut silently.
+		const { pane, calls } = recordingPane();
+		const items = editorContextMenuItems(() => pane, 'en', 'macos');
+
+		click(items, 'Cut');
+		click(items, 'Copy');
+		click(items, 'Paste');
+
+		assert.deepEqual(calls, ['cutToClipboard', 'copyToClipboard', 'pasteFromClipboard']);
+	});
+
+	test('the two Monaco entries this app can use survive drawing our own menu', async () => {
+		// Drawing the menu ourselves means every item Monaco used to contribute is
+		// gone unless it is put back, and two of them work without a language
+		// provider — so they were there, and vanished, and were noticed only
+		// because someone went looking for them.
+		//
+		// The rest (Go to Symbol, Quick Fix, Refactor, Format, Rename) are gated on
+		// providers Markdown has none of and never appeared in this app.
+		//
+		// Through the app's own translations, which is a gain rather than parity:
+		// Monaco's menu is English whatever language the app is in.
+		await loadLocale('zh-TW');
+		const { pane, calls } = recordingPane();
+		const items = editorContextMenuItems(() => pane, 'zh-TW', 'windows');
+
+		click(items, t('menu.commandPalette', 'zh-TW'));
+		click(items, t('menu.changeAllOccurrences', 'zh-TW'));
+
+		assert.notEqual(t('menu.commandPalette', 'zh-TW'), 'Command Palette');
+		assert.deepEqual(calls, ['runEditorAction:editor.action.quickCommand', 'runEditorAction:editor.action.changeAll']);
 	});
 });

@@ -96,9 +96,8 @@ import {
 import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
 import { canonicalizePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
-import { contextMenuFor } from './utils/viewerContextMenu.js';
+import { contextMenuFor, editorContextMenuItems, imageMenuItems, saveImageAs as saveImageAsFile } from './utils/viewerContextMenu.js';
 import { findSeedFromSelection } from './utils/findSeed.js';
-import { normalizeAssetPath } from './utils/exportHtml.js';
 import {
 	dropRecentFile,
 	isRecentFilesStorageEvent,
@@ -2913,40 +2912,13 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		liveMode = !liveMode;
 	}
 
-	/**
-	 * `img.src` is an asset URL, a remote URL or a `data:` URL.
-	 * `normalizeAssetPath` recognises both asset URL forms (Windows
-	 * `http://asset.localhost/…`, others `asset://localhost/…`) and rejects
-	 * lookalike hosts (#363).
-	 */
-	async function saveImageAs(src: string) {
-		const realPath = normalizeAssetPath(src) ?? '';
-
-		if (!realPath) {
-			// The webview cannot fetch the bytes of a remote image at all: the
-			// app's CSP is `connect-src 'self'`, so a cross-origin `fetch` is
-			// refused before it leaves the page. (`img-src ... https:` is a
-			// different directive; it only governs what an `<img>` may
-			// display.) The download has to happen in Rust, and there is no
-			// command for it yet, so say that rather than reporting a network
-			// failure that never happened.
-			addToast(t('toast.remoteImageNotSupported', settings.language), 'error');
-			return;
-		}
-
-		const ext = realPath.split('.').pop() || 'png';
-		const dest = await save({
-			defaultPath: `image.${ext}`,
-			filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'] }]
+	function saveImageAs(src: string) {
+		return saveImageAsFile(src, {
+			save,
+			copyFile: (from, dest) => invoke('copy_file', { src: from, dest }),
+			toast: addToast,
+			language: settings.language,
 		});
-		if (dest) {
-			try {
-				await invoke('copy_file', { src: realPath, dest });
-				addToast(t('toast.imageSavedSuccessfully', settings.language));
-			} catch (e) {
-				addToast(`${t('toast.failedToSaveImage', settings.language)}: ${e}`, 'error');
-			}
-		}
 	}
 
 	async function saveDiagramAs(container: HTMLElement) {
@@ -2983,40 +2955,11 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		if (!editorPane) return;
 		e.preventDefault();
 
-		// Chords only for the items people learn the shortcut from. Undo is
-		// listed because Windows has no menu bar to find it in (#997).
-		const modifier = modifierFor(settings.osType);
-		const chord = (c: string) => formatChord(c, modifier);
-
 		docContextMenu = {
 			show: true,
 			x: e.clientX,
 			y: e.clientY,
-			items: [
-				{ label: t('menu.undo', settings.language), shortcut: chord('Mod+Z'), onClick: () => editorPane?.undo() },
-				{
-					label: t('menu.redo', settings.language),
-					shortcut: chord(modifier === 'Cmd' ? 'Mod+Shift+Z' : 'Mod+Y'),
-					onClick: () => editorPane?.redo(),
-				},
-				{ separator: true },
-				{ label: t('menu.cut', settings.language), onClick: () => editorPane?.cutToClipboard() },
-				{ label: t('menu.copy', settings.language), onClick: () => editorPane?.copyToClipboard() },
-				{ label: t('menu.paste', settings.language), onClick: () => editorPane?.pasteFromClipboard() },
-				{ label: t('menu.selectAll', settings.language), onClick: () => editorPane?.selectAll() },
-				{ separator: true },
-				// Monaco's other items need a language provider Markdown lacks.
-				{
-					label: t('menu.commandPalette', settings.language),
-					shortcut: 'F1',
-					onClick: () => editorPane?.runEditorAction('editor.action.quickCommand'),
-				},
-				{
-					label: t('menu.changeAllOccurrences', settings.language),
-					shortcut: chord('Mod+F2'),
-					onClick: () => editorPane?.runEditorAction('editor.action.changeAll'),
-				},
-			],
+			items: editorContextMenuItems(() => editorPane, settings.language, settings.osType),
 		};
 	}
 
@@ -3066,15 +3009,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			];
 		}
 
-		const img = (e.target as HTMLElement).closest('img');
-		let mediaItems: any[] = [];
-		// Only a local file can be saved: see `saveImageAs`.
-		if (img && normalizeAssetPath(img.src)) {
-			mediaItems = [
-				{ label: t('menu.saveImageAs', settings.language), onClick: () => saveImageAs(img.src) },
-				{ separator: true }
-			];
-		}
+		let mediaItems: any[] = imageMenuItems(e.target as HTMLElement, settings.language, saveImageAs);
 
 		// Resolved now rather than inside the "Edit" handler: by the time that
 		// runs the reader has clicked a menu item, and a click is how a

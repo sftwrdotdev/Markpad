@@ -427,64 +427,9 @@ describe('render pipeline convention', () => {
 });
 
 describe('save image as', () => {
-	/*
-	 * "Save image as" could never save a remote image, and on Windows it could not
-	 * save a LOCAL one either.
-	 *
-	 * The branch it took was `src.startsWith('http')` -> `fetch(src)`. Two things
-	 * are wrong with that:
-	 *
-	 * - The app's CSP is `connect-src 'self'`, so a cross-origin `fetch` from the
-	 *   webview is refused before a request is made. (`img-src ... https:` is a
-	 *   different directive: it governs what an `<img>` may DISPLAY.) The remote
-	 *   case was therefore unreachable on every platform.
-	 * - `convertFileSrc` spells a local file's asset URL
-	 *   `http://asset.localhost/<encoded path>` on Windows and
-	 *   `asset://localhost/<encoded path>` everywhere else. The `asset:` test
-	 *   above it only recognised the second, so on Windows every local image fell
-	 *   into that unreachable remote branch.
-	 *
-	 * The shape-recognition half is `normalizeAssetPath` (#363), which already had
-	 * tests for both spellings and for lookalike hosts. This file asserts that the
-	 * viewer now uses it — reuse is the fix, so the assertions are about the call
-	 * site — plus the two properties the reuse buys, run against the real function.
-	 */
-
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-	const body = sliceBetween(viewer, 'async function saveImageAs', 'async function saveDiagramAs');
-
-	test('the viewer recognises an asset URL with the shared helper', () => {
-		assert.match(body, /normalizeAssetPath\(src\)/);
-		// The two hand-rolled tests this replaces. Either one coming back means the
-		// Windows spelling is unhandled again.
-		assert.doesNotMatch(body, /startsWith\('asset:'\)/);
-		assert.doesNotMatch(body, /startsWith\('http'\)/);
-	});
-
-	test('nothing tries to fetch image bytes from the webview any more', () => {
-		// Dead code that reads like a working feature: it opened no dialog, wrote
-		// no file, and reported a network failure that never happened.
-		assert.doesNotMatch(body, /fetch\(/);
-		assert.doesNotMatch(body, /arrayBuffer\(/);
-		assert.doesNotMatch(body, /save_file_binary/);
-	});
-
-	test('a local image is copied on the Rust side', () => {
-		assert.match(body, /invoke\('copy_file', \{ src: realPath, dest \}\)/);
-		// And the save dialog is only offered for a file that can actually be
-		// written; the remote case bails out before it.
-		const bail = offsetOf(body, "t('toast.remoteImageNotSupported'");
-		const dialog = offsetOf(body, 'await save(');
-		assert.ok(bail < dialog, 'do not ask for a destination that cannot be written');
-	});
-
-	test('the preview offers Save Image As only for a local image', () => {
-		// A remote or data: image cannot be saved, so the item is not shown for one
-		// rather than shown and answered with an error toast.
-		const menu = sliceBetween(viewer, "const img = (e.target as HTMLElement).closest('img');", "t('menu.saveImageAs'");
-		assert.match(menu, /if \(img && normalizeAssetPath\(img\.src\)\)/);
-	});
+	// `saveImageAs` refuses a remote image instead of fetching it because the
+	// CSP's `connect-src 'self'` refuses a cross-origin fetch from the webview.
+	// The function itself runs in preview.spec.ts ("save image as").
 
 	test('the CSP that makes the remote case impossible is still the one described', () => {
 		// If `connect-src` is ever widened, the comment above stops being true and
