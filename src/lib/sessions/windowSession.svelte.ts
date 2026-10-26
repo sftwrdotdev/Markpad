@@ -1,5 +1,5 @@
 import { untrack } from 'svelte';
-import { commands } from '../bindings.js';
+import { commands, events } from '../bindings.js';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { tabManager } from '../stores/tabs.svelte.js';
 import { isNewWindowLabel } from '../utils/pinnedTagWindow.js';
@@ -468,7 +468,7 @@ export function createWindowSession(options: WindowSessionOptions) {
 			stopWatching();
 			resolveTransfer(moved);
 		};
-		const unlisten = await appWindow.listen<string>('tab-transfer-claimed', (event) => {
+		const unlisten = await events.tabTransferClaimed(appWindow).listen((event) => {
 			if (settled || event.payload !== token) return;
 			// A change whose refresh reached the broker after the completion:
 			// the destination has the older copy. Keeping this tab too leaves

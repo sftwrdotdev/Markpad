@@ -1,4 +1,4 @@
-import { commands } from '../bindings.js';
+import { commands, events } from '../bindings.js';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -45,7 +45,7 @@ export class FolderManager {
 		await this.close();
 		this.root = path;
 		this.error = null;
-		this.#unlisten ??= await getCurrentWindow().listen<string>('folder-changed', (event) => {
+		this.#unlisten ??= await events.folderChanged(getCurrentWindow()).listen((event) => {
 			if (this.isLoaded(event.payload)) void this.#read(event.payload);
 		});
 		await this.#load(path);

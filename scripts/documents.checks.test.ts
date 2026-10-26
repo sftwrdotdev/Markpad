@@ -124,15 +124,7 @@ describe('lossy decode save guard', () => {
 });
 
 describe('live mode watched path', () => {
-	const runtime = readSource('src-tauri/src/window_runtime.rs');
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-	test('a watcher notification is routed to its watched path', () => {
-		// The event name across Rust and TypeScript. What the viewer does with the
-		// event runs in documents.conflicts.spec.ts (handleFileChanged).
-		assert.match(runtime, /FileChanged\(watched_path\.clone\(\)\)\.emit_to\(&handle, event_label\.as_str\(\)\)/);
-		assert.match(viewer, /await appWindow\.listen\('file-changed', \(event\) => externalChange\.handleFileChanged\(event\.payload as string, liveMode\)\)/);
-	});
 
 	test('toggling Live Mode does not reload the document', () => {
 		// The watcher half of this case is driven in documents.session.spec.ts

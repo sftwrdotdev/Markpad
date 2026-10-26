@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { convertFileSrc } from '@tauri-apps/api/core';
-	import { commands, type Appearance } from './bindings.js';
+	import { commands, events, type Appearance } from './bindings.js';
 	import { emitTo, type EventCallback } from '@tauri-apps/api/event';
 	import { getAllWindows, getCurrentWindow } from '@tauri-apps/api/window';
 	import { onMount, tick, untrack } from 'svelte';
@@ -2442,14 +2442,21 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			document.addEventListener('visibilitychange', checkpointWhenHidden);
 			unlisteners.push(() => document.removeEventListener('visibilitychange', checkpointWhenHidden));
 			unlisteners.push(
-				await appWindow.listen('file-changed', (event) => externalChange.handleFileChanged(event.payload as string, liveMode)),
+				await events.fileChanged(appWindow).listen((event) => externalChange.handleFileChanged(event.payload, liveMode)),
+			);
+			unlisteners.push(
+				await events.filePath(appWindow).listen((event) => {
+					if (event.payload) loadMarkdown(event.payload);
+				}),
+			);
+			unlisteners.push(
+				await events.tabTransferOffer(appWindow).listen((event) => {
+					if (windowExit.isCloseWalkActive()) return;
+					windowSession.acceptOfferedTransfer(event.payload);
+				}),
 			);
 
 			const listeners: [string, EventCallback<any>][] = [
-				['file-path', (event) => {
-					const filePath = event.payload as string;
-					if (filePath) loadMarkdown(filePath);
-				}],
 				['menu-tab-rename', async (event) => {
 					const tabId = event.payload as string;
 					const tab = tabManager.tabs.find((t) => t.id === tabId);
@@ -2487,10 +2494,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 				['menu-tab-move', (event) => {
 					const { tabId, targetLabel } = event.payload as { tabId: string; targetLabel: string };
 					moveTabToWindow(tabId, targetLabel).catch((error) => console.error('Failed to move tab', error));
-				}],
-				['tab-transfer-offer', (event) => {
-					if (windowExit.isCloseWalkActive()) return;
-					windowSession.acceptOfferedTransfer(event.payload);
 				}],
 				['merge-into', (event) => {
 					mergeSelfInto(event.payload).catch((error) => console.error('Failed to merge window', error));
