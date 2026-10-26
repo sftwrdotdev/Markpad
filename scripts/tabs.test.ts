@@ -6,7 +6,7 @@ import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
 import { getTabFileActions, hasRealFilePath } from '../src/lib/utils/tabFileActions.js';
 import { closestSlotIndex, dragDistance } from '../src/lib/utils/tabReorder.js';
 import type { Tab } from '../src/lib/stores/tabs.svelte.js';
-import { asRendererLine, EDITOR_ANCHOR_LINE_OFFSET } from '../src/lib/utils/lineCoordinates.js';
+import { asBufferLine, asRendererLine, EDITOR_ANCHOR_LINE_OFFSET } from '../src/lib/utils/lineCoordinates.js';
 import {
 	buildTransferredTab,
 	snapshotTab,
@@ -527,7 +527,7 @@ describe('editor reading position flush', () => {
 			ready: () => state.ready,
 			scrollTo: (position, options) => log.push(['scroll', position, options]),
 		});
-		const position: ScrollSyncPosition = { section: 'body', ratio: 0.4, line: 12 };
+		const position: ScrollSyncPosition = { section: 'body', ratio: 0.4, line: asBufferLine(12) };
 
 		jumps.syncScrollToPosition(position, { cursorIntoView: true });
 		jumps.revealSourceRange(2, 2);
