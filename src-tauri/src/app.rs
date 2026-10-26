@@ -4,7 +4,7 @@
 use crate::window_runtime::{AppState, WatcherState};
 use crate::{asset_protocol, commands, tab_transfer, window_runtime};
 use std::fs;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, Runtime};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -70,87 +70,7 @@ pub fn run() {
                 // before the plugin loads if that ever matters.
                 .build(),
         )
-        .setup(|app| {
-            app.manage(window_runtime::GeometrySaver::new(app.handle().clone()));
-            let args: Vec<String> = std::env::args().collect();
-
-            let mut window_builder = tauri::WebviewWindowBuilder::new(
-                app,
-                window_runtime::LAUNCH_LABEL,
-                tauri::WebviewUrl::App("index.html".into()),
-            )
-            .title("Markpad")
-            .inner_size(900.0, 650.0)
-            .min_inner_size(400.0, 300.0)
-            .visible(false)
-            // Not `.focused(false)`: on a window built hidden it leaves WebView2
-            // on Windows with no drop target, so every file dragged in is
-            // refused (#768, tauri-apps/wry#1639). tao also keeps applying it
-            // after the first show, so minimizing a maximized window flashes it
-            // at its restored size (#776, tauri-apps/tao#1338). `show_window` skipping
-            // `set_focus` is what keeps a cold start from stealing focus.
-            .resizable(true)
-            .shadow(false)
-            .center();
-
-            #[cfg(target_os = "macos")]
-            {
-                window_builder = window_builder
-                    .decorations(true)
-                    .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true);
-            }
-
-            #[cfg(not(target_os = "macos"))]
-            {
-                window_builder = window_builder.decorations(false);
-            }
-
-            let window = window_builder.build()?;
-
-            let config_dir = app.path().app_config_dir()?;
-            let theme_path = config_dir.join("theme.txt");
-            let theme_pref =
-                fs::read_to_string(theme_path).unwrap_or_else(|_| "system".to_string());
-
-            // An APPEARANCE, written by `save_theme` — see the note there. It
-            // used to be the raw theme setting, which meant every `vscode:<name>`
-            // theme landed in the fallback arm below and asked the OS instead: a
-            // dark VS Code theme on a light desktop flashed a white window on
-            // every launch. A file left over from that older format still lands
-            // there, and self-corrects as soon as the frontend applies its theme.
-            let bg_color = match theme_pref.as_str() {
-                "dark" => Some(tauri::window::Color(24, 24, 24, 255)),
-                "light" => Some(tauri::window::Color(253, 253, 253, 255)),
-                _ => {
-                    if let Ok(t) = window.theme() {
-                        match t {
-                            tauri::Theme::Dark => Some(tauri::window::Color(24, 24, 24, 255)),
-                            _ => Some(tauri::window::Color(253, 253, 253, 255)),
-                        }
-                    } else {
-                        Some(tauri::window::Color(253, 253, 253, 255))
-                    }
-                }
-            };
-
-            let _ = window.set_background_color(bg_color);
-
-            let _ = window.set_shadow(true);
-
-            // Same vetting as `send_markdown_path`, which reads the same argv:
-            // the frontend consumes BOTH channels, so a path this one lets
-            // through reaches `loadMarkdown` no matter what the other decides.
-            let startup_files =
-                window_runtime::startup_paths(&args, &std::env::current_dir().unwrap_or_default());
-
-            if let Some(path) = startup_files.first() {
-                let _ = window.emit("file-path", path.as_str());
-                window_runtime::bring_to_front(&window);
-            }
-
-            Ok(())
-        })
+        .setup(setup)
         .invoke_handler(tauri::generate_handler![
             commands::clipboard_write_text,
             commands::clipboard_read_text,
@@ -234,6 +154,88 @@ pub fn run() {
         });
 }
 
+/// Builds the launch window and hands it the launch's first file.
+fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
+    app.manage(window_runtime::GeometrySaver::new(app.handle().clone()));
+    let args: Vec<String> = std::env::args().collect();
+
+    let mut window_builder = tauri::WebviewWindowBuilder::new(
+        app,
+        window_runtime::LAUNCH_LABEL,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("Markpad")
+    .inner_size(900.0, 650.0)
+    .min_inner_size(400.0, 300.0)
+    .visible(false)
+    // Not `.focused(false)`: on a window built hidden it leaves WebView2
+    // on Windows with no drop target, so every file dragged in is
+    // refused (#768, tauri-apps/wry#1639). tao also keeps applying it
+    // after the first show, so minimizing a maximized window flashes it
+    // at its restored size (#776, tauri-apps/tao#1338). `show_window` skipping
+    // `set_focus` is what keeps a cold start from stealing focus.
+    .resizable(true)
+    .shadow(false)
+    .center();
+
+    #[cfg(target_os = "macos")]
+    {
+        window_builder = window_builder
+            .decorations(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        window_builder = window_builder.decorations(false);
+    }
+
+    let window = window_builder.build()?;
+
+    let config_dir = app.path().app_config_dir()?;
+    let theme_path = config_dir.join("theme.txt");
+    let theme_pref = fs::read_to_string(theme_path).unwrap_or_else(|_| "system".to_string());
+
+    // An APPEARANCE, written by `save_theme` — see the note there. It
+    // used to be the raw theme setting, which meant every `vscode:<name>`
+    // theme landed in the fallback arm below and asked the OS instead: a
+    // dark VS Code theme on a light desktop flashed a white window on
+    // every launch. A file left over from that older format still lands
+    // there, and self-corrects as soon as the frontend applies its theme.
+    let bg_color = match theme_pref.as_str() {
+        "dark" => Some(tauri::window::Color(24, 24, 24, 255)),
+        "light" => Some(tauri::window::Color(253, 253, 253, 255)),
+        _ => {
+            if let Ok(t) = window.theme() {
+                match t {
+                    tauri::Theme::Dark => Some(tauri::window::Color(24, 24, 24, 255)),
+                    _ => Some(tauri::window::Color(253, 253, 253, 255)),
+                }
+            } else {
+                Some(tauri::window::Color(253, 253, 253, 255))
+            }
+        }
+    };
+
+    let _ = window.set_background_color(bg_color);
+
+    let _ = window.set_shadow(true);
+
+    // Same vetting as `send_markdown_path`, which reads the same argv:
+    // the frontend consumes BOTH channels, so a path this one lets
+    // through reaches `loadMarkdown` no matter what the other decides.
+    let startup_files =
+        window_runtime::startup_paths(&args, &std::env::current_dir().unwrap_or_default());
+
+    if let Some(path) = startup_files.first() {
+        let _ = window.emit("file-path", path.as_str());
+        window_runtime::bring_to_front(&window);
+    }
+
+    Ok(())
+}
+
 /// The file paths in a macOS open-document event, every one of them.
 #[cfg(target_os = "macos")]
 fn opened_file_paths(urls: Vec<tauri::Url>) -> Vec<String> {
@@ -257,5 +259,25 @@ mod tests {
         .map(|url| tauri::Url::parse(url).unwrap())
         .to_vec();
         assert_eq!(opened_file_paths(urls), vec!["/n/a.md", "/n/b.md"]);
+    }
+}
+
+#[cfg(test)]
+mod setup_tests {
+    use super::*;
+    use tauri::test::{mock_builder, mock_context, noop_assets};
+
+    // The window-state plugin saves only on a clean exit; the running save
+    // depends on the saver `handle_window_event` looks up being managed.
+    #[test]
+    fn setup_manages_the_geometry_saver() {
+        let mut app = mock_builder()
+            .setup(setup)
+            .build(mock_context(noop_assets()))
+            .unwrap();
+        // Runs `setup` once; the mock event loop does nothing else.
+        #[allow(deprecated)]
+        app.run_iteration(|_, _| {});
+        assert!(app.try_state::<window_runtime::GeometrySaver>().is_some());
     }
 }

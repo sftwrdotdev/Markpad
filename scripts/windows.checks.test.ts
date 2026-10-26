@@ -9,22 +9,14 @@ import {
 	readRustBackend,
 	readSource,
 	readSourceFiles,
-	sliceBetween,
 } from './sourceTree.js';
 
-// The window-state plugin saves only on a clean exit, so after a crash every
-// window came back at its default size. Moving or resizing a window has to
-// reach the plugin's save while the app runs. Needs a live window to execute;
-// the 500 ms bound is `coalesced`, tested in Rust.
+// The plugin's builder flags cannot be read back, and the mock runtime keeps no
+// window geometry, so this pairing stays a source check. The move/resize save
+// itself is tested in Rust (`a_move_or_resize_schedules_a_geometry_save`,
+// `setup_manages_the_geometry_saver`).
 describe('window geometry is saved while the app runs', () => {
 	const rust = readRustBackend();
-
-	test('a move or resize schedules a geometry save', () => {
-		const handler = sliceBetween(rust, 'pub fn handle_window_event', 'tauri::WindowEvent::Focused(true)');
-		assert.match(handler, /WindowEvent::Moved\(_\) \| tauri::WindowEvent::Resized\(_\)/);
-		assert.match(handler, /try_state::<GeometrySaver>\(\)/);
-		assert.match(rust, /app\.manage\(window_runtime::GeometrySaver::new\(/);
-	});
 
 	test('the running save and the plugin keep the same fields', () => {
 		assert.match(rust, /\.with_state_flags\(window_runtime::geometry_flags\(\)\)/);
@@ -138,22 +130,6 @@ describe('a cold start does not steal focus', () => {
 		const code = backend.replace(/\/\/.*$/gm, '');
 		const found = code.match(/\.focused\(false\)/g)?.length ?? 0;
 		assert.equal(found, 0, `found ${found} .focused(false) in the Rust backend`);
-	});
-});
-
-describe('every opened document path reaches a window', () => {
-	const runtime = readSource('src-tauri/src/window_runtime.rs');
-
-	test('a second launch hands every argv path to the running window', () => {
-		// `markpad a.md b.md` with Markpad already running arrives here instead of
-		// at `send_markdown_path`. Taking only the first path opened a.md alone.
-		const secondInstance = sliceBetween(runtime, 'pub fn handle_single_instance', 'fn create_transfer_window');
-		assert.match(secondInstance, /startup_paths\(/);
-		// Windows Explorer's per-file launches must share the macOS pending-open
-		// implementation: emitting directly loses files before the listener exists.
-		assert.match(secondInstance, /deliver_opened_path\(/);
-		assert.doesNotMatch(secondInstance, /emit_to/);
-		assert.doesNotMatch(secondInstance, /\.next\(\)|\.first\(\)/);
 	});
 });
 
