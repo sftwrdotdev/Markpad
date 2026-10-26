@@ -26,6 +26,7 @@
 	import { t, getSupportedLanguages } from '../utils/i18n.js';
 	import { shortcutSections } from '../utils/shortcuts.js';
 	import { platformOf } from '../utils/platform.js';
+	import { OPEN_FILE_MODE_OPTIONS } from '../utils/openFileMode.js';
 	import type { LanguageCode } from '../utils/i18n.js';
 	import { getEditorToolbarTools } from '../utils/editorToolbar.js';
 	import { getTitlebarToolbarActions, type TitlebarToolbarPlacement } from '../utils/titlebarToolbar.js';
@@ -1614,9 +1615,9 @@
 							<label for="files-open-file-mode">{t('settings.openFileMode', settings.language)}</label>
 							<div class="select-wrapper">
 								<select id="files-open-file-mode" bind:value={settings.openFileMode}>
-									<option value="preview">{t('settings.preview', settings.language)}</option>
-									<option value="editor">{t('settings.editor', settings.language)}</option>
-									<option value="split">{t('menu.splitView', settings.language)}</option>
+									{#each OPEN_FILE_MODE_OPTIONS as mode}
+										<option value={mode.value}>{t(mode.labelKey, settings.language)}</option>
+									{/each}
 								</select>
 								<svg class="select-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 							</div>

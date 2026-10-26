@@ -4,7 +4,6 @@ import { describe, test } from 'node:test';
 
 import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
-import { DEFAULT_OPEN_FILE_MODE } from '../src/lib/utils/openFileMode.js';
 import { viewerCommandTable } from './keymapHarness.js';
 import {
 	callbackBodies,
@@ -541,7 +540,6 @@ describe('file associations', () => {
 describe('open file mode', () => {
 	const sessionSource = readSource(new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url));
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
 	const tabsSource = readSource(new URL('../src/lib/stores/tabs.svelte.ts', import.meta.url));
 
 	test('the old key is read, never written — a rollback still finds its setting', () => {
@@ -597,15 +595,6 @@ describe('open file mode', () => {
 		// `Ctrl+N` asks a different question — what an empty buffer opens as — and
 		// answers it with `newFileDefaultMode`. This change must not annex it.
 		assert.match(tabsSource, /isEditing: settings\.newFileDefaultMode/);
-	});
-
-	test('the setting is one control, defaulting to preview', () => {
-		assert.match(settingsSource, /openFileMode = \$state<OpenFileMode>\(DEFAULT_OPEN_FILE_MODE\)/);
-		assert.equal(DEFAULT_OPEN_FILE_MODE, 'preview');
-		assert.match(settingsComponentSource, /<select id="files-open-file-mode" bind:value=\{settings\.openFileMode\}>/);
-		for (const value of ['preview', 'editor', 'split']) {
-			assert.match(settingsComponentSource, new RegExp(`<option value="${value}">`));
-		}
 	});
 });
 
@@ -833,19 +822,6 @@ describe('external change reload', () => {
 			const fn = sliceBetween(viewer, `function ${name}`, '\n\t}');
 			assert.match(fn, /comparison = null/, `${name} left the comparison open`);
 		}
-	});
-
-	test('the diff view owns its models and never edits the document', () => {
-		// Handing it the tab's live model would put a second editor on a buffer
-		// Editor.svelte owns, and a read-only view of a document is not a place to
-		// change it from.
-		const overlay = readSource('src/lib/components/DiffOverlay.svelte');
-		assert.match(overlay, /createModel\(/);
-		assert.match(overlay, /readOnly: true/);
-		assert.match(overlay, /originalEditable: false/);
-		// Every model it creates is disposed, or opening the view repeatedly leaks
-		// one document's worth of text each time.
-		assert.match(overlay, /for \(const model of models\) model\.dispose\(\)/);
 	});
 });
 

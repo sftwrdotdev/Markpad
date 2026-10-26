@@ -4,6 +4,7 @@
 	import { t } from '../utils/i18n.js';
 	import type { LanguageCode } from '../utils/i18n.js';
 	import { collapsedFoldsAround } from '../utils/foldState.js';
+	import { FOLD_TRANSITION_MS } from '../utils/foldLayout.js';
 	import { settings } from '../stores/settings.svelte.js';
 	import { jumpScrollBehavior } from '../utils/motion.js';
 	import { findMatches, markMatches } from '../utils/findText.js';
@@ -53,9 +54,6 @@
 	// (content the browser cannot reveal, `display: none`, is not matched at
 	// all). So the matches stay in the count and the fold opens on the way to
 	// them.
-	//
-	// styles.css animates the fold height for 0.25s.
-	const FOLD_TRANSITION_MS = 300;
 
 	let inputEl = $state<HTMLInputElement>();
 	let query = $state('');

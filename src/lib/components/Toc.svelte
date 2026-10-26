@@ -1,13 +1,8 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
-
 	import { settings } from '../stores/settings.svelte.js';
 	import { t } from '../utils/i18n.js';
-	import { activeTocIdForLine, sourceLineOf } from '../utils/tocFollow.js';
-	import { foldKeyOf } from '../utils/foldState.js';
-	import { headingText } from '../utils/headingReference.js';
-	import { anchorScrollTop } from '../utils/previewAnchor.js';
-	import { jumpScrollBehavior } from '../utils/motion.js';
+	import { TocNavigator } from '../stores/tocNavigator.svelte.js';
+	import { buildTocEntries, tocFingerprint, type TocItem } from '../utils/tocEntries.js';
 	import type { RendererLine } from '../utils/lineCoordinates.js';
 
 	let { markdownBody, contentRoot, previewRevision, activeLine = null, onBeforeJump, foldOverrides, ontoggleFold, oncopyref, oncontext, onjump, onshowTooltip, onhideTooltip } = $props<{
@@ -54,40 +49,6 @@
 		onhideTooltip?: () => void;
 	}>();
 
-	interface TocItem {
-		id: string;
-		text: string;
-		level: number;
-		isBlock: boolean;
-		hasChildren?: boolean;
-		/**
-		 * How the fold state names this heading — read off the rendered heading,
-		 * never recomputed, so the outline and the renderer cannot disagree about
-		 * it. `''` for a block anchor, which is not a fold.
-		 */
-		foldKey: string;
-		/** Where this entry starts in the source, for following the editor. */
-		line: RendererLine | null;
-	}
-
-	/**
-	 * Everything the outline can show, in the order the document holds it.
-	 *
-	 * One query rather than three. `querySelectorAll` returns document order,
-	 * so asking for the headings and the block anchors together IS the
-	 * interleaving — this used to ask for each separately and then sort the two
-	 * lists back together against a third walk (`[id]`, which matches every
-	 * element in the document carrying one) built into a position map.
-	 *
-	 * That cost is per render, and a render is a keystroke. #632 stopped the
-	 * preview rebuilding its article for one character; an outline that walks
-	 * the whole of it three times regardless spends a good part of that back,
-	 * and on the documents where the patch matters most — 7819 elements in
-	 * `samples/stress-test.md` — it is the largest remaining full-document pass
-	 * in the render.
-	 */
-	const ENTRY_SELECTOR = 'h1, h2, h3, h4, h5, h6, a[id].block-id-anchor, span[id].block-id-anchor';
-
 	let items = $state<TocItem[]>([]);
 	/**
 	 * What `items` currently holds, for deciding whether the scan changed
@@ -99,15 +60,8 @@
 	 * outline scanned the whole document twice.
 	 */
 	let itemsFingerprint = '';
-	let activeId = $state<string | null>(null);
 	let tocContainer: HTMLElement | null = $state(null);
-	let activeTargetEl: HTMLElement | null = null;
-	
-	// when user clicks a toc entry, lock active id until scroll catches up
-	let clickLock: string | null = null;
-	let clickLockTimer: ReturnType<typeof setTimeout> | null = null;
-	/** How long a jump's own smooth scroll is given to settle. */
-	const CLICK_LOCK_MS = 600;
+	const outline = new TocNavigator(() => tocContainer);
 
 	/**
 	 * Whether the entries about to be rendered belong to a different document
@@ -139,40 +93,9 @@
 		scannedRoot = contentRoot;
 
 		if (contentRoot) {
-			const result: TocItem[] = [];
+			const result = buildTocEntries(contentRoot);
 
-			const entries = contentRoot.querySelectorAll(ENTRY_SELECTOR) as NodeListOf<HTMLElement>;
-			for (const el of Array.from(entries)) {
-				if (el.classList.contains('block-id-anchor')) {
-					result.push({ id: el.id, text: el.getAttribute('data-label') || el.id, foldKey: '', level: 0, isBlock: true, line: sourceLineOf(el.dataset.sourcepos) });
-					continue;
-				}
-
-				// Everything the selector matches that is not a block anchor is a
-				// heading, which is the only other thing it asks for.
-				const h = el;
-				const text = headingText(h);
-				const anchor = h.querySelector('a.anchor') as HTMLElement | null;
-				const id = h.id || (anchor ? anchor.id : '');
-				if (id) {
-					result.push({ id, text, foldKey: foldKeyOf(h), level: parseInt(h.tagName[1], 10), isBlock: false, line: sourceLineOf(h.dataset.sourcepos) });
-				}
-			}
-
-			for (let i = 0; i < result.length; i++) {
-				const item = result[i];
-				if (item.isBlock) continue;
-				item.hasChildren = false;
-				
-				if (i + 1 < result.length) {
-					const next = result[i+1];
-					if (next.isBlock || next.level > item.level) {
-						item.hasChildren = true;
-					}
-				}
-			}
-
-			const newFingerprint = result.map(i => `${i.id}-${i.text}-${i.level}-${i.line}`).join('|');
+			const newFingerprint = tocFingerprint(result);
 			if (newFingerprint !== itemsFingerprint) {
 				itemsFingerprint = newFingerprint;
 				items = result;
@@ -214,166 +137,21 @@
 		return result;
 	});
 
-	/**
-	 * Drop the "you jumped here" highlight.
-	 *
-	 * It is a temporary emphasis, so it has to end on anything that means the
-	 * reader has moved on. Hanging it off scrolling alone made it permanent
-	 * whenever that one event did not arrive — the jump's own smooth scroll is
-	 * swallowed by `clickLock`, and if nothing scrolls the preview afterwards
-	 * there is no second chance.
-	 */
-	function clearTargetHighlight() {
-		if (!activeTargetEl) return;
-
-		activeTargetEl.classList.remove('toc-target-active');
-		activeTargetEl = null;
-	}
-
-	/**
-	 * The highlight is worn by an element in the PREVIEW, which outlives this
-	 * component. Going away while one is showing — the outline collapsing itself
-	 * after a jump, or the reader hiding it by hand — used to leave that mark on
-	 * the heading with nothing able to clear it: the listeners left with the
-	 * component, and a later instance starts with its own `activeTargetEl` and
-	 * cannot see what an earlier one marked. So hand the clearing over to
-	 * listeners that belong to nobody, and take them all off the first time the
-	 * reader moves.
-	 */
-	function releaseStrandedHighlight(el: HTMLElement) {
-		const stranded = activeTargetEl;
-		if (!stranded) return;
-		activeTargetEl = null;
-
-		const clear = () => {
-			stranded.classList.remove('toc-target-active');
-			el.removeEventListener('scroll', clear);
-			el.removeEventListener('pointerdown', clear);
-			window.removeEventListener('keydown', clear);
-		};
-		const listen = () => {
-			el.addEventListener('scroll', clear, { passive: true });
-			el.addEventListener('pointerdown', clear, { passive: true });
-			window.addEventListener('keydown', clear, { passive: true });
-		};
-
-		// Exactly what `clickLock` is for, and the reason it cannot simply be
-		// read here: the jump's own smooth scroll is still running, and it must
-		// not be mistaken for the reader scrolling away from what they just
-		// asked to see. The timer outlives the component, the lock does not.
-		if (clickLock) setTimeout(listen, CLICK_LOCK_MS);
-		else listen();
-	}
-
-	function handleScroll() {
-		// The lock is here for the jump's OWN smooth scroll, which would
-		// otherwise clear the highlight before the reader has seen it.
-		if (clickLock) return;
-		clearTargetHighlight();
-	}
-
-	/**
-	 * A deliberate action by the reader, which the lock must not swallow: the
-	 * lock exists to ignore scrolling the app itself caused, and a click or a
-	 * keystroke is never that.
-	 */
-	function handleReaderAction() {
-		clearTargetHighlight();
-	}
-
-	/**
-	 * Keep the current entry in the MIDDLE of the outline, not merely on screen.
-	 *
-	 * `block: 'nearest'` scrolls the least it can get away with, so the outline
-	 * sat still until the current entry crossed an edge and then jumped by one
-	 * row — the reader saw the highlight walk down to the last visible line and
-	 * stay pinned there, with no idea what came next. Centring costs the same
-	 * one call and keeps the entries either side of where you are visible,
-	 * which is the reason to look at an outline while scrolling at all.
-	 */
-	function scrollTocIntoView() {
-		if (tocContainer && activeId) {
-			const activeEl = tocContainer.querySelector(`[data-id="${CSS.escape(activeId)}"]`);
-			if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
-		}
-	}
-
-	/**
-	 * Which entry the reader is on, from whichever pane they are scrolling.
-	 *
-	 * This is the whole of #169. The outline used to decide by rendered box,
-	 * which only the preview has: in editor-only mode the preview never
-	 * scrolls, and in split view it moves only while scroll sync is on, so the
-	 * outline sat still. A source line is something both panes can produce, and
-	 * resolving it is a comparison rather than a layout read.
-	 *
-	 * A click still wins until its own scroll settles — the same `clickLock`
-	 * the preview's handler respected.
-	 */
 	$effect(() => {
 		const line = activeLine;
-		if (line === null || clickLock) return;
-
-		const next = activeTocIdForLine(visibleItems, line);
-		if (next === null || next === untrack(() => activeId)) return;
-
-		activeId = next;
-		untrack(scrollTocIntoView);
+		outline.follow(line, () => visibleItems);
 	});
 
 	$effect(() => {
-		// Capture the element the listener was attached to: the cleanup must
-		// detach from that same node, not from whatever `markdownBody` points at
-		// when the effect re-runs (a changed prop would leak the old listener, a
-		// null prop would throw).
 		const el: HTMLElement | null = markdownBody;
-		if (el) {
-			el.addEventListener('scroll', handleScroll, { passive: true });
-			// `pointerdown`, not `click`: clicking a link inside the preview
-			// navigates, and the click never completes on the element that
-			// carried the highlight.
-			el.addEventListener('pointerdown', handleReaderAction, { passive: true });
-			// On the window, because after a jump the focus can be in either
-			// pane or in neither — the reader typing anywhere has moved on.
-			window.addEventListener('keydown', handleReaderAction, { passive: true });
-			return () => {
-				el.removeEventListener('scroll', handleScroll);
-				el.removeEventListener('pointerdown', handleReaderAction);
-				window.removeEventListener('keydown', handleReaderAction);
-				releaseStrandedHighlight(el);
-			};
-		}
+		if (el) return outline.listen(el);
 	});
 
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 
 	function jumpTo(id: string) {
-		const el = contentRoot?.querySelector(`[id="${CSS.escape(id)}"]`) as HTMLElement | null;
-		if (el && markdownBody) {
-			onBeforeJump?.();
-			// lock active id immediately so scroll handler doesn't override
-			clickLock = id;
-			activeId = id;
-			scrollTocIntoView();
-			
-			const item = items.find(i => i.id === id);
-			if (item) onjump?.(id, item.text, sourceLineOf(el.dataset.sourcepos));
-
-			// highlight element persistently until scroll
-			clearTargetHighlight();
-			el.classList.add('toc-target-active');
-			activeTargetEl = el;
-
-			markdownBody.scrollTo({
-				top: anchorScrollTop(markdownBody, el),
-				behavior: jumpScrollBehavior(settings.animateJumpScroll),
-			});
-
-			// release lock after scroll settles
-			if (clickLockTimer) clearTimeout(clickLockTimer);
-			clickLockTimer = setTimeout(() => { clickLock = null; }, CLICK_LOCK_MS);
-		}
+		outline.jumpTo(id, { contentRoot, markdownBody, items, onBeforeJump, onjump });
 	}
 </script>
 
@@ -425,7 +203,7 @@
 					style="padding-left: {(Math.max(1, item.level || 2) - 1) * 10 + 8}px !important">
 					{#if item.isBlock}
 					<button
-						class="toc-link toc-block {activeId === item.id ? 'active' : ''}"
+						class="toc-link toc-block {outline.activeId === item.id ? 'active' : ''}"
 						data-id={item.id}
 						onclick={() => jumpTo(item.id)}
 						use:checkTruncation>
@@ -440,7 +218,7 @@
 								<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
 							</button>
 							<button
-								class="toc-link {activeId === item.id ? 'active' : ''}"
+								class="toc-link {outline.activeId === item.id ? 'active' : ''}"
 								data-id={item.id}
 								onclick={() => jumpTo(item.id)}
 								oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); oncontext ? oncontext(e, item) : oncopyref?.(item.text, item.id); }}

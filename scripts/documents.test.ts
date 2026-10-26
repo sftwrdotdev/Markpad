@@ -14,6 +14,7 @@ import {
 	type DropAction,
 	type DropPane,
 } from '../src/lib/utils/fileDrop.js';
+import { openDiffView } from '../src/lib/utils/diffView.js';
 import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import {
@@ -440,6 +441,48 @@ describe('editor line ending', () => {
 		// truth — it is what Enter inserts and what the save writes.
 		assert.equal(lineEndingLabel(textBuffer('one line, no break', DefaultEndOfLine.CRLF)), 'CRLF');
 		assert.equal(lineEndingLabel(textBuffer('', DefaultEndOfLine.LF)), 'LF');
+	});
+});
+
+describe('external change comparison', () => {
+	test('the diff view owns its models and never edits the document', () => {
+		// Handing it the tab's live model would put a second editor on a buffer
+		// Editor.svelte owns, and a read-only view of a document is not a place to
+		// change it from.
+		const disposed: string[] = [];
+		const created: { text: string; language: string }[] = [];
+		let options: Record<string, unknown> = {};
+		let shown: { original: unknown; modified: unknown } | null = null;
+		const fakeMonaco = {
+			editor: {
+				createModel: (text: string, language: string) => {
+					created.push({ text, language });
+					return { dispose: () => disposed.push(`model:${text}`) };
+				},
+				createDiffEditor: (_element: unknown, given: Record<string, unknown>) => {
+					options = given;
+					return {
+						setModel: (pair: { original: unknown; modified: unknown }) => { shown = pair; },
+						dispose: () => disposed.push('editor'),
+					};
+				},
+			},
+		} as unknown as Parameters<typeof openDiffView>[0];
+
+		const close = openDiffView(fakeMonaco, {} as HTMLElement, 'on disk', 'mine', 'markdown');
+		assert.deepEqual(created, [
+			{ text: 'on disk', language: 'markdown' },
+			{ text: 'mine', language: 'markdown' },
+		]);
+		assert.ok(shown, 'the diff editor was given its own two models');
+		assert.equal(options.readOnly, true);
+		assert.equal(options.originalEditable, false);
+		assert.deepEqual(disposed, []);
+
+		// Every model it creates is disposed, or opening the view repeatedly leaks
+		// one document's worth of text each time.
+		close();
+		assert.deepEqual(disposed.sort(), ['editor', 'model:mine', 'model:on disk']);
 	});
 });
 

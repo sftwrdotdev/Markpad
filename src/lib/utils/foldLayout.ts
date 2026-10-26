@@ -67,6 +67,13 @@ function updateFoldHeights(root: HTMLElement) {
 	}
 }
 
+/**
+ * How long a caller waits for a fold to finish opening before it measures or
+ * scrolls into it. styles.css animates the fold height for 0.25s; a wait shorter
+ * than that lands on a target that is still moving.
+ */
+export const FOLD_TRANSITION_MS = 300;
+
 export interface FoldLayoutObservation {
 	/**
 	 * Start watching the fold contents inside newly rendered markup.
