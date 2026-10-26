@@ -313,7 +313,7 @@ describe('render protocol', () => {
 		// has to reach KaTeX. It reaches it as `\[…\]` — a spelling only this
 		// function mints — because the auto-renderer is deliberately given no
 		// `$`-based delimiter; see MATH_DELIMITERS in src/lib/utils/richContent.ts
-		// and scripts/mathDelimiterContract.test.ts.
+		// and scripts/preview.render.test.ts.
 		const mixed = render('mathTwoBlocksOneLine');
 		assert.equal(mixed.querySelectorAll('[data-math]').length, 0);
 		assert.equal(mixed.querySelectorAll('em').length, 0);
@@ -628,7 +628,7 @@ describe('render protocol', () => {
 /**
  * Self-checks for the fixture harness in `renderProtocolDom.ts`.
  *
- * `renderProtocol.test.ts` trusts that shim to represent what a browser would
+ * `preview.render.test.ts` trusts that shim to represent what a browser would
  * hand `processMarkdownHtml`. A shim bug would otherwise turn into a silently
  * wrong contract test, so the pieces that carry the risk — the parser, the
  * serializer, the selector engine and the tree walker — are exercised here on

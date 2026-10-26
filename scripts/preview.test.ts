@@ -112,7 +112,7 @@ describe('buffer and renderer line coordinates', () => {
 	//
 	// The other half of the module: the preview's own line <-> pixel mapping with
 	// the shift applied around it, which is what the viewer calls on every scroll
-	// event. A fake tree is enough here — `scrollSyncBlockMapping.test.ts` drives
+	// event. A fake tree is enough here — `layout.scrollSync.test.ts` drives
 	// the same pair over real `processMarkdownHtml` output — because what is under
 	// test is the composition, not the descent.
 
@@ -471,7 +471,7 @@ describe('preview width', () => {
 		);
 
 		// The text-field carve-out needs a real DOM and a real selector match, so it
-		// is asserted in `viewerKeymap.spec.ts` under jsdom rather than faked here.
+		// is asserted in `shortcuts.spec.ts` under jsdom rather than faked here.
 
 		// What the command DOES stays in the component — the seam ends at the name.
 		// See the note on `viewerCommandTable` in `keymapHarness.ts`.

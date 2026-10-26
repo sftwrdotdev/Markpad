@@ -334,7 +334,7 @@ describe('diagram cache', () => {
  * and calls KaTeX zero times.
  *
  * These tests pin what such a memo can get quietly wrong. It is the same list
- * `diagramCache.test.ts` works from — a memo that never misses is a
+ * `preview.richContent.test.ts` works from — a memo that never misses is a
  * correctness bug and a memo that never evicts is a leak, and neither shows up
  * as anything on screen — minus the re-identification half, because neither
  * `katex.renderToString` nor `hljs.highlight` bakes an id into its output.
@@ -526,7 +526,7 @@ describe('rich content cache', () => {
  * ## What was measured, and where
  *
  * Mermaid needs layout to size a node, so it cannot be run by this suite
- * (`exportRichContent.test.ts` says the same). The table below is real mermaid
+ * (`export.test.ts` says the same). The table below is real mermaid
  * 11.16.0 driven by real dompurify 3.4.12 in a browser, over every diagram type
  * 11.16.0 ships a renderer for:
  *
@@ -567,7 +567,7 @@ describe('rich content cache', () => {
  * What this file cannot execute is DOMPurify itself. Without a DOM the library
  * returns a bare factory — `isSupported` false and no `sanitize` at all — so it
  * is stood in for by the identity function, the same way
- * `exportRichContent.test.ts` does it. The last test below asserts that state
+ * `export.test.ts` does it. The last test below asserts that state
  * rather than assuming it, so nobody reads the middle test as "the filter kept
  * the labels". The property that makes the filter harmless is upstream of it and
  * *is* checked here, by parsing what the pipeline produced: there is no HTML

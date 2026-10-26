@@ -10,7 +10,7 @@ describe('viewer keymap', () => {
 	/*
 	 * The document-level dispatcher, called rather than read.
 	 *
-	 * `shortcutRegistry.test.ts` and `formatShortcutKeymap.test.ts` already sweep
+	 * `shortcuts.test.ts` and `shortcuts.checks.test.ts` already sweep
 	 * the whole keymap chord by chord and hold it against the shortcuts panel; what
 	 * is here is the handful of claims that a sweep cannot make — the ones about
 	 * the CONTEXT rather than the chord, which the sweep fires with one fixed

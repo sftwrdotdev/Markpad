@@ -114,7 +114,7 @@ declare module 'monaco-editor/esm/vs/editor/common/services/unicodeTextModelHigh
 	};
 }
 
-// The four modules formatShortcutKeymap.test.ts drives to turn Markpad's
+// The four modules shortcuts.checks.test.ts drives to turn Markpad's
 // keybinding numbers back into chords.
 //
 // `KeyMod` and `KeyCode` are re-exported by the `monaco-editor` entry point with
@@ -148,7 +148,7 @@ declare module 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js
 	export const DefaultEndOfLine: { readonly LF: 1; readonly CRLF: 2 };
 }
 
-// The text buffer itself, for `editorLineEnding.test.ts`. A `TextModel` needs a
+// The text buffer itself, for `documents.test.ts`. A `TextModel` needs a
 // browser to build; the buffer under it does not, and it is where the EOL of a
 // document is decided — `createTextBufferFactory` is these three calls.
 declare module 'monaco-editor/esm/vs/editor/common/model/pieceTreeTextBuffer/pieceTreeTextBufferBuilder.js' {
@@ -258,7 +258,7 @@ declare module 'monaco-editor/esm/vs/editor/common/core/wordCharacterClassifier.
 	): WordCharacterClassifier;
 }
 
-// The theme trie, for `semanticTokens.test.ts`. It is where a semantic token's
+// The theme trie, for `editor.test.ts`. It is where a semantic token's
 // colour is actually decided — `_match` walking the token name and falling back
 // to the parent rule — so the test asks Monaco rather than re-implementing the
 // lookup and agreeing with itself.

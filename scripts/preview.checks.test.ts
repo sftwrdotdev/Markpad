@@ -68,7 +68,7 @@ describe('link hover preview', () => {
 	 * It said `tauri://localhost/3.md` for `[3.md](./3.md)`. That is the DOM
 	 * resolving `href` against the webview's own origin — the same resolution
 	 * `resolveLocalFileLinkPath` exists to undo on the click side, and the same
-	 * origin `localFileLinks.test.ts` documents. `handleMouseOver` had already
+	 * origin `preview.test.ts` documents. `handleMouseOver` had already
 	 * read `getAttribute('href')` into `rawHref` for its other two branches; the
 	 * one that prints the address was the one that did not use it.
 	 *
@@ -427,7 +427,7 @@ describe('preview sanitizing', () => {
 	// `performance.getEntriesByType('resource')`. All true when it was written, and
 	// unfalsifiable ever after: no change to `src/` could disagree with a comment.
 	//
-	// It runs now. `previewSanitize.spec.ts` is the same payload against the same
+	// It runs now. `preview.spec.ts` is the same payload against the same
 	// two configs under jsdom, which has a real DOM and a real cascade, asserting
 	// what `getComputedStyle` says about the application's own chrome afterwards.
 	// (The one thing it cannot observe is the request for the beacon URL, which
@@ -584,7 +584,7 @@ describe('preview sanitizing', () => {
 	// `richContent.ts`, which sanitizes Mermaid's own SVG under a deliberately
 	// different config — it needs `foreignObject` and the inline `<style>` the
 	// document policy forbids, verified in a browser against the pinned DOMPurify)
-	// lives in scripts/sourceTree.ts, because singleImplementationConvention.test.ts
+	// lives in scripts/sourceTree.ts, because release.checks.test.ts
 	// pins the *import* sites against the same two files. It used to be written out
 	// in both places, so widening one and forgetting the other was a silent way to
 	// end up with one scan guarding a set the other had already given up on.
@@ -611,7 +611,7 @@ describe('preview sanitizing', () => {
 		// here as the second reason. It went with the allowance itself: DOMPurify
 		// deletes the HTML inside a `foreignObject` whatever `ADD_TAGS` says, so the
 		// tag could only ever come through empty, and an empty one *hid* the SVG
-		// `<text>` fallback Mermaid pairs it with. scripts/mermaidDiagramLabels.test.ts
+		// `<text>` fallback Mermaid pairs it with. scripts/preview.richContent.test.ts
 		// replaces it by running the render pipeline and checking the labels end up
 		// somewhere no filter can reach.
 		// The import, not the name: the comment above `sanitizeDiagramSvg` explains
@@ -627,7 +627,7 @@ describe('preview sanitizing', () => {
 
 	test('the two paths keep their opposite orders on purpose', () => {
 		// The export sanitizes the renderer output and processes afterwards
-		// (scripts/exportSanitize.test.ts pins that). The preview processes first
+		// (scripts/export.checks.test.ts pins that). The preview processes first
 		// and sanitizes at the sink, so what reaches the article is exactly the
 		// sanitizer's output — there is no parse/serialize round trip after the
 		// filter has run. Pin the order so the difference cannot be "tidied up"
@@ -671,7 +671,7 @@ describe('preview width', () => {
 		// key (so that a change in one window stops rewriting every other key from a
 		// stale snapshot). The preview width still round-trips under the same key and
 		// through the same normalizer; only the plumbing that reads and writes it is
-		// now shared. See scripts/settingsPersistence.spec.ts.
+		// now shared. See scripts/settings.spec.ts.
 		assert.match(settingsSource, /key: 'preview\.maxWidth'/);
 		assert.match(settingsSource, /read: \(s\) => String\(s\.previewMaxWidth\)/);
 		assert.match(settingsSource, /normalizePreviewMaxWidth\(savedPreviewMaxWidth\)/);
@@ -683,7 +683,7 @@ describe('preview width', () => {
 		// The gutter arithmetic moved to `tocOverlay.ts` with #176, which added the
 		// question the inline expression could not answer: whether the pane under
 		// the outline is the preview at all. Both halves still feed on this same
-		// preference — see scripts/tocOverlay.test.ts for the geometry itself.
+		// preference — see scripts/layout.test.ts for the geometry itself.
 		assert.match(viewerSource, /isTocOverhanging\(\{[\s\S]*?previewContentWidth,[\s\S]*?\}\)/);
 		assert.match(tocOverlaySource, /input\.viewerWidth - input\.previewContentWidth/);
 		assert.match(viewerSource, /--preview-max-width:/);
@@ -709,7 +709,7 @@ describe('preview width', () => {
 		// It is a persisted setting like every other one now, which is what gets it
 		// cross-window sync — the viewer used to read and write `preview.fullWidth`
 		// with bare localStorage calls and no `storage` listener, so a second window
-		// only noticed after a restart. See scripts/settingsPersistence.spec.ts.
+		// only noticed after a restart. See scripts/settings.spec.ts.
 		assert.match(settingsSource, /key: 'preview\.fullWidth'/);
 		assert.match(settingsSource, /read: \(s\) => String\(s\.previewFullWidth\)/);
 		assert.match(settingsSource, /getStoredPreviewFullWidth\(raw, readStoredKey\(LEGACY_PREVIEW_FULL_WIDTH_KEY\)\)/);
@@ -724,7 +724,7 @@ describe('render pipeline convention', () => {
 	// step — the compiler cannot catch it because the command name is a string.
 	//
 	// Which *files* may name the raw command is a single-implementation question and
-	// is pinned by the RULES table in singleImplementationConvention.test.ts. What is
+	// is pinned by the RULES table in release.checks.test.ts. What is
 	// left here is the half that table cannot express: inside the viewer, the raw
 	// command must sit in renderMarkdownPreview and nowhere else.
 	//

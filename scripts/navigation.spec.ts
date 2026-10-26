@@ -258,7 +258,7 @@ describe('a new-tab link keeps scroll history', () => {
 		localStorage.clear();
 	});
 
-	// What openMarkdownTargetInNewTab passes (pinned in reopenDirtyDocument.spec.ts).
+	// What openMarkdownTargetInNewTab passes (pinned in documents.load.spec.ts).
 	const newTabOptions = { inNewTab: true };
 
 	function makeSession() {
@@ -697,8 +697,8 @@ describe('scroll history per tab', () => {
  * question of WHERE a resolved anchor lands — `getAnchorScrollTop`, the
  * offset->line mapping, a collapsed fold's zero height — cannot be asked here
  * and is not asked here. Those tests supply their own geometry on purpose
- * (`scrollSyncAcrossFolds.test.ts` lays the document out with folds in it,
- * `anchorJumpUnderZoom.spec.ts` builds elements whose rects carry a zoom
+ * (`layout.scrollSync.test.ts` lays the document out with folds in it,
+ * `navigation.spec.ts` builds elements whose rects carry a zoom
  * factor). "It resolves" is a real answer; "it lands at 1420px" would not be.
  */
 describe('tab reading position', () => {
@@ -1043,13 +1043,13 @@ describe('tab reading position', () => {
 	// the REAL `processMarkdownHtml` output of the document being transferred.
 	// What they cannot be is a live drag: two windows and a Rust broker are not
 	// reachable from here, so the sequence is replayed rather than performed, and
-	// the wiring that performs it is asserted in `tabTransferHandoff.test.ts`.
+	// the wiring that performs it is asserted in `tabs.checks.test.ts`.
 
 	/**
 	 * A layout in which every source line is `LINE_HEIGHT` tall.
 	 *
 	 * jsdom reports 0 for every offset, so the geometry is the fixture — as in
-	 * `scrollSyncAcrossFolds.test.ts` and `anchorJumpUnderZoom.spec.ts`. Deriving
+	 * `layout.scrollSync.test.ts` and `navigation.spec.ts`. Deriving
 	 * it from the element's own `data-sourcepos` is what makes the expected
 	 * scrollTop below a number this file can state rather than read back.
 	 */

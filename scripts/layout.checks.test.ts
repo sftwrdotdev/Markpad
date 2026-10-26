@@ -215,7 +215,7 @@ describe('outline follows the editor', () => {
 		//
 		// The line is converted on the way in: `position` is in the editor's
 		// numbering and the outline is built from `data-sourcepos`, which counts
-		// from the body. See jumpToSelectedFragment.test.ts for that boundary.
+		// from the body. See navigation.checks.test.ts for that boundary.
 		// It goes through `tabAnchorForEditorTopLine`, the crossing the tab's own
 		// reading position takes, so the outline follows the line the reader is
 		// on rather than the one the viewport cuts in half (#744).

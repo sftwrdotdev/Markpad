@@ -25,7 +25,7 @@ const alertIcons: Record<string, string> = {
  * ./markdownLinks.ts, which resolves an *href*. The two were named alike and
  * differ in three ways that are each right for one caller and wrong for the
  * other, so `the path resolver for documents and the one for hrefs differ on
- * purpose` in scripts/exportHtml.test.ts pins the differences rather than
+ * purpose` in scripts/export.test.ts pins the differences rather than
  * papering over them:
  *
  *   - `\` separates here, in the relative half too: a Windows author writes

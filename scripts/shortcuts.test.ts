@@ -19,7 +19,7 @@ describe('shortcut registry', () => {
 	 * A test that compared the registry against the panel would be worthless —
 	 * they are the same copy. So every row of `src/lib/utils/shortcuts.ts` is
 	 * checked against the code that implements it, using the same harness
-	 * `formatShortcutKeymap.test.ts` uses (`./keymapHarness.ts`): the editor's
+	 * `shortcuts.checks.test.ts` uses (`./keymapHarness.ts`): the editor's
 	 * actions are registered by really running `registerLocalizedActions`, and the
 	 * document-level chords are discovered by firing synthetic keystrokes at the
 	 * real `handleKeyDown`. Neither is a description of the handlers; both are the
@@ -261,7 +261,7 @@ describe('shortcut registry', () => {
 		// because the arithmetic lived in the handler. It lives in the store now, so
 		// the two halves of the claim are checked where each one is: that zoomIn
 		// really raises the level and resetZoom really returns to ZOOM_LEVEL_RANGE's
-		// default is asserted against the real store in settingsPersistence.spec.ts,
+		// default is asserted against the real store in settings.spec.ts,
 		// and what is left here — which chord asks for which — is the half only the
 		// keymap can answer.
 		const expected: Array<[string, ViewerCommand]> = [
@@ -470,7 +470,7 @@ describe('shortcut registry', () => {
 
 	test('no two rows in one panel section read the same, in any language', () => {
 		// Two rows with one label is indistinguishable from a duplicated entry from
-		// the user's side — the defect `editorContextMenuI18n.test.ts` calls ED-6.
+		// the user's side — the defect `editor.checks.test.ts` calls ED-6.
 		const languages = getSupportedLanguages().map((l) => l.code) as LanguageCode[];
 		for (const { group } of SHORTCUT_GROUPS) {
 			const rows = SHORTCUTS.filter((entry: ShortcutEntry) => entry.group === group);

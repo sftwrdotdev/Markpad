@@ -1718,7 +1718,7 @@
 						that needs none of them.
 
 						Every chord below comes from `shortcuts.ts`, and
-						`scripts/shortcutRegistry.test.ts` fires each one at the real
+						`scripts/shortcuts.test.ts` fires each one at the real
 						handlers — so this list cannot drift away from what the keys do.
 					-->
 					{#each shortcutSections(platformOf(settings.osType)) as section (section.group)}
@@ -2225,7 +2225,7 @@
 	 * A composite row (the VS Code theme import, the delete-theme link): it
 	 * keeps `.setting-item`'s border and rhythm, not its label column.
 	 * `.setting-item` is only ever a label plus controls as direct children;
-	 * the row-structure guards in settingsPersistence.spec.ts enforce that.
+	 * the row-structure guards in settings.spec.ts enforce that.
 	 */
 	.setting-block {
 		display: flex;

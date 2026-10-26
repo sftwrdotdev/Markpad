@@ -10,7 +10,7 @@
  * The colours are the app's own, the same six the preview and the rest of the
  * chrome resolve through `--color-*` in `styles.css`. Spelled as literals
  * because `defineTheme` takes hex strings and never sees a stylesheet;
- * `editorTheme.test.ts` holds the two copies equal.
+ * `editor.test.ts` holds the two copies equal.
  */
 const PALETTE = {
 	light: {

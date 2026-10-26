@@ -59,7 +59,7 @@ interface MermaidRenderer {
  * `renderRichContent`; the print re-render below did not, and re-themed the
  * diagrams straight back into empty shapes on the way to the PDF (#717).
  * Handing both callers the same object is what stops the two from drifting
- * again. See scripts/mermaidDiagramLabels.test.ts for the measurement.
+ * again. See scripts/preview.richContent.test.ts for the measurement.
  */
 export function mermaidConfig(theme: string): MermaidConfig {
 	return { startOnLoad: false, theme, htmlLabels: false };

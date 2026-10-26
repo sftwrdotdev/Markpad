@@ -427,7 +427,7 @@ describe('settings persistence', async () => {
 	 * MarkdownViewer.svelte with a bare `localStorage.setItem` beside it. What that
 	 * cost is asserted below, one property per test; that no such write can come
 	 * back is asserted by the `localStorage is written through one function` rule in
-	 * singleImplementationConvention.test.ts.
+	 * release.checks.test.ts.
 	 * ---------------------------------------------------------------------------
 	 */
 
@@ -658,7 +658,7 @@ describe('settings persistence', async () => {
 		// It is the assertion that fails the moment someone re-forks the catalogue
 		// into this module, which is how the two copies got here in the first place.
 		// The `pt` drift the fork produced was in `name`/`nativeName`, which codes
-		// cannot see; the `nativeName:` rule in singleImplementationConvention.test.ts
+		// cannot see; the `nativeName:` rule in release.checks.test.ts
 		// covers that half.
 		const offered = getSupportedLanguages().map((entry) => entry.code);
 
@@ -882,7 +882,7 @@ describe('settings persistence', async () => {
 
 describe('settings file export and import', async () => {
 	// Settings export and import (#134). Runs under vitest for the same reason as
-	// settingsPersistence.spec.ts: the store is a runes module.
+	// settings.spec.ts: the store is a runes module.
 	(window as any).__TAURI_INTERNALS__ = { invoke: async () => 'macos' };
 
 	const { SettingsStore, ZOOM_LEVEL_RANGE, applySettings, createSettingsPersistence, exportSettings, parseSettingsFile } = await import(

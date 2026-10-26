@@ -1125,8 +1125,8 @@ describe('heavy commands run off the main thread', () => {
 // copy, nothing imports it, and it looks like a reusable shared helper — so the
 // next person to "reuse" or "sync" it silently reverts a merged fix.
 //
-// The existing behavior tests cannot see this. youtubeExternalFallback.test.ts
-// and mermaidPrintTheme.test.ts read hard-coded files, so a second copy living anywhere else is
+// The existing behavior tests cannot see this. preview.test.ts
+// and export.test.ts read hard-coded files, so a second copy living anywhere else is
 // invisible to them. Every rule below therefore scans the whole `src` tree and
 // pins *which files* are allowed to contain the marker.
 //
@@ -1175,7 +1175,7 @@ describe('single implementations', () => {
 			// double quotes slipped straight past), while what actually has to stay
 			// single is the function both paths call. What the function *returns* for
 			// each appearance setting is checked for real — by calling it — in
-			// mermaidPrintTheme.test.ts.
+			// export.test.ts.
 			marker: /resolveMermaidTheme\s*\(/g,
 			allowed: ['src/lib/MarkdownViewer.svelte', 'src/lib/utils/mermaidPrint.ts'],
 		},
@@ -1196,7 +1196,7 @@ describe('single implementations', () => {
 		{
 			name: 'the markdown extension list has one implementation in src',
 			why:
-				'There were five copies of `md | markdown | mdown | mkd | txt` in the frontend. #611 collapsed four of them into markdownLinks.ts; the fifth was an inline array in TitleBar.svelte deciding whether the outline and full-width buttons belong on the toolbar, which is exactly the kind of copy that goes stale when an extension is added. The Rust renderer keeps its own, pinned against this one by wikilinkFileTargets.test.ts, because no import crosses that boundary.',
+				'There were five copies of `md | markdown | mdown | mkd | txt` in the frontend. #611 collapsed four of them into markdownLinks.ts; the fifth was an inline array in TitleBar.svelte deciding whether the outline and full-width buttons belong on the toolbar, which is exactly the kind of copy that goes stale when an extension is added. The Rust renderer keeps its own, pinned against this one by editing.test.ts, because no import crosses that boundary.',
 			// `mdown` rather than `md`: it is distinctive enough that prose and other
 			// identifiers cannot match it by accident.
 			//
@@ -1229,7 +1229,7 @@ describe('single implementations', () => {
 			name: 'DOMPurify is configured in one place',
 			why: 'The sanitize contract lives in utils/sanitize.ts; an inline DOMPurify config elsewhere is a second, unreviewed sanitizer.',
 			// Import sites, so an aliased `import purify from "dompurify"` cannot slip
-			// past the `DOMPurify.sanitize(` call-site scan in previewSanitize.test.ts.
+			// past the `DOMPurify.sanitize(` call-site scan in preview.checks.test.ts.
 			// Both scans read the same allowlist so a new sanitizer is one decision.
 			marker: /from\s+["']dompurify["']/g,
 			allowed: SANITIZER_FILES,
@@ -1239,7 +1239,7 @@ describe('single implementations', () => {
 			why: 'Every preview render must go through renderMarkdownPreview, which strips YAML front matter before invoking the Rust renderer; a raw invoke elsewhere renders the front matter as body text. The command name is a string, so the compiler cannot see the call at all.',
 			// The viewer half — that its one occurrence sits inside
 			// renderMarkdownPreview rather than merely in the same file — is pinned by
-			// renderPipelineConvention.test.ts.
+			// preview.checks.test.ts.
 			marker: /invoke\(\s*'render_markdown'/g,
 			allowed: ['src/lib/MarkdownViewer.svelte', 'src/lib/utils/export.ts'],
 		},
@@ -1349,7 +1349,7 @@ describe('single implementations', () => {
 		},
 		{
 			name: 'the app writes an image embed in one place',
-			why: "Pasting a screenshot and dropping a file are two commands (`save_image`, `copy_file_to_img`) returning the same kind of relative path, and Editor.svelte built the link for each with its own inline copy of the same four expressions, 300 lines apart. Both copies escaped the space and nothing else, so a file named `note#1.png` was written as `![alt](img/note#1.png)` and read back — by the preview and by the export resolver — as `img/note`. A third caller copying either one reintroduces it. `imageEmbed` in src/lib/utils/imageEmbed.ts is the single writer; scripts/imageEmbed.test.ts runs the round trip through the real readers.",
+			why: "Pasting a screenshot and dropping a file are two commands (`save_image`, `copy_file_to_img`) returning the same kind of relative path, and Editor.svelte built the link for each with its own inline copy of the same four expressions, 300 lines apart. Both copies escaped the space and nothing else, so a file named `note#1.png` was written as `![alt](img/note#1.png)` and read back — by the preview and by the export resolver — as `img/note`. A third caller copying either one reintroduces it. `imageEmbed` in src/lib/utils/imageEmbed.ts is the single writer; scripts/editor.test.ts runs the round trip through the real readers.",
 			// The emitted Markdown itself: a magic string handed to another parser,
 			// which is what makes it a legal marker.
 			marker: /!\[alt\]\(/g,
@@ -1415,7 +1415,7 @@ describe('single implementations', () => {
 		},
 		{
 			name: 'this suite walks a directory through one function',
-			why: "The other half of the same story. A private directory walk misses the `\\\\`→`/` normalization `walkSourceFiles` does, so on Windows every path it reports is spelled with backslashes and every allowlist compared against it is a list of strings that cannot match. i18nCoverage.test.ts carried exactly that copy and needed the identical hand-patch in #452; monacoStartupGraph.test.ts carried a second one that happened to be spelled with a template literal and so escaped by luck rather than by design. Use `walkSourceFiles(dir)` for the paths or `readSourceFiles(dir)` for paths plus text, both from './sourceTree.js'.",
+			why: "The other half of the same story. A private directory walk misses the `\\\\`→`/` normalization `walkSourceFiles` does, so on Windows every path it reports is spelled with backslashes and every allowlist compared against it is a list of strings that cannot match. settings.checks.test.ts carried exactly that copy and needed the identical hand-patch in #452; editor.checks.test.ts carried a second one that happened to be spelled with a template literal and so escaped by luck rather than by design. Use `walkSourceFiles(dir)` for the paths or `readSourceFiles(dir)` for paths plus text, both from './sourceTree.js'.",
 			marker: /readdirSync\s*\(/g,
 			allowed: ['scripts/sourceTree.ts'],
 			dir: 'scripts',

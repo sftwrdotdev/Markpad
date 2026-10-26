@@ -48,8 +48,8 @@ import {
  *
  * `ensureFullContent` is not here: it is a runes module driven for real, and
  * running it under a hand-written `$state` was standing exactly where the
- * assertions look. It is `checkedReadMigration.spec.ts` now. `lossyDecodeSaveGuard.test.ts`
- * and `lossySaveRefusalScope.spec.ts` cover the store behaviour these source
+ * assertions look. It is `documents.load.spec.ts` now. `documents.checks.test.ts`
+ * and `documents.save.spec.ts` cover the store behaviour these source
  * assertions deliberately stop short of.
  *
  * The second half of this file is the toast the guard's refusal used to
@@ -102,7 +102,7 @@ describe('checked read migration', () => {
 		// `saveContent` returns false for both, which is why the auto-save timer
 		// could not tell them apart. The predicate is no longer set membership on
 		// its own: the set records what was SAID, and whether the refusal still
-		// stands is asked of the tab. `lossySaveRefusalScope.spec.ts` exercises
+		// stands is asked of the tab. `documents.save.spec.ts` exercises
 		// both halves for real; this only pins that the tab is consulted at all,
 		// since a predicate that answers from memory alone is the defect.
 		const body = sliceBetween(
@@ -148,7 +148,7 @@ describe('checked read migration', () => {
 //
 // Detection (#372) removed the common cause rather than the guard: a legacy
 // encoding (GBK, Big5, Shift-JIS, CP-1252 ...) is now read properly and
-// written back as itself — `documentEncodingRoundTrip.spec.ts` drives that.
+// written back as itself — `documents.save.spec.ts` drives that.
 // What is left here is the file NO encoding can read, which is still a buffer
 // that must never reach its own file.
 //
@@ -307,7 +307,7 @@ describe('lossy decode save guard', () => {
 		// another spelling of the source file — a different case, or accents
 		// composed differently — and on macOS and Windows that still lands on the
 		// same bytes. The guard is therefore handed the target's resolved identity
-		// as well as its path. See pathIdentityCaseFolding.spec.ts, which drives
+		// as well as its path. See tabs.spec.ts, which drives
 		// that refusal for real instead of reading for it.
 		const refusal = offsetOf(body, 'refuseIfLossilyDecoded(tab, selected');
 		assert.ok(
@@ -400,7 +400,7 @@ describe('live mode watched path', () => {
 		// The listener no longer compares the payload with the active file itself:
 		// resolveExternalChange looks up the tab that OWNS the changed path (and
 		// refuses to reload it when it has unsaved edits). See
-		// externalChangeReload.spec.ts for the routing behaviour.
+		// documents.load.spec.ts for the routing behaviour.
 		assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
 		// A conflict is reported with Live Mode off too; Live Mode gates only the reload.
 		assert.match(viewer, /if \(liveMode\) loadMarkdown\(outcome\.path\);/);
@@ -978,7 +978,7 @@ describe('task toggle line endings', () => {
 		// `TASK_SOURCE_RE` is what decides that — so a marker one side accepts and
 		// the other does not is a checkbox that draws and then refuses to toggle.
 		// Every TypeScript reader imports the fragments from utils/listSyntax.ts
-		// (pinned by singleImplementationConvention.test.ts); Rust cannot, so the
+		// (pinned by release.checks.test.ts); Rust cannot, so the
 		// drift is caught here instead, by reading the pattern back out of the
 		// source and looking for the fragments inside it.
 		//

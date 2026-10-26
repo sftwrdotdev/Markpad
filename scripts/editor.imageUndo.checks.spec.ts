@@ -20,8 +20,8 @@ import { callbackBodies, functionSource, readSource } from './sourceTree.js';
  * nothing else.
  *
  * They RUN the code rather than reading it. A `.svelte` file cannot be
- * imported by the Node test runner, so — following windowTagDismiss.test.ts
- * and homeTabRender.spec.ts — the Ctrl+V command callback, the exported
+ * imported by the Node test runner, so — following windows.tagEditor.checks.test.ts
+ * and windows.checks.spec.ts — the Ctrl+V command callback, the exported
  * `handleDroppedFile`, and EVERY `onDidChangeModelContent` listener the
  * component registers are lifted out of the parsed component and evaluated
  * over one shared scope, one fake Monaco document with a real undo stack, and
@@ -63,7 +63,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { lineEndingLabel } = await import('../src/lib/utils/tabModels.js');
 const { countWords } = await import('../src/lib/utils/wordCount.js');
 // The real module, not a stub: the embed these tests match against is the one
-// it writes, and its escaping is pinned separately in imageEmbed.test.ts.
+// it writes, and its escaping is pinned separately in editor.test.ts.
 const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
 	'../src/lib/utils/imageEmbed.js'
 );
@@ -146,7 +146,7 @@ function createDocument(initial: string) {
 		getLanguageId: () => 'markdown',
 		// Read by the status-bar refresh below; line endings are not this
 		// file's subject and are tested against real Monaco buffers in
-		// editorLineEnding.test.ts.
+		// documents.test.ts.
 		getEOL: () => '\n',
 	});
 	let model = modelFor();
@@ -155,7 +155,7 @@ function createDocument(initial: string) {
 	const editor = {
 		// Every clipboard entry point focuses the editor first, because two of
 		// the three now run from a context menu that would otherwise keep the
-		// focus on itself (see issue261EditorPdf.test.ts).
+		// focus on itself (see editor.checks.test.ts).
 		focus: () => {},
 		getValue: () => buffer,
 		setValue: (text: string) => void (buffer = text),
@@ -258,8 +258,8 @@ type Component = {
 /**
  * The lifted code is TypeScript — `handleDroppedFile(path: string, …)`, `as
  * string | null`, `(editor as any)` — and `new Function` only takes JavaScript,
- * so it goes through `tsc` first, as foldStatePerDocument.spec.ts and
- * viewModeWithoutSaving.spec.ts already do. Types are erased, nothing else:
+ * so it goes through `tsc` first, as layout.spec.ts and
+ * documents.checks.spec.ts already do. Types are erased, nothing else:
  * the statements that run are the component's own.
  */
 const factorySource = ts.transpileModule(

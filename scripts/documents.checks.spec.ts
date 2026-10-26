@@ -271,8 +271,8 @@ describe('editor writes through the store', () => {
 
 	/**
 	 * The lifted body is TypeScript and `new Function` only parses JavaScript, so
-	 * it goes through `tsc` first, as undoHistoryPerTab.spec.ts and
-	 * imageUndoKeepsFile.spec.ts already do. Types are erased, nothing else: the
+	 * it goes through `tsc` first, as tabs.checks.spec.ts and
+	 * editor.imageUndo.checks.spec.ts already do. Types are erased, nothing else: the
 	 * statements that run are the component's.
 	 */
 	const factorySource = ts.transpileModule(

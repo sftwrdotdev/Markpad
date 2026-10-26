@@ -2,7 +2,7 @@
 // (`monaco-editor/esm/vs/editor/editor.api.d.ts`). The ESM internals ship as
 // plain `.js` with no declarations beside them.
 //
-// pasteUrlContext.test.ts drives Monarch directly — `monaco.editor.tokenize()`
+// editor.test.ts drives Monarch directly — `monaco.editor.tokenize()`
 // needs a browser-backed editor, which the Node test runner has no way to
 // create — so it reaches for three of those internals. Declared here with the
 // shapes that test actually uses, rather than left implicitly `any`.

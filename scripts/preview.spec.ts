@@ -658,7 +658,7 @@ describe('preview cursor mapping', () => {
 describe('preview patch', () => {
 	/**
 	 * The block patch, from the renderer's split output to the live article.
-	 * `previewPatchParity.spec.ts` holds it to the whole-document pipeline over a
+	 * `preview.spec.ts` holds it to the whole-document pipeline over a
 	 * real document; these pin which nodes it keeps, which it replaces, and what
 	 * it hands on, one edit at a time.
 	 */
@@ -1098,7 +1098,7 @@ describe('preview patch parity', () => {
  * What the shared sanitizer actually does to an author stylesheet — run, not
  * described.
  *
- * `previewSanitize.test.ts` pins the WIRING: that the preview reaches the
+ * `preview.checks.test.ts` pins the WIRING: that the preview reaches the
  * shared policy, that the policy forbids `<style>`, that no second DOMPurify
  * call site assembles a config of its own. None of that runs DOMPurify, because
  * DOMPurify needs a real DOM and `node --test` has none. The behavioural half

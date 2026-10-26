@@ -106,7 +106,7 @@ describe('the window close handler', () => {
 	test('save-as writes a snapshot rather than the buffer as it stands', () => {
 		// The other half — that a keystroke landing during that write is still
 		// unsaved afterwards — is `isDirty` reading the two buffers, and it runs
-		// for real in oneWritePerTabInFlight.spec.ts.
+		// for real in documents.save.spec.ts.
 		const fn = sliceFrom(documentSession, 'async function saveContentAs');
 		assert.match(fn, /const snapshot = tab\.rawContent;/);
 	});
@@ -606,7 +606,7 @@ describe('window state restore', () => {
 		const restore = sliceBetween(session, 'async function restore', 'async function claimTransferredTab');
 		// The tab on screen is read the way an open reads it, through the document
 		// session's `loadMarkdown`; restore itself reads no file, and never takes a
-		// document's text from the snapshot (sessionRestoreResilience.spec.ts).
+		// document's text from the snapshot (windows.sessionRestore.spec.ts).
 		assert.match(restore, /await options\.loadRestoredTab\(active\.id\);/);
 		assert.doesNotMatch(restore, /invoke\('read_file/);
 		assert.match(viewer, /loadRestoredTab: \(tabId\) => documentSession\.readRestoredTab\(tabId\),/);
@@ -621,7 +621,7 @@ describe('window state restore', () => {
 		assert.match(restore, /tabManager\.markTabContentUnavailable\(tab\.id\);/);
 		assert.match(restore, /else tabManager\.markTabUnread\(tab\.id\);/);
 		// dropping is reserved for an entry that is not a file at all — a legacy
-		// 'HOME' sentinel (homeSentinelSnapshot.spec.ts)
+		// 'HOME' sentinel (windows.spec.ts)
 		assert.match(restore, /if \(!hasRealFilePath\(tab\.path\)\) \{\s*\n\s*options\.dropRestoredTab\(tab\.id\);/);
 		assert.match(viewer, /await windowSession\.restore\(\);/);
 	});

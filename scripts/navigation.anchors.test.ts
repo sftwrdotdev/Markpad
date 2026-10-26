@@ -56,7 +56,7 @@ const { asBufferLine, asRendererLine, lineCoordinates } = await import('../src/l
  *   - `findAnchorElement` is the shipped implementation.
  *
  * Both run over real `processMarkdownHtml` output (via the `renderProtocolDom`
- * shim, same as `renderProtocol.test.ts`). The input HTML is generated in the
+ * shim, same as `preview.render.test.ts`). The input HTML is generated in the
  * shape comrak emits — the tag/attribute shape is taken from the recorded
  * `convert_markdown` output in `renderProtocolFixtures.ts`.
  */

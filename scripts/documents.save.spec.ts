@@ -1139,7 +1139,7 @@ describe('document encoding round trip', () => {
 // never reported because nobody could see it happen.
 //
 // These tests drive the real document session over both line endings. The
-// existing behavioural toggle test lives in `truncatedBufferGuard.spec.ts` and
+// existing behavioural toggle test lives in `documents.load.spec.ts` and
 // passes `sourceLine: 1` — the one line number the bug cannot reach, since at
 // offset 0 there is no preceding terminator for `\s*` to eat.
 describe('task toggle line endings', () => {

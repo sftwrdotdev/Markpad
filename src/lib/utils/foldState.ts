@@ -103,7 +103,7 @@ function regionOfHead(head: Element): FoldRegion | null {
 	if (!key) return null;
 
 	// The heading's wrapper is the sibling the renderer inserts right after it
-	// (`renderProtocol.test.ts` pins that), so the pairing needs no id lookup
+	// (`preview.render.test.ts` pins that), so the pairing needs no id lookup
 	// and no document to look ids up in. A callout encloses its own content.
 	const content = head.classList.contains(HEADING_HEAD_CLASS)
 		? head.nextElementSibling

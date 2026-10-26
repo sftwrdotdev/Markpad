@@ -382,7 +382,7 @@ describe('list continuation and nesting', () => {
  * is to move the caret and make no edit at all.
  *
  * NOT ESTABLISHED HERE: that Monaco delivers Tab and Shift+Tab at runtime. The
- * `when` clauses that decide it are pinned in `listContinuation.test.ts`, which
+ * `when` clauses that decide it are pinned in `editing.test.ts`, which
  * owns the other half of the same two keys.
  */
 describe('table editing', () => {

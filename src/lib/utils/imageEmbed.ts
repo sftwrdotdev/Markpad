@@ -47,7 +47,7 @@ import { basename } from './pathIdentity.js';
  *     splits `img/note#1.png` into `img/note` + `#1.png` and exports a dead
  *     link. Making them work would mean changing what a `#` means to the
  *     export resolver — for every hand-written link too, not just ours. See
- *     the `<…>` cases in scripts/imageEmbed.test.ts, which pin that.
+ *     the `<…>` cases in scripts/editor.test.ts, which pin that.
  *
  * `%` is on the list for a reason that is easy to miss: comrak passes a `%`
  * through untouched when two hex digits follow it, so a file genuinely named

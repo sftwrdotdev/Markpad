@@ -364,7 +364,7 @@ describe('list keys in the editor', () => {
  * is to move the caret and make no edit at all.
  *
  * NOT ESTABLISHED HERE: that Monaco delivers Tab and Shift+Tab at runtime. The
- * `when` clauses that decide it are pinned in `listContinuation.test.ts`, which
+ * `when` clauses that decide it are pinned in `editing.test.ts`, which
  * owns the other half of the same two keys.
  */
 describe('table keys in the editor', () => {
@@ -957,7 +957,7 @@ describe('wikilink extension and reference contracts', () => {
 		// broken bare form still left three matches and passed.
 		// The string moved: all three entries build it through `headingReference`,
 		// which picks the spelling the document is already written in (see
-		// `copyReferenceStyle.test.ts`). The contract this test exists for is
+		// `editing.test.ts`). The contract this test exists for is
 		// unchanged — a wikilink Copy Reference writes always carries a `#`,
 		// because the rewriter leaves a bare `[[Notes]]` as literal text — so it
 		// is asserted where the string is now built.

@@ -854,7 +854,7 @@
 		// AltGr+Z matched Ctrl+Alt+Z and ż was never typed. The editor's own
 		// keydown fires before the keybinding service dispatches (see the vim
 		// note above), so this key is set in time for the Ctrl+Alt actions'
-		// `keybindingContext` to refuse it. `monacoAltGraph.spec.ts` shows both.
+		// `keybindingContext` to refuse it. `editor.spec.ts` shows both.
 		const altGraphChord = editor.createContextKey<boolean>("altGraphChord", false);
 		editor.onKeyDown((e) => altGraphChord.set(isAltGraphChord(e.browserEvent)));
 
@@ -1448,7 +1448,7 @@
 				// and a view mode is not one of them. Ctrl/Cmd+Alt+Z is unclaimed in
 				// Monaco on all three platforms, Z is for zen, and it sits with the
 				// other Alt-modified commands rather than among the formatters.
-				// `monacoChordOwnership.spec.ts` reads Monaco's real keymap and is
+				// `editor.checks.spec.ts` reads Monaco's real keymap and is
 				// what refuses the next such landing.
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyCode.KeyZ,
@@ -1481,7 +1481,7 @@
 			editor.addAction({
 				id: "fmt-strikethrough",
 				label: t('menu.strikethrough', lang),
-				// GitHub's chord. monacoChordOwnership.spec.ts checks Monaco binds
+				// GitHub's chord. editor.checks.spec.ts checks Monaco binds
 				// nothing on it.
 				keybindings: [
 					monaco.KeyMod.CtrlCmd | monaco.KeyMod.Shift | monaco.KeyCode.KeyX,
@@ -1496,7 +1496,7 @@
 			// on. `addAction` registers at weight 1000, above every Monaco
 			// default, so a clash is silent — our action simply wins and the
 			// Monaco command loses its key. The reasoning per binding is below,
-			// and `formatShortcutKeymap.test.ts` is what stops the next one from
+			// and `shortcuts.checks.test.ts` is what stops the next one from
 			// landing on an occupied chord.
 
 			editor.addAction({
@@ -1618,7 +1618,7 @@
 				// Monaco binds no COMPLETE keybinding on Ctrl/Cmd+K; what it binds is
 				// 31 chord SEQUENCES behind it. Claiming the key as a whole chord
 				// ends that namespace, which is deliberate and argued in
-				// monacoChordOwnership.spec.ts rather than here, because the loss is
+				// editor.checks.spec.ts rather than here, because the loss is
 				// keymap-wide rather than one command's.
 				keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK],
 				run: () => insertLink(),
@@ -1664,7 +1664,7 @@
 
 			// The rest of the table verbs. Actions rather than bare commands, so the
 			// command palette and the shortcuts panel can list them. Which verbs get
-			// a chord: TABLE_VERBS_WITHOUT_A_CHORD in shortcutRegistry.test.ts.
+			// a chord: TABLE_VERBS_WITHOUT_A_CHORD in shortcuts.test.ts.
 			editor.addAction({
 				id: "table-insert-row",
 				label: t('menu.insertTableRow', lang),
@@ -1692,7 +1692,7 @@
 				// It was on `Mod+K C`, which cannot be typed any more: `Mod+K` is
 				// Insert Link and is no longer a prefix. `Mod+Alt+C` was the obvious
 				// replacement and had to be refused — see the note above
-				// DELIBERATE_OVERRIDES in monacoChordOwnership.spec.ts. Palette-only
+				// DELIBERATE_OVERRIDES in editor.checks.spec.ts. Palette-only
 				// was tried first and is too weak for a verb people reach for while
 				// building a table: Mod+P, type the name, Enter.
 				keybindings: [

@@ -18,14 +18,14 @@ import {
  * was empty and the marker should therefore go away. The uninteresting part is
  * asking Monaco for the line and handing it back an edit. Keeping the first
  * part here means it can be RUN by `node --test` — every case in
- * `scripts/listContinuation.test.ts` is the real function, not a description of
+ * `scripts/editing.test.ts` is the real function, not a description of
  * it — and leaves `Editor.svelte` with a keybinding, a `when` clause and four
  * lines of plumbing, which is all that genuinely needs a browser.
  *
  * The marker vocabulary comes from ./listSyntax.ts, which is the same grammar
  * the toolbar's toggles and the preview's checkbox rewrite read. A fourth
  * spelling of "what a list marker looks like" is exactly what #631 collapsed,
- * and `scripts/singleImplementationConvention.test.ts` holds it collapsed.
+ * and `scripts/release.checks.test.ts` holds it collapsed.
  */
 
 /**

@@ -1,7 +1,7 @@
 /**
  * Markdown input → `convert_markdown` output, captured from a real comrak run.
  *
- * These are INPUTS, not expected values: `renderProtocol.test.ts` feeds the
+ * These are INPUTS, not expected values: `preview.render.test.ts` feeds the
  * `html` of each case to the frontend's `processMarkdownHtml` and asserts what
  * the frontend does with it. Nothing here re-asserts comrak's own behaviour —
  * that is `src-tauri/src/lib.rs`'s `mod tests` job, and it already covers it.

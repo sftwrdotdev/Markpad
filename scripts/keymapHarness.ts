@@ -15,7 +15,7 @@ import { readSource, functionSource } from './sourceTree.js';
 /*
  * RUNNING the app's two keyboard layers, so tests can ask what a chord DOES.
  *
- * Extracted from `formatShortcutKeymap.test.ts` (#480) when a second test file
+ * Extracted from `shortcuts.checks.test.ts` (#480) when a second test file
  * — the shortcut-registry contract — needed the same two functions. It is the
  * same harness, not a parallel one: both callers get the same keymaps from the
  * same extraction, so there is no way for one of them to be checked against a
@@ -130,7 +130,7 @@ export function registeredActions(mac: boolean): { actions: ActionDescriptor[]; 
 		},
 		isMacPlatform: () => mac,
 		// `t` is not the real translator on purpose: this file is about keys, and
-		// editorContextMenuI18n.test.ts already asserts that every one of these
+		// editor.checks.test.ts already asserts that every one of these
 		// labels comes from the dictionary.
 		t: (key: string) => key,
 		localizedActions: [],
@@ -352,7 +352,7 @@ export type BareCommand = { binding: number; handler: string; when: string };
  * These are the keys with no action id — Enter, Tab, Shift+Tab, the clipboard
  * chords — so `registeredActions` above cannot see them at all, and neither can
  * anything built on it. Two files need them for different reasons
- * (`listContinuation.test.ts` checks the guards, `shortcutRegistry.test.ts`
+ * (`editing.test.ts` checks the guards, `shortcuts.test.ts`
  * checks the panel's claims), which is why the extraction lives here rather than
  * in either of them.
  *

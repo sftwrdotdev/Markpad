@@ -17,7 +17,7 @@ import type * as Monaco from 'monaco-editor';
  * WHY THE MAP LIVES HERE AND NOT ON THE TAB. `Tab` is a plain data record in a
  * store that is imported by the whole app, and Monaco is loaded with a dynamic
  * `import()` from `Editor.svelte` precisely so it stays out of the startup
- * chunk (~86% of the startup JavaScript — see `monacoStartupGraph.test.ts`).
+ * chunk (~86% of the startup JavaScript — see `editor.checks.test.ts`).
  * A model field on `Tab` would either put Monaco back in that graph or type the
  * field as `any`. This module keeps the models, imports Monaco for its TYPES
  * only — `import type` is erased, so it costs nothing at runtime and adds no
@@ -137,7 +137,7 @@ export function trackedTabModelIds(): string[] {
  * the document once it is open and Monaco has already decided this: the buffer
  * builder counts the endings in the source and rewrites the WHOLE buffer to the
  * majority one (ties go to LF) before the model exists — verified against the
- * bundled Monaco 0.55.1 in `editorLineEnding.test.ts`. So a mixed-ending file is
+ * bundled Monaco 0.55.1 in `documents.test.ts`. So a mixed-ending file is
  * no longer mixed by the time anything can be shown about it, `getEOL()` is
  * both what the buffer contains and what a save writes out, and asking a second
  * question of `getValue()` could only ever produce a different answer by being

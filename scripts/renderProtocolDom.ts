@@ -1,5 +1,5 @@
 /**
- * A minimal DOM used only by `renderProtocol.test.ts`, so that the render
+ * A minimal DOM used only by `preview.render.test.ts`, so that the render
  * contract can be exercised by *running* `processMarkdownHtml` instead of
  * grepping its source. Node has no `DOMParser`, and the project intentionally
  * has no test-only DOM dependency, so the fixture carries its own.
@@ -7,7 +7,7 @@
  * Scope is deliberately narrow: exactly the surface `processMarkdownHtml`
  * touches, over the HTML shapes comrak actually emits (well nested, explicit
  * close tags, `<input>`/`<br>`/`<img>` as the only void elements). It is not a
- * general HTML parser and must not grow into one — `renderProtocol.test.ts`
+ * general HTML parser and must not grow into one — `preview.render.test.ts`
  * round-trips every fixture through it as a self-check so a shim bug shows up
  * as a shim failure rather than as a silent pass.
  */

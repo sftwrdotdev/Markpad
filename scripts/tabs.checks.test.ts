@@ -10,7 +10,7 @@ import {
 
 describe('cross-window tab transfer wiring', () => {
 	// insertTransferredTab lives in the Svelte store ($state rune, not loadable
-	// in node), so — like windowStateRestore.spec.ts — the thin store wrapper is
+	// in node), so — like windows.checks.test.ts — the thin store wrapper is
 	// checked statically; all decision logic above is exercised directly.
 	test('insertTransferredTab is a thin wrapper: build, push, activate, return the id', () => {
 		const tabs = readSource('src/lib/stores/tabs.svelte.ts');
@@ -198,7 +198,7 @@ describe('tab switch is not a render', () => {
 	 * document again, every fold re-measured, and the reading position was then
 	 * restored against a layout that was still settling.
 	 *
-	 * `tabSwitchKeepsPreviewDom.spec.ts` runs the mechanism that makes the switch
+	 * `tabs.spec.ts` runs the mechanism that makes the switch
 	 * free — re-patching a host that already holds that document changes nothing —
 	 * but it supplies its own two hosts, so it stays green against a viewer that
 	 * has gone back to sharing one. This is the half that does not: the host must

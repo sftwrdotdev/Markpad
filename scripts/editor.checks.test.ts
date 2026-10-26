@@ -50,7 +50,7 @@ describe('context menu actions', () => {
 	 * menu rendered the English label.
 	 *
 	 * These labels are held to a stricter bar than the dictionary at large.
-	 * i18nCoverage.test.ts reports per-locale gaps rather than failing on them,
+	 * settings.checks.test.ts reports per-locale gaps rather than failing on them,
 	 * because 19 locales are missing >100 keys and nobody should have to translate
 	 * a new English string 25 times before landing it. That trade does not apply
 	 * here: this is a fixed list of a dozen context-menu entries, all 26 languages
@@ -389,7 +389,7 @@ describe('editor option wiring', () => {
 	test('platform detection reads settings.osType and never writes it', () => {
 		// `platformOf` is the app's one platform answer, including the synchronous
 		// `navigator.platform` fallback that lets the keybindings register once, at
-		// mount (platformSource.spec.ts tests the fallback).
+		// mount (shortcuts.spec.ts tests the fallback).
 		const helper = sliceBetween(editor, 'function isMacPlatform', '\n\t}');
 		assert.match(helper, /platformOf\(settings\.osType\) === 'macos'/, 'asks platformOf, not a copy of it');
 		assert.doesNotMatch(editor, /navigator\.platform/, 'no second platform check in Editor.svelte');
@@ -944,7 +944,7 @@ describe('editor undo stops', () => {
 describe('Monaco IME patch', () => {
 	// Through `readSource`, like every other test that reads a file: the anchors
 	// are written against `\n`, and it is what keeps them matching on a Windows
-	// checkout (see singleImplementationConvention.test.ts).
+	// checkout (see release.checks.test.ts).
 	const textAreaSource = readSource(
 		new URL(`../node_modules/monaco-editor/esm/vs/editor/browser/controller/editContext/textArea/${MONACO_TEXTAREA_FILE}`, import.meta.url),
 	);
@@ -1177,7 +1177,7 @@ describe('Monaco startup graph', () => {
 		// the first half was missing. Measured, by planting
 		// `$effect(() => { if (editor) editor.layout(); });` in Editor.svelte: the
 		// ungated read passed, and `effects.length >= 5` did not notice because the
-		// merge kept the count at six. scripts/sourceTree.test.ts pins that form.
+		// merge kept the count at six. scripts/release.test.ts pins that form.
 		const effects = callbackBodies(editor, '$effect');
 
 		// Vacuity guard, restated so it cannot be satisfied by a body going missing:
@@ -1480,7 +1480,7 @@ describe('image embed wiring', () => {
 	test('Editor.svelte writes an image link through this module only', () => {
 		// The two call sites — paste (`save_image`) and drop (`copy_file_to_img`) —
 		// carried verbatim copies of this logic 300 lines apart, and the space-only
-		// escape had to be fixed in both. singleImplementationConvention.test.ts
+		// escape had to be fixed in both. release.checks.test.ts
 		// keeps the embed string itself single; this keeps the pre-fix escape from
 		// coming back next to it.
 		const source = readSource('src/lib/components/Editor.svelte');

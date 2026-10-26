@@ -12,7 +12,7 @@ import type { ViewerCommand } from './viewerKeymap.js';
  * Every window builds this from its own state and installs it when it gains
  * focus, so a click always reaches the window the user is looking at. The
  * accelerators come from `SHORTCUTS`, the same rows the shortcuts panel prints
- * and `shortcutRegistry.test.ts` holds to the handlers.
+ * and `shortcuts.test.ts` holds to the handlers.
  *
  * NO DOUBLE FIRING. WKWebView offers a key equivalent to the page first and
  * only hands it to the menu if the page did not `preventDefault` it. The page

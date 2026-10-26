@@ -601,7 +601,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		modalState.show = false;
 	}
 
-	// Self-contained rather than closeModal('discard'): menuModalGuards.test.ts
+	// Self-contained rather than closeModal('discard'): shortcuts.checks.test.ts
 	// lifts it on its own.
 	function handleModalConfirm() {
 		if (modalState.resolve) modalState.resolve('discard');
@@ -2468,7 +2468,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * toolbar, the title bar, and Monaco's own command.
 	 *
 	 * One function so the chord cannot mean two things depending on where the
-	 * caret happens to be (`formatShortcutKeymap.test.ts` holds the two layers
+	 * caret happens to be (`shortcuts.checks.test.ts` holds the two layers
 	 * together), and so "take me to the editor" behaves the same whether the
 	 * reader asked for it with a key or with a menu item.
 	 */
