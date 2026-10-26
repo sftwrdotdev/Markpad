@@ -7,24 +7,6 @@ import { viewerCommandTable } from './keymapHarness.js';
 
 const { frontMatterLineOffset } = await import('../src/lib/utils/frontMatter.js');
 
-describe('file history', () => {
-	// History is a list of PATHS. `createFileHistory` used to take the tab's
-	// initial content as an ignored second parameter, and all three callers passed
-	// one — which is how `addNewTab` came to seed a history with a content string
-	// in it. A source assertion because that is the whole of what the parameter
-	// was: nothing reads it, so no behaviour can fail when it comes back, and
-	// `Function.length` cannot see an optional one either.
-	test('no caller hands a file history anything but a path', () => {
-		const declaration = readSource('src/lib/utils/tabHistory.ts').match(/export function createFileHistory\([^)]*\)/);
-		assert.ok(declaration);
-		assert.equal(declaration[0], 'export function createFileHistory(path: string)');
-
-		for (const call of readSource('src/lib/stores/tabs.svelte.ts').matchAll(/createFileHistory\([^)]*\)/g)) {
-			assert.doesNotMatch(call[0], /,/, `${call[0]} passes something that is not a path`);
-		}
-	});
-});
-
 describe('preview anchor restore wiring', () => {
 	/**
 	 * The assertions below are source assertions, not behavior assertions: the

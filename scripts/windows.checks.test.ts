@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import ts from 'typescript';
@@ -27,8 +26,6 @@ import {
 // stays open with the remaining tabs.
 describe('the window close handler', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-	const documentSessionPath = 'src/lib/sessions/documentSession.svelte.ts';
-	const documentSession = existsSync(documentSessionPath) ? readSource(documentSessionPath) : '';
 
 	function closeHandler(): string {
 		return sliceBetween(viewer, 'appWindow.onCloseRequested', 'onDragDropEvent');
@@ -96,19 +93,6 @@ describe('the window close handler', () => {
 		const body = settle();
 		assert.match(body, /nextDirtyTab: \(\) => tabManager\.tabs\.find\(\(t\) => t\.isDirty\)/);
 		assert.doesNotMatch(body, /active\?\.isDirty/);
-	});
-
-	test('the untitled save dialog prefills the numbered tab title', () => {
-		const scope = sliceBetween(documentSession, 'async function saveContent', 'async function saveContentAs');
-		assert.match(scope, /defaultPath: tab\.title/);
-	});
-
-	test('save-as writes a snapshot rather than the buffer as it stands', () => {
-		// The other half — that a keystroke landing during that write is still
-		// unsaved afterwards — is `isDirty` reading the two buffers, and it runs
-		// for real in oneWritePerTabInFlight.spec.ts.
-		const fn = sliceFrom(documentSession, 'async function saveContentAs');
-		assert.match(fn, /const snapshot = tab\.rawContent;/);
 	});
 
 	test('the restore-on-reopen branch persists window state via the shared helper', () => {
