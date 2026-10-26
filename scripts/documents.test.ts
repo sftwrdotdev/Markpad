@@ -16,6 +16,7 @@ import {
 } from '../src/lib/utils/fileDrop.js';
 import { openDiffView } from '../src/lib/utils/diffView.js';
 import { HOME_TAB_PATH } from '../src/lib/utils/homeTab.js';
+import { autoSaveFailureNeedsToast, isAutoSaveEligible, type AutoSaveTabState } from '../src/lib/utils/autoSaveTimer.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import {
 	DEFAULT_OPEN_FILE_MODE,
@@ -24,7 +25,7 @@ import {
 } from '../src/lib/utils/openFileMode.js';
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
-import { viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
+import { dispatchViewerKey, viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
 
 describe('lossy decode save guard', () => {
 	// --- Behavioural: the flag survives a cross-window move ------------------
@@ -134,6 +135,58 @@ describe('save from reading mode', () => {
 				);
 			}
 		}
+	});
+
+	test('the browser save dialog is always suppressed', () => {
+		// Reading mode would otherwise surface the webview's own Save Page dialog.
+		// The keystroke is prevented before the command runs, in every mode.
+		for (const isEditing of [false, true]) {
+			const events: string[] = [];
+			const stroke = { ...MOD_S, preventDefault: () => void events.push('prevented') };
+			dispatchViewerKey(stroke, { ...READING, isEditing }, (command) => void events.push(`run:${command}`));
+			assert.deepEqual(events, ['prevented', 'run:save'], `isEditing=${isEditing}`);
+		}
+
+		// A chord that means nothing keeps its default.
+		const events: string[] = [];
+		const stroke = { ...MOD_S, key: 'j', code: 'KeyJ', ctrlKey: false, preventDefault: () => void events.push('prevented') };
+		dispatchViewerKey(stroke, READING, (command) => void events.push(`run:${command}`));
+		assert.deepEqual(events, []);
+	});
+});
+
+describe('auto-save debounce', () => {
+	/** A dirty file in the editor, the state the timer exists for. */
+	const EDITING: AutoSaveTabState = {
+		id: 'a', path: '/notes/a.md', isDirty: true, editable: true, hasPendingConflict: false, decodedLossily: false,
+	};
+	const never = () => false;
+	const always = () => true;
+
+	test('the debounced auto-save is held back while a conflict is unanswered', () => {
+		// Otherwise the 1.5s timer fires while the bar is still asking "reload or
+		// keep mine": the user's edits survive, but the external change is gone
+		// from disk before either answer can be given.
+		assert.equal(isAutoSaveEligible(EDITING, never), true);
+		assert.equal(isAutoSaveEligible({ ...EDITING, hasPendingConflict: true }, never), false);
+	});
+
+	test('a tab that can only be refused stops re-arming the timer', () => {
+		// Auto-save re-arms on every keystroke. Without this the guard was reached
+		// again every 1.5s for as long as the user kept typing.
+		const lossy = { ...EDITING, decodedLossily: true };
+		// The FIRST attempt still happens: it is what produces the explanation.
+		assert.equal(isAutoSaveEligible(lossy, never), true);
+		assert.equal(isAutoSaveEligible(lossy, always), false);
+		// "Save As" to a new file clears the lossy flag, which restores it.
+		assert.equal(isAutoSaveEligible(EDITING, always), true);
+	});
+
+	test('a refused save does not add a generic toast to its own explanation', () => {
+		assert.equal(autoSaveFailureNeedsToast('a', { isLossySaveRefused: always, hasExternalChangeConflict: never }), false);
+		assert.equal(autoSaveFailureNeedsToast('a', { isLossySaveRefused: never, hasExternalChangeConflict: always }), false);
+		// A genuine write failure still says so.
+		assert.equal(autoSaveFailureNeedsToast('a', { isLossySaveRefused: never, hasExternalChangeConflict: never }), true);
 	});
 });
 

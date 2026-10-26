@@ -21,15 +21,20 @@
 	import Toc from './components/Toc.svelte';
 	import Toast from './components/Toast.svelte';
 	import FindBar from './components/FindBar.svelte';
-	import { reviewDirtyTabs } from './sessions/closeReview.js';
+	import { createWindowExit } from './sessions/windowExit.js';
+	import { createExternalChange } from './sessions/externalChange.svelte.js';
+	import { createViewMode } from './sessions/viewMode.svelte.js';
+import { createFrontMatterEdit } from './sessions/frontMatterEdit.js';
+import { createColdEnrichmentRestore } from './sessions/coldEnrichmentRestore.js';
+	import { autoSaveFailureNeedsToast, isAutoSaveEligible } from './utils/autoSaveTimer.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
-	import { isHomePath } from './utils/homeTab.js';
+	import { isHomePath, showsHomeScreen } from './utils/homeTab.js';
 	import { handleCopy as handlePreviewCopy } from './utils/previewCopy.js';
-	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
+	import { hasExportableDocument } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
 	import { editorReadOnly } from './utils/editorOptions.js';
-	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
+	import { viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
@@ -54,27 +59,19 @@ import {
 import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
 import { headingSlug, headingText, referenceForTab } from './utils/headingReference.js';
 import {
-	findSourceLineRange,
-	getSourceLineAtPreviewOffset,
 	measureAnchorBox,
-	mergeSourceLineRanges,
 	restorePreviewReadingPosition,
-	PREVIEW_ANCHOR_OFFSET,
 	anchorScrollTop,
 	type AnchorBox,
 	type AnchorNode,
-	type LineRange,
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import { pointAtSource, sourceAtPoint, type SourceLineReader } from './utils/previewCursor.js';
 import { annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf, type Annotation } from './utils/previewAnnotations.js';
 import {
-	asBufferLine,
 	asRendererLine,
 	lineCoordinates,
-	tabAnchorForEditorTopLine,
 	type BufferLine,
-	type BufferLineRange,
 	type RendererLine,
 } from './utils/lineCoordinates.js';
 import {
@@ -82,7 +79,6 @@ import {
 	getMarkdownBodyWithoutFrontMatter,
 	getFrontMatterListItems,
 	parseFrontMatter,
-	parseFrontMatterEditableValue,
 	removeFrontMatterListItem,
 	updateFrontMatterListItem,
 	updateFrontMatterField,
@@ -113,7 +109,7 @@ import {
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
-	import { openNewWindow, pinnedTagFromWindowLabel, pinnedTagHolder, pinnedWindowToken } from './utils/pinnedTagWindow.js';
+	import { openNewWindow, pinnedTagFromWindowLabel } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { snapshotTab } from './utils/tabTransfer.js';
 import { outgoingTabAnchorLine } from './utils/editorPosition.js';
@@ -122,19 +118,21 @@ import { adjustPreviewMaxWidth } from './utils/previewWidth.js';
 import { dismissesToc, tocAutoCollapses } from './utils/tocOverlay.js';
 import { exportContextFrom, previewAppearanceFrom, previewLayout } from './utils/previewLayout.js';
 import { splitRatioAfterDrag, splitRatioAfterKey } from './utils/splitPanes.js';
-import { viewerCommandFor, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
+import { dispatchViewerKey, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
-	getScrollSyncPositionFromPixels,
-	getScrollTopForSyncPosition,
-	type ScrollSyncPosition,
-} from './utils/scrollSync.js';
+	getPreviewScrollAnchor as previewScrollAnchor,
+	getPreviewScrollSyncPosition as previewScrollSyncPosition,
+	getPreviewScrollTopForSyncPosition,
+} from './utils/previewScrollSync.js';
+import { type ScrollSyncPosition } from './utils/scrollSync.js';
 import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
 import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
+import { reportWindowMeta } from './sessions/windowMeta.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
-import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
+import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
@@ -511,10 +509,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
-	// True while the window-close walk is showing per-tab dialogs; the native
-	// red button is not blocked by the dialog overlay, so this keeps a second
-	// close request from starting a competing walk.
-	let isCloseWalkActive = false;
 	let identifyFlash = $state('');
 	let identifyFlashTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -568,29 +562,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
-	/**
-	 * Hot exit: keep unsaved buffers instead of asking. Pending auto-saves write
-	 * their files first; a refused or failed save stays dirty and is kept. False
-	 * when the backup cannot be written or `applies` says no, and the caller asks
-	 * as usual. `applies` runs inside the walk guard, so a second close is refused meanwhile.
-	 */
-	async function keepUnsavedForExit(applies = async () => true): Promise<boolean> {
-		if (!recoveryReady) return false;
-		isCloseWalkActive = true;
-		try {
-			if (!(await applies())) return false;
-			if (settings.autoSave) {
-				for (const tab of tabManager.tabs.filter((t) => t.isDirty && t.path !== '')) await saveSilently(tab.id);
-			}
-			if (!(await unsavedRecovery.flush(recoverySnapshot(tabManager.tabs)))) return false;
-		} finally {
-			isCloseWalkActive = false;
-		}
-		await savePinnedTagIfNeeded();
-		await persistWindowState(true);
-		return true;
-	}
-
 	// The snapshot: window shape only, never document content. `folderRoot`
 	// rides along so each window gets its own folder back.
 	const windowStateJson = () => tabManager.serializeState({ folderRoot: folderManager.root });
@@ -626,11 +597,11 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		// complete the buffer first; these predicates are the backstop.
 		canTransfer: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !isCloseWalkActive && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated;
+			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated;
 		},
 		canDetach: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !isCloseWalkActive && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated && tabManager.tabs.length >= 2;
+			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated && tabManager.tabs.length >= 2;
 		},
 		transferPayload: (tabId) => {
 			const tab = tabManager.tabs.find((item) => item.id === tabId);
@@ -734,19 +705,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		windowSession.record(untrack(windowStateJson));
 	});
 
-	// A window opened for a pinned group is entered in the registry under the
-	// group's name when it is created. Reporting before it has adopted the
-	// group would clear that name and let a second click open the group again.
-	let windowMetaReady = $state(pinnedTagFromWindowLabel(appWindow.label) === null);
-	$effect(() => {
-		if (!windowMetaReady) return;
-		invoke('set_window_meta', {
-			tagName: tabManager.windowTag?.name ?? null,
-			tagColor: tabManager.windowTag?.color ?? null,
-			activeTabTitle: tabManager.activeTab?.title ?? '',
-			tabCount: tabManager.tabs.length,
-		}).catch(() => {});
-	});
+	const windowMeta = reportWindowMeta(tabManager, pinnedTagFromWindowLabel(appWindow.label) === null);
 
 	$effect(() => {
 		const tag = tabManager.windowTag;
@@ -759,59 +718,19 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		pinnedTags = (await invoke('list_pinned_tags')) as typeof pinnedTags;
 	}
 
-	// The files the close review started from. It can close tabs, and the
-	// close it re-triggers settles again, so both saves use this list.
-	let pinFilesAtClose: string[] | null = null;
-
-	function openFilePaths() {
-		return tabManager.tabs.filter((tab) => hasRealFilePath(tab.path)).map((tab) => tab.path);
-	}
-
-	/**
-	 * Every path that ends a window saves the pin before it closes tabs. An
-	 * empty window says nothing about the group, so it never overwrites it.
-	 * It only refreshes the entry: another window may have unpinned the tag.
-	 */
-	async function savePinnedTagIfNeeded() {
-		const tag = tabManager.windowTag;
-		if (!tag?.pinned) return;
-		const files = pinFilesAtClose ?? openFilePaths();
-		if (files.length === 0) return;
-		const pinned = await invoke('update_pinned_tag', { name: tag.name, color: tag.color, files });
-		if (!pinned) tabManager.setWindowTag({ ...tag, pinned: false });
-	}
-
-	async function openPinnedTag(tag: { name: string; color: string; files: string[] }) {
-		// Two windows sharing a tag share one pin entry, and the last to save wins.
-		const holder = await pinnedTagHolder(tag.name, appWindow.label);
-		if (holder) {
-			await invoke('focus_window', { label: holder });
-			return;
-		}
-		// Tabs already here belong to this window's own group. The pinned one
-		// opens in a window of its own, which adopts it from its label.
-		if (tabManager.tabs.some((tab) => !isHomePath(tab.path))) {
-			await invoke('create_transfer_window', { token: pinnedWindowToken(tag.name, Date.now()), tagName: tag.name });
-			return;
-		}
-		tabManager.setWindowTag({ ...tag, pinned: true });
-		for (const file of tag.files) await loadMarkdown(file);
-		showHome = false;
-	}
-
 	async function unpinTagFromHome(name: string) {
 		await invoke('remove_pinned_tag', { name });
 		if (tabManager.windowTag?.name === name) tabManager.setWindowTag({ ...tabManager.windowTag, pinned: false });
 		await refreshPinnedTags();
 	}
 
-	// Same condition as the template's HomePage gate: an empty window or the
-	// home tab shows Home without `showHome`, which is the cold-start case.
+	// The template's HomePage gate: an empty window or the home tab shows Home
+	// without `showHome`, which is the cold-start case.
 	// Reading the window tag re-runs this when the title bar pins or unpins it.
 	// The pin's IPC is sent first and sync commands run in order, so the list sees it.
 	$effect(() => {
 		void tabManager.windowTag?.pinned;
-		if (showHome || !tabManager.activeTab || isHomePath(tabManager.activeTab.path)) refreshPinnedTags().catch(console.error);
+		if (showsHomeScreen(tabManager.activeTab, showHome)) refreshPinnedTags().catch(console.error);
 	});
 
 	const documentSession = createDocumentSession({
@@ -835,7 +754,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			console.error(message, error);
 			addToast(`${message}: ${String(error)}`, 'error');
 		},
-		onDiskChangedUnderSave: noteExternalChangeConflict,
+		onDiskChangedUnderSave: (id) => externalChange.noteExternalChangeConflict(id),
 		cancelPendingAutoSave,
 		// Two questions, one dialog. With the file untouched, Save means "write
 		// what I typed" and the ordinary wording is right. With the disk moved
@@ -861,6 +780,70 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		onPartialCopySaved: () => addToast(t('toast.partialCopySaved', settings.language), 'info'),
 	});
 
+	const externalChange = createExternalChange({
+		tabManager,
+		settings,
+		documentSession,
+		loadMarkdown,
+		canCloseTab,
+		readFile: (path) => invoke('read_file_content_checked', { path }),
+		editorLanguageFor,
+		addToast,
+		t,
+	});
+	const {
+		saveContent,
+		saveActiveTab,
+		saveSilently,
+		flushBeforeLeavingEditableMode,
+		hasExternalChangeConflict,
+		noteExternalChangeConflict,
+		resolveExternalChangeByReloading,
+		reloadFromDisk,
+		compareExternalChange,
+		resolveExternalChangeByKeepingBuffer,
+	} = externalChange;
+
+	const viewMode = createViewMode({
+		tabManager,
+		settings,
+		documentSession,
+		flushBeforeLeavingEditableMode,
+		readFile: (path) => invoke('read_file_content_checked', { path }),
+		renderTabPreviewFromRaw,
+		tick,
+		addToast,
+		t,
+		get editorPane() {
+			return editorPane;
+		},
+		get markdownBody() {
+			return markdownBody;
+		},
+		get previewBlocks() {
+			return previewBlocks;
+		},
+		get lineCoords() {
+			return lineCoords;
+		},
+		readRendererLine: (line) => readRendererLine(line),
+		getPreviewScrollSyncPosition,
+		scrollPreviewToSyncPosition,
+		getPreviewScrollAnchor,
+	});
+	const {
+		followToc,
+		handleEditorCursor,
+		placePreviewCursor,
+		handleEditorScrollSync,
+		syncEditorToPreviewScroll,
+		toggleEdit,
+		toggleEditView,
+		editSourceRangeAt,
+		toggleSplitView,
+		setViewMode,
+	} = viewMode;
+
 	// Persisted through Rust, not localStorage: setItem is an async message
 	// to the WebKit storage process that dies in transit when the last
 	// window's close ends the process (reproduced in QA as "close secondary
@@ -878,132 +861,35 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		else if (settings.restoreStateOnReopen) await windowSession.persistState(true);
 	}
 
-	/**
-	 * The save/discard close, used when "Restore unsaved changes on launch" is off, when
-	 * closing one of several windows, or when the backup cannot be written
-	 * (`keepUnsavedForExit` runs first otherwise).
-	 * Resolve this window's unsaved tabs, then write the restore snapshot: the
-	 * work that has to happen before the window goes away. False when the reader
-	 * cancelled, and nothing has been written.
-	 *
-	 * The close button and the in-app update both run it. An update ends the
-	 * process without closing a window — the Windows updater exits inside
-	 * `downloadAndInstall`, `relaunch()` requests an exit elsewhere — so
-	 * CloseRequested never fires, and both jobs used to go down with it (#761).
-	 */
-	async function settleForExit(remember: () => Promise<boolean>): Promise<boolean> {
-		// Unsaved content and session restore are separate concerns: dirty tabs
-		// are resolved FIRST through the per-tab dialogs, then the restore
-		// snapshot records window state only (open files, active tab, edit mode,
-		// split, scroll) — it never carries document content.
-		const dirtyTabs = tabManager.tabs.filter((t) => t.isDirty);
-		if (dirtyTabs.length > 0) {
-			isCloseWalkActive = true;
-			pinFilesAtClose ??= openFilePaths();
-			// The walk's dialogs are in-app modals inside THIS window: with
-			// multiple windows, another window may be covering it and the review
-			// would be invisible. Bring the reviewing window to the front first.
-			invoke('show_window').catch(console.error);
-			try {
-				// Auto-save without confirmation: silently save every dirty tab
-				// that has a real path. Untitled tabs need a Save dialog, so the
-				// walk below handles them. A failed silent save is surfaced and its
-				// tab also goes to the walk. `saveContent` cancels each tab's pending
-				// timer itself, so no writer here can be raced by its own debounce.
-				// A tab whose file changed underneath is refused rather than
-				// overwritten, and the walk asks the changed-on-disk question.
-				if (settings.autoSave) {
-					for (const tab of dirtyTabs.filter((t) => t.path !== '')) {
-						const ok = await saveSilently(tab.id);
-						if (!ok && hasExternalChangeConflict(tab.id)) continue;
-						if (!ok) {
-							addToast(t('toast.autoSaveFailed', settings.language), 'error');
-							break;
-						}
-					}
-				}
-
-				// Close review (issue #189): walk the remaining dirty tabs one at a
-				// time — activate each and run the same localized unsaved-changes
-				// dialog a single tab close shows. Cancel stops the walk and keeps
-				// the window open. Strict tab-strip order (left to right) so the
-				// sequence is predictable; numbered untitled titles let the dialog
-				// name each tab. Re-find every round — a save can leave a tab dirty
-				// again (TOCTOU) and tabs can change while a dialog is up.
-				const resolved = await reviewDirtyTabs({
-					nextDirtyTab: () => tabManager.tabs.find((t) => t.isDirty),
-					setActive: (id) => tabManager.setActive(id),
-					settle: tick,
-					canCloseTab,
-					closeTab: (id) => tabManager.closeTab(id),
-					// Resolved tabs (saved, or reverted by Don't Save) stay open for
-					// the window-state snapshot when restore is enabled; untitled
-					// tabs have nothing to restore, and with restore off the red
-					// button closes tabs one by one.
-					shouldCloseAfterResolving: (tab) =>
-						!settings.restoreStateOnReopen || tab.path === '',
-				});
-				if (!resolved) {
-					pinFilesAtClose = null;
-					return false;
-				}
-			} finally {
-				isCloseWalkActive = false;
-			}
-		}
-
-		// Session is clean now; record the window state for restore. Awaited:
-		// the caller holds the exit until the Rust write returns, so the process
-		// cannot exit under the snapshot.
-		await savePinnedTagIfNeeded();
-		// The re-triggered close finds nothing to review and uses the list last.
-		if (dirtyTabs.length === 0) pinFilesAtClose = null;
-		// Asked now, not when the close began: the review above can take minutes.
-		await persistWindowState(await remember());
-		return true;
-	}
-
-	/**
-	 * The update's settle. No re-triggered close follows it: the process exits,
-	 * or the install fails and the window stays. Either way the review's list
-	 * has been saved, and kept it would outlive a failed install into the next
-	 * last-tab close, merge or Close Tag.
-	 */
-	async function settleForUpdate(): Promise<boolean> {
-		if (settings.persistOpenEditors && (await keepUnsavedForExit())) return true;
-		try {
-			// The process exits with every window, so this one is remembered.
-			return await settleForExit(async () => true);
-		} finally {
-			pinFilesAtClose = null;
-		}
-	}
-
-	/**
-	 * Quit is the red button applied to every window. Each one runs its own
-	 * `onCloseRequested`: reviews its unsaved tabs, writes its own restore
-	 * snapshot, and closes.
-	 *
-	 * It used to discard the snapshot instead, so ⌘Q and the red button
-	 * disagreed about whether the session came back — and the dialog that
-	 * explained the difference only appeared when a tab was dirty, which is
-	 * not the path most people take (#390). It also closed nothing but the
-	 * focused window, so quitting with two windows open did not quit.
-	 *
-	 * Every other window is asked at once rather than one after another:
-	 * `close()` resolves when the request is sent, not when the window is
-	 * gone, and there is no reply saying whether the reader cancelled. Two
-	 * windows with unsaved work therefore show their own dialogs side by side,
-	 * each still guarding its own buffers.
-	 */
-	async function appExit() {
-		// Quit keeps unsaved changes in every window, not only the last one.
-		await invoke('set_quitting', { quitting: true }).catch(console.error);
-		for (const other of await getAllWindows()) {
-			if (other.label !== appWindow.label) await other.close();
-		}
-		await appWindow.close();
-	}
+	const windowExit = createWindowExit({
+		tabManager,
+		settings,
+		appWindow,
+		allWindows: getAllWindows,
+		recovery: {
+			isReady: () => recoveryReady,
+			keep: () => unsavedRecovery.flush(recoverySnapshot(tabManager.tabs)),
+			drop: () => unsavedRecovery.flush('[]'),
+		},
+		persistWindowState,
+		canCloseTab,
+		saveSilently,
+		hasExternalChangeConflict,
+		onAutoSaveFailed: () => addToast(t('toast.autoSaveFailed', settings.language), 'error'),
+		settle: tick,
+		loadMarkdown,
+		setShowHome: (value) => (showHome = value),
+		moveTabToWindow,
+	});
+	const {
+		savePinnedTagIfNeeded,
+		openPinnedTag,
+		settleForUpdate,
+		appExit,
+		destroyWindowAfterTabsClosed,
+		closeTabAndWindowIfLast,
+		mergeSelfInto,
+	} = windowExit;
 
 	/**
 	 * A tab switch must not animate. Switching to a tab in another mode changes
@@ -1126,18 +1012,14 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
-	async function handleFrontMatterEdit(field: FrontMatterField, value: string) {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-		// Front matter is editable from reading mode, which a large file can
-		// reach while its buffer is still the preview slice. Rewriting that
-		// slice and saving it would drop the rest of the document.
-		if (!(await documentSession.ensureFullContent(tab.id))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return;
-		}
-		await applyFrontMatter(tab, field, () => parseFrontMatterEditableValue(field, value));
-	}
+	const { handleFrontMatterEdit, handleFrontMatterListChange } = createFrontMatterEdit({
+		tabManager,
+		settings,
+		documentSession,
+		addToast,
+		t,
+		applyFrontMatter,
+	});
 
 	function getFrontMatterTagDraft(field: FrontMatterField) {
 		return frontMatterFields.tagDraft(field);
@@ -1169,17 +1051,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 	function clearFrontMatterTagEdit(field: FrontMatterField) {
 		frontMatterFields.clearTagEdit(field);
-	}
-
-	async function handleFrontMatterListChange(field: FrontMatterField, nextItems: string[]) {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-		// Same partial-buffer guard as handleFrontMatterEdit.
-		if (!(await documentSession.ensureFullContent(tab.id))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return;
-		}
-		await applyFrontMatter(tab, field, () => nextItems);
 	}
 
 	async function commitFrontMatterTagAdd(field: FrontMatterField) {
@@ -1316,47 +1187,18 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			}),
 			(scope) => foldLayout.current?.observe(scope),
 		);
-		// A host's first enrichment is the cold start above: it waits for
-		// whichever libraries the document needs. A tab being re-activated
-		// patches to nothing, and its host is in the set from that first render.
-		const cold = patch.inserted.length > 0 && !enrichedHosts.has(host);
-		if (cold) enrichedHosts.add(host);
-		const enrichment = renderRichContent(patch.inserted);
-		if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
+		// A host's first enrichment is the cold start above: see `coldRestore`.
+		coldRestore.afterEnrichment(host, patch.inserted.length, renderRichContent(patch.inserted));
 	});
 
-	/**
-	 * The hosts whose document has been through `renderRichContent` at least
-	 * once. A `WeakMap`/`WeakSet` keyed on the container for the same reason
-	 * `states` in `previewPatch.ts` is: a host that Svelte destroys with its
-	 * tab takes its entry with it, so this cannot drift from the set of live
-	 * tabs the way a hand-kept registry can.
-	 */
-	const enrichedHosts = new WeakSet<HTMLElement>();
-
-	/**
-	 * Put the reader back where they were, once, after a cold start's enrichment
-	 * has changed the layout underneath them.
-	 *
-	 * Through `restorePreviewReadingPosition` — the same cascade the restore
-	 * effect runs, in the same order — because two sites consulting a tab's
-	 * three position fields in different orders are two answers for one tab.
-	 * That effect cannot do this itself: giving it a dependency on the render
-	 * would drag the preview back to the anchor on every debounced re-render
-	 * while the reader is typing in split view.
-	 *
-	 * Only for the tab that is still on screen. The enrichment is awaited, a
-	 * switch can happen inside it, and restoring another tab's position into the
-	 * article would move the document the reader is actually looking at.
-	 */
-	async function restoreAfterColdEnrichment(enrichment: Promise<void>, tabId: string | null) {
-		await enrichment;
-		await tick();
-		const body = markdownBody;
-		if (!body || !tabId || tabManager.activeTabId !== tabId) return;
-		const tab = tabManager.tabs.find((t) => t.id === tabId);
-		if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
-	}
+	const coldRestore = createColdEnrichmentRestore({
+		tabManager,
+		tick,
+		get markdownBody() {
+			return markdownBody;
+		},
+		restore: (body, tab) => restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox),
+	});
 
 	// A hidden host is not observed: its boxes measure 0 (see `previewHosts`).
 	followFoldLayout(foldLayout, () => previewBlocks, () => hasPreviewPane);
@@ -1410,16 +1252,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		return Math.max(0, target.scrollHeight - target.clientHeight);
 	}
 
-	function getPreviewFrontMatterScrollEnd(target: HTMLElement) {
-		const panel = target.querySelector<HTMLElement>('.frontmatter-panel');
-		if (!panel) return 0;
-
-		// In the same space as `target.scrollTop`, which is what it is compared
-		// against — see `measurePreviewBox`.
-		const box = measurePreviewBox(panel);
-		return Math.max(0, Math.min(getPreviewScrollMax(target), box.top + box.height));
-	}
-
 	// Not `element.offsetTop`: that is measured from the element's offset parent,
 	// and the preview is full of them — every `<table>` is the offset parent of
 	// its own rows and cells, and `.code-block-shell` is positioned. See
@@ -1433,128 +1265,26 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	}
 
 	function getPreviewScrollSyncPosition(target: HTMLElement): ScrollSyncPosition {
-		const position = getScrollSyncPositionFromPixels(
-			target.scrollTop,
-			getPreviewScrollMax(target),
-			getPreviewFrontMatterScrollEnd(target),
-		);
-
-		// Front matter is a rendered panel with no source range, so there is no
-		// line to send and the section ratio is the only thing that can carry it.
-		// This is the carve-out `scrollSync.ts` exists for, unchanged.
-		if (position.section !== 'body') return position;
-
-		const line = lineCoords.bufferLineAtPreviewOffset(target, target.scrollTop, measurePreviewBox);
-
-		return line === null ? position : { ...position, line };
+		return previewScrollSyncPosition(target, getPreviewScrollMax(target), lineCoords, measurePreviewBox);
 	}
 
 	function scrollPreviewToSyncPosition(position: ScrollSyncPosition) {
 		if (!markdownBody) return;
-
-		const scrollMax = getPreviewScrollMax(markdownBody);
-		let targetScroll: number | null = null;
-
-		if (position.section === 'body' && position.line !== undefined) {
-			const offset = lineCoords.previewOffsetForBufferLine(
-				markdownBody,
-				position.line,
-				measurePreviewBox,
-			);
-			if (offset !== null) targetScroll = offset;
-		}
-
-		if (targetScroll === null) {
-			targetScroll = getScrollTopForSyncPosition(
-				position,
-				scrollMax,
-				getPreviewFrontMatterScrollEnd(markdownBody),
-			);
-		}
-
-		// The line mapping can point past either end — the last block interpolates
-		// beyond the bottom of a preview that has no room left to scroll. Clamping
-		// before the threshold check is what keeps `isProgrammaticScroll` honest:
-		// an unreachable target fires no scroll event, and the flag would then be
-		// spent swallowing the reader's next real scroll instead.
-		targetScroll = Math.max(0, Math.min(scrollMax, targetScroll));
-
-		if (Math.abs(markdownBody.scrollTop - targetScroll) <= 5) return;
+		const targetScroll = getPreviewScrollTopForSyncPosition(
+			markdownBody,
+			getPreviewScrollMax(markdownBody),
+			position,
+			lineCoords,
+			measurePreviewBox,
+		);
+		if (targetScroll === null) return;
 
 		isProgrammaticScroll = true;
 		markdownBody.scrollTop = targetScroll;
 	}
 
-	/**
-	 * The source line the reader is on, for the outline to follow (#169).
-	 *
-	 * BOTH panes answer here, which is the point: the outline used to decide by
-	 * rendered box, and only the preview has those. A source line is something
-	 * either pane can produce — the editor sends one on every scroll (the same
-	 * position scroll sync uses, whether or not sync is on), and the preview
-	 * already computes one for the tab's reading position. One rule then picks
-	 * the entry, so the two panes cannot disagree about which heading is
-	 * current while both are on screen.
-	 */
-	let tocActiveLine = $state<RendererLine | null>(null);
-
-	/**
-	 * The one gate on `tocActiveLine`. With `settings.tocFollows` set to
-	 * 'cursor' and a cursor the reader can see (the editor is on screen, or
-	 * `settings.previewCursor` draws one the reader placed in the preview), only
-	 * the cursor moves the outline, and scrolling either pane leaves it where it
-	 * is. Otherwise the pane that scrolled last decides. In the preview alone
-	 * with `previewCursor` off, the editor's last cursor is kept for Ctrl+E but
-	 * not followed: nothing on screen would say why the outline stopped.
-	 *
-	 * A preview that is not on screen never decides: in the editor alone it is
-	 * still mounted at zero width, and its scroll events report lines from that
-	 * layout, which put the outline on the wrong heading after Ctrl+E (#799).
-	 * Nor does a preview Ctrl+E has just brought back, until
-	 * `restoreAfterLeavingEditor` has placed it: its scroll events before that
-	 * report the first headings.
-	 */
-	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
-		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || (settings.previewCursor && activeCursor !== null));
-		const previewSettled = hasPreviewPane && !previewPlacing;
-		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
-		if (accepted) tocActiveLine = line;
-	}
-
-	/** True from Ctrl+E out of the editor until the preview is placed. */
-	let previewPlacing = false;
-
-	/**
-	 * Each tab's cursor, shared by its two panes (#799): the editor's while it
-	 * is on screen, and with `settings.previewCursor` a click in the preview
-	 * moves it too. With that setting the preview draws it, and Ctrl+E puts the
-	 * editor's cursor on it. A tab only read so far has none.
-	 */
-	let cursorByTab = $state<Record<string, { line: BufferLine; column: number }>>({});
-	let activeCursor = $derived((tabManager.activeTabId && cursorByTab[tabManager.activeTabId]) || null);
-
-	function handleEditorCursor(line: BufferLine, column: number) {
-		if (tabManager.activeTabId) cursorByTab[tabManager.activeTabId] = { line, column };
-		followToc('cursor', lineCoords.toRendererLine(line));
-	}
-
 	let bufferLines = $derived(rawContent.split('\n'));
 	const readRendererLine: SourceLineReader = (line) => bufferLines[lineCoords.toBufferLine(asRendererLine(line)) - 1];
-
-	function placePreviewCursor(e: MouseEvent) {
-		const tabId = tabManager.activeTabId;
-		if (!tabId || !previewBlocks || !settings.previewCursor || e.detail !== 1) return;
-		if (!window.getSelection()?.isCollapsed) return;
-
-		const caret = document.caretRangeFromPoint(e.clientX, e.clientY);
-		const point = caret && sourceAtPoint(previewBlocks, { node: caret.startContainer, offset: caret.startOffset }, readRendererLine);
-		if (!point) return;
-
-		const line = lineCoords.toBufferLine(point.line);
-		cursorByTab[tabId] = { line, column: point.column };
-		followToc('cursor', point.line);
-		if (isSplit) editorPane?.setCursor(line, point.column);
-	}
 
 	/** The drawn cursor, in the article's scroll content; null while it isn't shown. */
 	let previewCursorBox = $state<{ top: number; left: number; height: number } | null>(null);
@@ -1575,7 +1305,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	});
 
 	$effect(() => {
-		const cursor = activeCursor;
+		const cursor = viewMode.activeCursor;
 		const shown = settings.previewCursor && cursor !== null && hasPreviewPane;
 		void htmlContent;
 		void previewLayoutVersion;
@@ -1701,66 +1431,8 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		};
 	});
 
-	function handleEditorScrollSync(position: ScrollSyncPosition) {
-		// The line the tab would record as its reading position, not the line
-		// the viewport cuts in half: `tabAnchorForEditorTopLine` is the one
-		// crossing from a Monaco top line into the outline's numbering (it
-		// counts from the body, and sits `EDITOR_ANCHOR_LINE_OFFSET` lines
-		// down). Handing over the raw top line left the outline one entry
-		// behind whenever a heading was the first line on screen (#744).
-		if (position.line !== undefined) {
-			followToc('editor', tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line)));
-		}
-
-		if (splitScrollSyncOn()) {
-			scrollPreviewToSyncPosition(position);
-		}
-	}
-
-	/**
-	 * Scroll sync is a split-view feature, and `isScrollSynced` outlives the
-	 * split: it is the tab's remembered choice for the next one. Out of split
-	 * the other pane is still mounted at zero width, so a position mapped
-	 * through it drags the visible pane off the line Ctrl+E put it on (#799).
-	 */
-	function splitScrollSyncOn() {
-		const tab = tabManager.activeTab;
-		return !!tab?.isSplit && tab.isScrollSynced;
-	}
-
-	/**
-	 * The source line to save as this tab's reading position: the one rendered
-	 * `PREVIEW_ANCHOR_OFFSET` below the top of the viewport, which is where the
-	 * restore puts it back.
-	 *
-	 * This used to be its own scan — `querySelectorAll('[data-sourcepos]')` over
-	 * the whole preview, then `offsetTop` and `offsetHeight` on every element it
-	 * returned, on every scroll event. Two things were wrong with that beyond the
-	 * cost (8.3ms per event on a 13,000-line document, measured in Chrome). It
-	 * took the FIRST element covering the offset in document order, which is the
-	 * outermost, while the restore's `findAnchorElement` takes the narrowest — so
-	 * capture and restore disagreed about which block a position belonged to. And
-	 * it had no opinion about `<br>`, which carries a source range and no box, so
-	 * an anchor at the top of the document could resolve to one (#464).
-	 */
 	function getPreviewScrollAnchor(target: HTMLElement): RendererLine | null {
-		const line = getSourceLineAtPreviewOffset(
-			target,
-			target.scrollTop + PREVIEW_ANCHOR_OFFSET,
-			measurePreviewBox,
-		);
-
-		// Straight off `data-sourcepos`, so it is already a renderer line: the
-		// two consumers — the tab's saved reading position and the outline —
-		// both count from the first line of the body.
-		return line === null ? null : asRendererLine(Math.round(line));
-	}
-
-	function syncEditorToPreviewScroll(target: HTMLElement) {
-		if (!splitScrollSyncOn() || !editorPane) return;
-
-		const position = getPreviewScrollSyncPosition(target);
-		editorPane.syncScrollToPosition(position);
+		return previewScrollAnchor(target, measurePreviewBox);
 	}
 
 	let isScrolling = $state(false);
@@ -1976,245 +1648,14 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		return documentSession.canCloseTab(tabId);
 	}
 
-	/**
-	 * The last auto-save a tab gets before it stops being auto-saveable.
-	 *
-	 * Shared by the two ways out of an editable pane (leaving edit mode,
-	 * closing split view). It is NOT a condition of the switch: the view
-	 * changes whether or not the write succeeds, and nothing here asks the
-	 * user anything. The only reason it exists is that the background debounce
-	 * requires `isEditing || isSplit` (see the auto-save effect), so the tab is
-	 * about to lose its scheduled writer while still dirty — a user who asked
-	 * for "save automatically" would otherwise be left with edits that no timer
-	 * is going to flush.
-	 *
-	 * Untitled tabs are excluded on purpose: `saveContent` would open the Save
-	 * dialog for them, which is exactly the forced save decision this stopped
-	 * making.
-	 */
-	async function flushBeforeLeavingEditableMode(tab: Tab) {
-		if (!tab.isDirty || tab.path === '') return;
-		// Auto-save off means edits are kept until the user saves them, so
-		// leaving the pane must not write either — closing keeps or asks.
-		if (!settings.autoSave) return;
-
-		const success = await saveSilently(tab.id);
-		if (!success) {
-			// Refused because the file changed underneath: the edit stays in
-			// the buffer and the conflict bar is already asking about it.
-			if (hasExternalChangeConflict(tab.id)) return;
-			// Reported, not obeyed. A file that cannot be written — read-only
-			// path, a buffer the lossy-decode guard refuses — used to trap the
-			// user in the editor with no way to look at their own text.
-			addToast(t('toast.autoSaveFailed', settings.language), 'error');
-			return;
-		}
-		if (tab.isDirty) {
-			// TOCTOU: the user typed during the await, so the file is one
-			// revision behind and the debounce is about to be dropped. The
-			// preview shows those newest edits, so nothing is lost or wrong on
-			// screen; the disk is what the user should hear about.
-			addToast(t('toast.savedNewerEdits', settings.language), 'info');
-		}
-	}
-
-	/**
-	 * Reading mode's HTML, rendered from the tab's own buffer and its own path.
-	 * Writes through the tab id, so a tab switch during the render cannot land
-	 * one document's HTML on another — and, unlike the `loadMarkdown` call this
-	 * replaces, it neither activates the tab nor re-reads the file.
-	 */
-	async function renderPreviewLeavingEditableMode(tab: Tab) {
-		try {
-			await renderTabPreviewFromRaw(tab);
-		} catch (e) {
-			console.error('Failed to render markdown', e);
-		}
-	}
-
-	/**
-	 * Move the active tab between reading and editing. Just the mode — where
-	 * the reader LANDS is `editSourceRange`'s business, and `toggleEditView`
-	 * is what decides which of the two a ⌘E means.
-	 */
-	async function toggleEdit() {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-
-		if (isEditing) {
-			// Back to reading. The preview renders the buffer, not the file, so no
-			// save is needed (#168). The tab stays dirty, and closing it or the
-			// window (`settleForExit`) still asks.
-			await flushBeforeLeavingEditableMode(tab);
-			// Ctrl+E lands on the line the other pane was showing, mapped the way
-			// split view maps it (#799).
-			const position = editorPane?.scrollSyncPosition() ?? null;
-			previewPlacing = position !== null;
-			tab.isEditing = false;
-			await renderPreviewLeavingEditableMode(tab);
-			if (position) void restoreAfterLeavingEditor(tab.id, position);
-		} else {
-			// Switch to edit
-			const position = markdownBody ? getPreviewScrollSyncPosition(markdownBody) : null;
-			if (tab.path !== '') {
-				if (tab.isDirty) {
-					// Unsaved edits are already in memory (made in reading
-					// mode, or kept when leaving the editor with auto-save
-					// off). Reading from disk would overwrite them, so only
-					// switch.
-					tab.isEditing = true;
-				} else {
-					const mayApply = claimTabForRead(tab.id);
-					try {
-						// This buffer is about to be handed to the editor, and
-						// the editor arms auto-save. The checked command is what
-						// says whether the decode was lossy, so the tab carries
-						// its own verdict instead of relying on the one
-						// `loadMarkdown` left behind — a file can be converted
-						// to UTF-8 (or away from it) between the two reads.
-						const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-						// A task ticked, or the tab closed, while this was out.
-						if (!mayApply()) return;
-						tabManager.setTabDecodedLossy(tab.id, lossy);
-						tabManager.setTabEncoding(tab.id, encoding);
-						// Goes through the store so a tab that held only the
-						// large-file preview slice stops being flagged partial.
-						tabManager.setTabRawContent(tab.id, content);
-						tab.isEditing = true;
-					} catch (e) {
-						console.error('Failed to read file for editing', e);
-					}
-				}
-			} else {
-				tab.isEditing = true;
-			}
-			if (position && tab.isEditing) {
-				await tick();
-				editorPane?.syncScrollToPosition(position, { cursorIntoView: settings.tocFollows === 'cursor' });
-			}
-		}
-	}
-
-	/**
-	 * The preview half of #799. The restore effect cannot do it: the article
-	 * stays mounted at zero width in edit mode, so nothing it depends on changes
-	 * with the mode. The pane takes its real width in the same frame (its slide
-	 * is a `transform`, see `utils/paneSlide.ts`), so the line is placed right
-	 * after the render, before the old position is ever painted.
-	 */
-	async function restoreAfterLeavingEditor(tabId: string, position: ScrollSyncPosition) {
-		await tick();
-		previewPlacing = false;
-		const body = markdownBody;
-		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
-		scrollPreviewToSyncPosition(position);
-		// That scroll is marked programmatic, so the tab's anchor and the
-		// outline's current entry are written here.
-		const anchorLine = getPreviewScrollAnchor(body);
-		if (anchorLine !== null) {
-			tabManager.updateTabAnchorLine(tabId, anchorLine);
-			followToc('preview', anchorLine);
-		}
-	}
-
-	/**
-	 * A jump the editor has not been asked for yet, because it does not exist
-	 * yet: `toggleEdit` only flips a flag, and the `Editor` it mounts — and the
-	 * `editorPane` binding that reaches it — arrive on the next render. The
-	 * effect below spends it the moment they do, and immediately when the
-	 * editor is already on screen (split view).
-	 */
-	let pendingEditReveal = $state<BufferLineRange | null>(null);
-
+	// `viewMode.pendingEditReveal`, spent the moment the editor exists.
 	$effect(() => {
-		const range = pendingEditReveal;
+		const range = viewMode.pendingEditReveal;
 		if (!range || !editorPane) return;
 
-		pendingEditReveal = null;
+		viewMode.pendingEditReveal = null;
 		editorPane.revealSourceRange(range.startLine, range.endLine);
 	});
-
-	/**
-	 * Which source lines the reader means by right-clicking here (#90).
-	 *
-	 * The selection when there is one, so a range spanning several blocks opens
-	 * the editor on all of them; a caret or a click with nothing selected falls
-	 * through to whatever is under the pointer, which is how a click on an
-	 * image lands on the image.
-	 *
-	 * `null` when nothing under the pointer came from the document: the front
-	 * matter panel, the outline, the window chrome. The caller then leaves the
-	 * "Edit" entry doing exactly what it did before.
-	 */
-	function getContextMenuSourceRange(e: MouseEvent): LineRange | null {
-		return getSelectionSourceRange() ?? findSourceLineRange(e.target as Node | null);
-	}
-
-	/**
-	 * The source lines the reader has selected in the preview, or null when
-	 * nothing is selected or the selection came from outside the document.
-	 *
-	 * Both ends resolve independently and are merged, so a selection spanning
-	 * several blocks answers with all of them, and one end landing somewhere
-	 * with no range (the front matter panel, the outline) leaves the other end
-	 * in charge. Direction-independent: `startContainer` is the range's start,
-	 * not the point the drag began at.
-	 */
-	function getSelectionSourceRange(): LineRange | null {
-		const selection = window.getSelection();
-		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
-		return mergeSourceLineRanges(
-			findSourceLineRange(selection.getRangeAt(0).startContainer),
-			findSourceLineRange(selection.getRangeAt(selection.rangeCount - 1).endContainer),
-		);
-	}
-
-	/**
-	 * What ⌘E means, from every entry point that offers it — the hotkey, the
-	 * toolbar, the title bar, and Monaco's own command.
-	 *
-	 * One function so the chord cannot mean two things depending on where the
-	 * caret happens to be (`formatShortcutKeymap.test.ts` holds the two layers
-	 * together), and so "take me to the editor" behaves the same whether the
-	 * reader asked for it with a key or with a menu item.
-	 */
-	async function toggleEditView() {
-		const selected = getSelectionSourceRange();
-
-		if (!hasPreviewPane) {
-			// The editor is already the whole window: nowhere further to take
-			// the reader, so this is the toggle back out.
-			await toggleEdit();
-			return;
-		}
-
-		if (isSplit && !selected) {
-			// Deliberately nothing.
-			//
-			// What ⌘E is asked for is the ability to edit, and split view
-			// already grants it — the editor is on screen. With no selection
-			// there is no fragment to travel to either, so every remaining
-			// reading of the chord is a LAYOUT change nobody asked for: closing
-			// the preview on a mistyped ⌘E costs the reader the pane and a
-			// second keystroke to get it back, while doing nothing costs
-			// nothing. ⌘\ opens and closes the split, and stays the only way.
-			return;
-		}
-
-		// Reading, or split with a selection: same as the context menu's "Edit".
-		await editSourceRange(selected);
-	}
-
-	/**
-	 * Open the editor on `range`. Toggles into edit mode when `isEditing` is
-	 * false, including split view entered from reading mode.
-	 */
-	async function editSourceRange(range: LineRange | null) {
-		if (!isEditing) await toggleEdit();
-		// `toggleEdit` swallows a failed read and stays in reading mode. Arming
-		// the jump anyway would fire it at whatever document is edited next.
-		if (range && tabManager.activeTab?.isEditing) pendingEditReveal = lineCoords.toBufferRange(range);
-	}
 
 	/**
 	 * This document's two line numberings, and the only thing that converts
@@ -2235,134 +1676,15 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	 */
 	let lineCoords = $derived(lineCoordinates(rawContent));
 
-	async function saveContent(tabId?: string): Promise<boolean> {
-		const id = tabId ?? tabManager.activeTabId ?? '';
-		// Only the saves the user asked for come here — Cmd+S, the menu and
-		// title bar Save. Saves nobody asked for go through `saveSilently`.
-		// So a save that lands here IS the answer "keep my version": it both
-		// authorises the write the session would otherwise refuse, and leaves
-		// the bar with nothing to ask.
-		//
-		// Without the first half the bar became a trap: the disk really has
-		// changed, so the guard in `saveContent` refuses, so the bar goes back
-		// up, and Cmd+S can never get the user out of it.
-		if (hasExternalChangeConflict(id)) documentSession.allowOverwriteOnce(id);
-		return saveSilently(id);
-	}
-
-	/**
-	 * A save nobody asked for: the debounce, leaving an editable pane, the
-	 * exit's auto-save. It never authorises overwriting a changed file, so on
-	 * a conflicted tab the session's guard refuses it and the bar stays up.
-	 */
-	async function saveSilently(tabId: string): Promise<boolean> {
-		const saved = await documentSession.saveContent(tabId);
-		if (saved) clearExternalChangeConflict(tabId);
-		return saved;
-	}
-
 	async function saveContentAs(): Promise<boolean> {
 		return documentSession.saveContentAs();
 	}
 
-	// --- External change conflicts ---
-	// A file changed on disk while the tab holding it had unsaved edits. The
-	// reload is NOT performed: `setTabRawContent` replaces originalContent
-	// too, so an automatic reload would erase the edits and the fact that
-	// there were any. The tab is flagged instead and the user picks.
-	//
-	// The question is about one file at one baseline, so that is what is
-	// recorded. Anything that puts another document in the tab — a link, back
-	// and forward, Reload, Save As, the close dialog's Save or Don't Save —
-	// moves the path or the baseline, and the conflict is void without each of
-	// them having to remember to clear it.
-	let externalChangeConflicts = $state<Record<string, { path: string; baseline: string }>>({});
 	let activeExternalChangeConflict = $derived(
 		tabManager.activeTabId ? hasExternalChangeConflict(tabManager.activeTabId) : false,
 	);
 
-	function hasExternalChangeConflict(tabId: string): boolean {
-		const conflict = externalChangeConflicts[tabId];
-		const tab = tabManager.tabs.find((item) => item.id === tabId);
-		return !!conflict && !!tab && tab.path === conflict.path && tab.originalContent === conflict.baseline;
-	}
-
-	function noteExternalChangeConflict(tabId: string) {
-		const tab = tabManager.tabs.find((item) => item.id === tabId);
-		if (tab) externalChangeConflicts[tabId] = { path: tab.path, baseline: tab.originalContent };
-	}
-
-	function clearExternalChangeConflict(tabId: string) {
-		delete externalChangeConflicts[tabId];
-	}
-
-	/** "Reload": the user chose the disk version over their own edits. */
-	async function resolveExternalChangeByReloading(tabId: string) {
-		// The reload lands in the active tab, so it is refused for any other.
-		const tab = tabManager.activeTab;
-		if (!tab?.path || tab.id !== tabId) return;
-		comparison = null;
-		clearExternalChangeConflict(tab.id);
-		await loadMarkdown(tab.path, {
-			preserveEditState: true,
-			skipTabManagement: true,
-			resetScrollHistory: true,
-			// The user answered "the file changed under your edits" with the
-			// disk version. Every other caller of loadMarkdown is an OPEN and
-			// must leave an edited buffer alone; this one is the revert, and
-			// says so rather than leaving the session to infer it.
-			discardUnsavedBuffer: true,
-		});
-	}
-
-	/**
-	 * The two versions the conflict bar is asking about, once the user has
-	 * asked to see them.
-	 *
-	 * Read on demand rather than kept alongside the flag: the bar can stand for
-	 * a while, and what matters is what the file says when the question is
-	 * actually being answered, not what it said when it was raised.
-	 */
-	let comparison = $state<{ tabId: string; onDisk: string; mine: string; language: string } | null>(null);
-
-	// The overlay answers for the tab it was opened on. Switching tabs, or that
-	// tab's conflict going void, closes it rather than letting its buttons land
-	// on whatever is in front.
-	$effect(() => {
-		if (comparison && (comparison.tabId !== tabManager.activeTabId || !hasExternalChangeConflict(comparison.tabId))) {
-			comparison = null;
-		}
-	});
-
-	/** "Compare": show what Reload would replace, before it is irreversible. */
-	async function compareExternalChange() {
-		const tab = tabManager.activeTab;
-		if (!tab?.path) return;
-		try {
-			const [onDisk] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-			if (tabManager.activeTabId !== tab.id) return;
-			comparison = {
-				tabId: tab.id,
-				onDisk,
-				mine: tab.rawContent,
-				language: editorLanguageFor(tab.path),
-			};
-		} catch (error) {
-			console.error('Failed to read the file for comparison', error);
-			addToast(`${t('externalChange.compare', settings.language)}: ${String(error)}`, 'error');
-		}
-	}
-
-	/** "Keep my version": dismiss. The buffer stays dirty and saveable. */
-	function resolveExternalChangeByKeepingBuffer(id: string) {
-		// The answer is about a write, not about a bar: the next save has to be
-		// allowed past the guard that would otherwise refuse to overwrite the
-		// changed file. One save only — a third program writing a minute later
-		// is a new question, and the user has not answered that one.
-		documentSession.allowOverwriteOnce(id);
-		comparison = null;
-		clearExternalChangeConflict(id);
-	}
+	$effect(() => externalChange.closeStaleComparison());
 
 	/**
 	 * Auto-save effect.
@@ -2415,21 +1737,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			const seenIds = new Set<string>();
 			for (const s of snapshot) {
 				seenIds.add(s.id);
-				// A tab with an unanswered external-change conflict is NOT
-				// eligible: the debounce would fire while the bar is still
-				// asking "reload or keep mine", write the buffer, and destroy
-				// the disk version the question was about — leaving the user to
-				// answer a question whose "reload" branch no longer exists.
-				// Only this background timer is held back. Cmd+S and the close
-				// dialog's Save still write, because that answer means "keep
-				// mine".
-				// A tab whose buffer was decoded lossily is dropped once the
-				// guard has refused it and said why. The first attempt is what
-				// produces that explanation, so it is deliberately allowed
-				// through; re-arming after it would only reach the same refusal
-				// every 1.5s for as long as the user keeps typing.
-				const eligible = s.isDirty && s.path !== '' && s.editable && !s.hasPendingConflict
-					&& !(s.decodedLossily && documentSession.isLossySaveRefused(s.id));
+				const eligible = isAutoSaveEligible(s, documentSession.isLossySaveRefused);
 				const prevRef = lastContentRefByTab.get(s.id);
 				const refChanged = prevRef !== s.contentRef;
 
@@ -2465,15 +1773,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 						(ok) => {
 							if (!ok) {
 								console.error('Auto-save failed for tab', s.id);
-								// A refusal already explained itself, naming the
-								// file and the way out. "Auto-save failed" on top
-								// of that says nothing new.
-								if (documentSession.isLossySaveRefused(s.id)) return;
-								// Same reasoning for the other refusal: the disk
-								// moved under the write, and the conflict bar is
-								// already on screen saying so and offering both
-								// ways out.
-								if (hasExternalChangeConflict(s.id)) return;
+								if (!autoSaveFailureNeedsToast(s.id, { isLossySaveRefused: documentSession.isLossySaveRefused, hasExternalChangeConflict })) return;
 								addToast(
 									t('toast.autoSaveFailed', settings.language),
 									'error',
@@ -2645,25 +1945,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		for (const path of paths) await loadMarkdown(path);
 	}
 
-	async function reloadFromDisk() {
-		const activeId = tabManager.activeTabId;
-		const tab = tabManager.activeTab;
-		if (!activeId || !tab?.path) return;
-		if (!(await canCloseTab(activeId))) return;
-
-		await loadMarkdown(tab.path, {
-			preserveEditState: true,
-			skipTabManagement: true,
-			resetScrollHistory: true,
-			// canCloseTab has already resolved the buffer, so normally there is
-			// nothing left to discard — but the user can type during that await,
-			// and a reload that silently did nothing would be worse than one
-			// that does what its menu item says.
-			discardUnsavedBuffer: true,
-		});
-		addToast(t('toast.reloadedFromDisk', settings.language), 'info');
-	}
-
 	function toggleHome() {
 		showHome = !showHome;
 	}
@@ -2675,18 +1956,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 
 		await closeTabAndWindowIfLast(tabManager.activeTabId);
-	}
-
-	async function closeTabAndWindowIfLast(tabId: string) {
-		if (!(await canCloseTab(tabId))) return;
-
-		if (tabManager.tabs.length === 1) await savePinnedTagIfNeeded();
-		tabManager.closeTab(tabId);
-		if (tabManager.tabs.length > 0) return;
-
-		invoke('unwatch_file').catch(console.error);
-		// Off, the empty window stays and renders Home.
-		if (settings.closeWindowWithLastTab) await destroyWindowAfterTabsClosed();
 	}
 
 	async function closeTabsWithConfirmation(tabIds: string[]) {
@@ -2705,14 +1974,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		await savePinnedTagIfNeeded();
 		await closeTabsWithConfirmation(tabManager.tabs.map((tab) => tab.id));
 		if (tabManager.tabs.length === 0) tabManager.setWindowTag(null);
-	}
-
-	async function destroyWindowAfterTabsClosed() {
-		// No tabs left: drop this window's backup so a discarded buffer stays gone.
-		if (recoveryReady) await unsavedRecovery.flush('[]');
-		await persistWindowState(false);
-
-		await appWindow.destroy();
 	}
 
 	async function openFileLocation() {
@@ -2819,10 +2080,8 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 		let mediaItems: any[] = imageMenuItems(e.target as HTMLElement, settings.language, saveImageAs);
 
-		// Resolved now rather than inside the "Edit" handler: by the time that
-		// runs the reader has clicked a menu item, and a click is how a
-		// selection goes away.
-		const editSourceTarget = getContextMenuSourceRange(e);
+		// Resolved now: see `editSourceRangeAt`.
+		const editAtTarget = editSourceRangeAt(e);
 
 		// Read now for the same reason: the click on the item clears the selection.
 		const selected = canAnnotate && settings.previewAnnotations ? selectionAnnotation() : null;
@@ -2886,7 +2145,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 				} },
 				{ separator: true },
 				{ label: t('menu.openFileLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
-				{ label: t('menu.edit', settings.language), onClick: () => editSourceRange(editSourceTarget) },
+				{ label: t('menu.edit', settings.language), onClick: editAtTarget },
 				{ separator: true },
 				{ label: t('menu.closeFile', settings.language), onClick: closeFile },
 			],
@@ -2975,61 +2234,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		if (tabManager.activeTab?.unread) untrack(() => void documentSession.readActiveIfUnread());
 	});
 
-	async function toggleSplitView(tabId: string) {
-		const tab = tabManager.tabs.find((t) => t.id === tabId);
-		if (!tab) return;
-
-		if (!tab.isSplit) {
-			// Split view is an editor, and its first keystroke arms auto-save.
-			// The buffer must be complete first (not empty, not a large file's
-			// partial read), or auto-save writes a truncated file.
-			if (tab.path && !tab.isEditing && !tab.rawContent) {
-				const mayApply = claimTabForRead(tab.id);
-				try {
-					// Checked, like every other read that fills an editable
-					// buffer: split view is an editor, so this tab must carry
-					// the fidelity of its own decode rather than inherit one.
-					const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-					if (!mayApply()) return;
-					tabManager.setTabDecodedLossy(tab.id, lossy);
-					tabManager.setTabEncoding(tab.id, encoding);
-					tabManager.setTabRawContent(tab.id, content);
-				} catch (e) {
-					console.error('Failed to load raw content for split view', e);
-				}
-			}
-			if (!(await documentSession.ensureFullContent(tab.id))) {
-				addToast(t('toast.partialDocument', settings.language), 'error');
-				return;
-			}
-			tabManager.setSplitEnabled(tab.id, true);
-		} else {
-			// Like leaving edit mode: the surviving pane renders the buffer, so
-			// nothing is saved or asked.
-			await flushBeforeLeavingEditableMode(tab);
-			tabManager.setSplitEnabled(tab.id, false);
-			await renderPreviewLeavingEditableMode(tab);
-		}
-	}
-
-	/** The title bar's three mode buttons (#806): go straight to one, from any. */
-	async function setViewMode(target: ViewMode) {
-		const tab = tabManager.activeTab;
-		if (!tab || viewModeOf(tab) === target) return;
-		if (target === 'split') return toggleSplitView(tab.id);
-		if (!tab.isSplit) return target === 'edit' ? toggleEditView() : toggleEdit();
-		// Leaving split: the editor is already on screen and holds the full
-		// buffer, so Edit only drops the preview. Preview goes through the
-		// normal close, which flushes and renders.
-		if (target === 'edit') {
-			tab.isEditing = true;
-			tabManager.setSplitEnabled(tab.id, false);
-			return;
-		}
-		tab.isEditing = false;
-		await toggleSplitView(tab.id);
-	}
-
 	/*
 	 * `viewerKeymap.ts` decides which command a keystroke means. This maps each
 	 * command to the function that runs it. Every command is preventDefaulted
@@ -3088,10 +2292,8 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			case 'save-as':
 				return void saveContentAs();
 			case 'save': {
-				// Save from any mode. An untitled buffer has content to write. A
-				// clean saved file is a no-op, so its mtime does not wake the watcher.
-				const saveTarget = tabManager.activeTab;
-				if (saveTarget && (saveTarget.isDirty || saveTarget.path === '')) saveContent();
+				// Save from any mode; see `saveActiveTab`.
+				void saveActiveTab();
 				return;
 			}
 			case 'undo-close-tab':
@@ -3185,10 +2387,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	}
 
 	function handleKeyDown(e: KeyboardEvent) {
-		const command = viewerCommandFor(e, keyContext());
-		if (!command) return;
-		e.preventDefault();
-		runViewerCommand(command);
+		dispatchViewerKey(e, keyContext(), runViewerCommand);
 	}
 
 	async function navigateFileHistory(direction: 'back' | 'forward') {
@@ -3301,23 +2500,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		await Promise.all(others.map((window) => emitTo(window.label, 'merge-into', appWindow.label)));
 	}
 
-	async function mergeSelfInto(targetLabel: string) {
-		if (isCloseWalkActive) return;
-		await savePinnedTagIfNeeded();
-		for (const tab of [...tabManager.tabs]) {
-			if (isHomePath(tab.path)) {
-				tabManager.closeTab(tab.id);
-				continue;
-			}
-			await moveTabToWindow(tab.id, targetLabel);
-		}
-		if (tabManager.tabs.length === 0) {
-			if (recoveryReady) await unsavedRecovery.flush('[]');
-			await persistWindowState(false);
-			await appWindow.destroy();
-		}
-	}
-
 	function startDrag(e: MouseEvent, tabId: string | null) {
 		if (!tabId) return;
 		e.preventDefault();
@@ -3425,7 +2607,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 					if (tag) await openPinnedTag(tag);
 				}
 			}
-			windowMetaReady = true;
+			windowMeta.markReady();
 			if (isDisposed) return;
 
 			const urlParams = new URLSearchParams(window.location.search);
@@ -3505,7 +2687,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 					moveTabToWindow(tabId, targetLabel).catch((error) => console.error('Failed to move tab', error));
 				}],
 				['tab-transfer-offer', (event) => {
-					if (isCloseWalkActive) return;
+					if (windowExit.isCloseWalkActive()) return;
 					windowSession.acceptOfferedTransfer(event.payload);
 				}],
 				['merge-into', (event) => {
@@ -3532,42 +2714,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			];
 			for (const [event, handler] of listeners) unlisteners.push(await appWindow.listen(event, handler));
 			unlisteners.push(
-				await appWindow.onCloseRequested(async (event) => {
-					// The red button is a native control, so it is NOT blocked
-					// by the in-app dialog overlay: a second click while the
-					// walk below is showing a dialog would re-enter this handler
-					// and start a competing walk whose setActive calls fight the
-					// first one — the highlighted tab stops matching the dialog.
-					// One walk at a time.
-					if (isCloseWalkActive) {
-						event.preventDefault();
-						return;
-					}
-
-					// Hot exit on quit or when the app exits with this window: the
-					// backup is written, nothing to ask, close proceeds. Closing one
-					// of several windows asks below. Decided before `hadDirtyTabs`:
-					// the buffers stay dirty, and a re-triggered close would only
-					// find them again. If unsure, ask.
-					const keepsUnsaved = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => false);
-					if (settings.persistOpenEditors && (await keepUnsavedForExit(keepsUnsaved))) return;
-
-					// With tabs to review the close is held open while their
-					// dialogs are up, then re-triggered: the handler re-enters,
-					// finds nothing dirty, and the close proceeds.
-					const hadDirtyTabs = tabManager.tabs.some((t) => t.isDirty);
-					if (hadDirtyTabs) event.preventDefault();
-					// Closing one of several windows forgets it; quit or the last window remembers.
-					const endsSession = () => invoke<boolean>('keeps_unsaved_on_close').catch(() => true);
-					if (!(await settleForExit(endsSession))) {
-						// A cancelled close cancels the quit, so the windows left ask again.
-						invoke('set_quitting', { quitting: false }).catch(console.error);
-						return;
-					}
-					// Resolved: drop the backup, so a discarded buffer stays gone.
-					if (recoveryReady) await unsavedRecovery.flush('[]');
-					if (hadDirtyTabs) appWindow.close();
-				}),
+				await appWindow.onCloseRequested(windowExit.handleCloseRequested),
 			);
 
 			unlisteners.push(
@@ -3753,10 +2900,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	<Settings show={showSettings} theme={settings.theme} onSetTheme={(t) => (settings.theme = t)} onclose={() => (showSettings = false)} />
 
 	<DiffOverlay
-		show={comparison !== null}
-		onDisk={comparison?.onDisk ?? ''}
-		mine={comparison?.mine ?? ''}
-		language={comparison?.language ?? 'markdown'}
+		show={externalChange.comparison !== null}
+		onDisk={externalChange.comparison?.onDisk ?? ''}
+		mine={externalChange.comparison?.mine ?? ''}
+		language={externalChange.comparison?.language ?? 'markdown'}
 		labels={{
 			onDisk: t('externalChange.onDisk', settings.language),
 			mine: t('externalChange.mine', settings.language),
@@ -3764,9 +2911,9 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			keepMine: t('externalChange.keepMine', settings.language),
 			close: t('externalChange.close', settings.language),
 		}}
-		onclose={() => (comparison = null)}
-		onreload={() => comparison && resolveExternalChangeByReloading(comparison.tabId)}
-		onkeep={() => comparison && resolveExternalChangeByKeepingBuffer(comparison.tabId)} />
+		onclose={externalChange.closeComparison}
+		onreload={() => externalChange.comparison && resolveExternalChangeByReloading(externalChange.comparison.tabId)}
+		onkeep={() => externalChange.comparison && resolveExternalChangeByKeepingBuffer(externalChange.comparison.tabId)} />
 
 	{#if sidebarSide}
 		<Sidebar
@@ -3804,7 +2951,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			</button>
 		</div>
 	{/if}
-	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
+	{#if tabManager.activeTab && !showsHomeScreen(tabManager.activeTab, showHome)}
 			<div
 				class="markdown-container"
 				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize}px; --highlight-color: {previewAppearance.highlightColor};"
@@ -3857,7 +3004,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 								oncommand={runViewerCommand}
 								onscrollsync={handleEditorScrollSync}
 								oncursor={handleEditorCursor}
-								sharedCursor={settings.previewCursor ? activeCursor : null} />
+								sharedCursor={settings.previewCursor ? viewMode.activeCursor : null} />
 						{/if}
 					</div>
 
@@ -4086,7 +3233,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 									onpointerdown={startTocResize}
 									onkeydown={handleTocResizeKeyDown}></div>
 								<Toc
-									activeLine={tocActiveLine} 
+									activeLine={viewMode.tocActiveLine} 
 										{markdownBody} 
 										contentRoot={previewBlocks}
 										previewRevision={previewPatch.revision}

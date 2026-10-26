@@ -115,13 +115,13 @@ describe('outline follows the editor', () => {
 		// It goes through `tabAnchorForEditorTopLine`, the crossing the tab's own
 		// reading position takes, so the outline follows the line the reader is
 		// on rather than the one the viewport cuts in half (#744).
-		const handler = functionSource(viewerSource, 'handleEditorScrollSync');
+		const handler = functionSource(readSource('src/lib/sessions/viewMode.svelte.ts'), 'handleEditorScrollSync');
 		const record = handler.indexOf("followToc('editor'");
 		const syncCheck = handler.indexOf('splitScrollSyncOn()');
 
 		assert.ok(record !== -1 && syncCheck !== -1, 'both statements must still be here');
 		assert.ok(record < syncCheck, 'the outline is fed before the sync check, not inside it');
-		assert.match(handler, /followToc\('editor', tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)\)/);
+		assert.match(handler, /followToc\('editor', tabAnchorForEditorTopLine\(o\.lineCoords, asBufferLine\(position\.line\)\)\)/);
 	});
 
 	test('the preview feeds the same state, off the line it already measures', () => {
@@ -133,7 +133,7 @@ describe('outline follows the editor', () => {
 		assert.match(handler, /const anchorLine = getPreviewScrollAnchor\(target\);/);
 		assert.match(handler, /followToc\('preview', anchorLine\);/);
 		// One input. Which pane feeds it is `followToc`'s call.
-		assert.match(viewerSource, /activeLine=\{tocActiveLine\}/);
+		assert.match(viewerSource, /activeLine=\{viewMode\.tocActiveLine\}/);
 	});
 
 	test('there is no preference for it, because the preview never had one', () => {

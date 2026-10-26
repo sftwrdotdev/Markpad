@@ -58,9 +58,9 @@ describe('merged auto-save preference', () => {
 			assert.doesNotMatch(source, /settings\.confirmBeforeSave/);
 		}
 		// And the four decisions are still there, now reading the one switch.
-		assert.match(viewerSource, /if \(!settings\.autoSave\) return;/); // leaving an editable pane
+		assert.match(readSource('src/lib/sessions/externalChange.svelte.ts'), /if \(!settings\.autoSave\) return;/); // leaving an editable pane
 		assert.match(viewerSource, /if \(!settings\.autoSave\) \{/); // the debounce
-		assert.match(viewerSource, /if \(settings\.autoSave\) \{/); // the close-window walk
+		assert.match(readSource('src/lib/sessions/windowExit.ts'), /if \(settings\.autoSave\) \{/); // the close-window walk
 		// Closing a tab. The condition grew a third term — a file that changed
 		// under the buffer is a question for the user, not something auto-save may
 		// answer by writing — but it is still this one switch that decides whether
@@ -102,7 +102,7 @@ describe('merged auto-save preference', () => {
 	/* ------------------------------------------------ D: last tab (#829) */
 
 	test('closing the last tab leaves the window on Home when the setting is off', () => {
-		const body = functionSource(viewerSource, 'closeTabAndWindowIfLast');
+		const body = functionSource(readSource('src/lib/sessions/windowExit.ts'), 'closeTabAndWindowIfLast');
 		assert.match(body, /if \(settings\.closeWindowWithLastTab\) await destroyWindowAfterTabsClosed\(\);/);
 		assert.equal(body.match(/destroyWindowAfterTabsClosed\(/g)?.length, 1, 'no ungated destroy');
 	});

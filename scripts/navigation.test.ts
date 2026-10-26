@@ -245,3 +245,60 @@ describe('jump to the selected fragment', () => {
 		assert.equal(log.length, 3, 'a queued jump is spent once');
 	});
 });
+
+describe('preview scroll sync across the front matter', async () => {
+	const { asBufferLine, lineCoordinates } = await import('../src/lib/utils/lineCoordinates.js');
+	const { getPreviewScrollAnchor, getPreviewScrollSyncPosition, getPreviewScrollTopForSyncPosition } = await import(
+		'../src/lib/utils/previewScrollSync.js'
+	);
+	const { PREVIEW_ANCHOR_OFFSET } = await import('../src/lib/utils/previewAnchor.js');
+	type PreviewScroller = import('../src/lib/utils/previewScrollSync.js').PreviewScroller;
+
+	// Scroll sync crosses the line boundary in BOTH directions:
+	// `ScrollSyncPosition.line` is a buffer line, because the editor is the only
+	// pane that can produce one, while everything the preview answers with
+	// counts from the body. On a document with front matter the panes drifted
+	// apart by exactly that many lines.
+	const FRONT_MATTER = 3;
+	const coords = lineCoordinates('---\na: 1\n---\n# body\n');
+
+	type FakeBlock = { nodeType: 1; tagName: string; childNodes: FakeBlock[]; getAttribute: (n: string) => string | null; top: number; height: number };
+	const block = (line: number, top: number, height: number): FakeBlock => ({
+		nodeType: 1,
+		tagName: 'P',
+		childNodes: [],
+		getAttribute: (name) => (name === 'data-sourcepos' ? `${line}:1-${line}:10` : null),
+		top,
+		height,
+	});
+	/** Body lines 1, 5 and 9, and no front matter panel. */
+	const SCROLL_MAX = 800;
+	function preview(scrollTop: number) {
+		return {
+			nodeType: 1,
+			tagName: 'DIV',
+			childNodes: [block(1, 100, 40), block(5, 300, 40), block(9, 500, 60)],
+			getAttribute: () => null,
+			scrollTop,
+			querySelector: () => null,
+		} as unknown as PreviewScroller;
+	}
+	const measure = (node: unknown) => ({ top: (node as FakeBlock).top, height: (node as FakeBlock).height });
+
+	test('scroll sync converts in both directions', () => {
+		// The preview at body line 5 tells the editor buffer line 8.
+		const captured = getPreviewScrollSyncPosition(preview(300), SCROLL_MAX, coords, measure);
+		assert.equal(captured.section, 'body');
+		assert.equal(captured.line, 5 + FRONT_MATTER, 'a line read off the preview is shifted before the editor sees it');
+
+		// And the editor at buffer line 8 puts the preview on body line 5.
+		const target = getPreviewScrollTopForSyncPosition(preview(0), SCROLL_MAX, { section: 'body', ratio: 0, line: asBufferLine(5 + FRONT_MATTER) }, coords, measure);
+		assert.equal(target, 300, 'a line coming from the editor is shifted back before the preview seeks');
+	});
+
+	test("the preview's reading position is already a body line", () => {
+		// The outline and the tab's anchor both count from the body, so the
+		// preview's answer is not shifted.
+		assert.equal(getPreviewScrollAnchor(preview(300 - PREVIEW_ANCHOR_OFFSET), measure), 5);
+	});
+});

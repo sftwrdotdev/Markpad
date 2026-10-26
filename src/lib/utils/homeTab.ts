@@ -27,3 +27,12 @@ export const HOME_TAB_PATH = 'HOME';
 export function isHomePath(path: string): boolean {
 	return path === HOME_TAB_PATH;
 }
+
+/**
+ * Whether the window draws the home screen instead of a document: an empty
+ * window, the home tab, or the Home button's overlay over any tab. Decided by
+ * tab kind, never by the localised title (#392).
+ */
+export function showsHomeScreen(activeTab: { path: string } | undefined, showHome: boolean): boolean {
+	return showHome || !activeTab || isHomePath(activeTab.path);
+}

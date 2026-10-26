@@ -3,7 +3,6 @@ import { describe, test } from 'node:test';
 
 import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
-import { viewerCommandTable } from './keymapHarness.js';
 import {
 	functionSource,
 	offsetOf,
@@ -75,44 +74,12 @@ describe('checked read migration', () => {
 		assert.doesNotMatch(rust, /^\s*read_file_content,\s*$/m, 'and must not be registered again');
 	});
 
-	test('entering the editor reads the fidelity and stores it', () => {
-		const toggle = sliceBetween(viewer, 'async function toggleEdit', 'async function saveContent');
-		assert.match(toggle, /\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked', \{ path: tab\.path \}\)\)/);
-		const read = offsetOf(toggle, 'read_file_content_checked');
-		const flag = offsetOf(toggle, 'setTabDecodedLossy(tab.id, lossy)');
-		const store = offsetOf(toggle, 'setTabRawContent(tab.id, content)');
-		assert.ok(read < flag && flag < store, 'flag the tab before the buffer is published');
-	});
-
-	test('entering split view reads the fidelity and stores it', () => {
-		const enter = sliceBetween(viewer, 'async function toggleSplitView', '} else {');
-		assert.match(enter, /\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked', \{ path: tab\.path \}\)\)/);
-		const flag = offsetOf(enter, 'setTabDecodedLossy(tab.id, lossy)');
-		const store = offsetOf(enter, 'setTabRawContent(tab.id, content)');
-		assert.ok(flag < store, 'flag the tab before the buffer is published');
-	});
-
 	// --- the repeating toast ------------------------------------------------------
 
-	test('a refused save does not add a generic toast to its own explanation', () => {
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		const check = offsetOf(body, 'if (documentSession.isLossySaveRefused(s.id)) return;');
-		const toast = offsetOf(body, "t('toast.autoSaveFailed'");
-		assert.ok(check < toast, 'the refusal must be recognised before the generic toast is raised');
-	});
-
 	test('a tab that can only be refused stops re-arming the timer', () => {
-		// Auto-save re-arms on every keystroke. Without this the guard was reached
-		// again every 1.5s for as long as the user kept typing — each time
-		// producing the console warning, the wasted round trip, and (before the
-		// test above) the toast.
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		assert.match(body, /decodedLossily: tab\.hasReplacementChars/);
-		assert.match(body, /const eligible = [^;]*!\(s\.decodedLossily && documentSession\.isLossySaveRefused\(s\.id\)\)/);
-		// The FIRST attempt must still happen: it is what produces the explanation.
-		// `isLossySaveRefused` is false until the guard has spoken, so eligibility
-		// only drops afterwards — and "Save As" to a new file clears
-		// `hasReplacementChars`, which restores it.
+		// The eligibility rule runs in documents.test.ts "auto-save debounce". What
+		// is left: "Save As" to a new file forgets that the refusal was said, so a
+		// later lossy load into the same tab is explained again.
 		assert.match(
 			readSource('src/lib/sessions/documentSession.svelte.ts'),
 			/lossySaveWarnedTabs\.delete\(tab\.id\)/,
@@ -156,7 +123,8 @@ describe('lossy decode save guard', () => {
 		assert.match(session, /const success = await saveContent\(tabId\);/);
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
-		assert.match(functionSource(viewer, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
+		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
+		assert.match(functionSource(saves, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 	});
 
 	test('the refusal names Save As, the only exit', () => {
@@ -168,57 +136,10 @@ describe('lossy decode save guard', () => {
 	});
 });
 
-describe('save from reading mode', () => {
-	test('the browser save dialog is always suppressed', () => {
-		// preventDefault has to run for every mode, including the no-op case, or
-		// reading mode would surface the webview's own Save Page dialog. It is one
-		// unconditional call on the command rather than one per branch now, so this
-		// reads the six-line handler rather than the branch it used to sit in — and
-		// covers all twenty-two commands instead of Save alone.
-		const handler = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'handleKeyDown');
-		assert.match(
-			handler,
-			/if \(!command\) return;\s*\n\s*e\.preventDefault\(\);/,
-			'a command that runs must have had the keystroke prevented first',
-		);
-	});
-
-	/*
-	 * The three below are the residue of this seam, and they say so.
-	 *
-	 * What Ctrl+S DOES is a closure over `tabManager.activeTab` inside the
-	 * component, which is the one thing that could not move: see the note on
-	 * `viewerCommandTable` in `keymapHarness.ts`. They are still text assertions —
-	 * but text anchored on a `case 'save':` label rather than on a chord condition,
-	 * so the rename that reddened five of these in #647 no longer reaches them.
-	 */
-	const saveCommand = () => viewerCommandTable()['save'];
-
-	test('an untitled buffer can be saved from reading mode', () => {
-		// `path === ''` is the untitled case; documentSession.saveContent opens
-		// the Save dialog for it, so no extra plumbing is needed here.
-		assert.match(saveCommand(), /saveTarget\.path === ''/);
-	});
-
-	test('a saved, unmodified document does not write on Ctrl+S', () => {
-		// Writing unconditionally would touch mtime and wake the file watcher,
-		// which in live mode reloads the tab -- a keystroke that reads as a no-op
-		// to the user should not move the document underneath them.
-		assert.match(saveCommand(), /saveTarget\.isDirty \|\| saveTarget\.path === ''/);
-	});
-
-	test('the HOME tab is not savable', () => {
-		// HOME carries the sentinel path 'HOME' and is never dirty, so the guard
-		// excludes it without naming it. This pins that reasoning: if the guard
-		// ever becomes unconditional, HOME would start opening a Save dialog.
-		assert.doesNotMatch(saveCommand(), /^\s*saveContent\(\);\s*$/m);
-	});
-});
-
 describe('unsaved recovery', () => {
 	test('the close decision commands are spelled the same in the viewer and in Rust', () => {
 		// Cross-language contract: only the string connects invoke() to the command.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
+		const viewer = readSource('src/lib/sessions/windowExit.ts');
 		const rust = readSource('src-tauri/src/window_runtime.rs');
 		for (const name of ['keeps_unsaved_on_close', 'set_quitting']) {
 			assert.ok(viewer.includes(`invoke<boolean>('${name}'`) || viewer.includes(`invoke('${name}'`), `viewer does not invoke ${name}`);
@@ -460,31 +381,13 @@ describe('external change reload', () => {
 		assert.doesNotMatch(body, /loadMarkdown\(currentFile\)/);
 	});
 
-	test('a conflict is surfaced with both choices instead of resolving itself', () => {
-		assert.match(viewer, /externalChangeConflicts/);
-		assert.match(viewer, /t\('externalChange\.reload'/);
-		assert.match(viewer, /t\('externalChange\.keepMine'/);
-	});
-
-	test('the debounced auto-save is held back while a conflict is unanswered', () => {
-		// Otherwise the 1.5s timer fires while the bar is still asking "reload or
-		// keep mine": the user's edits survive, but the external change is gone
-		// from disk before either answer can be given.
-		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
-		assert.match(body, /hasPendingConflict: hasExternalChangeConflict\(tab\.id\)/);
-		assert.match(body, /const eligible = [^;]*!s\.hasPendingConflict/);
-	});
-
-	test('an explicit save answers the conflict and takes the bar down', () => {
-		// Pressing Cmd+S is a decision. Leaving the bar up afterwards would ask a
-		// question the user already answered.
-		const body = sliceBetween(viewer, 'async function saveContent(tabId?: string)', 'async function saveContentAs');
-		assert.match(body, /clearExternalChangeConflict/);
-	});
-
 	test('turning Live Mode on does not reload', () => {
 		// Enabling reload is not a request to discard the buffer, and this was
 		// the one loadMarkdown call in the app with no canCloseTab in front of it.
+		//
+		// An absence claim on a one-line toggle. lint-candidate: no-restricted-syntax
+		// on `CallExpression[callee.name='loadMarkdown']` inside
+		// `FunctionDeclaration[id.name='toggleLiveMode']`.
 		const body = sliceBetween(viewer, 'function toggleLiveMode', '\n\t}');
 		assert.doesNotMatch(body, /loadMarkdown/);
 	});
@@ -498,10 +401,11 @@ describe('external change reload', () => {
 		// not follow the file. The button and the chord are now offered in all
 		// three modes; a kill here would take the state straight back off.
 		//
-		// An absence claim about a component that cannot be imported, so it is
-		// matched as source text — the same reason as the four assertions above.
-		const body = sliceBetween(viewer, 'async function toggleSplitView', '\n\t}');
-		assert.doesNotMatch(body, /toggleLiveMode|liveMode\s*=/);
+		// An absence claim: the view toggles live in `sessions/viewMode`, which
+		// is not handed Live Mode at all. lint-candidate: no-restricted-syntax on
+		// `liveMode` / `toggleLiveMode` identifiers in that module.
+		const viewMode = readSource('src/lib/sessions/viewMode.svelte.ts');
+		assert.doesNotMatch(viewMode, /toggleLiveMode|liveMode/);
 	});
 
 	// --- #4: the irreversible answer is now visible before it is given ---
@@ -514,23 +418,6 @@ describe('external change reload', () => {
 		assert.match(bar, /t\('externalChange\.compare'/);
 		assert.match(bar, /t\('externalChange\.reload'/);
 		assert.match(bar, /t\('externalChange\.keepMine'/);
-	});
-
-	test('Compare reads the file at the moment it is asked, not when the bar went up', () => {
-		// The bar can stand for a while. What the user needs to see is the file as
-		// it is when they are actually answering.
-		const fn = sliceBetween(viewer, 'async function compareExternalChange', '\n\t}');
-		assert.match(fn, /read_file_content_checked/);
-		assert.match(fn, /tab\.rawContent/);
-	});
-
-	test('answering the bar closes the comparison with it', () => {
-		// Otherwise the overlay outlives the question and shows a diff against a
-		// version that is no longer either side of anything.
-		for (const name of ['resolveExternalChangeByReloading', 'resolveExternalChangeByKeepingBuffer']) {
-			const fn = sliceBetween(viewer, `function ${name}`, '\n\t}');
-			assert.match(fn, /comparison = null/, `${name} left the comparison open`);
-		}
 	});
 });
 
@@ -551,22 +438,14 @@ describe('reopening a dirty document', () => {
 	// --- reverting is still possible, and only by saying so ---
 	//
 	// Authorization is declared by the caller, never inferred by the session from
-	// nearby state. An earlier draft let an unanswered external-change conflict
-	// stand in for the user's "Reload" click; that is guessing intent from an
-	// adjacent flag, and two callers can be in that state for different reasons.
-
-	// The two revert commands, and only those two. Anything else that starts
-	// passing this flag is a caller claiming the user chose to lose work.
-	for (const name of ['resolveExternalChangeByReloading', 'reloadFromDisk']) {
-		test(`${name} declares that it is discarding the buffer`, () => {
-			const fn = sliceBetween(viewer, `async function ${name}`, '\n\t}');
-			assert.match(fn, /loadMarkdown\(/);
-			assert.match(fn, /discardUnsavedBuffer: true/);
-		});
-	}
-
+	// nearby state. The two revert commands (Reload on the conflict bar, Reload
+	// from disk) declare it; `documents.conflicts.spec.ts` runs both. Anything
+	// else that starts passing this flag is a caller claiming the user chose to
+	// lose work.
 	test('nothing else in the viewer asks to discard a buffer', () => {
-		assert.equal(viewer.match(/discardUnsavedBuffer: true/g)?.length, 2);
+		assert.equal(viewer.match(/discardUnsavedBuffer: true/g), null);
+		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
+		assert.equal(saves.match(/discardUnsavedBuffer: true/g)?.length, 2);
 	});
 });
 
@@ -574,20 +453,6 @@ describe('truncated buffer guard', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	// --- wiring that cannot be executed outside a Svelte runtime ---
-
-	test('entering split view completes a partial buffer instead of trusting it', () => {
-		// The old guard was `!tab.rawContent`, which a partial buffer satisfies:
-		// split view opened on the truncated text, the first keystroke made it
-		// dirty, and auto-save wrote it back 1.5s later.
-		const enter = sliceBetween(viewer, 'async function toggleSplitView', '} else {');
-		assert.match(enter, /ensureFullContent/);
-		// And it has to stop when the buffer could not be completed, rather than
-		// opening an editor over the partial text anyway.
-		assert.match(enter, /if \(!\(await documentSession\.ensureFullContent\(tab\.id\)\)\) \{[\s\S]*?return;/);
-		// The empty-buffer read must go through the store so the tab does not keep
-		// a stale "partial" flag that would then block every save.
-		assert.match(enter, /tabManager\.setTabRawContent\(tab\.id, content\)/);
-	});
 
 	test('a partial buffer cannot be handed to another window', () => {
 		// The destination rebuilds the tab from the payload alone and has no way
@@ -618,25 +483,6 @@ describe('truncated buffer guard', () => {
 				/if \(!\(await documentSession\.ensureFullContent\(tabId\)\)\) \{[\s\S]*?return false;/,
 				`${mover} must complete the buffer before the payload is built, and stop when it cannot`,
 			);
-		}
-	});
-
-	test('front matter edits in preview mode complete the buffer first', () => {
-		for (const entry of ['async function handleFrontMatterEdit', 'async function handleFrontMatterListChange']) {
-			// One handler is followed by a `function`, the other by an `async
-			// function`, so the slice ends at whichever comes first. The previous
-			// expression was `indexOf(a) + 1 || indexOf(b) + 1`, which reads as
-			// "or else" but is really "or else, if the first is absent *or at
-			// offset 0*" — and when the first form appeared later in the file than
-			// the second it won anyway, widening the body past the handler and
-			// letting a neighbouring function satisfy the `assert.match` below.
-			const handler = sliceFrom(viewer, entry);
-			const ends = ['\n\tfunction ', '\n\tasync function ']
-				.map((marker) => handler.indexOf(marker))
-				.filter((at) => at !== -1);
-			assert.ok(ends.length > 0, `${entry} must be followed by a declaration that bounds it`);
-			const body = handler.slice(0, Math.min(...ends));
-			assert.match(body, /ensureFullContent/, `${entry} must not edit a partial buffer`);
 		}
 	});
 });

@@ -322,3 +322,20 @@ export function viewerCommandFor(e: KeyStroke, context: KeyContext): ViewerComma
 
 	return null;
 }
+
+/**
+ * The viewer's keydown handler: a keystroke that means a command is prevented
+ * before the command runs, in every mode. Reading mode would otherwise surface
+ * the webview's own Save Page dialog on Ctrl+S. A chord that means nothing is
+ * left alone.
+ */
+export function dispatchViewerKey(
+	e: KeyStroke & { preventDefault: () => void },
+	context: KeyContext,
+	run: (command: ViewerCommand) => void,
+): void {
+	const command = viewerCommandFor(e, context);
+	if (!command) return;
+	e.preventDefault();
+	run(command);
+}
