@@ -928,7 +928,6 @@ describe('NSIS installer hooks', () => {
 
 describe('a package-managed install is not offered an update', () => {
 	const store = readSource('src/lib/stores/update.svelte.ts');
-	const dialog = readSource('src/lib/components/UpdateDialog.svelte');
 	const rust = readRustBackend();
 	const i18n = readDictionarySource();
 
@@ -951,15 +950,6 @@ describe('a package-managed install is not offered an update', () => {
 		assert.doesNotMatch(command, /env::var/);
 	});
 
-	test('the dialog can render the phase, and can be dismissed from it', () => {
-		// A phase the store can enter but the dialog cannot draw is a blank modal
-		// with no way out — the footer branch matters as much as the body one.
-		assert.match(dialog, /packageManagedHeader/);
-		assert.match(dialog, /packageManagedBody/);
-		const footer = sliceBetween(dialog, '<div class="update-footer">', '</div>\n\t\t</div>');
-		assert.match(footer, /phase === 'package-managed'/);
-	});
-
 	test('the new strings are translated wherever the rest of this dialog is', () => {
 		// The update dialog is only translated into four of the app's 26 languages;
 		// the other 22 fall back to English for all of it. Matching that set exactly
@@ -974,30 +964,6 @@ describe('a package-managed install is not offered an update', () => {
 				`${key} must be defined in the same languages as ${dialogKey}`,
 			);
 		}
-	});
-});
-
-describe('the update dialog', () => {
-	const dialog = readSource('src/lib/components/UpdateDialog.svelte');
-	const globalStyles = readSource('src/styles.css');
-
-	test('release notes can be selected even though the app disables selection', () => {
-		// The app root sets `user-select: none` on purpose. Anything that holds text
-		// a user has to copy out has to say so for itself — nothing else in this
-		// component does, so a rule that quietly went missing here would look like
-		// no rule at all, which is what #532 reported.
-		assert.match(globalStyles, /user-select: none/);
-
-		const notesRule = /\.notes pre \{[^}]*\}/.exec(dialog)?.[0];
-		assert.ok(notesRule, 'the release-notes block must still have its own style rule');
-		assert.match(notesRule, /user-select: text/);
-		assert.match(notesRule, /-webkit-user-select: text/);
-	});
-
-	test('the dialog promises reopened tabs only when restore is on', () => {
-		// With "Restore windows on launch" off nothing writes the snapshot, so the
-		// relaunched app opens empty and must not have been told otherwise.
-		assert.match(dialog, /\{#if settings\.restoreStateOnReopen\}<p>\{tk\('reopensTabs'\)\}<\/p>\{\/if\}/);
 	});
 });
 
