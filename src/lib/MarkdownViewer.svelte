@@ -106,7 +106,7 @@ import { createRecentFiles } from './utils/recentFiles.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { createTabMovers, createTransferOptions } from './sessions/windowTransfer.js';
 import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSlide.js';
-import { adjustPreviewMaxWidth } from './utils/previewWidth.js';
+import { viewerCommandTable } from './utils/viewerCommands.js';
 import { dismissesToc, tocAutoCollapses } from './utils/tocOverlay.js';
 import { exportContextFrom, previewAppearanceFrom, previewLayout } from './utils/previewLayout.js';
 import { splitRatioAfterDrag, splitRatioAfterKey } from './utils/splitPanes.js';
@@ -757,10 +757,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		getPreviewScrollAnchor,
 	});
 	const {
-		followToc,
 		handleEditorCursor,
 		placePreviewCursor,
 		handleEditorScrollSync,
+		followPreviewScroll,
 		syncEditorToPreviewScroll,
 		toggleEdit,
 		toggleEditView,
@@ -1384,14 +1384,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 				tabManager.updateTabScrollPercentage(tabManager.activeTabId, percentage);
 			}
 
-			// One descent, two consumers: the tab's reading position, and the
-			// outline. Both want the line at the top of the preview, and this is
-			// already the only place it is measured.
-			const anchorLine = getPreviewScrollAnchor(target);
-			if (anchorLine !== null) {
-				tabManager.updateTabAnchorLine(tabManager.activeTabId, anchorLine);
-				followToc('preview', anchorLine);
-			}
+			followPreviewScroll(target);
 		}
 
 		syncEditorToPreviewScroll(target);
@@ -2148,77 +2141,32 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		};
 	}
 
+	const viewerCommands = viewerCommandTable({
+		settings,
+		tabManager,
+		reloadFromDisk,
+		carryActiveTabToNextWindow,
+		closeFile,
+		handleNewFile,
+		openNewWindow,
+		selectFile,
+		appExit,
+		toggleSplitView,
+		toggleLiveMode,
+		toggleEditView,
+		saveContentAs,
+		saveActiveTab,
+		handleUndoCloseTab,
+		navigateFileHistory,
+		openSettings: () => (showSettings = true),
+		toggleHome,
+		exportAsPdf,
+		openFileLocation,
+		triggerFindAction,
+	});
+
 	function runViewerCommand(command: ViewerCommand) {
-		switch (command) {
-			case 'preview-width-narrower':
-			case 'preview-width-wider':
-				settings.previewFullWidth = false;
-				settings.previewMaxWidth = adjustPreviewMaxWidth(
-					settings.previewMaxWidth,
-					command === 'preview-width-narrower' ? -40 : 40,
-				);
-				return;
-			case 'reload-from-disk':
-				return void reloadFromDisk();
-			case 'move-tab-to-next-window':
-				return void carryActiveTabToNextWindow();
-			case 'close-file':
-				return void closeFile();
-			case 'new-file':
-				return void handleNewFile();
-			case 'new-window':
-				return void openNewWindow().catch(console.error);
-			case 'open-file':
-				return void selectFile();
-			case 'app-exit':
-				return void appExit();
-			case 'toggle-split-view':
-				if (tabManager.activeTabId) toggleSplitView(tabManager.activeTabId);
-				return;
-			case 'toggle-live-mode':
-				return void toggleLiveMode();
-			case 'toggle-zen-mode':
-				return settings.toggleZenMode();
-			case 'toggle-tabs':
-				settings.showTabs = !settings.showTabs;
-				return;
-			case 'toggle-edit-view':
-				return void toggleEditView();
-			case 'save-as':
-				return void saveContentAs();
-			case 'save': {
-				// Save from any mode; see `saveActiveTab`.
-				void saveActiveTab();
-				return;
-			}
-			case 'undo-close-tab':
-				return void handleUndoCloseTab();
-			case 'next-tab':
-				return tabManager.cycleTab('next');
-			case 'previous-tab':
-				return tabManager.cycleTab('prev');
-			case 'history-back':
-				return void navigateFileHistory('back');
-			case 'history-forward':
-				return void navigateFileHistory('forward');
-			case 'zoom-in':
-				return settings.zoomIn();
-			case 'zoom-out':
-				return settings.zoomOut();
-			case 'zoom-reset':
-				return settings.resetZoom();
-			case 'open-settings':
-				showSettings = true;
-				return;
-			case 'toggle-home':
-				return toggleHome();
-			case 'export-pdf':
-				return void exportAsPdf();
-			case 'reveal-file':
-				return void openFileLocation();
-			case 'find':
-				return triggerFindAction();
-		}
+		viewerCommands[command]();
 	}
 
 	/*

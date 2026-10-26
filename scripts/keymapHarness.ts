@@ -10,6 +10,7 @@ import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { tableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { viewerCommandFor, type KeyContext, type ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
+import { viewerCommandTable, type ViewerCommandHost } from '../src/lib/utils/viewerCommands.js';
 import { editorActions, editorKeyCommands, type EditorActionDeps, type EditorKeyCommand } from '../src/lib/utils/editorActions.js';
 import { readSource, functionSource } from './sourceTree.js';
 
@@ -242,58 +243,50 @@ export function documentKeymap(osType: string): Map<Chord, ViewerCommand> {
 }
 
 /**
- * The component's command table: each `ViewerCommand`, and the code
- * `MarkdownViewer.svelte` runs for it.
+ * What each `ViewerCommand` reaching the keyboard does, as the names of the
+ * host members it touched: `'appExit'` for a call, `'settings.previewMaxWidth'`
+ * for a read, `'settings.showTabs='` for a write.
  *
- * THE ONE THING THE SEAM COULD NOT MOVE, and the only text-matching in this
- * file. Deciding WHICH command a chord means is now a pure function that tests
- * import; deciding what `'new-file'` DOES is a switch over the component's own
- * closures — `handleNewFile`, `saveContent`, `getCurrentWindow().close()` — and
- * a closure over component state is the thing that cannot leave a component.
- *
- * The alternative was to pass those eleven functions in as a host object, so
- * that a test could hand over eleven spies. That is the shape #644 rejected for
- * three members and it does not improve at eleven: every caller has to build
- * one, and the test that builds one is describing the component rather than
- * running it. So the seam stops at the command name, and this reads the last
- * inch as text — deliberately, and in one place instead of thirty.
- *
- * What it is NOT is the old `handleKeyDown` extraction. There is no
- * `transpileModule`, no `with`, no scope proxy and therefore no stub that can
- * answer a question nobody asked: the parse yields case labels and body text,
- * every command the dispatcher can reach must have exactly one case, and a
- * command that lost its case is a missing key rather than a silent no-op.
+ * Runs the real `viewerCommandTable` (`viewerCommands.ts`) against a recording
+ * host: any member the table asks for exists and is logged, so a command that
+ * reached for something the host type never had (`addHomeTab`) shows up by
+ * name. The active tab is `'tab-1'`, so split view has a tab to toggle.
  */
-export function viewerCommandTable(): Record<ViewerCommand, string> {
-	const source = functionSource(readSource('src/lib/MarkdownViewer.svelte'), 'runViewerCommand');
-	const table: Record<string, string> = {};
-
-	// `case 'a':` runs of one or more labels, then everything up to the next
-	// `case` or the end of the switch. Stacked labels fall through to one body —
-	// that is how `preview-width-narrower` and `preview-width-wider` share theirs
-	// — so a label with nothing of its own is given the next label's, walking
-	// backwards. Without that the first of a pair maps to the empty string, which
-	// any `doesNotMatch` would pass against.
-	const labels = [...source.matchAll(/\n\t*case '([a-z-]+)':/g)];
-	let shared = '';
-	for (let index = labels.length - 1; index >= 0; index--) {
-		const match = labels[index];
-		const body = source.slice(match.index + match[0].length, labels[index + 1]?.index ?? source.length);
-		shared = body.trim() ? body : shared;
-		table[match[1]] = shared;
-	}
+export function viewerCommandCalls(): Record<ViewerCommand, string[]> {
+	let calls: string[] = [];
+	const recording = (prefix: string, fields: Record<string, unknown>) =>
+		new Proxy(fields, {
+			get(target, prop) {
+				const name = prefix + String(prop);
+				calls.push(name);
+				if (prop in target) return target[prop as string];
+				return () => {
+					calls.push(`${name}()`);
+					return Promise.resolve();
+				};
+			},
+			set(target, prop, value) {
+				calls.push(`${prefix}${String(prop)}=`);
+				target[prop as string] = value;
+				return true;
+			},
+		});
+	const host = recording('', {
+		settings: recording('settings.', { previewFullWidth: true, previewMaxWidth: 880, showTabs: true }),
+		tabManager: recording('tabManager.', { activeTabId: 'tab-1' }),
+	}) as unknown as ViewerCommandHost;
+	const table = viewerCommandTable(host);
 
 	const reachable = new Set<ViewerCommand>();
 	for (const platform of PLATFORMS) for (const command of documentKeymap(platform.osType).values()) reachable.add(command);
+	const result = {} as Record<ViewerCommand, string[]>;
 	for (const command of reachable) {
-		assert.ok(command in table, `runViewerCommand has no case for ${command}, which the keyboard reaches`);
+		calls = [];
+		table[command]();
+		// A call shows up twice, as the read and then the call; keep the call.
+		result[command] = calls.filter((name) => !calls.includes(`${name}()`)).map((name) => name.replace(/\(\)$/, ''));
 	}
-	assert.equal(
-		Object.keys(table).length,
-		reachable.size,
-		`runViewerCommand handles ${Object.keys(table).length} commands, ${reachable.size} are reachable`,
-	);
-	return table as Record<ViewerCommand, string>;
+	return result;
 }
 
 // ------------------------------------- the nameless commands, and their handlers

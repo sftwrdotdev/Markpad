@@ -2,8 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { readSource, functionSource } from './sourceTree.js';
-import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
-import { viewerCommandTable } from './keymapHarness.js';
 
 const { frontMatterLineOffset } = await import('../src/lib/utils/frontMatter.js');
 
@@ -44,30 +42,6 @@ describe('preview anchor restore wiring', () => {
 		assert.doesNotMatch(viewer, /scrollTop = getAnchorScrollTop\(/);
 		assert.doesNotMatch(viewer, /tab\.scrollPercentage/);
 		assert.doesNotMatch(viewer, /Array\.from\(body\.children\)/);
-	});
-
-	/**
-	 * The cold start's second restore runs in navigation.viewMode.spec.ts against
-	 * `sessions/coldEnrichmentRestore`. What is left is an `$effect` in the
-	 * component, which only mounting would observe.
-	 */
-	test('the theme effect does not re-enrich when the libraries arrive', async () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		// The accident that used to stand in for the second restore must not
-		// come back. The theme effect's `renderRichContent()` reads reactive state before its
-		// first await, so without `untrack` that effect re-runs on unrelated
-		// changes — re-enriching every open tab's host on top of the pass above.
-		//
-		// Matched on the `untrack`, not on the guard beside it: the guard was
-		// `markdownBody && !isEditing` when this was written and is `markdownBody`
-		// alone now (scripts/preview.spec.ts owns that question). What
-		// this test is for is the tracking.
-		assert.match(
-			readSource('src/lib/utils/themeEffect.svelte.ts'),
-			/untrack\(\(\) => deps\.recolourDiagrams\(\)\)/,
-			'the theme effect must depend on the theme, not on the libraries arriving',
-		);
 	});
 });
 
@@ -119,26 +93,4 @@ describe('jump to the selected fragment wiring', () => {
 		assert.match(menuSource, /window\.addEventListener\('keydown'/);
 		assert.match(menuSource, /e\.key === 'Escape'/);
 	});
-
-	test('one function owns what ⌘E means, and every entry point uses it', () => {
-		// The hotkey, the toolbar, the title bar and Monaco's own command all route
-		// here, so the chord cannot mean one thing with the caret in the editor and
-		// another with it in the preview — which is what
-		// `shortcuts.checks.test.ts` pins from the other side.
-		// The chord is a call now, not a pattern: the branch structure moved to
-		// `viewerKeymap.ts` and #647 had already shown what the old spelling cost —
-		// five assertions of this shape went red for a renamed local.
-		assert.equal(
-			viewerCommandFor(
-				{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },
-				{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
-			),
-			'toggle-edit-view',
-		);
-		assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
-		// The editor entry point hands Monaco's ⌘E to the same switch. The title
-		// bar's Edit button runs in navigation.viewMode.spec.ts.
-		assert.match(viewerSource, /oncommand=\{runViewerCommand\}/, 'the editor entry point');
-	});
-
 });

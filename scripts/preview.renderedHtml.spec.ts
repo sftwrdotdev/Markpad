@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { exportAsHtml } from '../src/lib/utils/export.js';
 import { canExportTab } from '../src/lib/utils/tabFileActions.js';
+import { refreshesPreviewCache } from '../src/lib/utils/previewRefresh.js';
 
 describe('rendered HTML field', () => {
 	// ---------------------------------------------------------------- environment
@@ -39,6 +40,23 @@ describe('rendered HTML field', () => {
 		settings.showToc = false;
 		settings.newFileDefaultMode = true;
 	}
+
+	test('the preview HTML cache is not refreshed while editing with the TOC closed', () => {
+		// Ctrl+T, then type: an untitled buffer being edited, TOC closed, not split.
+		// The premise of the bug, taken from the shipping condition rather than
+		// asserted by hand. Without this, a repro would be a test fixture choosing
+		// its own outcome.
+		reset();
+		tabManager.addNewTab();
+		const tab = tabManager.activeTab!;
+		tab.isEditing = true;
+		tabManager.updateTabRawContent(tab.id, '# notes\n\nsomething worth exporting\n');
+
+		assert.equal(tab.isSplit, false);
+		assert.equal(refreshesPreviewCache(tab, tab.isEditing, settings.showToc), false, 'nothing re-renders tab.content in this state');
+		assert.equal(tab.content, '', 'so the rendered-HTML cache is still empty');
+		assert.notEqual(tab.rawContent, '', 'while the document itself is not');
+	});
 
 	// ------------------------------------------------- addTab's Markdown argument
 	//

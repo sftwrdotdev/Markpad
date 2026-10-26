@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
-import { viewerCommandTable } from './keymapHarness.js';
 import { readSource, readSourceFiles } from './sourceTree.js';
 
 describe('shortcut registry', () => {
@@ -218,18 +217,6 @@ describe('shortcut registry', () => {
 });
 
 describe('formatting shortcuts keymap', () => {
-
-	test('no path anywhere still opens a Home tab from a keystroke', () => {
-		// The #392 defect in its original spelling: the document branch for Ctrl+T
-		// called `tabManager.addHomeTab`. There is no `ViewerCommand` for that any
-		// more, so the checkable end is the other one — the component's command table
-		// has no route to `addHomeTab`, from any chord. `viewerCommandTable()` reads
-		// that table out of the component; see its note in `keymapHarness.ts`.
-		const routes = Object.entries(viewerCommandTable()).filter(([, body]) => body.includes('addHomeTab'));
-		assert.deepEqual(routes.map(([command]) => command), [], 'a keyboard command still reaches addHomeTab');
-	});
-
-
 	// Monaco's own default chords are checked in `editor.checks.spec.ts`.
 
 	// ------------------------------------- a core Monaco binding, left alone

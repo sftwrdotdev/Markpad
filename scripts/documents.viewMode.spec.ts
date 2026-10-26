@@ -483,6 +483,26 @@ describe('view mode without saving', () => {
 		assert.equal(viewMode.tocActiveLine, 57, 'the outline kept the entry from before the switch');
 	});
 
+	test('the preview feeds the same state, off the line it already measures', () => {
+		// One measurement of the preview's top line is the tab's reading position
+		// and the outline's entry, so the two cannot disagree.
+		tabManager.closeAll();
+		tabManager.addTab('/notes/note.md');
+		const tab = tabManager.activeTab!;
+		tab.isEditing = false;
+		const measured: unknown[] = [];
+		const preview = document.createElement('article');
+		const viewMode = buildViewMode(freshFakes(), {
+			getPreviewScrollAnchor: (target) => (measured.push(target), 57 as never),
+		});
+
+		viewMode.followPreviewScroll(preview);
+
+		assert.deepEqual(measured, [preview], 'one measurement, of the scrolled preview');
+		assert.equal(tab.anchorLine, 57);
+		assert.equal(viewMode.tocActiveLine, 57);
+	});
+
 	// #799: "the table of contents should follow the cursor". An editor setting,
 	// because only the editor has one: the preview alone always follows the scroll.
 	describeOutlineSource('cursor', true, (v) => {

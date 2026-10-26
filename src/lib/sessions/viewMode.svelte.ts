@@ -152,6 +152,20 @@ export function createViewMode(o: ViewModeOptions) {
 		return !!tab?.isSplit && tab.isScrollSynced;
 	}
 
+	/**
+	 * A preview scroll, read once for two consumers: the tab's reading position
+	 * and the outline. Both want the line at the top of the preview, and the
+	 * scroll handler is already the only place it is measured.
+	 */
+	function followPreviewScroll(target: HTMLElement) {
+		const tabId = tabManager.activeTabId;
+		if (!tabId) return;
+		const anchorLine = o.getPreviewScrollAnchor(target);
+		if (anchorLine === null) return;
+		tabManager.updateTabAnchorLine(tabId, anchorLine);
+		followToc('preview', anchorLine);
+	}
+
 	function syncEditorToPreviewScroll(target: HTMLElement) {
 		const editorPane = o.editorPane;
 		if (!splitScrollSyncOn() || !editorPane) return;
@@ -433,6 +447,7 @@ export function createViewMode(o: ViewModeOptions) {
 		handleEditorCursor,
 		placePreviewCursor,
 		handleEditorScrollSync,
+		followPreviewScroll,
 		syncEditorToPreviewScroll,
 		toggleEdit,
 		restoreAfterLeavingEditor,

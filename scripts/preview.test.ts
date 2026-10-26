@@ -6,7 +6,7 @@ import { opensInNewTab } from '../src/lib/utils/shortcuts.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
 import { followDocumentLink, handlePreviewClick, openRelativeMarkdownTarget, openWithSystem, type PreviewClickDeps } from '../src/lib/utils/previewLinks.js';
 import { type KeyContext, viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
-import { viewerCommandTable } from './keymapHarness.js';
+import { viewerCommandTable, type ViewerCommandHost } from '../src/lib/utils/viewerCommands.js';
 import { adjustPreviewMaxWidth, DEFAULT_PREVIEW_MAX_WIDTH, getPreviewContentWidth, getStoredPreviewFullWidth, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH, normalizePreviewMaxWidth } from '../src/lib/utils/previewWidth.js';
 import { normalizeAssetPath } from '../src/lib/utils/exportHtml.js';
 import { previewLayout } from '../src/lib/utils/previewLayout.ts';
@@ -475,14 +475,17 @@ describe('preview width', () => {
 		// The text-field carve-out needs a real DOM and a real selector match, so it
 		// is asserted in `shortcuts.spec.ts` under jsdom rather than faked here.
 
-		// What the command DOES stays in the component — the seam ends at the name.
-		// See the note on `viewerCommandTable` in `keymapHarness.ts`.
-		const narrower = viewerCommandTable()['preview-width-narrower'];
-		assert.match(narrower, /settings\.previewFullWidth = false/);
-		assert.match(
-			narrower,
-			/settings\.previewMaxWidth = adjustPreviewMaxWidth\(\s*settings\.previewMaxWidth,\s*command === 'preview-width-narrower' \? -40 : 40,?\s*\)/,
-		);
+		// What the command does: leave full width, then step the cap by 40px.
+		const settings = { previewFullWidth: true, previewMaxWidth: 880, showTabs: true } as ViewerCommandHost['settings'];
+		const commands = viewerCommandTable({ settings } as ViewerCommandHost);
+		commands['preview-width-narrower']();
+		assert.deepEqual([settings.previewFullWidth, settings.previewMaxWidth], [false, 840]);
+		commands['preview-width-wider']();
+		commands['preview-width-wider']();
+		assert.equal(settings.previewMaxWidth, 920);
+		settings.previewMaxWidth = MAX_PREVIEW_MAX_WIDTH;
+		commands['preview-width-wider']();
+		assert.equal(settings.previewMaxWidth, MAX_PREVIEW_MAX_WIDTH);
 	});
 });
 
