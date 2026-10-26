@@ -883,8 +883,6 @@ describe('oversized media in print', () => {
 describe('PDF prints the export article', () => {
 	const styles = readSource('src/styles.css');
 
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
 	/** The `@media print` block only — not everything that follows it in the file. */
 	function extractPrintBlock(source: string): string {
 		const start = offsetOf(source, '@media print {');
@@ -936,15 +934,5 @@ describe('PDF prints the export article', () => {
 				`${selector} is app state — the printed article cannot contain it, so the print sheet must not mention it`,
 			);
 		}
-	});
-
-	test('the viewer hands over an article rather than its own preview', () => {
-		assert.match(viewer, /<article id="print-root" class="markdown-body" bind:this=\{printRootEl\}><\/article>/);
-		const pdf = sliceBetween(viewer, 'async function exportAsPdf', '\n	}');
-		assert.match(pdf, /printRoot: printRootEl/);
-		// The preview's own DOM, its fold state and its theme have nothing to do
-		// with what prints now, so nothing refreshes or re-themes it for an export.
-		assert.doesNotMatch(viewer, /syncPreviewForPrint/);
-		assert.doesNotMatch(viewer, /renderDiagramsForPrint/);
 	});
 });

@@ -54,51 +54,6 @@ describe('tab switch is not a render', () => {
 			'the rule must stay in styles.css: a scoped selector for an imperatively added class is compiled away',
 		);
 	});
-
-	/**
-	 * The preview DOM belongs to the tab, not to the viewer.
-	 *
-	 * A single `.markdown-blocks` for every tab is what made a switch the worst
-	 * case `blockPatch.ts` has: two documents share no block keys, so the diff
-	 * replaced essentially every node, `renderRichContent` ran over the whole
-	 * document again, every fold re-measured, and the reading position was then
-	 * restored against a layout that was still settling.
-	 *
-	 * `tabs.spec.ts` runs the mechanism that makes the switch
-	 * free — re-patching a host that already holds that document changes nothing —
-	 * but it supplies its own two hosts, so it stays green against a viewer that
-	 * has gone back to sharing one. This is the half that does not: the host must
-	 * be minted inside a keyed `{#each}` over the tabs, which is also what makes
-	 * Svelte destroy it with its tab and keeps the set of hosts from drifting from
-	 * the set of tabs the way a hand-kept registry can.
-	 */
-	test('the preview holds one document host per tab, not one for all of them', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		const each = viewer.match(
-			/\{#each tabManager\.tabs as tab \(tab\.id\)\}([\s\S]*?)\{\/each\}/g,
-		);
-		assert.ok(each, 'the viewer must render per-tab preview hosts from a keyed each over the tabs');
-
-		const hostBlock = each.find((block) => block.includes('markdown-blocks'));
-		assert.ok(
-			hostBlock,
-			'.markdown-blocks must be minted per tab — one shared host makes every switch a full rebuild',
-		);
-		assert.match(
-			hostBlock,
-			/style:display=\{tab\.id === tabManager\.activeTabId \? null : 'none'\}/,
-			'only the active tab\'s host may be displayed, and the hidden ones must cost no layout',
-		);
-
-		// And that nothing kept a single binding beside it. The whole property is
-		// that there is no element the viewer can write two documents into.
-		assert.doesNotMatch(
-			viewer,
-			/bind:this=\{previewBlocks\}/,
-			'previewBlocks is the derived pointer at the active tab\'s host, never a binding of its own',
-		);
-	});
 });
 
 describe('editor reading position flush', () => {

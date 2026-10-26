@@ -194,9 +194,9 @@ export const SANITIZER_FILES = ['src/lib/utils/richContent.ts', 'src/lib/utils/s
 //
 // The three helpers below answer questions about *scope* — "which function is
 // this offset inside", "what is the body of this callback" — from the real AST.
-// `svelte/compiler` is already a dependency and `windows.checks.spec.ts` already
-// parses a component with it, and a function node is a function node whatever
-// the spelling. The cost is ~170ms for the largest component, paid once per
+// `svelte/compiler` is already a dependency, it parses a component's script as
+// well as a plain module, and a function node is a function node whatever the
+// spelling. The cost is ~170ms for the largest component, paid once per
 // file thanks to the cache below.
 
 type FunctionScope = { start: number; end: number; name: string | null };

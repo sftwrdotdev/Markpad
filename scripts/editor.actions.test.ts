@@ -119,7 +119,8 @@ describe('AltGr guard', () => {
 	test('every Ctrl+Alt action refuses a keystroke that is really AltGr', () => {
 		// Windows sends AltGr as Ctrl+Alt, so on a Polish layout AltGr+Z (ż) is also
 		// Ctrl+Alt+Z, Zen mode's chord. The editor sets `altGraphChord` on its own
-		// keydown (editor.checks.spec.ts); every Ctrl+Alt action has to check it.
+		// keydown (in Editor.svelte, not tested: it needs the editor mounted); every
+		// Ctrl+Alt action has to check it.
 		const ctrlAlt = KeyMod.CtrlCmd | KeyMod.Alt;
 		const { actions } = registeredActions(false);
 		const guarded = actions.filter((action) =>

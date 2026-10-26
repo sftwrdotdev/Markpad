@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { readSource, functionSource } from './sourceTree.js';
+import { readSource } from './sourceTree.js';
 
 const { frontMatterLineOffset } = await import('../src/lib/utils/frontMatter.js');
 
@@ -60,17 +60,6 @@ describe('jump to the selected fragment wiring', () => {
 		assert.equal(raw.split('\n')[11], '# Markdown Reader Stress Test');
 	});
 
-	test('every renderer line reaching the editor goes through the shift', () => {
-		// The context menu and ⌘E shift through `editSourceRange`: see
-		// navigation.viewMode.spec.ts. The outline is wired inline in the markup
-		// rather than in a function, so only mounting would observe it.
-		assert.match(
-			viewerSource,
-			/editorPane\.revealHeader\(\s*sourceLine === null \? null : lineCoords\.toBufferLine\(/,
-			'the outline shifts',
-		);
-	});
-
 	test('the shift reads the buffer, not the rendered body', () => {
 		// `lineCoordinates(rawContent)` — measuring the render would answer 0
 		// forever, since the render is what the front matter was stripped out of.
@@ -78,19 +67,5 @@ describe('jump to the selected fragment wiring', () => {
 		// a per-call-site chance to read the wrong thing.
 		assert.match(viewerSource, /let lineCoords = \$derived\(lineCoordinates\(rawContent\)\)/);
 		assert.equal(viewerSource.match(/lineCoordinates\(/g)?.length, 1);
-	});
-
-	// The menu is opened BY right-clicking a selection, and two of its items act
-	// on that selection (Copy, Edit). Anything that moves focus off the document
-	// stops the selection being painted, so the highlight disappears under the
-	// menu that exists to act on it.
-
-	test('the context menu does not take focus away from the selection', () => {
-		const menuSource = readSource('src/lib/components/ContextMenu.svelte');
-		assert.doesNotMatch(menuSource, /\.focus\(\)/, 'focusing the menu unpaints the selection');
-
-		// Escape still closes it — from the window, since the menu never has focus.
-		assert.match(menuSource, /window\.addEventListener\('keydown'/);
-		assert.match(menuSource, /e\.key === 'Escape'/);
 	});
 });

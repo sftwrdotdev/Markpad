@@ -1255,3 +1255,109 @@ describe('settings panes', async () => {
 		assert.equal(settingsStore.codeFontSize, CODE_FONT_SIZE_RANGE.default);
 	});
 });
+
+describe('settings row layout', async () => {
+	/*
+	 * `.setting-item` is a two-column flex row: a leading <label> that occupies
+	 * `--settings-label-column`, then the controls. Each control class carries its
+	 * own sizing rule — `.select-wrapper` is 220px wide, `.slider-container` is
+	 * `flex: 0 0 auto`, and so on — and every one of those rules assumes the
+	 * element it names is a DIRECT child of the row, i.e. a flex item of it.
+	 *
+	 * The Appearance pane's theme row broke that assumption and nothing noticed.
+	 * It wrapped its `.select-wrapper` in an unclassed `<div>` (to stack a
+	 * "delete selected theme" link under the dropdown) and made that div a COLUMN
+	 * flex container. The flex item of the row was then the unclassed div, which
+	 * no rule sizes, and `.select-wrapper`'s `flex: 0 1 220px` was read down the
+	 * column axis, so 220px became a HEIGHT: the dropdown rendered 79px too narrow
+	 * and sat 191px below its own label.
+	 *
+	 * jsdom does no layout, so the rows are checked by shape on the mounted panes.
+	 * "A rule sizes it" is read off the element itself: Svelte puts the
+	 * component's scoping class only on elements one of its own selectors matches.
+	 */
+	const { mount, unmount } = await import('svelte');
+	const { default: Settings } = await import('../src/lib/components/Settings.svelte');
+
+	/** The control classes `.setting-item`'s row layout sizes as flex items of the row. */
+	const ROW_SIZED_CONTROLS = ['select-wrapper', 'slider-container', 'toggle', 'custom-dropdown-wrapper'];
+
+	const describeEl = (el: Element) => `<${el.tagName.toLowerCase()}${el.className ? ` class="${el.className.replace(/ ?svelte-\w+/g, '')}"` : ''}>`;
+
+	async function renderedRows() {
+		const previous = (window as any).__TAURI_INTERNALS__;
+		(window as any).__TAURI_INTERNALS__ = {
+			invoke: async (cmd: string) => {
+				if (cmd === 'get_system_fonts') return ['Menlo', 'Arial'];
+				if (cmd === 'get_saved_vscode_themes') return ['Nord'];
+				if (cmd === 'plugin:app|version') return '9.9.9';
+				return 'macos';
+			},
+			transformCallback: () => 0,
+		};
+		onTestFinished(() => ((window as any).__TAURI_INTERNALS__ = previous));
+		const target = document.createElement('div');
+		document.body.append(target);
+		const app = mount(Settings, { target, props: { show: true, theme: 'vscode:Nord', onclose() {} }, intro: false });
+		onTestFinished(() => {
+			unmount(app);
+			target.remove();
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		flushSync();
+
+		const rows: { pane: string; row: HTMLElement; label: string }[] = [];
+		const panes = [...target.querySelectorAll<HTMLButtonElement>('.nav-item')];
+		for (const pane of panes) {
+			pane.click();
+			flushSync();
+			for (const row of target.querySelectorAll<HTMLElement>('.settings-panel .setting-item')) {
+				const label = row.firstElementChild?.textContent?.replace(/\s+/g, ' ').trim() ?? '(empty row)';
+				rows.push({ pane: pane.textContent!.trim(), row, label });
+			}
+		}
+		return rows;
+	}
+
+	test('every settings row was found', async () => {
+		// Vacuous-pass guard: the row assertions below say nothing if no row rendered.
+		const rows = await renderedRows();
+		const panes = new Set(rows.map((entry) => entry.pane));
+		assert.ok(rows.length > 25, `found ${rows.length} .setting-item rows`);
+		assert.ok(panes.size >= 4, `rows in ${[...panes].join(', ')}`);
+	});
+
+	test('a settings row leads with the label that names its control', async () => {
+		const wrong = (await renderedRows())
+			.filter(({ row }) => row.firstElementChild?.tagName !== 'LABEL')
+			.map(({ pane, label, row }) => `${pane} / ${label} leads with ${row.firstElementChild ? describeEl(row.firstElementChild) : 'nothing'}`);
+		assert.deepEqual(wrong, [], 'a row whose first child is not the <label> loses the label column');
+	});
+
+	test('every control in a settings row is a flex item the stylesheet sizes', async () => {
+		// The unclassed <div> that broke the theme row would appear here.
+		const unstyled = (await renderedRows()).flatMap(({ pane, label, row }) => {
+			const scope = [...row.classList].find((name) => name.startsWith('svelte-'));
+			assert.ok(scope, `${label}: the row itself is styled`);
+			return [...row.children]
+				.slice(1)
+				.filter((child) => !child.classList.contains(scope))
+				.map((child) => `${pane} / ${label}: ${describeEl(child)} has no rule`);
+		});
+		assert.deepEqual(unstyled, [], 'a direct child of .setting-item that no rule sizes gets no column');
+	});
+
+	test('no settings row buries a sized control below its own flex level', async () => {
+		// `.select-wrapper` one level deeper is the theme-row defect: its sizing
+		// stops meaning "width" as soon as some other element becomes the flex item.
+		// `.number-input-wrapper` legitimately lives inside `.slider-container`,
+		// which is itself a direct child, so a sized parent is allowed.
+		const sized = (el: Element | null) => !!el && ROW_SIZED_CONTROLS.some((name) => el.classList.contains(name));
+		const buried = (await renderedRows()).flatMap(({ pane, label, row }) =>
+			[...row.querySelectorAll(ROW_SIZED_CONTROLS.map((name) => `.${name}`).join(','))]
+				.filter((control) => control.parentElement !== row && !sized(control.parentElement))
+				.map((control) => `${pane} / ${label}: ${describeEl(control)}`),
+		);
+		assert.deepEqual(buried, [], 'a sized control must be a direct child of its .setting-item');
+	});
+});

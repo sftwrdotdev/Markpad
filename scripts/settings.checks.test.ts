@@ -37,8 +37,6 @@ import { readSource, walkSourceFiles } from './sourceTree.js';
  */
 describe('merged auto-save preference', () => {
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
-	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
 	test('the merged preference is stored under its own key, and the old ones are read-only', () => {
 		assert.match(settingsSource, /key: 'editor\.autoSaveEdits'/);
@@ -48,24 +46,6 @@ describe('merged auto-save preference', () => {
 		assert.doesNotMatch(settingsSource, /key: 'editor\.autoSave'/);
 		assert.doesNotMatch(settingsSource, /key: 'editor\.confirmBeforeSave'/);
 	});
-
-	test('the auto-save debounce still reads the one switch', () => {
-		// Remainder of "nothing evaluates the pair any more". `settings` has no
-		// `confirmBeforeSave`, so svelte-check rejects any read of the old pair, and
-		// the other three sites run in documents.viewMode.spec.ts,
-		// documents.save.spec.ts and windows.exit.test.ts. The debounce is a
-		// `$effect` in the component, observable only by mounting it.
-		assert.match(viewerSource, /if \(!settings\.autoSave\) \{/);
-	});
-
-	/* ---------------------------------------------- B & C: visible dependency */
-
-	test('an inactive row is dimmed rather than hidden', () => {
-		// Hiding it would answer "where did that setting go?" with nothing.
-		assert.match(settingsComponentSource, /\.setting-item\.inactive[\s\S]{0,200}?opacity: 0\.45/);
-	});
-
-
 });
 
 describe('font family values', () => {

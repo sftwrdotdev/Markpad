@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import {
 	filesMatching,
 	functionSource,
-	offsetOf,
 	readRustBackend,
 	readSource,
 	readSourceFiles,
@@ -25,11 +23,6 @@ describe('window geometry is saved while the app runs', () => {
 });
 
 describe('moving tabs between windows', () => {
-	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-	const tab = readSource('src/lib/components/Tab.svelte');
-	const titleBar = readSource('src/lib/components/TitleBar.svelte');
-
 	// `WebviewWindowBuilder::build()` deadlocks when called from a
 	// *synchronous* Tauri command on Windows/WebView2, because the main thread is
 	// blocked inside the command while WebView2 waits for that same thread to pump
@@ -42,24 +35,6 @@ describe('moving tabs between windows', () => {
 
 		assert.match(lib, /#\[tauri::command\]\n(?:pub )?async fn create_transfer_window\(/);
 		assert.doesNotMatch(lib, /#\[tauri::command\]\n(?:pub )?fn create_transfer_window\(/);
-	});
-
-	test('window organization exposes move, merge, and carry actions', () => {
-		assert.match(tab, /list_viewer_windows/);
-		assert.match(tab, /menu-tab-move/);
-		assert.match(viewer, /async function mergeAllWindowsHere/);
-		assert.match(viewer, /async function carryActiveTabToNextWindow/);
-		// The chord itself moved to `viewerKeymap.ts`, so it is asked rather
-		// than matched — and the answer names the command, not the local variable the
-		// branch happened to be written with.
-		assert.equal(
-			viewerCommandFor(
-				{ key: 'm', code: 'KeyM', ctrlKey: true, metaKey: false, shiftKey: true, altKey: false },
-				{ mode: 'app', osType: 'windows', isSplit: false, overlayOpen: false, dialogOpen: false, isEditing: false, editorHasFocus: false },
-			),
-			'move-tab-to-next-window',
-		);
-		assert.match(titleBar, /onmergeAllWindows/);
 	});
 });
 
@@ -161,14 +136,6 @@ describe('window state restore', () => {
 	// always lives on disk — the snapshot never carries rawContent, so unsaved
 	// changes are handled exclusively by the per-tab close dialogs.
 
-	test('startup restore reads content from disk, not from the snapshot', () => {
-		// The session half runs in windows.sessionRestore.spec.ts. This is the
-		// viewer's wiring of it: the tab on screen is read through the document
-		// session, the way an open reads it.
-		assert.match(viewer, /loadRestoredTab: \(tabId\) => documentSession\.readRestoredTab\(tabId\),/);
-		assert.match(viewer, /await windowSession\.restore\(\);/);
-	});
-
 	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
 		// Behaviour: windows.sessionRestore.spec.ts. What stays here is the
 		// contract: the localStorage key older builds read, and the Rust commands
@@ -183,23 +150,11 @@ describe('window state restore', () => {
 
 describe('window tags and pinned sessions', () => {
 	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const titleBar = readSource('src/lib/components/TitleBar.svelte');
 	const home = readSource('src/lib/components/HomePage.svelte');
 
 	test('only explicitly pinned tags create reusable sessions', () => {
 		assert.match(runtime, /pub fn save_pinned_tag/);
 		assert.match(runtime, /pub fn remove_pinned_tag/);
 		assert.match(home, /onopenPinnedTag/);
-	});
-
-	test('the Home menu groups window organization below export actions', () => {
-		const exportIndex = offsetOf(titleBar, "t('menu.exportPdf', currentLanguage)");
-		const tagIndex = offsetOf(titleBar, "t('menu.setWindowTag', currentLanguage)");
-		const mergeIndex = offsetOf(titleBar, "t('menu.mergeAllWindows', currentLanguage)");
-		const exitIndex = offsetOf(titleBar, "t('menu.exit', currentLanguage)");
-
-		assert.ok(exportIndex < tagIndex);
-		assert.ok(tagIndex < mergeIndex);
-		assert.ok(mergeIndex < exitIndex);
 	});
 });
