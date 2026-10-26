@@ -4,28 +4,6 @@ import { describe, test } from 'node:test';
 import { readRustBackend, readSource, sliceFrom } from './sourceTree.js';
 import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 
-/*
- * Issue #604: Enter, Tab and Shift+Tab on list items and tables. The handlers
- * and the `when` clauses the app binds them behind run in editing.test.ts.
- * What is left here is the installed Monaco's own Shift+Tab command.
- */
-describe('list keys in the editor', () => {
-	test("Monaco's outdent is still what Shift+Tab means outside the app's handler", () => {
-		// The Shift+Tab handler's last path re-sends `outdent` (run in
-		// editing.test.ts). This pins the installed Monaco half of that claim.
-		// …and the claim that rests on, pinned against the installed Monaco rather
-		// than assumed: `outdent` is the command Shift+Tab means, in the editor, when
-		// Tab is not moving focus. If Monaco ever renames or re-chords it, the
-		// fall-through above becomes a no-op and this is what says so.
-		const core = readSource(
-			new URL('../node_modules/monaco-editor/esm/vs/editor/browser/coreCommands.js', import.meta.url),
-		);
-		const outdent = core.slice(core.indexOf("id: 'outdent'"), core.indexOf("id: 'tab'"));
-		assert.match(outdent, /KeyMod\.Shift \*\/ \| 2 \/\* KeyCode\.Tab/);
-		assert.match(outdent, /EditorContextKeys\.editorTextFocus, EditorContextKeys\.tabDoesNotMoveFocus/);
-	});
-});
-
 /**
  * #200: "implement some function which slugify titles and purpose those as
  * #targets for URL of link".

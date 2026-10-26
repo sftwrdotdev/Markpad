@@ -54,17 +54,6 @@ describe('settings persistence', async () => {
 		writeStoredSetting,
 	} = settingsModule;
 
-	test('the persisted theme key is the one app.html paints from', () => {
-		// The first-paint script in src/app.html reads `theme` before the bundle
-		// loads and picks the background from it; renaming the key (to
-		// `editor.theme`, say, matching its neighbours) brings back the white flash
-		// that script exists to prevent, and nothing else in the app would notice.
-		const keys = createSettingsPersistence().map((entry) => entry.key);
-		assert.ok(keys.includes('theme'), 'the theme is persisted');
-		const appHtml = readSource('src/app.html');
-		assert.match(appHtml, /localStorage\.getItem\('theme'\)/);
-	});
-
 	test('the startup background command and its vocabulary match app.rs', () => {
 		// What the frontend sends runs in settings.themeEffect.spec.ts ("the startup
 		// background is told the appearance, not the theme name"). What stays here

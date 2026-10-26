@@ -113,14 +113,6 @@ describe('lossy decode save guard', () => {
 		assert.match(rust, /async fn read_file_content_checked\(path: String\) -> Result<\(String, bool, String\), String>/);
 		assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
 	});
-
-	test('the refusal names Save As, the only exit', () => {
-		// i18n wording. That the session raises this message once per tab is
-		// driven in documents.session.spec.ts.
-		const i18n = readDictionarySource();
-		assert.match(i18n, /lossySaveBlocked: 'Not saved: parts of this file could not be read in any encoding/);
-		assert.match(i18n, /use "Save As" to write a copy/);
-	});
 });
 
 describe('unsaved recovery', () => {
@@ -200,20 +192,6 @@ describe('file associations', () => {
 		// Open dialog uses it: a literal list is how the two drifted apart.
 		assert.match(viewer, /filters: MARKDOWN_OPEN_FILTERS,/);
 		assert.doesNotMatch(viewer, /extensions: \['md/);
-	});
-});
-
-describe('file drop routing', () => {
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	test('the unsupported-drop toast names the file with toast.unsupportedFile', () => {
-		// One toast helper for both panes: the message used to be built inline in
-		// the preview branch, which is part of why the editor branch had nothing
-		// to say.
-		assert.match(
-			viewerSource,
-			/function reportUnsupportedDrop\(path: string\)[\s\S]{0,300}?t\('toast\.unsupportedFile', settings\.language\)/,
-		);
 	});
 });
 

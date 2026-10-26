@@ -5,6 +5,7 @@ import { afterAll, describe, onTestFinished, test } from 'vitest';
 
 import { getSupportedLanguages, type TranslationKey } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
+import { readSource } from './sourceTree.js';
 import { updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 
 // Plain TypeScript, no runes: safe to import statically, unlike the store below.
@@ -168,6 +169,35 @@ describe('settings persistence', async () => {
 		for (const key of ['editor.fontSize', 'editor.language', 'preview.maxWidth', 'editor.preZenState']) {
 			assert.ok(keys.includes(key), `missing persisted key ${key}`);
 		}
+	});
+
+	test('the persisted theme key is the one app.html paints from', () => {
+		// The first-paint script in src/app.html reads the theme before the bundle
+		// loads and picks the background from it; renaming the store's key (to
+		// `editor.theme`, say, matching its neighbours) brings back the white flash
+		// that script exists to prevent, and nothing else in the app would notice.
+		// So the store writes a theme and the page's own script runs on it.
+		const page = new DOMParser().parseFromString(readSource('src/app.html'), 'text/html');
+		const firstPaint = page.head.querySelector('script')!.textContent!;
+		const root = document.documentElement;
+		onTestFinished(() => {
+			root.removeAttribute('data-theme');
+			root.style.backgroundColor = '';
+		});
+
+		resetStorage();
+		const store = createStore();
+		store.theme = 'dark';
+		flushSync();
+		new Function(firstPaint)();
+		assert.equal(root.getAttribute('data-theme'), 'dark');
+		assert.equal(root.style.backgroundColor, 'rgb(24, 24, 24)');
+
+		store.theme = 'light';
+		flushSync();
+		new Function(firstPaint)();
+		assert.equal(root.getAttribute('data-theme'), 'light');
+		assert.equal(root.style.backgroundColor, 'rgb(253, 253, 253)');
 	});
 
 	test('the outline following the editor has no preference of its own', () => {
