@@ -55,13 +55,6 @@ describe('split pane ratio', () => {
 });
 
 describe('fold layout', () => {
-	test('fold layout observes rendered content and publishes its measured height', () => {
-		const source = readSource('src/lib/utils/foldLayout.ts');
-
-		assert.match(source, /new ResizeObserver/);
-		assert.match(source, /--fold-content-height/);
-		assert.match(source, /requestAnimationFrame/);
-	});
 
 	test('fold wrapper animates an explicit measured height instead of a fractional grid track', () => {
 		const styles = readSource('src/styles.css');

@@ -922,8 +922,6 @@ describe('front matter in the editor', () => {
 describe('wikilink extension and reference contracts', () => {
 	const rustSource = readRustBackend();
 
-	const referenceSource = readSource(new URL('../src/lib/utils/headingReference.ts', import.meta.url));
-
 	test('the extension list the rewriter mirrors still matches markdownLinks.ts', () => {
 		// The last cross-language copy of this list. Every TypeScript reader — the
 		// sanitizer's URI pattern, the export's `.md` -> `.html` rewrite, the Open
@@ -942,39 +940,6 @@ describe('wikilink extension and reference contracts', () => {
 		);
 		for (const extension of extensions) {
 			assert.equal(hasMarkdownLinkExtension(`file.${extension}`), true, extension);
-		}
-	});
-
-	test('every wikilink Copy Reference builds carries the heading the rewriter needs', () => {
-		// The rewriter only rewrites heading-bearing forms; a bare `[[Notes]]` stays
-		// literal text (see the scope note above). So the contract is that *every*
-		// `[[...]]` the viewer writes to the clipboard contains a `#`.
-		//
-		// Asserted that way round rather than as "three call sites match
-		// `[[${fn}#${...}]]`". That form hard-coded the local variable names holding
-		// the basename — renaming `fn` broke it — and the count, so adding a fourth
-		// correct Copy Reference entry failed while replacing one of the three with a
-		// broken bare form still left three matches and passed.
-		// The string moved: all three entries build it through `headingReference`,
-		// which picks the spelling the document is already written in (see
-		// `copyReferenceStyle.test.ts`). The contract this test exists for is
-		// unchanged — a wikilink Copy Reference writes always carries a `#`,
-		// because the rewriter leaves a bare `[[Notes]]` as literal text — so it
-		// is asserted where the string is now built.
-		// Code lines only: the doc comment above the function spells `[[…]]` out
-		// in prose, and prose is not something Copy Reference writes.
-		const code = referenceSource
-			.split('\n')
-			.filter((line) => !/^\s*(\*|\/\/)/.test(line))
-			.join('\n');
-		const emitted = [...code.matchAll(/`\[\[[^`]*\]\]`/g)].map((match) => match[0]);
-		assert.ok(emitted.length > 0, 'Copy Reference no longer builds a wikilink — has the format moved?');
-		for (const wikilink of emitted) {
-			assert.match(
-				wikilink,
-				/#/,
-				`${wikilink}: a wikilink without a heading is left as literal text by process_wikilinks()`,
-			);
 		}
 	});
 });

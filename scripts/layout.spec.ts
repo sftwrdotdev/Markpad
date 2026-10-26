@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
+import { observeFoldLayout } from '../src/lib/utils/foldLayout.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -1020,5 +1021,50 @@ describe('outline render signal', () => {
 
 		expect(toc.entries()).toEqual(['One', 'Two']);
 		toc.stop();
+	});
+});
+
+describe('fold layout', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		document.body.innerHTML = '';
+	});
+
+	test('fold layout observes rendered content and publishes its measured height', () => {
+		// The wrapper animates `height: var(--fold-content-height)`, so it opens to
+		// the height its content measures, and re-measures when that content
+		// changes size (an image loading, a diagram drawing, the window narrowing).
+		const frames: FrameRequestCallback[] = [];
+		const observers: ResizeObserverCallback[] = [];
+		vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => frames.push(callback));
+		vi.stubGlobal('cancelAnimationFrame', () => {});
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				constructor(callback: ResizeObserverCallback) {
+					observers.push(callback);
+				}
+				observe() {}
+				disconnect() {}
+			},
+		);
+		const runFrames = () => frames.splice(0).forEach((frame) => frame(0));
+
+		document.body.innerHTML =
+			'<div class="markdown-body"><div class="foldable-content-wrapper"><div class="content-inner"><p>x</p></div></div></div>';
+		const root = document.querySelector<HTMLElement>('.markdown-body')!;
+		const wrapper = root.querySelector<HTMLElement>('.foldable-content-wrapper')!;
+		let height = 120;
+		root.querySelector<HTMLElement>('.content-inner')!.getBoundingClientRect = () => ({ height }) as DOMRect;
+
+		const layout = observeFoldLayout(root);
+		runFrames();
+		assert.equal(wrapper.style.getPropertyValue('--fold-content-height'), '120px');
+
+		height = 200;
+		for (const callback of observers) callback([], {} as ResizeObserver);
+		runFrames();
+		assert.equal(wrapper.style.getPropertyValue('--fold-content-height'), '200px');
+		layout.stop();
 	});
 });
