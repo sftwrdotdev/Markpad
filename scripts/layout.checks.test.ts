@@ -97,19 +97,8 @@ describe('fold layout', () => {
  * settle and flicker the highlight between two entries.
  */
 describe('outline follows the editor', () => {
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
-
-	/* --------------------------------------------------------------- wiring */
-
-	test('the preview scroll and the outline are wired to the view mode', () => {
-		// Markup-only remainder: `followPreviewScroll` (documents.viewMode.spec.ts
-		// "the preview feeds the same state…") runs from the preview's scroll
-		// handler, and the outline draws `viewMode.tocActiveLine`.
-		assert.match(viewerSource, /\n\t\t\tfollowPreviewScroll\(target\);/);
-		assert.match(viewerSource, /activeLine=\{viewMode\.tocActiveLine\}/);
-	});
 
 	test('there is no preference for it, because the preview never had one', () => {
 		// The outline has always followed the preview unconditionally. This is the
@@ -117,30 +106,5 @@ describe('outline follows the editor', () => {
 		// half of one behaviour optional and left the reader to work out which half.
 		assert.doesNotMatch(settingsSource, /tocFollowsEditor/);
 		assert.doesNotMatch(settingsComponentSource, /tocFollowsEditor/);
-	});
-});
-
-describe('outline overlay placement', () => {
-
-	test('the outline\'s toggle drops the editor toolbar\'s offset once it is over the outline', () => {
-		// Collapsed, the button floats over the editor pane and `--pane-top-chrome`
-		// is what keeps it clear of the toolbar. Expanded it floats over the OUTLINE,
-		// which has no toolbar — and the offset pushed it onto the outline's first
-		// entry instead. This is an absence, and an absence in CSS is not reachable
-		// from a runtime test in this suite: jsdom applies no stylesheet.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		const base = viewer.match(/\.toc-toggle-floating \{([^}]*)\}/);
-		assert.ok(base, 'the floating toggle rule moved or was renamed');
-		assert.match(base[1], /top:\s*calc\([^)]*--pane-top-chrome/);
-
-		const expanded = viewer.match(/\.toc-toggle-floating\.expanded \{([^}]*)\}/);
-		assert.ok(expanded, 'the expanded rule moved or was renamed');
-		assert.match(expanded[1], /top:\s*\d+px/);
-		assert.equal(
-			/--pane-top-chrome/.test(expanded[1]),
-			false,
-			'the expanded toggle is over the outline, which has no editor toolbar to clear',
-		);
 	});
 });

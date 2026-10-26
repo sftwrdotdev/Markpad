@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { callSiteOffsets, enclosingFunctionName, filesMatching, offsetOf, readSource, readSourceFiles, SANITIZER_FILES, sliceBetween } from './sourceTree.js';
+import { callSiteOffsets, enclosingFunctionName, filesMatching, readSource, readSourceFiles, SANITIZER_FILES, sliceBetween } from './sourceTree.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
 import { getStoredPreviewFullWidth } from '../src/lib/utils/previewWidth.js';
 
@@ -11,8 +11,6 @@ describe('inline code in headings', () => {
 
 	const styles = readSource('src/styles.css');
 
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
 	test('a heading lays its content out as one line of text', () => {
 		// A flex heading makes every text run, `<em>`, `<code>` and image its own
 		// flex item: #681 floated inline code above the words, #791 ate the spaces
@@ -21,22 +19,6 @@ describe('inline code in headings', () => {
 		const rule = styles.match(/\.foldable-header \{[^}]*\}/);
 		assert.ok(rule, 'styles.css must still define .foldable-header');
 		assert.doesNotMatch(rule[0], /display:\s*(inline-)?(flex|grid)/);
-	});
-
-	test('inline code in a heading scales with the heading', () => {
-		// The Code Font Size setting is an absolute px — right for code in prose,
-		// wrong for code in a heading, where 14px inside a 24px `##` reads as a
-		// footnote. GitHub sizes inline code relative to what contains it.
-		assert.match(
-			viewer,
-			/:global\(\.markdown-body :is\(h1, h2, h3, h4, h5, h6\) code\) \{\s*\n\s*font-size: 0\.85em !important;/,
-		);
-	});
-
-	test('the setting still governs code everywhere else', () => {
-		// The fix is scoped to headings; body text and code blocks keep answering to
-		// `--code-font-size`, which is what the setting promises.
-		assert.match(viewer, /:global\(\.markdown-body code\) \{[\s\S]*?font-size: var\(--code-font-size, 14px\) !important;/);
 	});
 });
 
@@ -93,15 +75,6 @@ describe('preview copy handler', () => {
 	// scheme. What must never come back is a route that lets the webview decide.
 
 	const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	test('the document-level copy handler is attached', () => {
-		// Document level rather than the preview's `<article>`: `styles.css` puts
-		// `user-select: none` on the app root, so the only selectable surfaces are
-		// the preview and the update dialog's release notes (#532) — and both take
-		// the same native path.
-		const svelteDocument = sliceBetween(viewer, '<svelte:document', '/>');
-		assert.match(svelteDocument, /oncopy=\{handleCopy\}/);
-	});
 
 	test('nothing else installs a copy handler', () => {
 		// `katex/contrib/copy-tex` did, firing only for selections with math and

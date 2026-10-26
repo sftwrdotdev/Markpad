@@ -310,8 +310,9 @@ describe('edit view toggle', () => {
 		// The hotkey, the toolbar, the title bar and Monaco's own command all route
 		// to `toggleEditView`, so the chord cannot mean one thing with the caret in
 		// the editor and another with it in the preview. The title bar's Edit button
-		// runs in navigation.viewMode.spec.ts; the editor's `oncommand` prop is the
-		// markup check in shortcuts.checks.test.ts.
+		// runs in navigation.viewMode.spec.ts. The viewer passing `runViewerCommand`
+		// as the editor's `oncommand` prop is not tested: it needs MarkdownViewer
+		// mounted.
 		assert.equal(
 			viewerCommandFor(
 				{ key: 'e', code: 'KeyE', ctrlKey: true, metaKey: false, shiftKey: false, altKey: false },

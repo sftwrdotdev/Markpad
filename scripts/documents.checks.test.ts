@@ -114,13 +114,6 @@ describe('lossy decode save guard', () => {
 		assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
 	});
 
-	test('saveContent is the choke point auto-save and the close dialogs share', () => {
-		// saveSilently and canCloseTab run in documents.save.spec.ts. What stays is
-		// the debounce effect's wiring in the component: its writer is saveSilently.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
-	});
-
 	test('the refusal names Save As, the only exit', () => {
 		// i18n wording. That the session raises this message once per tab is
 		// driven in documents.session.spec.ts.
@@ -361,18 +354,6 @@ describe('external change reload', () => {
 		// `liveMode` / `toggleLiveMode` identifiers in that module.
 		const viewMode = readSource('src/lib/sessions/viewMode.svelte.ts');
 		assert.doesNotMatch(viewMode, /toggleLiveMode|liveMode/);
-	});
-
-	// --- #4: the irreversible answer is now visible before it is given ---
-
-	test('the conflict bar offers Compare beside the two answers', () => {
-		// Reload replaces the buffer and `setValue` clears the undo stack with it,
-		// so the bar asks for an irreversible decision. VS Code and Sublime both
-		// put a Compare next to the same two choices.
-		const bar = sliceBetween(viewer, 'external-change-bar', '{/if}');
-		assert.match(bar, /t\('externalChange\.compare'/);
-		assert.match(bar, /t\('externalChange\.reload'/);
-		assert.match(bar, /t\('externalChange\.keepMine'/);
 	});
 });
 

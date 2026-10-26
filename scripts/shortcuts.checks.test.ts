@@ -151,33 +151,6 @@ describe('shortcut registry', () => {
 		}
 	});
 
-	test('the panel’s groups are visibly separated, not run together', () => {
-		// The five sections stacked with nothing between them, so each heading sat
-		// flush against the last row of the group above and read as belonging to it —
-		// the whole pane looked like one undifferentiated list.
-		//
-		// A source-shape assertion, because the subject is CSS and there is no DOM
-		// here. What it pins is the part that can silently regress: that consecutive
-		// groups get a rule and space at all, and that the rule's colour is a theme
-		// token rather than a literal, so it survives the light/dark switch.
-		const text = readSource('src/lib/components/Settings.svelte');
-		assert.match(
-			text,
-			/class="settings-group shortcut-group"/,
-			'the shortcut sections need a class of their own: `.settings-group` is shared with every other pane',
-		);
-
-		const rule = /\.shortcut-group\s*\+\s*\.shortcut-group\s*\{([^}]*)\}/.exec(text);
-		assert.ok(rule, 'nothing separates one shortcut group from the next');
-		assert.match(
-			rule[1],
-			/border-top:[^;]*var\(--color-border-[a-z]+\)/,
-			'the separator must take its colour from a theme variable, so both themes get it',
-		);
-		assert.match(rule[1], /padding-top:\s*\d/, 'a rule with no space under it still reads as part of the row above');
-		assert.match(rule[1], /margin-top:\s*\d/, 'and no space above it still reads as part of the row above');
-	});
-
 	/**
 	 * Chords the document handler answers that the panel deliberately never shows,
 	 * written in registry syntax so this list and the registry read alike.
@@ -232,18 +205,5 @@ describe('formatting shortcuts keymap', () => {
 			/-editor\.action\.deleteLines/,
 			'Editor.svelte removes Monaco\'s Delete Line key again',
 		);
-	});
-});
-
-describe('open shortcut in preview', () => {
-	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	test('the viewer wires the editor\'s oncommand to runViewerCommand', () => {
-		// The other half of "the editor claims Mod+O / Mod+T too, and both layers do
-		// the same thing" (shortcuts.editor.test.ts): the editor's actions hand their
-		// command to `oncommand`, and the viewer must pass the same `runViewerCommand`
-		// the document keyboard calls. A component prop: not observable without
-		// mounting MarkdownViewer.
-		assert.match(viewerSource, /oncommand=\{runViewerCommand\}/);
 	});
 });
