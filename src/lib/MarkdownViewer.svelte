@@ -23,6 +23,7 @@
 	import FindBar from './components/FindBar.svelte';
 	import { createWindowExit } from './sessions/windowExit.js';
 	import { createExternalChange } from './sessions/externalChange.svelte.js';
+	import { createViewMode } from './sessions/viewMode.svelte.js';
 	import { autoSaveFailureNeedsToast, isAutoSaveEligible } from './utils/autoSaveTimer.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
@@ -30,7 +31,7 @@
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
-	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
+	import { viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
 import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
@@ -53,28 +54,22 @@ import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.j
 import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, headingText, preferredReferenceStyle } from './utils/headingReference.js';
 import {
-	findSourceLineRange,
 	getSourceLineAtPreviewOffset,
 	invalidateAnchorMemos,
 	measureAnchorBox,
-	mergeSourceLineRanges,
 	restorePreviewReadingPosition,
 	PREVIEW_ANCHOR_OFFSET,
 	anchorScrollTop,
 	type AnchorBox,
 	type AnchorNode,
-	type LineRange,
 	type OffsetLayoutNode,
 } from './utils/previewAnchor.js';
 import { pointAtSource, sourceAtPoint, type SourceLineReader } from './utils/previewCursor.js';
 import { annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf, type Annotation } from './utils/previewAnnotations.js';
 import {
-	asBufferLine,
 	asRendererLine,
 	lineCoordinates,
-	tabAnchorForEditorTopLine,
 	type BufferLine,
-	type BufferLineRange,
 	type RendererLine,
 } from './utils/lineCoordinates.js';
 import {
@@ -132,7 +127,7 @@ import { jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { reportWindowMeta } from './sessions/windowMeta.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
-import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
+import { createDocumentSession, type LoadMarkdownOptions } from './sessions/documentSession.svelte.js';
 
 	import 'highlight.js/styles/github-dark.css';
 	import 'katex/dist/katex.min.css';
@@ -939,6 +934,47 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		resolveExternalChangeByKeepingBuffer,
 	} = externalChange;
 
+	const viewMode = createViewMode({
+		tabManager,
+		settings,
+		documentSession,
+		flushBeforeLeavingEditableMode,
+		readFile: (path) => invoke('read_file_content_checked', { path }),
+		renderTabPreviewFromRaw,
+		tick,
+		addToast,
+		t,
+		get editorPane() {
+			return editorPane;
+		},
+		get markdownBody() {
+			return markdownBody;
+		},
+		get previewBlocks() {
+			return previewBlocks;
+		},
+		get lineCoords() {
+			return lineCoords;
+		},
+		readRendererLine: (line) => readRendererLine(line),
+		getPreviewScrollSyncPosition,
+		scrollPreviewToSyncPosition,
+		getPreviewScrollAnchor,
+	});
+	const {
+		followToc,
+		handleEditorCursor,
+		placePreviewCursor,
+		handleEditorScrollSync,
+		syncEditorToPreviewScroll,
+		toggleEdit,
+		getContextMenuSourceRange,
+		toggleEditView,
+		editSourceRange,
+		toggleSplitView,
+		setViewMode,
+	} = viewMode;
+
 	// Persisted through Rust, not localStorage: setItem is an async message
 	// to the WebKit storage process that dies in transit when the last
 	// window's close ends the process (reproduced in QA as "close secondary
@@ -1550,76 +1586,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		markdownBody.scrollTop = targetScroll;
 	}
 
-	/**
-	 * The source line the reader is on, for the outline to follow (#169).
-	 *
-	 * BOTH panes answer here, which is the point: the outline used to decide by
-	 * rendered box, and only the preview has those. A source line is something
-	 * either pane can produce — the editor sends one on every scroll (the same
-	 * position scroll sync uses, whether or not sync is on), and the preview
-	 * already computes one for the tab's reading position. One rule then picks
-	 * the entry, so the two panes cannot disagree about which heading is
-	 * current while both are on screen.
-	 */
-	let tocActiveLine = $state<RendererLine | null>(null);
-
-	/**
-	 * The one gate on `tocActiveLine`. With `settings.tocFollows` set to
-	 * 'cursor' and a cursor the reader can see (the editor is on screen, or
-	 * `settings.previewCursor` draws one the reader placed in the preview), only
-	 * the cursor moves the outline, and scrolling either pane leaves it where it
-	 * is. Otherwise the pane that scrolled last decides. In the preview alone
-	 * with `previewCursor` off, the editor's last cursor is kept for Ctrl+E but
-	 * not followed: nothing on screen would say why the outline stopped.
-	 *
-	 * A preview that is not on screen never decides: in the editor alone it is
-	 * still mounted at zero width, and its scroll events report lines from that
-	 * layout, which put the outline on the wrong heading after Ctrl+E (#799).
-	 * Nor does a preview Ctrl+E has just brought back, until
-	 * `restoreAfterLeavingEditor` has placed it: its scroll events before that
-	 * report the first headings.
-	 */
-	function followToc(from: 'cursor' | 'editor' | 'preview', line: RendererLine) {
-		const cursorLeads = settings.tocFollows === 'cursor' && (hasEditorPane || (settings.previewCursor && activeCursor !== null));
-		const previewSettled = hasPreviewPane && !previewPlacing;
-		const accepted = from === 'cursor' ? cursorLeads : !cursorLeads && (from === 'editor' || previewSettled);
-		if (accepted) tocActiveLine = line;
-	}
-
-	/** True from Ctrl+E out of the editor until the preview is placed. */
-	let previewPlacing = false;
-
-	/**
-	 * Each tab's cursor, shared by its two panes (#799): the editor's while it
-	 * is on screen, and with `settings.previewCursor` a click in the preview
-	 * moves it too. With that setting the preview draws it, and Ctrl+E puts the
-	 * editor's cursor on it. A tab only read so far has none.
-	 */
-	let cursorByTab = $state<Record<string, { line: BufferLine; column: number }>>({});
-	let activeCursor = $derived((tabManager.activeTabId && cursorByTab[tabManager.activeTabId]) || null);
-
-	function handleEditorCursor(line: BufferLine, column: number) {
-		if (tabManager.activeTabId) cursorByTab[tabManager.activeTabId] = { line, column };
-		followToc('cursor', lineCoords.toRendererLine(line));
-	}
-
 	let bufferLines = $derived(rawContent.split('\n'));
 	const readRendererLine: SourceLineReader = (line) => bufferLines[lineCoords.toBufferLine(asRendererLine(line)) - 1];
-
-	function placePreviewCursor(e: MouseEvent) {
-		const tabId = tabManager.activeTabId;
-		if (!tabId || !previewBlocks || !settings.previewCursor || e.detail !== 1) return;
-		if (!window.getSelection()?.isCollapsed) return;
-
-		const caret = document.caretRangeFromPoint(e.clientX, e.clientY);
-		const point = caret && sourceAtPoint(previewBlocks, { node: caret.startContainer, offset: caret.startOffset }, readRendererLine);
-		if (!point) return;
-
-		const line = lineCoords.toBufferLine(point.line);
-		cursorByTab[tabId] = { line, column: point.column };
-		followToc('cursor', point.line);
-		if (isSplit) editorPane?.setCursor(line, point.column);
-	}
 
 	/** The drawn cursor, in the article's scroll content; null while it isn't shown. */
 	let previewCursorBox = $state<{ top: number; left: number; height: number } | null>(null);
@@ -1640,7 +1608,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	});
 
 	$effect(() => {
-		const cursor = activeCursor;
+		const cursor = viewMode.activeCursor;
 		const shown = settings.previewCursor && cursor !== null && hasPreviewPane;
 		void htmlContent;
 		void previewLayoutVersion;
@@ -1766,33 +1734,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		};
 	});
 
-	function handleEditorScrollSync(position: ScrollSyncPosition) {
-		// The line the tab would record as its reading position, not the line
-		// the viewport cuts in half: `tabAnchorForEditorTopLine` is the one
-		// crossing from a Monaco top line into the outline's numbering (it
-		// counts from the body, and sits `EDITOR_ANCHOR_LINE_OFFSET` lines
-		// down). Handing over the raw top line left the outline one entry
-		// behind whenever a heading was the first line on screen (#744).
-		if (position.line !== undefined) {
-			followToc('editor', tabAnchorForEditorTopLine(lineCoords, asBufferLine(position.line)));
-		}
-
-		if (splitScrollSyncOn()) {
-			scrollPreviewToSyncPosition(position);
-		}
-	}
-
-	/**
-	 * Scroll sync is a split-view feature, and `isScrollSynced` outlives the
-	 * split: it is the tab's remembered choice for the next one. Out of split
-	 * the other pane is still mounted at zero width, so a position mapped
-	 * through it drags the visible pane off the line Ctrl+E put it on (#799).
-	 */
-	function splitScrollSyncOn() {
-		const tab = tabManager.activeTab;
-		return !!tab?.isSplit && tab.isScrollSynced;
-	}
-
 	/**
 	 * The source line to save as this tab's reading position: the one rendered
 	 * `PREVIEW_ANCHOR_OFFSET` below the top of the viewport, which is where the
@@ -1819,13 +1760,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// two consumers — the tab's saved reading position and the outline —
 		// both count from the first line of the body.
 		return line === null ? null : asRendererLine(Math.round(line));
-	}
-
-	function syncEditorToPreviewScroll(target: HTMLElement) {
-		if (!splitScrollSyncOn() || !editorPane) return;
-
-		const position = getPreviewScrollSyncPosition(target);
-		editorPane.syncScrollToPosition(position);
 	}
 
 	let isScrolling = $state(false);
@@ -2121,203 +2055,14 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		return documentSession.canCloseTab(tabId);
 	}
 
-	/**
-	 * Reading mode's HTML, rendered from the tab's own buffer and its own path.
-	 * Writes through the tab id, so a tab switch during the render cannot land
-	 * one document's HTML on another — and, unlike the `loadMarkdown` call this
-	 * replaces, it neither activates the tab nor re-reads the file.
-	 */
-	async function renderPreviewLeavingEditableMode(tab: Tab) {
-		try {
-			await renderTabPreviewFromRaw(tab);
-		} catch (e) {
-			console.error('Failed to render markdown', e);
-		}
-	}
-
-	/**
-	 * Move the active tab between reading and editing. Just the mode — where
-	 * the reader LANDS is `editSourceRange`'s business, and `toggleEditView`
-	 * is what decides which of the two a ⌘E means.
-	 */
-	async function toggleEdit() {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-
-		if (isEditing) {
-			// Back to reading. The preview renders the buffer, not the file, so no
-			// save is needed (#168). The tab stays dirty, and closing it or the
-			// window (`settleForExit`) still asks.
-			await flushBeforeLeavingEditableMode(tab);
-			// Ctrl+E lands on the line the other pane was showing, mapped the way
-			// split view maps it (#799).
-			const position = editorPane?.scrollSyncPosition() ?? null;
-			previewPlacing = position !== null;
-			tab.isEditing = false;
-			await renderPreviewLeavingEditableMode(tab);
-			if (position) void restoreAfterLeavingEditor(tab.id, position);
-		} else {
-			// Switch to edit
-			const position = markdownBody ? getPreviewScrollSyncPosition(markdownBody) : null;
-			if (tab.path !== '') {
-				if (tab.isDirty) {
-					// Unsaved edits are already in memory (made in reading
-					// mode, or kept when leaving the editor with auto-save
-					// off). Reading from disk would overwrite them, so only
-					// switch.
-					tab.isEditing = true;
-				} else {
-					const mayApply = claimTabForRead(tab.id);
-					try {
-						// This buffer is about to be handed to the editor, and
-						// the editor arms auto-save. The checked command is what
-						// says whether the decode was lossy, so the tab carries
-						// its own verdict instead of relying on the one
-						// `loadMarkdown` left behind — a file can be converted
-						// to UTF-8 (or away from it) between the two reads.
-						const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-						// A task ticked, or the tab closed, while this was out.
-						if (!mayApply()) return;
-						tabManager.setTabDecodedLossy(tab.id, lossy);
-						tabManager.setTabEncoding(tab.id, encoding);
-						// Goes through the store so a tab that held only the
-						// large-file preview slice stops being flagged partial.
-						tabManager.setTabRawContent(tab.id, content);
-						tab.isEditing = true;
-					} catch (e) {
-						console.error('Failed to read file for editing', e);
-					}
-				}
-			} else {
-				tab.isEditing = true;
-			}
-			if (position && tab.isEditing) {
-				await tick();
-				editorPane?.syncScrollToPosition(position, { cursorIntoView: settings.tocFollows === 'cursor' });
-			}
-		}
-	}
-
-	/**
-	 * The preview half of #799. The restore effect cannot do it: the article
-	 * stays mounted at zero width in edit mode, so nothing it depends on changes
-	 * with the mode. The pane takes its real width in the same frame (its slide
-	 * is a `transform`, see `utils/paneSlide.ts`), so the line is placed right
-	 * after the render, before the old position is ever painted.
-	 */
-	async function restoreAfterLeavingEditor(tabId: string, position: ScrollSyncPosition) {
-		await tick();
-		previewPlacing = false;
-		const body = markdownBody;
-		if (!body || tabManager.activeTab?.id !== tabId || tabManager.activeTab.isEditing) return;
-		scrollPreviewToSyncPosition(position);
-		// That scroll is marked programmatic, so the tab's anchor and the
-		// outline's current entry are written here.
-		const anchorLine = getPreviewScrollAnchor(body);
-		if (anchorLine !== null) {
-			tabManager.updateTabAnchorLine(tabId, anchorLine);
-			followToc('preview', anchorLine);
-		}
-	}
-
-	/**
-	 * A jump the editor has not been asked for yet, because it does not exist
-	 * yet: `toggleEdit` only flips a flag, and the `Editor` it mounts — and the
-	 * `editorPane` binding that reaches it — arrive on the next render. The
-	 * effect below spends it the moment they do, and immediately when the
-	 * editor is already on screen (split view).
-	 */
-	let pendingEditReveal = $state<BufferLineRange | null>(null);
-
+	// `viewMode.pendingEditReveal`, spent the moment the editor exists.
 	$effect(() => {
-		const range = pendingEditReveal;
+		const range = viewMode.pendingEditReveal;
 		if (!range || !editorPane) return;
 
-		pendingEditReveal = null;
+		viewMode.pendingEditReveal = null;
 		editorPane.revealSourceRange(range.startLine, range.endLine);
 	});
-
-	/**
-	 * Which source lines the reader means by right-clicking here (#90).
-	 *
-	 * The selection when there is one, so a range spanning several blocks opens
-	 * the editor on all of them; a caret or a click with nothing selected falls
-	 * through to whatever is under the pointer, which is how a click on an
-	 * image lands on the image.
-	 *
-	 * `null` when nothing under the pointer came from the document: the front
-	 * matter panel, the outline, the window chrome. The caller then leaves the
-	 * "Edit" entry doing exactly what it did before.
-	 */
-	function getContextMenuSourceRange(e: MouseEvent): LineRange | null {
-		return getSelectionSourceRange() ?? findSourceLineRange(e.target as Node | null);
-	}
-
-	/**
-	 * The source lines the reader has selected in the preview, or null when
-	 * nothing is selected or the selection came from outside the document.
-	 *
-	 * Both ends resolve independently and are merged, so a selection spanning
-	 * several blocks answers with all of them, and one end landing somewhere
-	 * with no range (the front matter panel, the outline) leaves the other end
-	 * in charge. Direction-independent: `startContainer` is the range's start,
-	 * not the point the drag began at.
-	 */
-	function getSelectionSourceRange(): LineRange | null {
-		const selection = window.getSelection();
-		if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
-		return mergeSourceLineRanges(
-			findSourceLineRange(selection.getRangeAt(0).startContainer),
-			findSourceLineRange(selection.getRangeAt(selection.rangeCount - 1).endContainer),
-		);
-	}
-
-	/**
-	 * What ⌘E means, from every entry point that offers it — the hotkey, the
-	 * toolbar, the title bar, and Monaco's own command.
-	 *
-	 * One function so the chord cannot mean two things depending on where the
-	 * caret happens to be (`formatShortcutKeymap.test.ts` holds the two layers
-	 * together), and so "take me to the editor" behaves the same whether the
-	 * reader asked for it with a key or with a menu item.
-	 */
-	async function toggleEditView() {
-		const selected = getSelectionSourceRange();
-
-		if (!hasPreviewPane) {
-			// The editor is already the whole window: nowhere further to take
-			// the reader, so this is the toggle back out.
-			await toggleEdit();
-			return;
-		}
-
-		if (isSplit && !selected) {
-			// Deliberately nothing.
-			//
-			// What ⌘E is asked for is the ability to edit, and split view
-			// already grants it — the editor is on screen. With no selection
-			// there is no fragment to travel to either, so every remaining
-			// reading of the chord is a LAYOUT change nobody asked for: closing
-			// the preview on a mistyped ⌘E costs the reader the pane and a
-			// second keystroke to get it back, while doing nothing costs
-			// nothing. ⌘\ opens and closes the split, and stays the only way.
-			return;
-		}
-
-		// Reading, or split with a selection: same as the context menu's "Edit".
-		await editSourceRange(selected);
-	}
-
-	/**
-	 * Open the editor on `range`. Toggles into edit mode when `isEditing` is
-	 * false, including split view entered from reading mode.
-	 */
-	async function editSourceRange(range: LineRange | null) {
-		if (!isEditing) await toggleEdit();
-		// `toggleEdit` swallows a failed read and stays in reading mode. Arming
-		// the jump anyway would fire it at whatever document is edited next.
-		if (range && tabManager.activeTab?.isEditing) pendingEditReveal = lineCoords.toBufferRange(range);
-	}
 
 	/**
 	 * This document's two line numberings, and the only thing that converts
@@ -3065,61 +2810,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	$effect(() => {
 		if (tabManager.activeTab?.unread) untrack(() => void documentSession.readActiveIfUnread());
 	});
-
-	async function toggleSplitView(tabId: string) {
-		const tab = tabManager.tabs.find((t) => t.id === tabId);
-		if (!tab) return;
-
-		if (!tab.isSplit) {
-			// Split view is an editor, and its first keystroke arms auto-save.
-			// The buffer must be complete first (not empty, not a large file's
-			// partial read), or auto-save writes a truncated file.
-			if (tab.path && !tab.isEditing && !tab.rawContent) {
-				const mayApply = claimTabForRead(tab.id);
-				try {
-					// Checked, like every other read that fills an editable
-					// buffer: split view is an editor, so this tab must carry
-					// the fidelity of its own decode rather than inherit one.
-					const [content, lossy, encoding] = (await invoke('read_file_content_checked', { path: tab.path })) as [string, boolean, string];
-					if (!mayApply()) return;
-					tabManager.setTabDecodedLossy(tab.id, lossy);
-					tabManager.setTabEncoding(tab.id, encoding);
-					tabManager.setTabRawContent(tab.id, content);
-				} catch (e) {
-					console.error('Failed to load raw content for split view', e);
-				}
-			}
-			if (!(await documentSession.ensureFullContent(tab.id))) {
-				addToast(t('toast.partialDocument', settings.language), 'error');
-				return;
-			}
-			tabManager.setSplitEnabled(tab.id, true);
-		} else {
-			// Like leaving edit mode: the surviving pane renders the buffer, so
-			// nothing is saved or asked.
-			await flushBeforeLeavingEditableMode(tab);
-			tabManager.setSplitEnabled(tab.id, false);
-			await renderPreviewLeavingEditableMode(tab);
-		}
-	}
-
-	/** The title bar's three mode buttons (#806): go straight to one, from any. */
-	async function setViewMode(target: ViewMode) {
-		const tab = tabManager.activeTab;
-		if (!tab || viewModeOf(tab) === target) return;
-		if (target === 'split') return toggleSplitView(tab.id);
-		if (!tab.isSplit) return target === 'edit' ? toggleEditView() : toggleEdit();
-		// Leaving split: the editor is already on screen and holds the full
-		// buffer, so Edit only drops the preview. Preview goes through the
-		// normal close, which flushes and renders.
-		if (target === 'edit') {
-			tab.isEditing = true;
-			tabManager.setSplitEnabled(tab.id, false);
-			return;
-		}
-		tab.isEditing = false;
-		await toggleSplitView(tab.id);
-	}
 
 	/*
 	 * `viewerKeymap.ts` decides which command a keystroke means. This maps each
@@ -3892,7 +3582,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 								oncommand={runViewerCommand}
 								onscrollsync={handleEditorScrollSync}
 								oncursor={handleEditorCursor}
-								sharedCursor={settings.previewCursor ? activeCursor : null} />
+								sharedCursor={settings.previewCursor ? viewMode.activeCursor : null} />
 						{/if}
 					</div>
 
@@ -4121,7 +3811,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 									onpointerdown={startTocResize}
 									onkeydown={handleTocResizeKeyDown}></div>
 								<Toc
-									activeLine={tocActiveLine} 
+									activeLine={viewMode.tocActiveLine} 
 										{markdownBody} 
 										contentRoot={previewBlocks}
 										{previewRevision}

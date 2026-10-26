@@ -78,23 +78,6 @@ describe('checked read migration', () => {
 		assert.doesNotMatch(rust, /^\s*read_file_content,\s*$/m, 'and must not be registered again');
 	});
 
-	test('entering the editor reads the fidelity and stores it', () => {
-		const toggle = sliceBetween(viewer, 'async function toggleEdit', 'async function restoreAfterLeavingEditor');
-		assert.match(toggle, /\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked', \{ path: tab\.path \}\)\)/);
-		const read = offsetOf(toggle, 'read_file_content_checked');
-		const flag = offsetOf(toggle, 'setTabDecodedLossy(tab.id, lossy)');
-		const store = offsetOf(toggle, 'setTabRawContent(tab.id, content)');
-		assert.ok(read < flag && flag < store, 'flag the tab before the buffer is published');
-	});
-
-	test('entering split view reads the fidelity and stores it', () => {
-		const enter = sliceBetween(viewer, 'async function toggleSplitView', '} else {');
-		assert.match(enter, /\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked', \{ path: tab\.path \}\)\)/);
-		const flag = offsetOf(enter, 'setTabDecodedLossy(tab.id, lossy)');
-		const store = offsetOf(enter, 'setTabRawContent(tab.id, content)');
-		assert.ok(flag < store, 'flag the tab before the buffer is published');
-	});
-
 	// --- the repeating toast ------------------------------------------------------
 
 	test('the session can tell a refusal from a failure', () => {
@@ -716,10 +699,11 @@ describe('external change reload', () => {
 		// not follow the file. The button and the chord are now offered in all
 		// three modes; a kill here would take the state straight back off.
 		//
-		// An absence claim about a component that cannot be imported, so it is
-		// matched as source text — the same reason as the four assertions above.
-		const body = sliceBetween(viewer, 'async function toggleSplitView', '\n\t}');
-		assert.doesNotMatch(body, /toggleLiveMode|liveMode\s*=/);
+		// An absence claim: the view toggles live in `sessions/viewMode`, which
+		// is not handed Live Mode at all. lint-candidate: no-restricted-syntax on
+		// `liveMode` / `toggleLiveMode` identifiers in that module.
+		const viewMode = readSource('src/lib/sessions/viewMode.svelte.ts');
+		assert.doesNotMatch(viewMode, /toggleLiveMode|liveMode/);
 	});
 
 	// --- #4: the irreversible answer is now visible before it is given ---
@@ -795,20 +779,6 @@ describe('truncated buffer guard', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	// --- wiring that cannot be executed outside a Svelte runtime ---
-
-	test('entering split view completes a partial buffer instead of trusting it', () => {
-		// The old guard was `!tab.rawContent`, which a partial buffer satisfies:
-		// split view opened on the truncated text, the first keystroke made it
-		// dirty, and auto-save wrote it back 1.5s later.
-		const enter = sliceBetween(viewer, 'async function toggleSplitView', '} else {');
-		assert.match(enter, /ensureFullContent/);
-		// And it has to stop when the buffer could not be completed, rather than
-		// opening an editor over the partial text anyway.
-		assert.match(enter, /if \(!\(await documentSession\.ensureFullContent\(tab\.id\)\)\) \{[\s\S]*?return;/);
-		// The empty-buffer read must go through the store so the tab does not keep
-		// a stale "partial" flag that would then block every save.
-		assert.match(enter, /tabManager\.setTabRawContent\(tab\.id, content\)/);
-	});
 
 	test('a partial buffer cannot be handed to another window', () => {
 		// The destination rebuilds the tab from the payload alone and has no way

@@ -122,6 +122,7 @@ describe('preview anchor restore wiring', () => {
 describe('jump to the selected fragment wiring', () => {
 	const editorSource = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
+	const viewModeSource = readSource('src/lib/sessions/viewMode.svelte.ts');
 
 	/* ------------------------------------------------------------------ */
 	/* the jump itself                                                     */
@@ -179,8 +180,8 @@ describe('jump to the selected fragment wiring', () => {
 	test('Edit with a target never leaves edit mode', () => {
 		// In split view the editor is already on screen, and "edit this fragment"
 		// is the one thing that cannot mean "close the editor".
-		const edit = functionSource(viewerSource, 'editSourceRange');
-		assert.match(edit, /if \(!isEditing\) await toggleEdit\(\)/, 'entered only when not already editing');
+		const edit = functionSource(viewModeSource, 'editSourceRange');
+		assert.match(edit, /if \(!isEditing\(\)\) await toggleEdit\(\)/, 'entered only when not already editing');
 		// And a read that failed leaves the tab in reading mode — arming the jump
 		// anyway would fire it at whatever document is edited next.
 		assert.match(edit, /tabManager\.activeTab\?\.isEditing/);
@@ -190,7 +191,7 @@ describe('jump to the selected fragment wiring', () => {
 		// `parseSourceposLineRange` is the only reader of the attribute, and it
 		// keeps line numbers only. Nothing in the preview may take the `:col` half
 		// and aim Monaco with it — see the header of this file for why.
-		const resolve = functionSource(viewerSource, 'getContextMenuSourceRange');
+		const resolve = functionSource(viewModeSource, 'getContextMenuSourceRange');
 		assert.match(resolve, /findSourceLineRange\(/);
 		assert.doesNotMatch(resolve, /startColumn|endColumn/);
 	});
@@ -207,8 +208,8 @@ describe('jump to the selected fragment wiring', () => {
 		// Two consumers hand a `data-sourcepos` number to the editor, and both have
 		// to shift it. `toggleEditView` is not a third: it resolves the range and
 		// passes it to `editSourceRange`, which is where the shift happens.
-		const edit = functionSource(viewerSource, 'editSourceRange');
-		assert.match(edit, /pendingEditReveal = lineCoords\.toBufferRange\(range\)/, 'the context menu and ⌘E shift');
+		const edit = functionSource(viewModeSource, 'editSourceRange');
+		assert.match(edit, /pendingEditReveal = o\.lineCoords\.toBufferRange\(range\)/, 'the context menu and ⌘E shift');
 
 		// The outline is wired inline in the markup rather than in a function.
 		assert.match(
@@ -245,8 +246,8 @@ describe('jump to the selected fragment wiring', () => {
 		// `tocActiveLine` has two writers. The preview's already answers in body
 		// lines (`getPreviewScrollAnchor`); the editor's has to be converted, or the
 		// highlighted heading changes depending on which pane you scrolled.
-		const fromEditor = functionSource(viewerSource, 'handleEditorScrollSync');
-		assert.match(fromEditor, /followToc\('editor', tabAnchorForEditorTopLine\(lineCoords, asBufferLine\(position\.line\)\)\)/);
+		const fromEditor = functionSource(viewModeSource, 'handleEditorScrollSync');
+		assert.match(fromEditor, /followToc\('editor', tabAnchorForEditorTopLine\(o\.lineCoords, asBufferLine\(position\.line\)\)\)/);
 
 		const fromPreview = functionSource(viewerSource, 'getPreviewScrollAnchor');
 		assert.doesNotMatch(fromPreview, /toBufferLine|toRendererLine/, 'already a body line');
@@ -279,7 +280,7 @@ describe('jump to the selected fragment wiring', () => {
 		// `toggleEdit` and `editSourceRange` both flip `isEditing`, and a selection
 		// read after that would answer for the editor rather than for the preview
 		// the reader was looking at.
-		const view = functionSource(viewerSource, 'toggleEditView');
+		const view = functionSource(viewModeSource, 'toggleEditView');
 		assert.match(view, /const selected = getSelectionSourceRange\(\);/);
 		assert.ok(
 			view.indexOf('const selected') < view.indexOf('toggleEdit()'),
@@ -306,7 +307,7 @@ describe('jump to the selected fragment wiring', () => {
 		// The editor entry point hands Monaco's ⌘E to the same switch.
 		assert.match(viewerSource, /oncommand=\{runViewerCommand\}/, 'the editor entry point');
 		// The title bar's Edit button, now one of three mode buttons (#806).
-		assert.match(functionSource(viewerSource, 'setViewMode'), /target === 'edit' \? toggleEditView\(\)/);
+		assert.match(functionSource(viewModeSource, 'setViewMode'), /target === 'edit' \? toggleEditView\(\)/);
 	});
 
 	test('split view with nothing selected is deliberately inert', () => {
@@ -314,8 +315,8 @@ describe('jump to the selected fragment wiring', () => {
 		// granted; with no selection there is nothing to travel to either. Closing
 		// the preview would be a layout change nobody asked for, and a mistyped ⌘E
 		// would cost the reader the pane.
-		const view = functionSource(viewerSource, 'toggleEditView');
-		assert.match(view, /if \(isSplit && !selected\) \{[\s\S]*?return;/);
+		const view = functionSource(viewModeSource, 'toggleEditView');
+		assert.match(view, /if \(isSplit\(\) && !selected\) \{[\s\S]*?return;/);
 		assert.doesNotMatch(view, /setSplitEnabled/, 'the chord never changes the layout');
 	});
 });
