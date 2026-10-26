@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, onTestFinished, test, vi } from 'vitest';
 
 import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
@@ -12,6 +12,7 @@ import { dismissesToc, tocAutoCollapses } from '../src/lib/utils/tocOverlay.js';
 import { followFoldLayout, previewPaneShown } from '../src/lib/utils/foldLayoutEffect.svelte.js';
 import { runeEffect } from './runeEffect.svelte.js';
 import { patchHost } from '../src/lib/utils/previewPatch.js';
+import { followPreviewPatch } from '../src/lib/utils/previewPatchEffect.svelte.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -1160,5 +1161,45 @@ describe('outline overlay placement', () => {
 		assert.equal(dismissesToc(handle, panel, toggle), false);
 		assert.equal(dismissesToc(text, panel, toggle), true);
 		assert.equal(dismissesToc(null, panel, toggle), false);
+	});
+});
+
+describe('outline render signal', () => {
+	test('the revision is published by the patch, not by the render', () => {
+		// A signal derived from the rendered string rather than from the write to
+		// the DOM is the bug: on a mount the outline scanned an article the patch
+		// had not filled yet, and the string never changed again to make it look.
+		const state = runeProps({ host: null as HTMLElement | null, html: '<h1>One</h1>' });
+		let published: { readonly revision: number } | null = null;
+		const seen: string[] = [];
+		const dispose = runeEffect(() => {
+			published = followPreviewPatch(
+				() => state.host,
+				() => state.html,
+				(host, html) => (host.innerHTML = html),
+			);
+		});
+		flushSync();
+		const revision = () => published!.revision;
+		const watch = runeEffect(() => {
+			void revision();
+			seen.push(state.host?.textContent ?? '');
+		});
+		flushSync();
+		onTestFinished(() => (watch(), dispose()));
+
+		state.html = '<h1>Two</h1>';
+		flushSync();
+		assert.equal(revision(), 0, 'a render with nowhere to patch it publishes nothing');
+
+		state.host = document.createElement('article');
+		flushSync();
+		assert.equal(revision(), 1);
+		assert.equal(seen.at(-1), 'Two', 'once published, the article already holds the document');
+
+		state.html = '<h1>Three</h1>';
+		flushSync();
+		assert.equal(revision(), 2);
+		assert.equal(seen.at(-1), 'Three');
 	});
 });

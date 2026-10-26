@@ -41,6 +41,7 @@ import {
 } from './utils/richContent.js';
 import { type FoldLayoutObservation } from './utils/foldLayout.js';
 import { followFoldLayout, previewPaneShown } from './utils/foldLayoutEffect.svelte.js';
+import { followPreviewPatch } from './utils/previewPatchEffect.svelte.js';
 import { patchHost } from './utils/previewPatch.js';
 import { refreshesPreviewCache } from './utils/previewRefresh.js';
 import {
@@ -1291,31 +1292,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	}
 
 	/**
-	 * How many documents the preview DOM has been given, as a number anything
-	 * downstream of the render can wait on.
-	 *
-	 * `htmlContent` looks like the same signal and is not. It says a document
-	 * has been *rendered*, and the outline used to take it as saying the article
-	 * now *holds* that document — which is true only if the patch below has
-	 * already run. On a mount it has not: Svelte runs a child component's
-	 * effects before its parent's, so `<Toc>` scanned the article in the same
-	 * flush, one step ahead of the patch that fills it, and found nothing. The
-	 * string does not change again, so nothing asked it to look twice and the
-	 * outline stayed empty until it was unmounted and remounted.
-	 *
-	 * A pinned outline is the one that never gets that remount, which is why it
-	 * was the only place the bug was visible: an overhanging floating outline
-	 * closes itself, and reopening it builds a new component against a DOM that
-	 * is by then complete.
-	 *
-	 * The counter is kept twice on purpose — `previewPatches` is the plain one
-	 * this effect increments, so the `$state` is only ever written here and
-	 * never read, and the effect cannot schedule itself.
-	 */
-	let previewRevision = $state(0);
-	let previewPatches = 0;
-
-	/**
 	 * The one place a rendered document becomes preview DOM: patch, then enrich
 	 * only what the patch inserted.
 	 *
@@ -1324,15 +1300,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * restores the reading position again, because KaTeX and Mermaid can push
 	 * the anchor down by hundreds of pixels.
 	 */
-	$effect(() => {
-		const host = previewBlocks;
-		if (!host) {
-			// Still a read, so a document that lands before the element exists
-			// re-runs this rather than being missed.
-			void htmlContent;
-			return;
-		}
-
+	const previewPatch = followPreviewPatch(() => previewBlocks, () => htmlContent, (host, htmlContent) => {
 		// This document is injected into the app's own document, so it runs the
 		// same policy the export runs — the one place a document is untrusted
 		// must not have its own private copy of the rules. The preview used to
@@ -1362,7 +1330,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		if (cold) enrichedHosts.add(host);
 		const enrichment = renderRichContent(patch.inserted);
 		if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
-		previewRevision = ++previewPatches;
 	});
 
 	/**
@@ -4129,7 +4096,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 									activeLine={tocActiveLine} 
 										{markdownBody} 
 										contentRoot={previewBlocks}
-										{previewRevision}
+										previewRevision={previewPatch.revision}
 										onBeforeJump={pushScrollHistory} 
 										{foldOverrides} 
 										ontoggleFold={(key: string) => toggleFold(foldHost, key)} 

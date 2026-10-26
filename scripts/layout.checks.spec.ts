@@ -16,18 +16,11 @@ describe('split scroll-sync preference', () => {
 });
 
 describe('outline render signal', () => {
-	test('the revision is published by the patch, not by the render', () => {
-		// The guard on the fix: a signal derived from the rendered string rather
-		// than from the write to the DOM is the bug, spelled differently.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		const patchEffect = viewer.slice(viewer.indexOf('patchHost(\n\t\t\thost,'));
-		const bump = patchEffect.indexOf('previewRevision = ++previewPatches;');
-		expect(bump).toBeGreaterThan(-1);
-		expect(bump).toBeLessThan(patchEffect.indexOf('\n\t});'));
-
-		// And the outline no longer receives the document string it never read.
+	test('the outline takes no document string', () => {
+		// The revision itself is layout.spec.ts "the revision is published by the
+		// patch, not by the render". This is the absence of the old signal.
 		const toc = readSource('src/lib/components/Toc.svelte');
 		expect(/htmlContent/.test(toc.split('It used to be')[0])).toBe(false);
 	});
+
 });
