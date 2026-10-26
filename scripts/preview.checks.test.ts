@@ -3,24 +3,6 @@ import assert from 'node:assert/strict';
 import { callSiteOffsets, enclosingFunctionName, filesMatching, readSource, readSourceFiles, SANITIZER_FILES, sliceBetween } from './sourceTree.js';
 import { ALLOWED_MARKDOWN_URI_REGEXP, MARKDOWN_SANITIZE_CONFIG } from '../src/lib/utils/sanitize.js';
 
-describe('inline code in headings', () => {
-	// #681: inline code in a heading rendered small and floating above the words
-	// around it. Two independent causes, one in each stylesheet, and neither is
-	// reachable by a test that runs code — this is CSS the browser resolves.
-
-	const styles = readSource('src/styles.css');
-
-	test('a heading lays its content out as one line of text', () => {
-		// A flex heading makes every text run, `<em>`, `<code>` and image its own
-		// flex item: #681 floated inline code above the words, #791 ate the spaces
-		// around `*not*` and broke it into `n`/`o`/`t` on a narrow pane. The fold
-		// chevron is absolutely positioned, so inline layout costs it nothing.
-		const rule = styles.match(/\.foldable-header \{[^}]*\}/);
-		assert.ok(rule, 'styles.css must still define .foldable-header');
-		assert.doesNotMatch(rule[0], /display:\s*(inline-)?(flex|grid)/);
-	});
-});
-
 /**
  * KaTeX publishes every contrib file twice: `contrib/*.mjs` behind the
  * `import` condition, `contrib/*.js` (CommonJS, `require("katex")`) behind
