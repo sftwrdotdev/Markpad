@@ -351,6 +351,16 @@ export function createViewMode(o: ViewModeOptions) {
 		if (range && tabManager.activeTab?.isEditing) pendingEditReveal = o.lineCoords.toBufferRange(range);
 	}
 
+	/**
+	 * The context menu's "Edit" for the right-click `e`. The target is resolved
+	 * now rather than inside the click handler: by the time that runs the
+	 * reader has clicked a menu item, and a click is how a selection goes away.
+	 */
+	function editSourceRangeAt(e: MouseEvent) {
+		const target = getContextMenuSourceRange(e);
+		return () => editSourceRange(target);
+	}
+
 	async function toggleSplitView(tabId: string) {
 		const tab = tabManager.tabs.find((t) => t.id === tabId);
 		if (!tab) return;
@@ -429,6 +439,7 @@ export function createViewMode(o: ViewModeOptions) {
 		getContextMenuSourceRange,
 		toggleEditView,
 		editSourceRange,
+		editSourceRangeAt,
 		toggleSplitView,
 		setViewMode,
 	};

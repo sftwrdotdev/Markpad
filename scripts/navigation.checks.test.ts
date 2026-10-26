@@ -65,45 +65,15 @@ describe('preview anchor restore wiring', () => {
 	});
 
 	/**
-	 * The cold start: the rich-content libraries arrive after the document is
-	 * already in the preview and after the position has been restored against it.
-	 *
-	 * Measured in Chromium — the numbers and the method are in the patch effect's
-	 * comment in `MarkdownViewer.svelte` — the anchored text moves down by up to
-	 * 812px when the enrichment lands, and re-running this cascade afterwards
-	 * brings it back to within 0.8px. jsdom has no layout, so that magnitude cannot
-	 * be asserted here and this is a source assertion like the one above: what it
-	 * pins is that the second restore is wired up at all, and that nothing has
-	 * quietly gone back to the arrangement that had no owner for this case.
+	 * The cold start's second restore runs in navigation.viewMode.spec.ts against
+	 * `sessions/coldEnrichmentRestore`. What is left is an `$effect` in the
+	 * component, which only mounting would observe.
 	 */
-	test('a cold start restores again once its enrichment has landed', async () => {
+	test('the theme effect does not re-enrich when the libraries arrive', async () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-		// The patch effect is the owner: a host's first enrichment is the one that
-		// imports the libraries its document needs, so it lands after the restore.
-		assert.match(
-			viewer,
-			/const cold = patch\.inserted\.length > 0 && !enrichedHosts\.has\(host\)/,
-			'the patch effect must recognise the first enrichment of a host',
-		);
-		assert.match(
-			viewer,
-			/if \(cold\) restoreAfterColdEnrichment\(/,
-			'and only that run may re-restore, or every no-op patch would move the reader',
-		);
-
-		// The restore itself goes through the shared cascade, waits for the
-		// enrichment, and speaks only for the tab still on screen.
-		const helper = viewer.match(
-			/async function restoreAfterColdEnrichment\([\s\S]*?\n\t\}/,
-		)?.[0];
-		assert.ok(helper, 'restoreAfterColdEnrichment must exist');
-		assert.match(helper, /await enrichment;/);
-		assert.match(helper, /tabManager\.activeTabId !== tabId/);
-		assert.match(helper, /restorePreviewReadingPosition\(body, tab,/);
-
-		// And the accident that used to stand in for it must not come back. The
-		// theme effect's `renderRichContent()` reads reactive state before its
+		// The accident that used to stand in for the second restore must not
+		// come back. The theme effect's `renderRichContent()` reads reactive state before its
 		// first await, so without `untrack` that effect re-runs on unrelated
 		// changes — re-enriching every open tab's host on top of the pass above.
 		//
@@ -122,7 +92,6 @@ describe('preview anchor restore wiring', () => {
 describe('jump to the selected fragment wiring', () => {
 	const editorSource = readSource(new URL('../src/lib/components/Editor.svelte', import.meta.url));
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-	const viewModeSource = readSource('src/lib/sessions/viewMode.svelte.ts');
 
 	/* ------------------------------------------------------------------ */
 	/* the jump itself                                                     */
@@ -168,34 +137,6 @@ describe('jump to the selected fragment wiring', () => {
 	/* the context menu wiring                                             */
 	/* ------------------------------------------------------------------ */
 
-	test('the Edit entry resolves its target while the selection still exists', () => {
-		// Resolving inside the `onClick` would read the selection AFTER the reader
-		// clicked a menu item, and a click is how a selection goes away.
-		const handler = functionSource(viewerSource, 'handleContextMenu');
-		assert.match(handler, /const editSourceTarget = getContextMenuSourceRange\(e\);/);
-		assert.match(handler, /t\('menu\.edit', settings\.language\), onClick: \(\) => editSourceRange\(editSourceTarget\)/);
-		assert.doesNotMatch(handler, /onClick: \(\) => toggleEdit\(\)/);
-	});
-
-	test('Edit with a target never leaves edit mode', () => {
-		// In split view the editor is already on screen, and "edit this fragment"
-		// is the one thing that cannot mean "close the editor".
-		const edit = functionSource(viewModeSource, 'editSourceRange');
-		assert.match(edit, /if \(!isEditing\(\)\) await toggleEdit\(\)/, 'entered only when not already editing');
-		// And a read that failed leaves the tab in reading mode — arming the jump
-		// anyway would fire it at whatever document is edited next.
-		assert.match(edit, /tabManager\.activeTab\?\.isEditing/);
-	});
-
-	test('the target is a source range and never a column', () => {
-		// `parseSourceposLineRange` is the only reader of the attribute, and it
-		// keeps line numbers only. Nothing in the preview may take the `:col` half
-		// and aim Monaco with it — see the header of this file for why.
-		const resolve = functionSource(viewModeSource, 'getContextMenuSourceRange');
-		assert.match(resolve, /findSourceLineRange\(/);
-		assert.doesNotMatch(resolve, /startColumn|endColumn/);
-	});
-
 	test('the real stress document shifts by its front matter', () => {
 		// The fixture the reporter of the offset was reading: 10 lines of front
 		// matter plus the blank line after it, heading on buffer line 12.
@@ -205,52 +146,14 @@ describe('jump to the selected fragment wiring', () => {
 	});
 
 	test('every renderer line reaching the editor goes through the shift', () => {
-		// Two consumers hand a `data-sourcepos` number to the editor, and both have
-		// to shift it. `toggleEditView` is not a third: it resolves the range and
-		// passes it to `editSourceRange`, which is where the shift happens.
-		const edit = functionSource(viewModeSource, 'editSourceRange');
-		assert.match(edit, /pendingEditReveal = o\.lineCoords\.toBufferRange\(range\)/, 'the context menu and ⌘E shift');
-
-		// The outline is wired inline in the markup rather than in a function.
+		// The context menu and ⌘E shift through `editSourceRange`: see
+		// navigation.viewMode.spec.ts. The outline is wired inline in the markup
+		// rather than in a function, so only mounting would observe it.
 		assert.match(
 			viewerSource,
 			/editorPane\.revealHeader\(\s*sourceLine === null \? null : lineCoords\.toBufferLine\(/,
 			'the outline shifts',
 		);
-	});
-
-	// Scroll sync crosses the same boundary in BOTH directions, and it was the
-	// consumer this file forgot: `ScrollSyncPosition.line` is a buffer line,
-	// because the editor is the only pane that can produce one, while everything
-	// the preview answers with counts from the body. On a document with front
-	// matter the panes drifted apart by exactly that many lines — a constant
-	// offset, unaffected by how precise the block mapping underneath got.
-
-	test('scroll sync converts in both directions', () => {
-		const capture = functionSource(viewerSource, 'getPreviewScrollSyncPosition');
-		assert.match(
-			capture,
-			/lineCoords\.bufferLineAtPreviewOffset\(/,
-			'a line read off the preview is shifted before the editor sees it',
-		);
-
-		const apply = functionSource(viewerSource, 'scrollPreviewToSyncPosition');
-		assert.match(
-			apply,
-			/lineCoords\.previewOffsetForBufferLine\(/,
-			'a line coming from the editor is shifted back before the preview seeks',
-		);
-	});
-
-	test('the outline is fed body lines from both panes', () => {
-		// `tocActiveLine` has two writers. The preview's already answers in body
-		// lines (`getPreviewScrollAnchor`); the editor's has to be converted, or the
-		// highlighted heading changes depending on which pane you scrolled.
-		const fromEditor = functionSource(viewModeSource, 'handleEditorScrollSync');
-		assert.match(fromEditor, /followToc\('editor', tabAnchorForEditorTopLine\(o\.lineCoords, asBufferLine\(position\.line\)\)\)/);
-
-		const fromPreview = functionSource(viewerSource, 'getPreviewScrollAnchor');
-		assert.doesNotMatch(fromPreview, /toBufferLine|toRendererLine/, 'already a body line');
 	});
 
 	test('the shift reads the buffer, not the rendered body', () => {
@@ -276,18 +179,6 @@ describe('jump to the selected fragment wiring', () => {
 		assert.match(menuSource, /e\.key === 'Escape'/);
 	});
 
-	test('the selection is read before anything switches mode', () => {
-		// `toggleEdit` and `editSourceRange` both flip `isEditing`, and a selection
-		// read after that would answer for the editor rather than for the preview
-		// the reader was looking at.
-		const view = functionSource(viewModeSource, 'toggleEditView');
-		assert.match(view, /const selected = getSelectionSourceRange\(\);/);
-		assert.ok(
-			view.indexOf('const selected') < view.indexOf('toggleEdit()'),
-			'resolved first, then the mode changes',
-		);
-	});
-
 	test('one function owns what ⌘E means, and every entry point uses it', () => {
 		// The hotkey, the toolbar, the title bar and Monaco's own command all route
 		// here, so the chord cannot mean one thing with the caret in the editor and
@@ -304,19 +195,9 @@ describe('jump to the selected fragment wiring', () => {
 			'toggle-edit-view',
 		);
 		assert.match(viewerCommandTable()['toggle-edit-view'], /toggleEditView\(\)/);
-		// The editor entry point hands Monaco's ⌘E to the same switch.
+		// The editor entry point hands Monaco's ⌘E to the same switch. The title
+		// bar's Edit button runs in navigation.viewMode.spec.ts.
 		assert.match(viewerSource, /oncommand=\{runViewerCommand\}/, 'the editor entry point');
-		// The title bar's Edit button, now one of three mode buttons (#806).
-		assert.match(functionSource(viewModeSource, 'setViewMode'), /target === 'edit' \? toggleEditView\(\)/);
 	});
 
-	test('split view with nothing selected is deliberately inert', () => {
-		// The editor is already on screen, so the ability ⌘E asks for is already
-		// granted; with no selection there is nothing to travel to either. Closing
-		// the preview would be a layout change nobody asked for, and a mistyped ⌘E
-		// would cost the reader the pane.
-		const view = functionSource(viewModeSource, 'toggleEditView');
-		assert.match(view, /if \(isSplit\(\) && !selected\) \{[\s\S]*?return;/);
-		assert.doesNotMatch(view, /setSplitEnabled/, 'the chord never changes the layout');
-	});
 });

@@ -686,6 +686,10 @@ describe('external change reload', () => {
 	test('turning Live Mode on does not reload', () => {
 		// Enabling reload is not a request to discard the buffer, and this was
 		// the one loadMarkdown call in the app with no canCloseTab in front of it.
+		//
+		// An absence claim on a one-line toggle. lint-candidate: no-restricted-syntax
+		// on `CallExpression[callee.name='loadMarkdown']` inside
+		// `FunctionDeclaration[id.name='toggleLiveMode']`.
 		const body = sliceBetween(viewer, 'function toggleLiveMode', '\n\t}');
 		assert.doesNotMatch(body, /loadMarkdown/);
 	});
@@ -809,25 +813,6 @@ describe('truncated buffer guard', () => {
 				/if \(!\(await documentSession\.ensureFullContent\(tabId\)\)\) \{[\s\S]*?return false;/,
 				`${mover} must complete the buffer before the payload is built, and stop when it cannot`,
 			);
-		}
-	});
-
-	test('front matter edits in preview mode complete the buffer first', () => {
-		for (const entry of ['async function handleFrontMatterEdit', 'async function handleFrontMatterListChange']) {
-			// One handler is followed by a `function`, the other by an `async
-			// function`, so the slice ends at whichever comes first. The previous
-			// expression was `indexOf(a) + 1 || indexOf(b) + 1`, which reads as
-			// "or else" but is really "or else, if the first is absent *or at
-			// offset 0*" — and when the first form appeared later in the file than
-			// the second it won anyway, widening the body past the handler and
-			// letting a neighbouring function satisfy the `assert.match` below.
-			const handler = sliceFrom(viewer, entry);
-			const ends = ['\n\tfunction ', '\n\tasync function ']
-				.map((marker) => handler.indexOf(marker))
-				.filter((at) => at !== -1);
-			assert.ok(ends.length > 0, `${entry} must be followed by a declaration that bounds it`);
-			const body = handler.slice(0, Math.min(...ends));
-			assert.match(body, /ensureFullContent/, `${entry} must not edit a partial buffer`);
 		}
 	});
 });

@@ -24,6 +24,8 @@
 	import { createWindowExit } from './sessions/windowExit.js';
 	import { createExternalChange } from './sessions/externalChange.svelte.js';
 	import { createViewMode } from './sessions/viewMode.svelte.js';
+import { createFrontMatterEdit } from './sessions/frontMatterEdit.js';
+import { createColdEnrichmentRestore } from './sessions/coldEnrichmentRestore.js';
 	import { autoSaveFailureNeedsToast, isAutoSaveEligible } from './utils/autoSaveTimer.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
@@ -54,11 +56,9 @@ import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.j
 import { fontFamilyValue } from './utils/fontFamily.js';
 import { headingReference, headingText, preferredReferenceStyle } from './utils/headingReference.js';
 import {
-	getSourceLineAtPreviewOffset,
 	invalidateAnchorMemos,
 	measureAnchorBox,
 	restorePreviewReadingPosition,
-	PREVIEW_ANCHOR_OFFSET,
 	anchorScrollTop,
 	type AnchorBox,
 	type AnchorNode,
@@ -77,7 +77,6 @@ import {
 	getMarkdownBodyWithoutFrontMatter,
 	getFrontMatterListItems,
 	parseFrontMatter,
-	parseFrontMatterEditableValue,
 	removeFrontMatterListItem,
 	updateFrontMatterListItem,
 	updateFrontMatterField,
@@ -116,10 +115,11 @@ import { isTocOverhanging } from './utils/tocOverlay.js';
 import { splitRatioAfterMove } from './utils/splitPanes.js';
 import { dispatchViewerKey, type KeyContext, type ViewerCommand } from './utils/viewerKeymap.js';
 import {
-	getScrollSyncPositionFromPixels,
-	getScrollTopForSyncPosition,
-	type ScrollSyncPosition,
-} from './utils/scrollSync.js';
+	getPreviewScrollAnchor as previewScrollAnchor,
+	getPreviewScrollSyncPosition as previewScrollSyncPosition,
+	getPreviewScrollTopForSyncPosition,
+} from './utils/previewScrollSync.js';
+import { type ScrollSyncPosition } from './utils/scrollSync.js';
 import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
@@ -968,9 +968,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		handleEditorScrollSync,
 		syncEditorToPreviewScroll,
 		toggleEdit,
-		getContextMenuSourceRange,
 		toggleEditView,
-		editSourceRange,
+		editSourceRangeAt,
 		toggleSplitView,
 		setViewMode,
 	} = viewMode;
@@ -1159,18 +1158,14 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		}
 	}
 
-	async function handleFrontMatterEdit(field: FrontMatterField, value: string) {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-		// Front matter is editable from reading mode, which a large file can
-		// reach while its buffer is still the preview slice. Rewriting that
-		// slice and saving it would drop the rest of the document.
-		if (!(await documentSession.ensureFullContent(tab.id))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return;
-		}
-		await applyFrontMatter(tab, field, () => parseFrontMatterEditableValue(field, value));
-	}
+	const { handleFrontMatterEdit, handleFrontMatterListChange } = createFrontMatterEdit({
+		tabManager,
+		settings,
+		documentSession,
+		addToast,
+		t,
+		applyFrontMatter,
+	});
 
 	function getFrontMatterTagDraft(field: FrontMatterField) {
 		return frontMatterTagDrafts[frontMatterFieldStateKey(field)] ?? '';
@@ -1209,17 +1204,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		const key = frontMatterFieldStateKey(field);
 		delete frontMatterTagEditIndexes[key];
 		delete frontMatterTagEditDrafts[key];
-	}
-
-	async function handleFrontMatterListChange(field: FrontMatterField, nextItems: string[]) {
-		const tab = tabManager.activeTab;
-		if (!tab) return;
-		// Same partial-buffer guard as handleFrontMatterEdit.
-		if (!(await documentSession.ensureFullContent(tab.id))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return;
-		}
-		await applyFrontMatter(tab, field, () => nextItems);
 	}
 
 	async function commitFrontMatterTagAdd(field: FrontMatterField) {
@@ -1400,50 +1384,21 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		// that keeping the observation alive removed.
 		for (const block of patch.inserted) foldLayout?.observe(block);
 		for (const wrapper of patch.wrappers) foldLayout?.observe(wrapper);
-		// A host's first enrichment is the cold start above: it waits for
-		// whichever libraries the document needs. A tab being re-activated
-		// patches to nothing, and its host is in the set from that first render.
-		const cold = patch.inserted.length > 0 && !enrichedHosts.has(host);
-		if (cold) enrichedHosts.add(host);
-		const enrichment = renderRichContent(patch.inserted);
-		if (cold) restoreAfterColdEnrichment(enrichment, tabManager.activeTabId);
+		// A host's first enrichment is the cold start above: see `coldRestore`.
+		coldRestore.afterEnrichment(host, patch.inserted.length, renderRichContent(patch.inserted));
 		previewRevision = ++previewPatches;
 	});
 
-	/**
-	 * The hosts whose document has been through `renderRichContent` at least
-	 * once. A `WeakMap`/`WeakSet` keyed on the container for the same reason
-	 * `states` in `previewPatch.ts` is: a host that Svelte destroys with its
-	 * tab takes its entry with it, so this cannot drift from the set of live
-	 * tabs the way a hand-kept registry can.
-	 */
-	const enrichedHosts = new WeakSet<HTMLElement>();
+	const coldRestore = createColdEnrichmentRestore({
+		tabManager,
+		tick,
+		get markdownBody() {
+			return markdownBody;
+		},
+		restore: (body, tab) => restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox),
+	});
 	/** The `htmlContent` each host was last patched with. */
 	const patchedHtml = new WeakMap<HTMLElement, string>();
-
-	/**
-	 * Put the reader back where they were, once, after a cold start's enrichment
-	 * has changed the layout underneath them.
-	 *
-	 * Through `restorePreviewReadingPosition` — the same cascade the restore
-	 * effect runs, in the same order — because two sites consulting a tab's
-	 * three position fields in different orders are two answers for one tab.
-	 * That effect cannot do this itself: giving it a dependency on the render
-	 * would drag the preview back to the anchor on every debounced re-render
-	 * while the reader is typing in split view.
-	 *
-	 * Only for the tab that is still on screen. The enrichment is awaited, a
-	 * switch can happen inside it, and restoring another tab's position into the
-	 * article would move the document the reader is actually looking at.
-	 */
-	async function restoreAfterColdEnrichment(enrichment: Promise<void>, tabId: string | null) {
-		await enrichment;
-		await tick();
-		const body = markdownBody;
-		if (!body || !tabId || tabManager.activeTabId !== tabId) return;
-		const tab = tabManager.tabs.find((t) => t.id === tabId);
-		if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
-	}
 
 	$effect(() => {
 		const host = previewBlocks;
@@ -1511,16 +1466,6 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		return Math.max(0, target.scrollHeight - target.clientHeight);
 	}
 
-	function getPreviewFrontMatterScrollEnd(target: HTMLElement) {
-		const panel = target.querySelector<HTMLElement>('.frontmatter-panel');
-		if (!panel) return 0;
-
-		// In the same space as `target.scrollTop`, which is what it is compared
-		// against — see `measurePreviewBox`.
-		const box = measurePreviewBox(panel);
-		return Math.max(0, Math.min(getPreviewScrollMax(target), box.top + box.height));
-	}
-
 	// Not `element.offsetTop`: that is measured from the element's offset parent,
 	// and the preview is full of them — every `<table>` is the offset parent of
 	// its own rows and cells, and `.code-block-shell` is positioned. See
@@ -1534,53 +1479,19 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 	}
 
 	function getPreviewScrollSyncPosition(target: HTMLElement): ScrollSyncPosition {
-		const position = getScrollSyncPositionFromPixels(
-			target.scrollTop,
-			getPreviewScrollMax(target),
-			getPreviewFrontMatterScrollEnd(target),
-		);
-
-		// Front matter is a rendered panel with no source range, so there is no
-		// line to send and the section ratio is the only thing that can carry it.
-		// This is the carve-out `scrollSync.ts` exists for, unchanged.
-		if (position.section !== 'body') return position;
-
-		const line = lineCoords.bufferLineAtPreviewOffset(target, target.scrollTop, measurePreviewBox);
-
-		return line === null ? position : { ...position, line };
+		return previewScrollSyncPosition(target, getPreviewScrollMax(target), lineCoords, measurePreviewBox);
 	}
 
 	function scrollPreviewToSyncPosition(position: ScrollSyncPosition) {
 		if (!markdownBody) return;
-
-		const scrollMax = getPreviewScrollMax(markdownBody);
-		let targetScroll: number | null = null;
-
-		if (position.section === 'body' && position.line !== undefined) {
-			const offset = lineCoords.previewOffsetForBufferLine(
-				markdownBody,
-				position.line,
-				measurePreviewBox,
-			);
-			if (offset !== null) targetScroll = offset;
-		}
-
-		if (targetScroll === null) {
-			targetScroll = getScrollTopForSyncPosition(
-				position,
-				scrollMax,
-				getPreviewFrontMatterScrollEnd(markdownBody),
-			);
-		}
-
-		// The line mapping can point past either end — the last block interpolates
-		// beyond the bottom of a preview that has no room left to scroll. Clamping
-		// before the threshold check is what keeps `isProgrammaticScroll` honest:
-		// an unreachable target fires no scroll event, and the flag would then be
-		// spent swallowing the reader's next real scroll instead.
-		targetScroll = Math.max(0, Math.min(scrollMax, targetScroll));
-
-		if (Math.abs(markdownBody.scrollTop - targetScroll) <= 5) return;
+		const targetScroll = getPreviewScrollTopForSyncPosition(
+			markdownBody,
+			getPreviewScrollMax(markdownBody),
+			position,
+			lineCoords,
+			measurePreviewBox,
+		);
+		if (targetScroll === null) return;
 
 		isProgrammaticScroll = true;
 		markdownBody.scrollTop = targetScroll;
@@ -1734,32 +1645,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 		};
 	});
 
-	/**
-	 * The source line to save as this tab's reading position: the one rendered
-	 * `PREVIEW_ANCHOR_OFFSET` below the top of the viewport, which is where the
-	 * restore puts it back.
-	 *
-	 * This used to be its own scan — `querySelectorAll('[data-sourcepos]')` over
-	 * the whole preview, then `offsetTop` and `offsetHeight` on every element it
-	 * returned, on every scroll event. Two things were wrong with that beyond the
-	 * cost (8.3ms per event on a 13,000-line document, measured in Chrome). It
-	 * took the FIRST element covering the offset in document order, which is the
-	 * outermost, while the restore's `findAnchorElement` takes the narrowest — so
-	 * capture and restore disagreed about which block a position belonged to. And
-	 * it had no opinion about `<br>`, which carries a source range and no box, so
-	 * an anchor at the top of the document could resolve to one (#464).
-	 */
 	function getPreviewScrollAnchor(target: HTMLElement): RendererLine | null {
-		const line = getSourceLineAtPreviewOffset(
-			target,
-			target.scrollTop + PREVIEW_ANCHOR_OFFSET,
-			measurePreviewBox,
-		);
-
-		// Straight off `data-sourcepos`, so it is already a renderer line: the
-		// two consumers — the tab's saved reading position and the outline —
-		// both count from the first line of the body.
-		return line === null ? null : asRendererLine(Math.round(line));
+		return previewScrollAnchor(target, measurePreviewBox);
 	}
 
 	let isScrolling = $state(false);
@@ -2587,10 +2474,8 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 			];
 		}
 
-		// Resolved now rather than inside the "Edit" handler: by the time that
-		// runs the reader has clicked a menu item, and a click is how a
-		// selection goes away.
-		const editSourceTarget = getContextMenuSourceRange(e);
+		// Resolved now: see `editSourceRangeAt`.
+		const editAtTarget = editSourceRangeAt(e);
 
 		// Read now for the same reason: the click on the item clears the selection.
 		const selected = canAnnotate && settings.previewAnnotations ? selectionAnnotation() : null;
@@ -2654,7 +2539,7 @@ import { createDocumentSession, type LoadMarkdownOptions } from './sessions/docu
 				} },
 				{ separator: true },
 				{ label: t('menu.openFileLocation', settings.language), onClick: openFileLocation, disabled: !currentFile },
-				{ label: t('menu.edit', settings.language), onClick: () => editSourceRange(editSourceTarget) },
+				{ label: t('menu.edit', settings.language), onClick: editAtTarget },
 				{ separator: true },
 				{ label: t('menu.closeFile', settings.language), onClick: closeFile },
 			],
