@@ -256,7 +256,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		//
 		// Taking it means Mod+K stops being a chord PREFIX, which is what
 		// `insert-table-simple` and `table-insert-column` used to hang off. What
-		// that costs on Monaco's side is argued in editor.checks.spec.ts.
+		// that costs on Monaco's side is argued in editor.chords.spec.ts.
 		chords: ['Mod+K'],
 		group: 'edit',
 		editorAction: true,
@@ -279,7 +279,7 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		//
 		// NOT `Mod+Alt+C`, which was the obvious pick and is not available — on macOS
 		// that is Monaco's `toggleFindCaseSensitive`. The reason it cannot be taken is
-		// recorded in editor.checks.spec.ts, where the next person hunting for
+		// recorded in editor.chords.spec.ts, where the next person hunting for
 		// a free chord will be.
 		chords: ['Mod+Shift+C'],
 		group: 'edit',
