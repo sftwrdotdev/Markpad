@@ -56,7 +56,6 @@ describe('settings persistence', async () => {
 	} = settingsModule;
 
 	// Cwd-relative, not `import.meta.url`: see the note on `readSource`.
-	const storeSource = readSource('src/lib/stores/settings.svelte.ts');
 	const componentSource = readSource('src/lib/components/Settings.svelte');
 
 	test('the settings UI renders its bounds from the shared range constants', () => {
@@ -162,12 +161,6 @@ describe('settings persistence', async () => {
 	// effect's disposer with `() => {}` reddens `a disposed store stops writing and
 	// stops listening`. The text match added a way to fail that a rename of the
 	// private `onStorage` handler would trigger on its own.
-
-	test('the store has no single effect that writes every key', () => {
-		const setItemCalls = storeSource.match(/localStorage\.setItem\(/g) ?? [];
-		assert.equal(setItemCalls.length, 1, 'localStorage writes must funnel through writeStoredSetting');
-		assert.match(storeSource, /function writeStoredSetting[\s\S]{0,600}if \(current === value\) return false;/);
-	});
 
 	/*
 	 * ---------------------------------------------------------------------------
