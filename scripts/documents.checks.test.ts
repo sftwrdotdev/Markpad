@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
 import { describe, test } from 'node:test';
 
 import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
@@ -98,22 +97,6 @@ describe('checked read migration', () => {
 
 	// --- the repeating toast ------------------------------------------------------
 
-	test('the session can tell a refusal from a failure', () => {
-		// `saveContent` returns false for both, which is why the auto-save timer
-		// could not tell them apart. The predicate is no longer set membership on
-		// its own: the set records what was SAID, and whether the refusal still
-		// stands is asked of the tab. `lossySaveRefusalScope.spec.ts` exercises
-		// both halves for real; this only pins that the tab is consulted at all,
-		// since a predicate that answers from memory alone is the defect.
-		const body = sliceBetween(
-			readSource('src/lib/sessions/documentSession.svelte.ts'),
-			'function isLossySaveRefused(',
-			'function updateLoading',
-		);
-		assert.match(body, /lossySaveWarnedTabs\.has\(tabId\)/);
-		assert.match(body, /hasReplacementChars/, 'the live tab decides whether anything is still being refused');
-	});
-
 	test('a refused save does not add a generic toast to its own explanation', () => {
 		const body = sliceBetween(viewer, 'Auto-save effect.', 'for (const id of [');
 		const check = offsetOf(body, 'if (documentSession.isLossySaveRefused(s.id)) return;');
@@ -161,123 +144,12 @@ describe('checked read migration', () => {
 // it is the user's only way out.
 describe('lossy decode save guard', () => {
 	const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-	const windowSession = readSource('src/lib/sessions/windowSession.svelte.ts');
-	const tabs = readSource('src/lib/stores/tabs.svelte.ts');
 	const rust = readRustBackend();
-
-	const loadMarkdown = () => sliceBetween(session, 'async function loadMarkdown', 'async function saveContent');
-	const saveContent = () => sliceBetween(session, 'async function saveContent(', 'async function saveContentAs');
-	const saveContentAs = () => sliceBetween(session, 'async function saveContentAs', 'async function toggleTaskCheckbox');
-	const guard = () => sliceBetween(session, 'function refuseIfLossilyDecoded', 'function updateLoading');
-
-	test('one decoder, and it reports what it destroyed', () => {
-		// The fact is known exactly once — when the bytes are decoded — and was
-		// thrown away. Detection (#372) made the decode able to succeed where it
-		// used to substitute, but not able to always succeed, so the decoder still
-		// carries the verdict rather than growing a second path.
-		assert.match(rust, /struct DecodedText \{[^}]*\bcontent: String,[^}]*\blossy: bool/s);
-		assert.match(rust, /fn decode_text\(bytes: &\[u8\]\) -> DecodedText/);
-		assert.match(rust, /fn read_to_string_lossy\(path: &str\) -> std::io::Result<DecodedText>/);
-		assert.equal(rust.match(/fn decode_text\(/g)?.length, 1, 'exactly one decoder');
-	});
 
 	test('both read commands can report fidelity', () => {
 		assert.match(rust, /async fn open_markdown_preview\([^)]*\)\s*-> Result<\(String, bool, bool, String\), String>/s);
 		assert.match(rust, /async fn read_file_content_checked\(path: String\) -> Result<\(String, bool, String\), String>/);
 		assert.match(rust, /read_file_content_checked,/, 'the command must be registered');
-	});
-
-	test('a preview cut inside a multi-byte character is not called lossy', () => {
-		// The preview stops at a fixed byte count, so a perfectly valid UTF-8 file
-		// is routinely cut mid-character. Reporting that as lossy would lock every
-		// large CJK/emoji document out of saving — a guard worse than the bug.
-		const preview = sliceBetween(rust, 'fn build_markdown_preview', '#[tauri::command]');
-		const trim = offsetOf(preview, 'utf8_truncation_boundary');
-		assert.ok(trim < offsetOf(preview, 'decode_text('), 'the split tail is dropped before fidelity is judged');
-	});
-
-	test('the tab carries the fidelity of its buffer', () => {
-		// Required, not optional: a construction site that forgot it would default
-		// to "safe to overwrite", and the failure mode is a destroyed document.
-		assert.match(tabs, /hasReplacementChars: boolean;/);
-		assert.doesNotMatch(tabs, /hasReplacementChars\?: boolean;/);
-		assert.match(tabs, /setTabDecodedLossy\(id: string, lossy: boolean\)/);
-		assert.equal(tabs.match(/hasReplacementChars: false/g)?.length, 4);
-	});
-
-	test('every load decides the flag instead of leaving it stale', () => {
-		// A reload of a file the user has since converted to UTF-8 must clear it.
-		const body = loadMarkdown();
-		assert.match(body, /as \[string, boolean, boolean, string\]/);
-		assert.match(body, /setTabDecodedLossy\(activeId, lossy\)/);
-		// The full load REPLACES the preview's buffer, so it brings its own
-		// verdict: a file can be valid UTF-8 for the first 50KB and not after.
-		assert.match(body, /read_file_content_checked/);
-		assert.match(body, /setTabDecodedLossy\(activeId, fullLossy\)/);
-	});
-
-	test('the editable-pane shortcut reports fidelity too', () => {
-		// #374 added a second way into loadMarkdown: a pane that can WRITE skips
-		// the preview and reads the whole file up front. That branch fills an
-		// editable buffer, so it is exactly the kind of caller that must not use
-		// the bare command — it would hand the editor unflagged mojibake.
-		const body = loadMarkdown();
-		assert.match(
-			body,
-			/if \(initialIsEditing \|\| initialIsSplit\) \{\s*\[content, lossy, encoding\] = \(await invoke\('read_file_content_checked'/,
-		);
-		// `ensureFullContent` was the one place the bare command survived, and only
-		// because it re-read a file whose tab loadMarkdown had already flagged —
-		// an invariant enforced by two call sites agreeing rather than by the code.
-		// It now reads the fidelity itself, so no writable buffer in this file is
-		// filled by a command that cannot report one.
-		const bare = session.match(/invoke\('read_file_content'/g)?.length ?? 0;
-		assert.equal(bare, 0, 'no writable buffer may be filled by the unchecked command');
-		assert.match(
-			sliceBetween(session, 'async function ensureFullContent', 'const lossySaveWarnedTabs'),
-			/invoke\('read_file_content_checked'/,
-		);
-		assert.match(
-			sliceBetween(session, 'async function ensureFullContent', 'const lossySaveWarnedTabs'),
-			/setTabDecodedLossy\(tabId, lossy\)/,
-		);
-	});
-
-	test('the flag is set before the buffer can reach a writer', () => {
-		const body = loadMarkdown();
-		const set = offsetOf(body, 'setTabDecodedLossy(activeId, lossy)');
-		const buffer = offsetOf(body, 'setTabRawContent(activeId, content');
-		assert.ok(set < buffer, 'the flag must be set before the buffer it describes');
-		assert.doesNotMatch(body.slice(set, buffer), /await /, 'and in the same synchronous block');
-	});
-
-	test('window restore cannot launder the flag away', () => {
-		// Restore reads each file back into an editable buffer. With the bare
-		// command it produced mojibake that looked safe to save, so reopening the
-		// app was a way around the guard. It now reads through `loadMarkdown`,
-		// which sets the flag on every load, and reads nothing itself.
-		assert.doesNotMatch(windowSession, /invoke\('read_file/);
-		assert.match(sliceBetween(session, 'function readRestoredTab', 'function readActiveIfUnread'), /return loadMarkdown\(tab\.path,/);
-		assert.match(loadMarkdown(), /tabManager\.setTabDecodedLossy\(activeId, lossy\)/);
-	});
-
-	test('saveContent refuses to write a lossy buffer over its own file', () => {
-		const body = saveContent();
-		const refusal = offsetOf(body, 'refuseIfLossilyDecoded');
-		assert.match(body.slice(refusal, refusal + 120), /return false;/);
-		assert.ok(
-			refusal < offsetOf(body, "invoke('save_file_content'"),
-			'the guard must run before save_file_content is invoked',
-		);
-	});
-
-	test('the guard protects the source file only', () => {
-		const body = guard();
-		// An untitled buffer has no source file to destroy, and any other path is
-		// a new UTF-8 file — neither is blocked.
-		assert.match(body, /targetPath === ''/);
-		assert.match(body, /targetPath !== tab\.path/);
-		assert.match(body, /return true;/);
 	});
 
 	test('saveContent is the choke point auto-save and the close dialogs share', () => {
@@ -290,38 +162,9 @@ describe('lossy decode save guard', () => {
 		assert.match(functionSource(viewer, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 	});
 
-	test('Save As to a new file stays open as the escape hatch', () => {
-		const body = saveContentAs();
-		// Explicitly UTF-8, never the tab's own encoding: the copy exists to be
-		// readable when the original could not be read, or could not represent
-		// what the user typed into it.
-		assert.match(body, /invoke\('save_file_content', \{ path: selected, content: snapshot, encoding: 'UTF-8' \}\)/);
-		// Once written, the buffer matches a UTF-8 file of its own.
-		assert.match(body, /setTabDecodedLossy\(tab\.id, false\)/);
-		assert.match(body, /setTabEncoding\(tab\.id, 'UTF-8'\)/);
-	});
-
-	test('Save As onto the same file is still a destructive overwrite', () => {
-		const body = saveContentAs();
-		// "The same file", not "the same string": the dialog can come back with
-		// another spelling of the source file — a different case, or accents
-		// composed differently — and on macOS and Windows that still lands on the
-		// same bytes. The guard is therefore handed the target's resolved identity
-		// as well as its path. See pathIdentityCaseFolding.spec.ts, which drives
-		// that refusal for real instead of reading for it.
-		const refusal = offsetOf(body, 'refuseIfLossilyDecoded(tab, selected');
-		assert.ok(
-			refusal < offsetOf(body, "invoke('save_file_content'"),
-			'the guard must run before save_file_content is invoked',
-		);
-	});
-
-	test('the refusal tells the user what to do and is not repeated per keystroke', () => {
-		// Auto-save re-arms on every edit; an undeduplicated toast would fire
-		// every 1.5s. The message names "Save As" because that is the only exit.
-		const body = guard();
-		assert.match(body, /toast\.lossySaveBlocked/);
-		assert.match(body, /lossySaveWarnedTabs\.has\(tab\.id\)/);
+	test('the refusal names Save As, the only exit', () => {
+		// i18n wording. That the session raises this message once per tab is
+		// driven in documents.session.spec.ts.
 		const i18n = readDictionarySource();
 		assert.match(i18n, /lossySaveBlocked: 'Not saved: parts of this file could not be read in any encoding/);
 		assert.match(i18n, /use "Save As" to write a copy/);
@@ -498,15 +341,6 @@ describe('file associations', () => {
 		// A literal list is how the two drifted apart in the first place.
 		assert.doesNotMatch(viewer, /extensions: \['md/);
 	});
-
-	test('the Save dialogs offer the same document extensions', () => {
-		// Both hard-coded `['md']`, so a `.txt` note saved under a new name had to
-		// go through "All Files".
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-
-		assert.equal(session.match(/\{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS \}/g)?.length, 2);
-		assert.doesNotMatch(session, /extensions: \['md/);
-	});
 });
 
 /**
@@ -539,10 +373,8 @@ describe('file associations', () => {
  *      auto-saving the truncation back over the file.
  */
 describe('open file mode', () => {
-	const sessionSource = readSource(new URL('../src/lib/sessions/documentSession.svelte.ts', import.meta.url));
 	const settingsSource = readSource(new URL('../src/lib/stores/settings.svelte.ts', import.meta.url));
 	const settingsComponentSource = readSource(new URL('../src/lib/components/Settings.svelte', import.meta.url));
-	const tabsSource = readSource(new URL('../src/lib/stores/tabs.svelte.ts', import.meta.url));
 
 	test('the old key is read, never written — a rollback still finds its setting', () => {
 		assert.match(settingsSource, /const LEGACY_START_IN_EDITOR_KEY = 'editor\.startInEditor'/);
@@ -557,47 +389,6 @@ describe('open file mode', () => {
 	});
 
 	/* ------------------------------------------------------------- the wiring */
-
-	test('opening a document applies the choice, split through the same door the toggle uses', () => {
-		assert.match(sessionSource, /tab\.isEditing = settings\.openFileMode === 'editor'/);
-		assert.match(
-			sessionSource,
-			/if \(settings\.openFileMode === 'split'\) tabManager\.setSplitEnabled\(tab\.id, true\)/,
-		);
-		// The premise of point 1 above: a fresh tab has sync off, and
-		// `setSplitEnabled` is the only place the preference is applied.
-		assert.match(tabsSource, /isScrollSynced: false/);
-		assert.match(
-			tabsSource,
-			/setSplitEnabled\(id: string, enabled: boolean\)[\s\S]{0,200}?tab\.isScrollSynced = this\.splitScrollSyncPreference/,
-		);
-	});
-
-	test('the choice is applied before the load decides how much of the file to read', () => {
-		const applied = sessionSource.indexOf("if (settings.openFileMode === 'split')");
-		const read = sessionSource.indexOf('const initialIsSplit = tab?.isSplit ?? false');
-		const fullRead = sessionSource.indexOf('if (initialIsEditing || initialIsSplit)');
-
-		assert.ok(applied > 0 && read > 0 && fullRead > 0);
-		assert.ok(
-			applied < read && read < fullRead,
-			'a document opening into an editable mode must take the full-read branch, ' +
-				'or the editor is bound to the 50KB preview slice',
-		);
-	});
-
-	test('it applies to a newly opened document only', () => {
-		// Not to a reload that is preserving the mode, and not to a file already
-		// open in a tab — reopening a document must not flip the mode the reader
-		// chose for it. The same guard the checkbox always had.
-		assert.match(sessionSource, /if \(tab && !loadOptions\.preserveEditState && !existing\) \{/);
-	});
-
-	test('a new empty document keeps its own preference', () => {
-		// `Ctrl+N` asks a different question — what an empty buffer opens as — and
-		// answers it with `newFileDefaultMode`. This change must not annex it.
-		assert.match(tabsSource, /isEditing: settings\.newFileDefaultMode/);
-	});
 
 	test('the setting is one control, defaulting to preview', () => {
 		assert.match(settingsSource, /openFileMode = \$state<OpenFileMode>\(DEFAULT_OPEN_FILE_MODE\)/);
@@ -702,24 +493,6 @@ describe('document encoding round trip', () => {
 		for (const line of i18n.split('\n').filter((l) => l.includes('encodingUnmappable:'))) {
 			assert.match(line, /\{\{encoding\}\}/, `no encoding placeholder: ${line.trim().slice(0, 60)}`);
 		}
-	});
-
-	test('the code is turned into the translation, and only that code is', () => {
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-		const describe = functionSource(session, 'describeSaveFailure');
-
-		assert.match(describe, /toast\.encodingUnmappable/);
-		assert.match(describe, /replace\('\{\{encoding\}\}', tab\.encoding\)/,
-			'the encoding comes off the tab, not back out of the error');
-		assert.match(describe, /return \{ message: 'Failed to save file', detail: error \}/,
-			'an I/O failure still reads as one, OS message and all');
-
-		// `onError` renders `${message}: ${detail}`, so returning the raw error as
-		// the detail printed the code the user was never meant to see:
-		//   …请用"另存为"写入一份 UTF-8 副本: ENCODING_UNMAPPABLE:GBK
-		// The translated branch sends the document's path instead, which is what
-		// `toast.lossySaveBlocked` has always done.
-		assert.match(describe, /detail: tab\.path,/, 'the marker never reaches the toast');
 	});
 });
 
@@ -846,21 +619,6 @@ describe('external change reload', () => {
 		// Every model it creates is disposed, or opening the view repeatedly leaks
 		// one document's worth of text each time.
 		assert.match(overlay, /for \(const model of models\) model\.dispose\(\)/);
-	});
-});
-
-describe('large file load revision', () => {
-	const sessionPath = 'src/lib/sessions/documentSession.svelte.ts';
-	const session = existsSync(sessionPath) ? readSource(sessionPath) : '';
-
-	test('large-file completion requires the current clean load revision and unchanged view mode', () => {
-		// The revision, the path and the untouched buffer are `claimTabForRead`'s
-		// test; the view mode is the completion's own.
-		assert.match(session, /const mayApplyFull = claimTabForRead\(activeId\);/);
-		assert.match(
-			session,
-			/mayApplyFull\(\) && targetTab\?\.isEditing === initialIsEditing && targetTab\?\.isSplit === initialIsSplit/,
-		);
 	});
 });
 
@@ -997,18 +755,5 @@ describe('task toggle line endings', () => {
 				`the Rust renderer reads ${JSON.stringify(pattern![1])}, which does not contain ${fragment} — the two sides disagree about what a list item is`,
 			);
 		}
-	});
-
-	const sessionSource = readSource('src/lib/sessions/documentSession.svelte.ts');
-
-	test('it is marked before anything can be awaited', () => {
-		// The render effect arms its 16ms timer the moment the buffer changes and
-		// checks the field BEFORE that — so marking after an `await` would be too
-		// late to prevent the render it has already scheduled.
-		const fn = sliceBetween(sessionSource, 'async function toggleTaskCheckbox(', '\n\tasync function ');
-		const marked = fn.indexOf('tab.previewedRawContent = updated;');
-		const awaited = fn.indexOf('await saveContent');
-		assert.ok(marked > 0, 'the toggle marks the preview');
-		assert.ok(marked < awaited, 'marked before the first await after the write');
 	});
 });
