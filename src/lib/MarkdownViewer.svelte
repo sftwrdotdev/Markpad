@@ -429,7 +429,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		return () => window.removeEventListener('pointerdown', dismiss, { capture: true });
 	});
 
-	import { loadVscodeTheme, clearVscodeTheme } from './utils/theme';
+	import { followTheme } from './utils/themeEffect.svelte.js';
 
 	onMount(() => {
 		// Clear the forced background color from app.html
@@ -452,62 +452,14 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		invoke('save_theme', { theme: appearance }).catch(console.error);
 	}
 
-	$effect(() => {
-		// Persistence and cross-window sync belong to the settings store; this
-		// effect is only the part that cannot: applying the theme to the document.
-		const theme = settings.theme;
-
-		// Mermaid bakes its colours into the SVG it produces, so the diagrams have
-		// to be drawn again; `renderRichContent` finds the ones drawn for another
-		// theme. No `roots`, because the whole article is what changed appearance
-		// — including the hosts of tabs that are not on screen, which the reader
-		// switches back to without anything else re-rendering them.
-		//
-		// Called from each branch rather than once at the end, because the
-		// `vscode:` branch does not know its own appearance until
-		// `parseAndApplyVscodeTheme` has published `dataset.themeType`, and that
-		// is what `currentMermaidTheme` reads. Calling here would have re-drawn
-		// every diagram in the theme being replaced.
-		//
-		// `untrack` for the reason #740 established: `renderRichContent` reads
-		// reactive state before its first `await`, so a tracked call makes this
-		// effect re-run on unrelated changes — re-enriching every open tab's
-		// host on top of the pass the patch effect owns.
-		const recolourDiagrams = () => untrack(() => { if (markdownBody) renderRichContent(); });
-
-		if (theme === 'system' || theme === 'light' || theme === 'dark') {
-			if (theme === 'system') {
-				delete document.documentElement.dataset.theme;
-				delete document.documentElement.dataset.themeType;
-			} else {
-				document.documentElement.dataset.theme = theme;
-				document.documentElement.dataset.themeType = theme;
-			}
-			clearVscodeTheme();
-			saveStartupAppearance(theme);
-			recolourDiagrams();
-			// No Monaco write here. It used to set `vs`/`vs-dark` through the
-			// `monaco` global, and because a child's effects run before its
-			// parent's it landed AFTER `Editor`'s own — stripping the editor of
-			// `app-theme-*` on every theme change. `editorTheme.ts`'s
-			// `monacoThemeName` is the one answer now, and `Editor` is the only
-			// pane that asks it; with no editor mounted there is nothing to
-			// paint, and a later mount reads the theme from the same seam.
-		} else {
-			const name = theme.replace('vscode:', '');
-			loadVscodeTheme(name, (name) => invoke<string>('read_vscode_theme', { name })).then((applied) => {
-				// A later choice replaced this one while it loaded; that choice
-				// owns the window now.
-				if (!applied) return;
-				// `parseAndApplyVscodeTheme` decides dark vs. light from the theme's
-				// own `type` field and publishes it here.
-				saveStartupAppearance(document.documentElement.dataset.themeType === 'dark' ? 'dark' : 'light');
-				recolourDiagrams();
-			}).catch(e => {
-				console.error("Failed to load vscode theme", e);
-				settings.theme = 'system';
-			});
-		}
+	followTheme(() => settings.theme, {
+		saveStartupAppearance,
+		readVscodeTheme: (name) => invoke<string>('read_vscode_theme', { name }),
+		recolourDiagrams: () => { if (markdownBody) renderRichContent(); },
+		onLoadFailed: (e) => {
+			console.error("Failed to load vscode theme", e);
+			settings.theme = 'system';
+		},
 	});
 
 	let tooltip = $state({ show: false, text: '', shortcut: '', html: '', isFootnote: false, x: 0, y: 0, align: 'top' as 'top' | 'right' | 'left' | 'below' });
