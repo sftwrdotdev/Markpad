@@ -42,6 +42,7 @@ import {
 import { type FoldLayoutObservation } from './utils/foldLayout.js';
 import { followFoldLayout, previewPaneShown } from './utils/foldLayoutEffect.svelte.js';
 import { patchHost } from './utils/previewPatch.js';
+import { refreshesPreviewCache } from './utils/previewRefresh.js';
 import {
 	revealFold,
 	toggleFold,
@@ -3040,7 +3041,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	$effect(() => {
 		const tab = tabManager.activeTab;
 		const renderRevision = ++previewRenderRevision;
-		if (tab && (tab.isSplit || (isEditing && settings.showToc)) && tab.rawContent !== undefined) {
+		if (tab && refreshesPreviewCache(tab, isEditing, settings.showToc)) {
 			const tabId = tab.id;
 			const rawContent = tab.rawContent;
 			if (tab.previewedRawContent === rawContent) return;

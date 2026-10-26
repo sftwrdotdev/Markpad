@@ -4,6 +4,7 @@ import { readSource } from './sourceTree.js';
 import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 import { hasExportableDocument } from '../src/lib/utils/tabFileActions.js';
+import { refreshesPreviewCache } from '../src/lib/utils/previewRefresh.js';
 
 describe('rendered HTML field', () => {
 	// ---------------------------------------------------------------- environment
@@ -121,38 +122,14 @@ describe('rendered HTML field', () => {
 
 	// ------------------------------- 2. the condition that refreshes tab.content
 
-	const VIEWER = 'src/lib/MarkdownViewer.svelte';
-
-	const viewerSource = readSource(VIEWER);
-
-	const previewCacheRefreshes = (() => {
-		const ast = parse(viewerSource, { modern: true, filename: VIEWER });
-		const matches: Node[] = [];
-		collect(ast.instance, (node) => {
-			if (node.type !== 'IfStatement') return;
-			const test = viewerSource.slice(node.test.start, node.test.end);
-			const body = viewerSource.slice(node.consequent.start, node.consequent.end);
-			if (test.includes('settings.showToc') && body.includes('updateTabContent')) matches.push(node);
-		});
-		assert.equal(
-			matches.length,
-			1,
-			`expected exactly one condition in ${VIEWER} guarding the preview-cache render, found ${matches.length}`,
-		);
-
-		return compileGate(
-			viewerSource,
-			matches[0].test,
-			{
-				tab: () => tabManager.activeTab,
-				settings: () => settings,
-				// MarkdownViewer.svelte passes the active tab's own flag down as
-				// the `isEditing` prop.
-				isEditing: () => tabManager.activeTab?.isEditing ?? false,
-			},
-			'the preview-cache refresh condition',
-		);
-	})();
+	/** The viewer's own refresh condition, for the active tab. */
+	const previewCacheRefreshes = {
+		text: 'refreshesPreviewCache(tab, isEditing, settings.showToc)',
+		run: () => {
+			const tab = tabManager.activeTab;
+			return !!tab && refreshesPreviewCache(tab, tab.isEditing, settings.showToc);
+		},
+	};
 
 	// ------------------------------------- 3. exportAsHtml's own precondition
 
