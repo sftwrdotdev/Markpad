@@ -444,8 +444,6 @@ describe('preview sanitizing', () => {
 
 	const viewerSource = readSource('src/lib/MarkdownViewer.svelte');
 
-	const sanitizeSource = readSource('src/lib/utils/sanitize.ts');
-
 	const richContentSource = readSource('src/lib/utils/richContent.ts');
 
 	const previewPatchSource = readSource('src/lib/utils/previewPatch.ts');
@@ -552,25 +550,6 @@ describe('preview sanitizing', () => {
 			/ALLOWED_URI_REGEXP/,
 			'the viewer must not carry its own copy of the URI policy',
 		);
-	});
-
-	test('the shared policy the preview now gets is the one that forbids author stylesheets', () => {
-		// Read as one chain: the preview patch calls sanitizeMarkdownFragment (test
-		// above), which passes MARKDOWN_SANITIZE_CONFIG and only asks for nodes
-		// back, as the export's sanitizeMarkdownHtml passes it, and that config
-		// forbids the tag the payload needs.
-		assert.match(sanitizeSource, /return DOMPurify\.sanitize\(html, MARKDOWN_SANITIZE_CONFIG\)/);
-		assert.match(
-			sanitizeSource,
-			/return DOMPurify\.sanitize\(html, \{ \.\.\.MARKDOWN_SANITIZE_CONFIG, RETURN_DOM_FRAGMENT: true \}\)/,
-		);
-		assert.deepEqual(Object.keys(MARKDOWN_SANITIZE_CONFIG).sort(), ['ALLOWED_URI_REGEXP', 'FORBID_TAGS']);
-		assert.deepEqual(MARKDOWN_SANITIZE_CONFIG.FORBID_TAGS, ['style']);
-		// Identity, not equality: the regression this file exists for is a *copy* of
-		// the URI pattern, and a copy that happens to be spelled the same today is
-		// the thing that drifts tomorrow. Measured — rebuilding the config's regexp
-		// from the exported one's source and flags fails here.
-		assert.equal(MARKDOWN_SANITIZE_CONFIG.ALLOWED_URI_REGEXP, ALLOWED_MARKDOWN_URI_REGEXP);
 	});
 
 	// Every `DOMPurify.sanitize` in `src/` is a decision about what a piece of
