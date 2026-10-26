@@ -36,6 +36,9 @@ const { snapshotTab, validateTransferPayload } = await import('../src/lib/utils/
 const { default: HomePage } = await import('../src/lib/components/HomePage.svelte');
 const { promoteRecentFile, updateStoredRecentFiles } = await import('../src/lib/utils/recentFiles.js');
 const { FolderManager, folderName, isInside, snapshotFolder } = await import('../src/lib/stores/folder.svelte.js');
+const { HOME_TAB_PATH, isHomePath, showsHomeScreen } = await import('../src/lib/utils/homeTab.js');
+const { hasRealFilePath } = await import('../src/lib/utils/tabFileActions.js');
+const { getSupportedLanguages, t } = await import('../src/lib/utils/i18n.js');
 
 function useTauri(next: Partial<Bridge> = {}) {
 	beforeAll(() => {
@@ -984,5 +987,128 @@ describe('the folder sidebar store', () => {
 		assert.ok(isInside('C:\\a\\b\\c', 'C:\\a\\b'));
 		assert.ok(!isInside('/a/bc', '/a/b'), 'a sibling with a longer name is not inside');
 		assert.ok(!isInside('/a/b', '/a/b'));
+	});
+});
+
+/*
+ * Issue #392, second half: "the Home tab it opens renders blank". The viewer
+ * draws the home screen only when `showsHomeScreen` says so; the old gate
+ * compared the tab title against 'Recents', a home tab that no longer existed,
+ * so the home tab fell into the document container.
+ */
+describe('the home tab renders the home screen', () => {
+	useTauri();
+
+	/** True when the app draws the document container; false when it draws HomePage. */
+	const showsDocumentContainer = (showHome = false) => !showsHomeScreen(tabManager.activeTab, showHome);
+
+	function reset() {
+		tabManager.closeAll();
+		localStorage.clear();
+	}
+
+	// --------------------------------------------------------------- the regression
+
+	test('the home tab renders the home screen, not an empty document', () => {
+		reset();
+		tabManager.addHomeTab();
+
+		assert.equal(tabManager.activeTab?.path, HOME_TAB_PATH, 'precondition: the home tab is active');
+		assert.equal(
+			showsDocumentContainer(),
+			false,
+			'the active home tab fell into the document container: the user sees a blank page',
+		);
+	});
+
+	test('a home tab opened next to files still renders the home screen', () => {
+		// Ctrl+T from a window that already has documents open — the reported path.
+		reset();
+		tabManager.addTab('/notes/a.md');
+		tabManager.addTab('/notes/b.md');
+		tabManager.addHomeTab();
+
+		assert.equal(showsDocumentContainer(), false, 'blank home tab alongside open files');
+	});
+
+	test('the home screen is reached by tab kind, never by the tab title', () => {
+		// The dead half of the old gate. `title` is user-facing text: localised,
+		// and for a file tab it is just a filename, so a document called
+		// `Recents` used to be enough to hide the editor. Nothing about which
+		// branch runs may depend on it.
+		reset();
+		tabManager.addHomeTab();
+		const home = tabManager.activeTab!;
+
+		for (const { code } of getSupportedLanguages()) {
+			home.title = t('tabs.home', code);
+			assert.equal(showsDocumentContainer(), false, `the home screen disappears in locale ${code}`);
+		}
+
+		home.title = 'Recents';
+		assert.equal(showsDocumentContainer(), false, 'the pre-i18n English title must not be what makes this work');
+
+		reset();
+		tabManager.addTab('/notes/Recents');
+		assert.equal(showsDocumentContainer(), true, 'a document named Recents is a document');
+	});
+
+	// ---------------------------------------------------------------- the neighbours
+	//
+	// The three states that already worked. They are the fence: a gate that simply
+	// always chose HomePage would pass the tests above and fail every one of these.
+
+	test('a saved file renders the document container', () => {
+		reset();
+		tabManager.addTab('/notes/a.md');
+
+		assert.equal(showsDocumentContainer(), true);
+	});
+
+	test('an untitled buffer renders the document container', () => {
+		// The distinction the fix rests on: an untitled tab has no file either, so
+		// `hasRealFilePath` is false for both — but it IS a document, and gating on
+		// that predicate would have hidden the editor for every new file.
+		reset();
+		tabManager.addNewTab();
+
+		assert.equal(tabManager.activeTab?.path, '', 'precondition: an untitled tab has no path');
+		assert.equal(hasRealFilePath(''), false, 'precondition: and no real file either');
+		assert.equal(isHomePath(''), false, 'but it is not the home tab');
+		assert.equal(showsDocumentContainer(), true, 'a new file must still get an editor');
+	});
+
+	test('an empty window renders the home screen', () => {
+		reset();
+
+		assert.equal(tabManager.activeTab, undefined);
+		assert.equal(showsDocumentContainer(), false);
+	});
+
+	test('the Home toolbar button still overlays the home screen on any tab', () => {
+		// `showHome` is the other, older route to the same screen: a transient flag
+		// set by the toolbar/menu item, independent of any tab. It must keep
+		// winning over whatever tab is active.
+		reset();
+		tabManager.addTab('/notes/a.md');
+		assert.equal(showsDocumentContainer(true), false, 'a file tab with showHome set');
+
+		tabManager.addNewTab();
+		assert.equal(showsDocumentContainer(true), false, 'an untitled tab with showHome set');
+
+		tabManager.addHomeTab();
+		assert.equal(showsDocumentContainer(true), false, 'the home tab with showHome set');
+	});
+
+	test('switching from the home tab back to a file returns to the document', () => {
+		reset();
+		tabManager.addTab('/notes/a.md');
+		const file = tabManager.activeTab!.id;
+		tabManager.addHomeTab();
+		assert.equal(showsDocumentContainer(), false);
+
+		tabManager.setActive(file);
+
+		assert.equal(showsDocumentContainer(), true, 'the document container must come back');
 	});
 });

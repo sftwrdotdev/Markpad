@@ -24,7 +24,7 @@
 	import { reviewDirtyTabs } from './sessions/closeReview.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
-	import { isHomePath } from './utils/homeTab.js';
+	import { isHomePath, showsHomeScreen } from './utils/homeTab.js';
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
@@ -935,13 +935,13 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		await refreshPinnedTags();
 	}
 
-	// Same condition as the template's HomePage gate: an empty window or the
-	// home tab shows Home without `showHome`, which is the cold-start case.
+	// The template's HomePage gate: an empty window or the home tab shows Home
+	// without `showHome`, which is the cold-start case.
 	// Reading the window tag re-runs this when the title bar pins or unpins it.
 	// The pin's IPC is sent first and sync commands run in order, so the list sees it.
 	$effect(() => {
 		void tabManager.windowTag?.pinned;
-		if (showHome || !tabManager.activeTab || isHomePath(tabManager.activeTab.path)) refreshPinnedTags().catch(console.error);
+		if (showsHomeScreen(tabManager.activeTab, showHome)) refreshPinnedTags().catch(console.error);
 	});
 
 	const documentSession = createDocumentSession({
@@ -4267,7 +4267,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 			</button>
 		</div>
 	{/if}
-	{#if tabManager.activeTab && !isHomePath(tabManager.activeTab.path) && !showHome}
+	{#if tabManager.activeTab && !showsHomeScreen(tabManager.activeTab, showHome)}
 			<div
 				class="markdown-container"
 				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize}px; --highlight-color: {previewAppearance.highlightColor};"
