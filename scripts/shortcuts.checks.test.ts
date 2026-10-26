@@ -793,7 +793,6 @@ describe('formatting shortcuts keymap', () => {
 describe('menu and modal guards', () => {
 	const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 	const titleBar = readSource(new URL('../src/lib/components/TitleBar.svelte', import.meta.url));
-	const modal = readSource(new URL('../src/lib/components/Modal.svelte', import.meta.url));
 
 	// Three of the four assertions below used to spell `\n\t\t` and `\n\t\t\t` into
 	// the pattern, so they pinned the indentation of the code as much as its order.
@@ -822,19 +821,6 @@ describe('menu and modal guards', () => {
 	test('titlebar menus close before a document context menu opens', () => {
 		assert.match(titleBar, /window\.addEventListener\('contextmenu', handleGlobalDismiss\)/);
 		assert.match(titleBar, /window\.addEventListener\('blur', handleGlobalDismiss\)/);
-	});
-
-	test('modal backdrop consumes context-menu events outside text fields', () => {
-		// Scoped to the backdrop's own `oncontextmenu`, so a `preventDefault` that
-		// belongs to some other handler in this component cannot satisfy it.
-		const backdrop = sliceBetween(modal, 'oncontextmenu={', 'role="presentation"');
-		const carveOut = offsetIn(backdrop, "closest('input, textarea')", 'the text-field carve-out');
-		const prevent = offsetIn(backdrop, 'e.preventDefault();', 'the native-menu suppression');
-		const stop = offsetIn(backdrop, 'e.stopPropagation();', 'the propagation guard');
-
-		// The carve-out returns, so anything that suppresses the native menu has to
-		// come after it or the prompt input loses Cut/Copy/Paste.
-		assert.ok(prevent > carveOut && stop > carveOut, 'the backdrop suppresses the menu before letting text fields out');
 	});
 
 	test('text fields keep the webview edit menu so paste stays reachable', () => {

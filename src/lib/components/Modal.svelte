@@ -2,6 +2,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import { t } from '../utils/i18n.js';
 	import { settings } from '../stores/settings.svelte.js';
+	import { handleModalBackdropContextMenu } from '../utils/modalContextMenu.js';
 
 	let {
 		show,
@@ -112,12 +113,7 @@
 		class="modal-backdrop"
 		transition:fade={{ duration: 150 }}
 		onclick={handleBackdropClick}
-		oncontextmenu={(e) => {
-			// The prompt input needs the webview's Cut/Copy/Paste menu.
-			if ((e.target as HTMLElement).closest('input, textarea')) return;
-			e.preventDefault();
-			e.stopPropagation();
-		}}
+		oncontextmenu={handleModalBackdropContextMenu}
 		role="presentation">
 		<div
 			class="modal-content {kind}"
