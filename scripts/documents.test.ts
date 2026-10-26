@@ -22,6 +22,7 @@ import {
 	isOpenFileMode,
 	resolveOpenFileMode,
 } from '../src/lib/utils/openFileMode.js';
+import { MARKDOWN_OPEN_FILTERS } from '../src/lib/utils/markdownLinks.js';
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { dispatchViewerKey, viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
@@ -613,5 +614,15 @@ describe('file drop routing', () => {
 		// The editor pane is only the editor while an editor is mounted there.
 		assert.equal(dropPaneFor('editor', false), 'preview');
 		assert.equal(dropPaneFor('preview', true), 'preview');
+	});
+});
+
+describe('the Open dialog', () => {
+	test('the Open dialog offers every extension Markpad treats as a document', () => {
+		// Markpad opens, renders and saves `.txt` like any other note (#535); a
+		// shorter list hid those files behind "All Files".
+		const [markdown, all] = MARKDOWN_OPEN_FILTERS;
+		assert.deepEqual([...markdown.extensions].sort(), ['markdown', 'md', 'mdown', 'mkd', 'txt']);
+		assert.deepEqual(all.extensions, ['*']);
 	});
 });

@@ -415,11 +415,10 @@ describe('file associations', () => {
 	// note, so the Open dialog has to offer them.
 	test('the Open dialog offers every extension Markpad treats as a document', () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const links = readSource('src/lib/utils/markdownLinks.ts');
 
-		assert.match(links, /MARKDOWN_LINK_EXTENSIONS = \[[^\]]*'txt'/);
-		assert.match(viewer, /\{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS \}/);
-		// A literal list is how the two drifted apart in the first place.
+		// The list itself runs in documents.test.ts. What stays is that the viewer's
+		// Open dialog uses it: a literal list is how the two drifted apart.
+		assert.match(viewer, /filters: MARKDOWN_OPEN_FILTERS,/);
 		assert.doesNotMatch(viewer, /extensions: \['md/);
 	});
 

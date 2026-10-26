@@ -33,7 +33,7 @@
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
-import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
+import { MARKDOWN_OPEN_FILTERS } from './utils/markdownLinks.js';
 import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
@@ -2519,14 +2519,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	async function selectFile() {
 		const selected = await open({
 			multiple: true,
-			filters: [
-				// The one list every other part of the app already treats as a
-				// Markpad document — including `.txt`, which loads, renders and
-				// saves like any other note (#535). Hardcoding a shorter list here
-				// only hid those files behind "All Files".
-				{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS },
-				{ name: 'All Files', extensions: ['*'] },
-			],
+			filters: MARKDOWN_OPEN_FILTERS,
 		});
 		if (!selected) return;
 		const paths = Array.isArray(selected) ? selected : [selected];
