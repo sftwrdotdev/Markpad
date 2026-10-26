@@ -54,8 +54,9 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 chardetng = "1"
 encoding_rs = "0.8"
 
-[dev-dependencies]
+[target.'cfg(not(windows))'.dev-dependencies]
 # Mock runtime (`tauri::test`) for tests that need an AppHandle or a window.
+# Not on Windows: see `setup_tests` in app.rs.
 tauri = { version = "2", features = ["test"] }
 
 

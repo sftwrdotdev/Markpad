@@ -262,7 +262,10 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(windows)))]
+// Not on Windows: the mock runtime pulls in Common Controls v6 entry points,
+// and a test binary has no manifest declaring them, so it fails to load
+// (STATUS_ENTRYPOINT_NOT_FOUND) before any test runs.
 mod setup_tests {
     use super::*;
     use tauri::test::{mock_builder, mock_context, noop_assets};

@@ -1490,6 +1490,7 @@ mod tests {
     // every window came back at its default size. A move or a resize reaches
     // the managed saver while the app runs; other events do not.
     #[test]
+    #[cfg(not(windows))] // mock runtime; see app.rs setup_tests
     fn a_move_or_resize_schedules_a_geometry_save() {
         use tauri::{PhysicalPosition, PhysicalSize, WindowEvent};
         let app = tauri::test::mock_app();
@@ -1517,6 +1518,7 @@ mod tests {
     // and emitting straight to a window lost the files that arrived before
     // the launch window listened (Explorer launches one process per file).
     #[test]
+    #[cfg(not(windows))] // mock runtime; see app.rs setup_tests
     fn a_second_launch_hands_every_argv_path_to_the_running_window() {
         let app = tauri::test::mock_app();
         app.manage(AppState::new());
