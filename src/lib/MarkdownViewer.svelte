@@ -39,8 +39,9 @@ import {
 	flashCopiedLabel,
 	renderRichContent as renderRichContentInto,
 } from './utils/richContent.js';
-import { observeFoldLayout, type FoldLayoutObservation } from './utils/foldLayout.js';
-import { patchPreview } from './utils/previewPatch.js';
+import { type FoldLayoutObservation } from './utils/foldLayout.js';
+import { followFoldLayout, previewPaneShown } from './utils/foldLayoutEffect.svelte.js';
+import { patchHost } from './utils/previewPatch.js';
 import {
 	revealFold,
 	toggleFold,
@@ -53,7 +54,6 @@ import { headingSlug, headingText, referenceForTab } from './utils/headingRefere
 import {
 	findSourceLineRange,
 	getSourceLineAtPreviewOffset,
-	invalidateAnchorMemos,
 	measureAnchorBox,
 	mergeSourceLineRanges,
 	restorePreviewReadingPosition,
@@ -166,7 +166,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	let previewBlocks = $derived(
 		tabManager.activeTabId ? (previewHosts[tabManager.activeTabId] ?? null) : null,
 	);
-	let foldLayout: FoldLayoutObservation | null = null;
+	const foldLayout: { current: FoldLayoutObservation | null } = { current: null };
 	
 	const highlightColorMap: Record<string, string> = {
 		default: 'color-mix(in srgb, var(--color-accent-fg) 40%, transparent)',
@@ -317,7 +317,7 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * preview but not the editor beside it (#744).
 	 */
 	let hasEditorPane = $derived(isEditing || isSplit);
-	let hasPreviewPane = $derived(!isEditing || isSplit);
+	let hasPreviewPane = $derived(previewPaneShown(isEditing, isSplit));
 	let frontMatterInfo = $derived(parseFrontMatter(rawContent));
 
 	let currentFile = $derived(tabManager.activeTab?.path ?? '');
@@ -1401,27 +1401,16 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		// ./utils/sanitize.ts for the policy itself, and renderMarkdownPreview
 		// for why this path sanitizes last.
 		//
-		// A host that already holds this document — a tab being re-activated —
-		// is not sanitized and diffed again: every block would compare equal.
-		// The switch did change which host is displayed, which the anchor memos
-		// read, and the patch is what would have invalidated them.
-		const unchanged = patchedHtml.get(host) === htmlContent;
-		patchedHtml.set(host, htmlContent);
-		if (unchanged) invalidateAnchorMemos();
 		// Untracked: a fold toggle or a rename is not a new document.
-		const patch = unchanged
-			? { inserted: [], wrappers: [] }
-			: untrack(() => {
-					const tab = tabManager.activeTab;
-					return patchPreview(host, htmlContent, tab?.path ?? '', tab?.foldOverrides ?? NO_FOLD_OVERRIDES);
-				});
-		// Only the new blocks. `ResizeObserver.observe` on a target it is already
-		// watching re-registers it rather than doing nothing, and a fresh
-		// registration delivers an initial observation — so handing it the whole
-		// host would put back exactly the per-keystroke re-measure of every fold
-		// that keeping the observation alive removed.
-		for (const block of patch.inserted) foldLayout?.observe(block);
-		for (const wrapper of patch.wrappers) foldLayout?.observe(wrapper);
+		const patch = patchHost(
+			host,
+			htmlContent,
+			() => untrack(() => {
+				const tab = tabManager.activeTab;
+				return { filePath: tab?.path ?? '', foldOverrides: tab?.foldOverrides ?? NO_FOLD_OVERRIDES };
+			}),
+			(scope) => foldLayout.current?.observe(scope),
+		);
 		// A host's first enrichment is the cold start above: it waits for
 		// whichever libraries the document needs. A tab being re-activated
 		// patches to nothing, and its host is in the set from that first render.
@@ -1440,8 +1429,6 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 	 * tabs the way a hand-kept registry can.
 	 */
 	const enrichedHosts = new WeakSet<HTMLElement>();
-	/** The `htmlContent` each host was last patched with. */
-	const patchedHtml = new WeakMap<HTMLElement, string>();
 
 	/**
 	 * Put the reader back where they were, once, after a cold start's enrichment
@@ -1467,22 +1454,8 @@ import { claimTabForRead, createDocumentSession, type LoadMarkdownOptions } from
 		if (tab) restorePreviewReadingPosition(body, tab, getPreviewScrollMax(body), measurePreviewBox);
 	}
 
-	$effect(() => {
-		const host = previewBlocks;
-		if (!host || !hasPreviewPane) return;
-
-		// Keyed on the visible host only. A keystroke must not re-observe: a fresh
-		// `observe` reports at once and would re-measure every fold. The patch
-		// effect observes new blocks itself. A hidden host is not observed at all,
-		// because its boxes measure 0 (see `previewHosts`).
-		const observation = observeFoldLayout(host);
-		foldLayout = observation;
-
-		return () => {
-			observation.stop();
-			if (foldLayout === observation) foldLayout = null;
-		};
-	});
+	// A hidden host is not observed: its boxes measure 0 (see `previewHosts`).
+	followFoldLayout(foldLayout, () => previewBlocks, () => hasPreviewPane);
 
 	// Re-apply find highlights after a render. The patch only replaces the blocks
 	// that changed, so most highlights now survive on their own nodes — but the

@@ -198,12 +198,13 @@ describe('preview sanitizing', () => {
 		);
 
 		// The document sink, in the form it takes now: one call, handed the
-		// renderer's output. `patchPreview` is the only way into the preview's
-		// article, so what it does with that string is the whole path.
+		// renderer's output. `patchHost` (which calls `patchPreview`) is the only
+		// way into the preview's article, so what it does with that string is the
+		// whole path.
 		assert.equal(
-			[...viewerSource.matchAll(/\bpatchPreview\(\s*host\s*,\s*htmlContent\s*,/g)].length,
+			[...viewerSource.matchAll(/\bpatchHost\(\s*host\s*,\s*htmlContent\s*,/g)].length,
 			1,
-			'the preview must reach the article through patchPreview, once',
+			'the preview must reach the article through patchHost, once',
 		);
 
 		// What patchPreview does with that string, and where the footnote tooltip's

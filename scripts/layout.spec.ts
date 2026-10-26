@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 
 import Toc from '../src/lib/components/Toc.svelte';
 import { collapsedFoldsAround, type FoldHost, revealFold, toggleFold, toggleFoldFromClick } from '../src/lib/utils/foldState.js';
 import { runeProps } from './runeProps.svelte.js';
+import { observeFoldLayout, type FoldLayoutObservation } from '../src/lib/utils/foldLayout.js';
+import { followFoldLayout, previewPaneShown } from '../src/lib/utils/foldLayoutEffect.svelte.js';
+import { runeEffect } from './runeEffect.svelte.js';
+import { patchHost } from '../src/lib/utils/previewPatch.js';
 
 describe('split scroll-sync preference', async () => {
 	/*
@@ -1020,5 +1024,115 @@ describe('outline render signal', () => {
 
 		expect(toc.entries()).toEqual(['One', 'Two']);
 		toc.stop();
+	});
+});
+
+describe('fold layout observation', () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+	});
+
+	// The fold layout used to be re-measured from the whole article on every
+	// patch, and `ResizeObserver.observe` on a target it already watches
+	// re-registers it and delivers a fresh observation. So a keystroke must hand
+	// the observer only what the patch inserted.
+	test('only newly patched blocks are handed to the fold observer', () => {
+		const observed: Element[] = [];
+		vi.stubGlobal('requestAnimationFrame', () => 0);
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				observe(target: Element) {
+					observed.push(target);
+				}
+				disconnect() {}
+			},
+		);
+		const host = document.createElement('div');
+		document.body.replaceChildren(host);
+		const doc = (last: string) =>
+			[
+				'<h2 data-sourcepos="1:1-1:4">A</h2>',
+				'<p data-sourcepos="3:1-3:1">a</p>',
+				'<h2 data-sourcepos="5:1-5:4">B</h2>',
+				`<p data-sourcepos="7:1-7:1">${last}</p>`,
+			].join('\0\n');
+		const tab = () => ({ filePath: '/docs/a.md', foldOverrides: new Set<string>() });
+		const layout = observeFoldLayout(host);
+
+		patchHost(host, doc('b'), tab, (scope) => layout.observe(scope));
+		const folds = [...host.querySelectorAll('.foldable-content-wrapper > .content-inner')];
+		assert.equal(folds.length, 2);
+		assert.deepEqual(new Set(observed.splice(0)), new Set(folds), 'a first render observes every fold');
+
+		patchHost(host, doc('b, edited'), tab, (scope) => layout.observe(scope));
+		const edited = [...host.querySelectorAll('p')].find((p) => p.textContent === 'b, edited')!;
+		assert.ok(observed.every((target) => edited.contains(target)), 'only the edited block is observed');
+		layout.stop();
+	});
+
+	/** A host with one fold, a recording ResizeObserver, and the effect following it. */
+	function follow(initial: { host: 'a' | 'b' | null; shown: boolean }) {
+		const observed: Element[] = [];
+		let disconnects = 0;
+		vi.stubGlobal('requestAnimationFrame', () => 0);
+		vi.stubGlobal(
+			'ResizeObserver',
+			class {
+				observe(target: Element) {
+					observed.push(target);
+				}
+				disconnect() {
+					disconnects++;
+				}
+			},
+		);
+		const article = document.createElement('article');
+		const fold = '<div class="foldable-content-wrapper"><div class="content-inner"><p>x</p></div></div>';
+		article.innerHTML = `<div id="a">${fold}</div><div id="b" style="display: none">${fold}</div>`;
+		document.body.replaceChildren(article);
+		const hosts = { a: article.querySelector<HTMLElement>('#a')!, b: article.querySelector<HTMLElement>('#b')! };
+		const state = runeProps(initial);
+		const holder: { current: FoldLayoutObservation | null } = { current: null };
+		const dispose = runeEffect(() =>
+			followFoldLayout(holder, () => (state.host ? hosts[state.host] : null), () => state.shown),
+		);
+		flushSync();
+		return { state, holder, hosts, observed, disconnects: () => disconnects, dispose };
+	}
+
+	test('preview lifecycle starts and cleans up fold observation', () => {
+		const run = follow({ host: 'a', shown: true });
+		assert.ok(run.holder.current, 'the observation is published for the patch');
+		assert.deepEqual(run.observed, [run.hosts.a.querySelector('.content-inner')]);
+
+		// Switching tabs moves the observation to the newly visible host.
+		run.state.host = 'b';
+		flushSync();
+		assert.equal(run.disconnects(), 1);
+		assert.equal(run.observed.at(-1), run.hosts.b.querySelector('.content-inner'));
+
+		run.dispose();
+		assert.equal(run.disconnects(), 2);
+		assert.equal(run.holder.current, null);
+	});
+
+	test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
+		assert.equal(previewPaneShown(true, false), false, 'edit mode hides the preview');
+		assert.equal(previewPaneShown(true, true), true, 'split keeps it');
+		assert.equal(previewPaneShown(false, false), true);
+
+		const run = follow({ host: 'a', shown: false });
+		assert.equal(run.holder.current, null);
+		assert.deepEqual(run.observed, []);
+
+		run.state.shown = true;
+		flushSync();
+		assert.ok(run.holder.current);
+		run.state.shown = false;
+		flushSync();
+		assert.equal(run.holder.current, null);
+		assert.equal(run.disconnects(), 1);
+		run.dispose();
 	});
 });

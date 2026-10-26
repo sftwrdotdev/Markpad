@@ -93,13 +93,6 @@ describe('fold layout', () => {
 		);
 	});
 
-	test('preview lifecycle starts and cleans up fold observation', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		assert.match(viewer, /const host = previewBlocks;[\s\S]*?observeFoldLayout\(host\)/);
-		assert.match(viewer, /observation\.stop\(\)/);
-	});
-
 	// The direction the previous spelling could not state. `observeFoldLayout` used
 	// to be handed `markdownBody`, and that was right while the article held one
 	// document; it now holds one `.markdown-blocks` host per open tab, all but one
@@ -121,44 +114,8 @@ describe('fold layout', () => {
 
 		assert.doesNotMatch(
 			viewer,
-			/observeFoldLayout\(\s*markdownBody/,
+			/(?:observeFoldLayout\(|followFoldLayout\(\s*\w+\s*,\s*\(\)\s*=>)\s*markdownBody/,
 			'observing the article would measure every hidden tab and write zero heights into it',
-		);
-	});
-
-	test('fold measurement pauses while the preview pane is hidden by edit mode', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-		assert.match(viewer, /if \(!host \|\| !hasPreviewPane\) return;/);
-		assert.match(viewer, /let hasPreviewPane = \$derived\(!isEditing \|\| isSplit\);/);
-	});
-
-	// The observation used to be torn down and rebuilt on every render, which is
-	// how a document's every fold came to re-measure once per character:
-	// `ResizeObserver.observe` re-registers a target it is already watching, and a
-	// registration delivers an initial observation. What replaced it is a live
-	// observation plus `observe` calls for the blocks the patch inserted, so the
-	// two halves of that have to stay coupled — a viewer that re-observes the whole
-	// host, or a `foldLayout.ts` that only observes from a root, puts the cost back
-	// without changing a single assertion above.
-	test('only newly patched blocks are handed to the fold observer', () => {
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const foldLayout = readSource('src/lib/utils/foldLayout.ts');
-
-		assert.match(
-			viewer,
-			/for \(const \w+ of patch\.inserted\) foldLayout\?\.observe\(\w+\)/,
-			'the viewer must observe the patched blocks, not the whole preview',
-		);
-		assert.doesNotMatch(
-			viewer,
-			/foldLayout\?\.observe\(host\)/,
-			're-observing the host re-registers every fold in the document',
-		);
-		assert.match(
-			foldLayout,
-			/observe\(scope: Element\)/,
-			'observeFoldLayout must accept a scope smaller than the article',
 		);
 	});
 });

@@ -5,14 +5,6 @@ import { parse } from 'svelte/compiler';
 import ts from 'typescript';
 import { hasExportableDocument } from '../src/lib/utils/tabFileActions.js';
 
-describe('line samples cache', () => {
-	test('a tab switch that skips the patch still drops the table', () => {
-		// The hosts' `display` is what changed, and `isAnchorable` reads it.
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		expect(viewer).toMatch(/if \(unchanged\) invalidateAnchorMemos\(\);/);
-	});
-});
-
 describe('rendered HTML field', () => {
 	// ---------------------------------------------------------------- environment
 	// The runes are the compiler's, not ours: vitest builds `.svelte.ts` through the

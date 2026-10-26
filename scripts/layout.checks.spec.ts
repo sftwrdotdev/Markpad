@@ -21,7 +21,7 @@ describe('outline render signal', () => {
 		// than from the write to the DOM is the bug, spelled differently.
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-		const patchEffect = viewer.slice(viewer.indexOf('patchPreview(host, '));
+		const patchEffect = viewer.slice(viewer.indexOf('patchHost(\n\t\t\thost,'));
 		const bump = patchEffect.indexOf('previewRevision = ++previewPatches;');
 		expect(bump).toBeGreaterThan(-1);
 		expect(bump).toBeLessThan(patchEffect.indexOf('\n\t});'));

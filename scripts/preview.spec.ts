@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import assert from 'node:assert/strict';
 import { flashCopiedLabel, renderRichContent, replacedBy, type RichContentLibraries } from '../src/lib/utils/richContent.js';
-import { patchPreview } from '../src/lib/utils/previewPatch.js';
+import { patchHost, patchPreview } from '../src/lib/utils/previewPatch.js';
 import { readDiagramSource } from '../src/lib/utils/mermaidPrint.js';
 import { resetDiagramCache } from '../src/lib/utils/diagramCache.js';
 import { toggleFold } from '../src/lib/utils/foldState.js';
@@ -275,6 +275,26 @@ describe('line samples cache', () => {
 		await renderRichContent({ roots: [root], libraries, mermaidTheme: 'default' });
 		expect(root.querySelector('pre')).toBeNull();
 		expect(lineAt(250)).toBe(20);
+	});
+
+	test('a tab switch that skips the patch still drops the table', () => {
+		// Re-activating a tab hands its host the document it already holds, so the
+		// patch is skipped — but the hosts' `display` is what changed, and
+		// `isAnchorable` reads it.
+		const host = document.createElement('div');
+		document.body.replaceChildren(host);
+		const html = '<p data-sourcepos="1:1-1:1">x</p>\0\n<p data-sourcepos="10:1-10:1">y</p>';
+		const tab = () => ({ filePath: '/docs/a.md', foldOverrides: new Set<string>() });
+		patchHost(host, html, tab, () => {});
+		const measure = (node: AnchorNode) => ({ top: (node as unknown as Element).textContent === 'y' ? 100 : 0, height: 0 });
+		getSourceLineAtPreviewOffset(host, 50, measure);
+
+		const walk = vi.spyOn(Node.prototype, 'childNodes', 'get');
+		const patch = patchHost(host, html, tab, () => {});
+		expect(patch.inserted).toHaveLength(0);
+		getSourceLineAtPreviewOffset(host, 50, measure);
+		expect(walk).toHaveBeenCalled();
+		walk.mockRestore();
 	});
 });
 
