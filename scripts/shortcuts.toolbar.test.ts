@@ -1,0 +1,781 @@
+import assert from 'node:assert/strict';
+import { describe, test } from 'node:test';
+
+import { DEFAULT_EDITOR_TOOLBAR_ORDER, getEditorToolbarAdjacentMove, getEditorToolbarReorderMove, getEditorToolbarTools, getVisibleEditorToolbarTools, INLINE_WRAP_TOOL_IDS, inlineWrapEdit, inlineWrapSelectionAfter, type InlineWrapToolId, LINE_MARKER_TOOL_IDS, type LineMarkerToolId, normalizeEditorToolbarHidden, normalizeEditorToolbarOrder, toggleInlineWrap, toggleLineMarker } from '../src/lib/utils/editorToolbar.js';
+import { DEFAULT_TITLEBAR_TOOLBAR_ORDER, getConfiguredTitlebarToolbarIds, getTitlebarToolbarActions, getTitlebarToolbarAdjacentMove, getTitlebarToolbarReorderMove, normalizeTitlebarToolbarHidden, normalizeTitlebarToolbarOrder, normalizeTitlebarToolbarPlacement, viewModeOf, visibleTitlebarActionIds } from '../src/lib/utils/titlebarToolbar.js';
+
+describe('editor toolbar', () => {
+	/**
+	 * `DEFAULT_EDITOR_TOOLBAR_ORDER` is `EDITOR_TOOLBAR_TOOLS.map((tool) => tool.id)`,
+	 * so an expected value written in terms of it says nothing about what is in the
+	 * catalogue: deleting the Underline tool outright left every assertion in this
+	 * file green. The two tests below are the ones that hold the catalogue still —
+	 * the same job `titlebarToolbar.test.ts` does with its literal id lists — and
+	 * the derived expectations above are then free to describe the *reordering*,
+	 * which is what they are actually about.
+	 */
+	test('the default order is the whole tool catalogue, in the order the toolbar renders it', () => {
+		assert.deepEqual(DEFAULT_EDITOR_TOOLBAR_ORDER, [
+			'fmt-bold',
+			'fmt-italic',
+			'fmt-underline',
+			'fmt-strikethrough',
+			'fmt-inline-code',
+			'fmt-code-block',
+			'fmt-quote',
+			'fmt-heading-1',
+			'fmt-heading-2',
+			'fmt-heading-3',
+			'fmt-bullet-list',
+			'fmt-numbered-list',
+			'fmt-checklist',
+			'fmt-link',
+			'insert-table-simple',
+		]);
+	});
+
+	test('each tool carries the label, name and shortcut the toolbar renders', () => {
+		const byId = new Map(getEditorToolbarTools(null).map((tool) => [tool.id, tool]));
+
+		assert.deepEqual(
+			getEditorToolbarTools(null)
+				.filter((tool) => tool.group === 'inline')
+				.map((tool) => tool.id),
+			['fmt-bold', 'fmt-italic', 'fmt-underline', 'fmt-strikethrough', 'fmt-inline-code'],
+		);
+
+		// The inline tools whose accelerator the editor also binds; a tool that
+		// loses its shortcut still renders, so nothing else would notice.
+		assert.equal(byId.get('fmt-bold')?.shortcut?.('Ctrl'), 'Ctrl+B');
+		assert.equal(byId.get('fmt-italic')?.shortcut?.('Cmd'), 'Cmd+I');
+		assert.equal(byId.get('fmt-underline')?.shortcut?.('Ctrl'), 'Ctrl+U');
+		assert.equal(byId.get('fmt-underline')?.label, 'U');
+		assert.equal(byId.get('fmt-underline')?.labelKey, 'menu.underline');
+		assert.equal(byId.get('fmt-strikethrough')?.shortcut?.('Cmd'), 'Cmd+Shift+X');
+		assert.equal(byId.get('fmt-strikethrough')?.label, 'S');
+		assert.equal(byId.get('fmt-strikethrough')?.labelKey, 'menu.strikethrough');
+		assert.equal(byId.get('insert-table-simple')?.shortcut?.('Cmd'), 'Cmd+Opt+T');
+
+		// The four buttons that gained a hint when the keymap was reworked. Three list
+		// buttons had actions and no key at all, and Link — the chord four independent
+		// editors agree on — had none either, so the tooltip had nothing to print.
+		assert.equal(byId.get('fmt-link')?.shortcut?.('Cmd'), 'Cmd+K');
+		assert.equal(byId.get('fmt-numbered-list')?.shortcut?.('Ctrl'), 'Ctrl+Shift+7');
+		assert.equal(byId.get('fmt-bullet-list')?.shortcut?.('Ctrl'), 'Ctrl+Shift+8');
+		assert.equal(byId.get('fmt-checklist')?.shortcut?.('Cmd'), 'Cmd+Shift+9');
+	});
+
+	test('normalizeEditorToolbarOrder drops unknown ids, deduplicates, and appends new defaults', () => {
+		assert.deepEqual(
+			normalizeEditorToolbarOrder([
+				'fmt-heading-1',
+				'unknown-tool',
+				'fmt-bold',
+				'fmt-heading-1',
+			]),
+			[
+				'fmt-heading-1',
+				'fmt-bold',
+				...DEFAULT_EDITOR_TOOLBAR_ORDER.filter((id) => id !== 'fmt-heading-1' && id !== 'fmt-bold'),
+			],
+		);
+	});
+
+	test('normalizeEditorToolbarHidden keeps only known toolbar ids', () => {
+		assert.deepEqual(
+			normalizeEditorToolbarHidden(['fmt-bold', 'unknown-tool', 'fmt-italic']),
+			['fmt-bold', 'fmt-italic'],
+		);
+	});
+
+	test('getVisibleEditorToolbarTools applies saved order and hidden ids', () => {
+		const tools = getVisibleEditorToolbarTools(['fmt-italic', 'fmt-bold'], ['fmt-bold']);
+
+		assert.equal(tools[0]?.id, 'fmt-italic');
+		assert.equal(tools.some((tool) => tool.id === 'fmt-bold'), false);
+		// 15 tools in the catalogue, one hidden. Counted rather than derived from
+		// the default order: `DEFAULT_EDITOR_TOOLBAR_ORDER.length - 1` shrinks with
+		// the catalogue and stays true.
+		assert.equal(tools.length, 14);
+	});
+
+	test('toolbar reorder helpers resolve drag and keyboard moves', () => {
+		const order = ['fmt-bold', 'fmt-italic', 'fmt-link'];
+
+		assert.deepEqual(getEditorToolbarReorderMove(order, 'fmt-link', 'fmt-bold'), { fromIndex: 2, toIndex: 0 });
+		assert.deepEqual(getEditorToolbarAdjacentMove(order, 'fmt-italic', 'down'), { fromIndex: 1, toIndex: 2 });
+		assert.equal(getEditorToolbarReorderMove(order, 'fmt-bold', 'fmt-bold'), null);
+		assert.equal(getEditorToolbarAdjacentMove(order, 'fmt-bold', 'up'), null);
+	});
+
+	test('every tool with a line marker is a tool the toolbar renders', () => {
+		assert.deepEqual(LINE_MARKER_TOOL_IDS, [
+			'fmt-quote',
+			'fmt-bullet-list',
+			'fmt-numbered-list',
+			'fmt-checklist',
+			'fmt-heading-1',
+			'fmt-heading-2',
+			'fmt-heading-3',
+		]);
+
+		for (const id of LINE_MARKER_TOOL_IDS) {
+			assert.ok(
+				DEFAULT_EDITOR_TOOLBAR_ORDER.includes(id),
+				`${id} has a line marker but is not a toolbar tool`,
+			);
+		}
+	});
+
+	/**
+	 * One row per (tool, starting line) pair, written as the exact text the
+	 * transform has to produce. Issue #451 was a *string* — bullet on `1. foo`
+	 * yielded `- 1. foo` — so nothing short of running the transform and comparing
+	 * output can fail on it; an assertion about how `Editor.svelte` reads would
+	 * have stayed green through the whole bug.
+	 *
+	 * The three list markers compete for one slot, so each of them replaces the
+	 * other two (and the task box travels with the checklist marker, or the line
+	 * keeps an orphan `[ ]` no tool recognises). Quote is deliberately not in that
+	 * set: `> - foo` is a quoted list item, which is what a user asking for a quote
+	 * around a list item wants.
+	 */
+	const LINE_MARKER_MATRIX: Array<[LineMarkerToolId, string, string]> = [
+		// Bullet list.
+		['fmt-bullet-list', 'foo', '- foo'],
+		['fmt-bullet-list', '- foo', 'foo'],
+		['fmt-bullet-list', '1. foo', '- foo'],
+		['fmt-bullet-list', '- [ ] foo', '- foo'],
+		['fmt-bullet-list', '- [x] foo', '- foo'],
+
+		// Numbered list.
+		['fmt-numbered-list', 'foo', '1. foo'],
+		['fmt-numbered-list', '- foo', '1. foo'],
+		['fmt-numbered-list', '1. foo', 'foo'],
+		['fmt-numbered-list', '- [ ] foo', '1. foo'],
+		['fmt-numbered-list', '1. [ ] foo', '1. foo'],
+
+		// Checklist.
+		['fmt-checklist', 'foo', '- [ ] foo'],
+		['fmt-checklist', '- foo', '- [ ] foo'],
+		['fmt-checklist', '1. foo', '- [ ] foo'],
+		['fmt-checklist', '- [ ] foo', 'foo'],
+		['fmt-checklist', '- [x] foo', 'foo'],
+
+		// `1)` is the other ordered delimiter CommonMark defines, and the renderer
+		// has always read it (`TASK_SOURCE_RE`, and the preview's own checkbox
+		// rewrite). The toolbar knew only `1.`, so bullet on `1) item` produced
+		// `- 1) item` — issue #451 exactly, one delimiter over — and the numbered
+		// button added a second marker to a line that already was an ordered item
+		// instead of taking it off.
+		['fmt-bullet-list', '1) item', '- item'],
+		['fmt-numbered-list', '1) item', 'item'],
+		['fmt-numbered-list', '2) item', 'item'],
+		['fmt-checklist', '1) item', '- [ ] item'],
+		['fmt-checklist', '1) [ ] item', '- [ ] item'],
+
+		// Indentation belongs to the line, not to the marker: it is what makes the
+		// item a *nested* one, and a toggle that dropped it flattened the item to top
+		// level. The button did not even see the marker — `- sub` behind four spaces
+		// matched neither `own` nor `competing` — so a click on any nested bullet
+		// answered with `-     - sub`.
+		['fmt-bullet-list', '    - sub', '    sub'],
+		['fmt-bullet-list', '    sub', '    - sub'],
+		['fmt-bullet-list', '  1. sub', '  - sub'],
+		['fmt-numbered-list', '\t1. sub', '\tsub'],
+		['fmt-numbered-list', '\t- sub', '\t1. sub'],
+		['fmt-bullet-list', '  - [ ] sub', '  - sub'],
+		['fmt-checklist', '    - [x] sub', '    sub'],
+		['fmt-quote', '  - sub', '  > - sub'],
+
+		// A list item inside a block quote is a list item — the same grammar the
+		// renderer reads to find a task line. The quote markers travel with the
+		// indentation for the same reason: they say where the item sits, and a list
+		// button that consumed them would lift the item out of the quote.
+		['fmt-bullet-list', '> - item', '> item'],
+		['fmt-numbered-list', '> - item', '> 1. item'],
+		['fmt-checklist', '> - [ ] item', '> item'],
+		['fmt-bullet-list', '> > - deep', '> > deep'],
+
+		// Which is also why a list button on a quoted *paragraph* now writes the
+		// marker inside the quote. `- > foo` — the old answer — is a list item
+		// containing a quote, a different document from the quoted list item the
+		// click asked for, and one that no second click could undo.
+		['fmt-bullet-list', '> foo', '> - foo'],
+		['fmt-numbered-list', '> foo', '> 1. foo'],
+		['fmt-checklist', '> foo', '> - [ ] foo'],
+
+		// Quote wraps, it does not displace: a quoted list item is the point.
+		['fmt-quote', 'foo', '> foo'],
+		['fmt-quote', '- foo', '> - foo'],
+		['fmt-quote', '1. foo', '> 1. foo'],
+		['fmt-quote', '- [ ] foo', '> - [ ] foo'],
+		['fmt-quote', '> foo', 'foo'],
+
+		// Headings replace headings, and nothing else — `# - foo` is a heading whose
+		// text begins with a dash, and un-toggling gives the list item back.
+		['fmt-heading-2', 'foo', '## foo'],
+		['fmt-heading-2', '# foo', '## foo'],
+		['fmt-heading-2', '## foo', 'foo'],
+		['fmt-heading-1', '### foo', '# foo'],
+		['fmt-heading-1', '- foo', '# - foo'],
+	];
+
+	for (const [id, from, to] of LINE_MARKER_MATRIX) {
+		test(`${id} turns ${JSON.stringify(from)} into ${JSON.stringify(to)}`, () => {
+			assert.deepEqual(toggleLineMarker(id, [from]), [to]);
+		});
+	}
+
+	test('a selection that mixes marker types converges on the toggled one', () => {
+		assert.deepEqual(
+			toggleLineMarker('fmt-bullet-list', ['- alpha', '1. beta', '- [ ] gamma', 'delta']),
+			['- alpha', '- beta', '- gamma', '- delta'],
+		);
+
+		// Removal needs *every* content line to already carry this tool's marker, so
+		// a half-marked selection is completed rather than stripped.
+		assert.deepEqual(
+			toggleLineMarker('fmt-checklist', ['- [ ] alpha', '- beta']),
+			['- [ ] alpha', '- [ ] beta'],
+		);
+
+		assert.deepEqual(toggleLineMarker('fmt-bullet-list', ['- alpha', '- beta']), ['alpha', 'beta']);
+	});
+
+	test('a nested selection keeps every line at the depth the author put it', () => {
+		// The whole selection is already bulleted, so this is the removal branch —
+		// the one that used to hand back `- top` / `- sub` with the indentation
+		// eaten, collapsing two levels into one.
+		assert.deepEqual(
+			toggleLineMarker('fmt-bullet-list', ['- top', '    - sub', '\t\t- deeper']),
+			['top', '    sub', '\t\tdeeper'],
+		);
+
+		assert.deepEqual(
+			toggleLineMarker('fmt-numbered-list', ['    alpha', '    beta']),
+			['    1. alpha', '    2. beta'],
+		);
+	});
+
+	test('numbering counts content lines and leaves blank lines alone', () => {
+		assert.deepEqual(
+			toggleLineMarker('fmt-numbered-list', ['- alpha', '', 'beta', '1. gamma']),
+			['1. alpha', '', '2. beta', '3. gamma'],
+		);
+
+		assert.deepEqual(toggleLineMarker('fmt-bullet-list', ['', '   ']), ['', '   ']);
+	});
+
+	test('quote nests around an already quoted line instead of replacing it', () => {
+		assert.deepEqual(toggleLineMarker('fmt-quote', ['> alpha', 'beta']), ['> > alpha', '> beta']);
+		assert.deepEqual(toggleLineMarker('fmt-quote', ['> alpha', '> beta']), ['alpha', 'beta']);
+	});
+
+	test('quote comes off a quote whose markers have no space after them', () => {
+		// A paragraph break inside a quote is a bare `>`, and `>text` is a quote too.
+		// Reading only `> ` as the marker judged both "not quoted" and nested them.
+		assert.deepEqual(toggleLineMarker('fmt-quote', ['> a', '>', '> b']), ['a', '', 'b']);
+		assert.deepEqual(toggleLineMarker('fmt-quote', ['>a', '>b']), ['a', 'b']);
+		// One space is the marker's; the rest belongs to the quoted text.
+		assert.deepEqual(toggleLineMarker('fmt-quote', ['>     code']), ['    code']);
+	});
+
+	test('a bracketed link at the head of a list item is not read as a task box', () => {
+		assert.deepEqual(toggleLineMarker('fmt-numbered-list', ['- [label](url)']), ['1. [label](url)']);
+	});
+
+	// --------------------------------------------------------- inline wrap markers
+
+	test('every tool with an inline wrap is a tool the toolbar renders', () => {
+		assert.deepEqual(INLINE_WRAP_TOOL_IDS, [
+			'fmt-bold',
+			'fmt-italic',
+			'fmt-strikethrough',
+			'fmt-inline-code',
+		]);
+
+		for (const id of INLINE_WRAP_TOOL_IDS) {
+			assert.ok(
+				DEFAULT_EDITOR_TOOLBAR_ORDER.includes(id),
+				`${id} has an inline wrap but is not a toolbar tool`,
+			);
+		}
+	});
+
+	/**
+	 * One row per (tool, selected text) pair, as the exact text the toggle produces.
+	 *
+	 * Same shape as LINE_MARKER_MATRIX above, and for the same reason: every defect
+	 * this table exists for was a *string* the user was left holding.
+	 */
+	const INLINE_WRAP_MATRIX: Array<[InlineWrapToolId, string, string]> = [
+		// The plain round trip, in both spellings Markdown offers. The underscore
+		// halves are the gap this table closes: the toolbar knew only the asterisk
+		// ones, so a click on `__bold__` wrapped a second pair around it.
+		['fmt-bold', 'x', '**x**'],
+		['fmt-bold', '**x**', 'x'],
+		['fmt-bold', '__x__', 'x'],
+		['fmt-italic', 'x', '*x*'],
+		['fmt-italic', '*x*', 'x'],
+		['fmt-italic', '_x_', 'x'],
+		['fmt-inline-code', 'x', '`x`'],
+		['fmt-inline-code', '`x`', 'x'],
+
+		// Strikethrough writes two tildes and takes back one or two. Both are
+		// strikethrough in GFM and in this app's renderer, so a document written
+		// anywhere else toggles off cleanly — and the button never produces the
+		// `~~~gone~~~` that answering `~gone~` with a second pair would, which is
+		// three tildes and not strikethrough anywhere.
+		['fmt-strikethrough', 'gone', '~~gone~~'],
+		['fmt-strikethrough', '~~gone~~', 'gone'],
+		['fmt-strikethrough', '~gone~', 'gone'],
+
+		// Italic must not take an asterisk that belongs to bold — in either
+		// spelling. Wrapping is the right answer here: italic on bold means both.
+		['fmt-italic', '**bold**', '***bold***'],
+		['fmt-italic', '__bold__', '*__bold__*'],
+
+		// Text that really is both, though, has an italic marker to give back, and
+		// giving it back leaves the bold pair whole. Both directions, so that the
+		// rule above cannot be satisfied by refusing to strip anything doubled.
+		['fmt-italic', '***both***', '**both**'],
+		['fmt-italic', '___both___', '__both__'],
+		['fmt-bold', '***both***', '*both*'],
+
+		// The other direction needs no rule: `**` is longer than the `*` sitting
+		// inside it, so bold on italic text still strips its own pair.
+		['fmt-bold', '*it*', '***it***'],
+		['fmt-bold', '_it_', '**_it_**'],
+
+		// A marker of one tool is nobody else's business.
+		['fmt-inline-code', '**x**', '`**x**`'],
+		['fmt-bold', '`x`', '**`x`**'],
+		['fmt-italic', '~~x~~', '*~~x~~*'],
+		['fmt-strikethrough', '**x**', '~~**x**~~'],
+
+		// A selection whose two ends would have to overlap to match is not a wrapped
+		// span: `**` is one marker, not an empty bold one, and slicing it as if it
+		// were would delete the selection.
+		['fmt-bold', '**', '******'],
+		['fmt-bold', '****', ''],
+		['fmt-italic', '', '**'],
+	];
+
+	for (const [id, from, to] of INLINE_WRAP_MATRIX) {
+		test(`${id} turns ${JSON.stringify(from)} into ${JSON.stringify(to)}`, () => {
+			assert.equal(toggleInlineWrap(id, from), to);
+		});
+	}
+
+	test('the strikethrough button never leaves text that is not struck through', () => {
+		// The failure the two-marker strip list exists for: `~gone~` is legal
+		// strikethrough, so answering it with a second pair gives `~~~gone~~~` — a
+		// user who asked to un-strike struck text ends up with three tildes, which
+		// GFM renders as literal characters.
+		for (const struck of ['~gone~', '~~gone~~']) {
+			assert.equal(toggleInlineWrap('fmt-strikethrough', struck), 'gone');
+		}
+	});
+
+	test('the italic button never turns bold text into italic text', () => {
+		// The defect this rule exists for, stated as the user saw it: select
+		// `**bold**`, ask for italic, and the text stopped being bold.
+		for (const bold of ['**bold**', '__bold__']) {
+			const result = toggleInlineWrap('fmt-italic', bold);
+			assert.ok(result.includes(bold), `italic on ${bold} produced ${result}, which no longer contains it`);
+		}
+	});
+
+	/**
+	 * The whole gesture: a buffer, the part of it the user selected, and one click.
+	 * Spelled this way because the defects below are only visible from outside the
+	 * selection — asserting on the selected text alone is what missed them.
+	 */
+	function clickWith(id: InlineWrapToolId, buffer: string, selected: string): string {
+		const start = buffer.indexOf(selected);
+		assert.notEqual(start, -1, `${JSON.stringify(selected)} is not in ${JSON.stringify(buffer)}`);
+		const end = start + selected.length;
+		const { reach, text } = inlineWrapEdit(id, buffer.slice(0, start), selected, buffer.slice(end));
+		return buffer.slice(0, start - reach) + text + buffer.slice(end + reach);
+	}
+
+	test('double-clicking a word and clicking the button again removes the format', () => {
+		// Double-click selects the word, not the markers around it. Reading only the
+		// selection, every one of these answered "there is no format here" and wrote
+		// a second pair.
+		const cases: [InlineWrapToolId, string][] = [
+			['fmt-strikethrough', '~~word~~'],
+			['fmt-strikethrough', '~word~'],
+			['fmt-bold', '**word**'],
+			['fmt-bold', '__word__'],
+			['fmt-italic', '*word*'],
+			['fmt-italic', '_word_'],
+			['fmt-inline-code', '`word`'],
+		];
+		for (const [id, buffer] of cases) {
+			assert.equal(clickWith(id, buffer, 'word'), 'word', `${id} on ${buffer}`);
+		}
+	});
+
+	test('a word struck through at the start of a line never becomes a code fence', () => {
+		// Why this one is worse than the others. Four tildes open a fenced code block
+		// whose info string is `word~~~~`, and nothing in the document closes it, so
+		// everything after the click renders as code. Verified against the renderer:
+		//   convert_markdown("~~~~word~~~~\n\nSecond paragraph.\n")
+		//     -> <pre><code class="language-word~~~~">\nSecond paragraph.\n</code></pre>
+		const after = clickWith('fmt-strikethrough', '~~word~~ and the rest of the line', 'word');
+		assert.ok(!/~~~/.test(after), `three or more tildes in a row: ${JSON.stringify(after)}`);
+	});
+
+	test('reaching outside the selection never breaks a neighbouring pair', () => {
+		// The reason this measures the whole run instead of matching one character.
+		// Italic sees an asterisk outside the selection either way; taking one from
+		// each end of bold's pair would have unbolded the word to italicise it.
+		assert.equal(clickWith('fmt-italic', '**word**', 'word'), '***word***');
+		assert.equal(clickWith('fmt-bold', '*word*', 'word'), '***word***');
+		assert.equal(clickWith('fmt-strikethrough', '**word**', 'word'), '**~~word~~**');
+
+		// Only one side has the marker, so this is not a pair to undo. Growing the
+		// range would delete a tilde the user typed and leave the other behind.
+		assert.equal(clickWith('fmt-strikethrough', '~~word and more', 'word'), '~~~~word~~ and more');
+
+		// Selecting the markers still works, and still gives the same answer as
+		// selecting only the word — the two paths must not disagree.
+		assert.equal(clickWith('fmt-strikethrough', '~~word~~', '~~word~~'), 'word');
+	});
+
+	test('bold and italic come apart inside bold italic', () => {
+		// `***` is bold's pair and italic's side by side, so each button finds its
+		// own half in the run and takes only that, instead of wrapping another pair.
+		assert.equal(clickWith('fmt-bold', 'a ***b*** c', 'b'), 'a *b* c');
+		assert.equal(clickWith('fmt-italic', 'a ***b*** c', 'b'), 'a **b** c');
+		assert.equal(clickWith('fmt-bold', '___b___', 'b'), '_b_');
+		assert.equal(clickWith('fmt-italic', '___b___', 'b'), '__b__');
+		// Three tildes are not two tools' markers, and uneven runs are not a pair.
+		assert.equal(clickWith('fmt-strikethrough', '~~~b~~~', 'b'), '~~~~~b~~~~~');
+		assert.equal(clickWith('fmt-bold', '***b**', 'b'), '*****b****');
+	});
+
+	/**
+	 * The whole gesture again, but carrying the selection forward the way the
+	 * editor does: the edit says what it wrote, and that is what stays selected.
+	 */
+	function clickTwice(id: InlineWrapToolId, buffer: string, selected: string): string {
+		let start = buffer.indexOf(selected);
+		assert.notEqual(start, -1, `${JSON.stringify(selected)} is not in ${JSON.stringify(buffer)}`);
+		let end = start + selected.length;
+		let text = buffer;
+
+		for (let click = 0; click < 2; click += 1) {
+			const edit = inlineWrapEdit(id, text.slice(0, start), text.slice(start, end), text.slice(end));
+			const from = start - edit.reach;
+			const after = inlineWrapSelectionAfter(id, from, text.slice(start, end), edit.text);
+			text = text.slice(0, from) + edit.text + text.slice(end + edit.reach);
+			// What the edit leaves selected is what the next click arrives with.
+			start = after.startColumn;
+			end = after.endColumn;
+		}
+		return text;
+	}
+
+	test('clicking the same button twice puts the line back', () => {
+		// Reported from a build: `~~word~~`, double-click `word`, press S — and the
+		// second press wrote `wo~~rd~~`. The edit had said nothing about where the
+		// selection goes, so Monaco clamped columns 3-7 against the shorter line and
+		// left `rd` selected. Nothing here could have caught it while the selection
+		// lived only in the editor.
+		const cases: [InlineWrapToolId, string, string][] = [
+			['fmt-strikethrough', '~~word~~', 'word'],
+			['fmt-bold', '**word**', 'word'],
+			['fmt-italic', '*word*', 'word'],
+			['fmt-inline-code', '`word`', 'word'],
+			// And from the other direction: wrap, then unwrap.
+			['fmt-strikethrough', 'word', 'word'],
+			['fmt-bold', 'word', 'word'],
+			// With neighbours, so a mistake in the column arithmetic shows up as
+			// text landing in the wrong place rather than a no-op.
+			['fmt-strikethrough', 'a ~~word~~ b', 'word'],
+			['fmt-bold', 'a word b', 'word'],
+		];
+		for (const [id, buffer, selected] of cases) {
+			assert.equal(clickTwice(id, buffer, selected), buffer, `${id} on ${JSON.stringify(buffer)}`);
+		}
+	});
+
+	test('the edit selects what it wrote', () => {
+		// Single line: the column after the text. Columns are 1-based.
+		assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 3, 'word', 'word'), {
+			startColumn: 3,
+			lineOffset: 0,
+			endColumn: 7,
+		});
+		// Stripping an empty pair leaves a caret where the pair was.
+		assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 1, '', ''), {
+			startColumn: 1,
+			lineOffset: 0,
+			endColumn: 1,
+		});
+
+		// A selection can span lines, and then the end column belongs to the last
+		// line of the replacement, not to the column the edit started at.
+		assert.deepEqual(inlineWrapSelectionAfter('fmt-bold', 5, 'one\ntwo', '**one\ntwo**'), {
+			startColumn: 5,
+			lineOffset: 1,
+			endColumn: 6,
+		});
+	});
+
+	test('with nothing selected, typing goes between the markers and a second click removes them', () => {
+		// #778: the empty pair used to be selected, so the first keystroke replaced
+		// `****` instead of landing inside it.
+		for (const [id, typed] of [
+			['fmt-bold', 'a **x**b'],
+			['fmt-italic', 'a *x*b'],
+			['fmt-strikethrough', 'a ~~x~~b'],
+			['fmt-inline-code', 'a `x`b'],
+		] as [InlineWrapToolId, string][]) {
+			const buffer = 'a b';
+			const caret = 2;
+			const wrap = inlineWrapEdit(id, buffer.slice(0, caret), '', buffer.slice(caret));
+			const wrapped = buffer.slice(0, caret) + wrap.text + buffer.slice(caret);
+			const inside = inlineWrapSelectionAfter(id, caret, '', wrap.text);
+			assert.equal(inside.startColumn, inside.endColumn, `${id}: a caret, not a selection`);
+			const at = inside.startColumn;
+			assert.equal(wrapped.slice(0, at) + 'x' + wrapped.slice(at), typed, id);
+
+			const strip = inlineWrapEdit(id, wrapped.slice(0, at), '', wrapped.slice(at));
+			const from = at - strip.reach;
+			assert.equal(wrapped.slice(0, from) + strip.text + wrapped.slice(at + strip.reach), buffer, id);
+			assert.equal(inlineWrapSelectionAfter(id, from, '', strip.text).startColumn, caret, id);
+		}
+	});
+
+	test('a selection with nothing before it reaches nowhere', () => {
+		// `Editor.svelte` subtracts the reach from the selection's column, so a
+		// selection at the head of the line has to answer 0 rather than send the
+		// range off the front of it.
+		assert.deepEqual(inlineWrapEdit('fmt-strikethrough', '', 'word', '~~'), {
+			reach: 0,
+			text: '~~word~~',
+		});
+		assert.deepEqual(inlineWrapEdit('fmt-bold', '', 'word', ''), { reach: 0, text: '**word**' });
+	});
+});
+
+describe('title bar toolbar', () => {
+	test('normalizeTitlebarToolbarOrder drops unknown ids, deduplicates, and appends defaults', () => {
+		assert.deepEqual(
+			normalizeTitlebarToolbarOrder([
+				'settings',
+				'unknown-action',
+				'reload',
+				'settings',
+			]),
+			[
+				'settings',
+				'reload',
+				...DEFAULT_TITLEBAR_TOOLBAR_ORDER.filter((id) => id !== 'settings' && id !== 'reload'),
+			],
+		);
+	});
+
+	test('normalizeTitlebarToolbarHidden keeps only known optional actions', () => {
+		assert.deepEqual(
+			normalizeTitlebarToolbarHidden(['reload', 'settings', 'unknown-action', 'find']),
+			['reload', 'find'],
+		);
+	});
+
+	test('normalizeTitlebarToolbarPlacement keeps known bar and menu values', () => {
+		const placement = normalizeTitlebarToolbarPlacement({
+			reload: 'menu',
+			find: 'bar',
+			settings: 'bar',
+			unknown: 'bar',
+			fullWidth: 'hidden',
+		});
+
+		assert.equal(placement.reload, 'menu');
+		assert.equal(placement.find, 'bar');
+		assert.equal(placement.settings, 'bar');
+		assert.equal(placement.fullWidth, 'bar');
+		assert.equal('unknown' in placement, false);
+	});
+
+	test('getConfiguredTitlebarToolbarIds applies context, order, hidden ids, and placement', () => {
+		const configured = getConfiguredTitlebarToolbarIds(
+			['back', 'forward', 'reload', 'find', 'settings', 'open_loc'],
+			['settings', 'find', 'reload', 'back', 'forward'],
+			['forward'],
+			{ find: 'bar', reload: 'menu', settings: 'menu' },
+		);
+
+		assert.deepEqual(configured.visibleIds, ['settings', 'find', 'reload', 'back']);
+		assert.deepEqual(configured.barIds, ['find', 'back']);
+		assert.deepEqual(configured.menuIds, ['settings', 'reload']);
+	});
+
+	test('titlebar toolbar reorder helpers resolve drag and keyboard moves', () => {
+		const order = ['back', 'reload', 'settings'];
+
+		assert.deepEqual(getTitlebarToolbarReorderMove(order, 'settings', 'back'), { fromIndex: 2, toIndex: 0 });
+		assert.deepEqual(getTitlebarToolbarAdjacentMove(order, 'reload', 'down'), { fromIndex: 1, toIndex: 2 });
+		assert.equal(getTitlebarToolbarReorderMove(order, 'back', 'back'), null);
+		assert.equal(getTitlebarToolbarAdjacentMove(order, 'back', 'up'), null);
+	});
+
+	/*
+	 * #692: editing a file in Markpad while VS Code writes the same file, and
+	 * Markpad not noticing until the mode was toggled.
+	 *
+	 * Auto-Reload is what that user wanted and it already existed. Its two
+	 * surfaces disagreed about where it existed, and their answers were exact
+	 * complements: the button was drawn only in the preview (`!isEditing`,
+	 * `!isSplit`), while `Mod+L` was only an `editorAction` in shortcuts.ts and
+	 * therefore only on Monaco — which exists only in edit and split. Whether a
+	 * user got the feature depended on which surface they happened to find, and
+	 * pressing the chord in the editor armed the watcher with nothing on screen
+	 * to show it had.
+	 *
+	 * The answer is one condition, in one place, with the chord routed through
+	 * the same `toggleLiveMode` (`shortcutRegistry.test.ts` holds the chord end
+	 * up, `externalChangeReload.spec.ts` holds the reload end).
+	 */
+
+	const documentContext = {
+		hasActiveTab: true,
+		showHome: false,
+		currentFile: '/notes/a.md',
+		isSplit: false,
+		isEditing: false,
+	};
+
+	test('Auto-Reload is offered in every mode that has a file on disk', () => {
+		// An external writer can surprise all three equally: what varies between
+		// them is which pane is on screen, not whether the file can change.
+		for (const mode of [
+			{ label: 'preview' },
+			{ label: 'edit', isEditing: true },
+			{ label: 'split', isSplit: true },
+		]) {
+			assert.ok(
+				visibleTitlebarActionIds({ ...documentContext, ...mode }).includes('live'),
+				`Auto-Reload was missing in ${mode.label} mode`,
+			);
+		}
+	});
+
+	test('Auto-Reload needs a file on disk to watch', () => {
+		assert.ok(
+			!visibleTitlebarActionIds({ ...documentContext, currentFile: '' }).includes('live'),
+		);
+	});
+
+	test('the rest of the toolbar still answers to the mode it is in', () => {
+		const view = visibleTitlebarActionIds(documentContext);
+		const edit = visibleTitlebarActionIds({ ...documentContext, isEditing: true });
+		const split = visibleTitlebarActionIds({ ...documentContext, isSplit: true });
+
+		// Find stays in every mode: in pure edit it opens Monaco's find, as Mod+F does.
+		assert.deepEqual([view, edit, split].map((ids) => ids.includes('find')), [true, true, true]);
+		// The formatting toolbar is the mirror image: only where a pane can write.
+		assert.deepEqual([view, edit, split].map((ids) => ids.includes('editorToolbar')), [false, true, true]);
+		// Sync Scroll and Swap Panes both need two panes. The mode buttons stay in
+		// every mode, so switching never makes them jump (#806).
+		assert.deepEqual([view, edit, split].map((ids) => ids.includes('sync')), [false, false, true]);
+		assert.deepEqual([view, edit, split].map((ids) => ids.includes('swap')), [false, false, true]);
+		assert.deepEqual([view, edit, split].map((ids) => ids.includes('viewMode')), [true, true, true]);
+	});
+
+	test('a non-Markdown file gets none of the Markdown actions', () => {
+		// `.txt` would not do here: it is in MARKDOWN_LINK_EXTENSIONS.
+		const ids = visibleTitlebarActionIds({ ...documentContext, currentFile: '/notes/data.json' });
+		for (const id of ['toc', 'fullWidth', 'live', 'viewMode', 'find']) {
+			assert.ok(!ids.includes(id), `${id} was offered for a .json file`);
+		}
+		// An unsaved buffer has no extension to read and is treated as Markdown.
+		assert.ok(visibleTitlebarActionIds({ ...documentContext, currentFile: '' }).includes('viewMode'));
+	});
+
+	test('the home screen offers only the actions that are not about a document', () => {
+		// Home over a tab keeps its own toggle, so the tab underneath is one click back.
+		assert.deepEqual(visibleTitlebarActionIds({ ...documentContext, showHome: true }), [
+			'home',
+			'theme',
+			'settings',
+		]);
+		assert.deepEqual(visibleTitlebarActionIds({ ...documentContext, hasActiveTab: false }), [
+			'theme',
+			'settings',
+		]);
+	});
+
+	test('Reset Zoom appears only away from 100%', () => {
+		assert.ok(!visibleTitlebarActionIds({ ...documentContext, zoomLevel: 100 }).includes('zoom'));
+		assert.ok(!visibleTitlebarActionIds(documentContext).includes('zoom'));
+		assert.ok(visibleTitlebarActionIds({ ...documentContext, zoomLevel: 125 }).includes('zoom'));
+	});
+
+	/* #806: Split and Edit became one three-mode control. */
+
+	const legacyDefaultOrder = [
+		'back', 'forward', 'reload', 'toc', 'fullWidth', 'live', 'sync', 'swap', 'split', 'edit',
+		'editorToolbar', 'find', 'zen', 'tabs', 'zoom', 'theme', 'settings',
+	];
+
+	test('a never-reordered toolbar moves to the new default', () => {
+		assert.deepEqual(normalizeTitlebarToolbarOrder(legacyDefaultOrder), DEFAULT_TITLEBAR_TOOLBAR_ORDER);
+	});
+
+	test('the mode group sits right of every bar button that comes and goes with the mode', () => {
+		// The bar is right-aligned, so only what is to the right of it can move it.
+		const order = DEFAULT_TITLEBAR_TOOLBAR_ORDER;
+		for (const id of ['sync', 'swap', 'editorToolbar', 'reload', 'live']) {
+			assert.ok(order.indexOf(id) < order.indexOf('viewMode'), id);
+		}
+	});
+
+	test('a reordered toolbar puts the group where Edit was', () => {
+		const order = normalizeTitlebarToolbarOrder(['edit', 'settings', 'split', 'back']);
+		assert.deepEqual(order.slice(0, 3), ['viewMode', 'settings', 'back']);
+		assert.ok(!order.includes('edit') && !order.includes('split'));
+	});
+
+	test('the group is hidden only if both old buttons were', () => {
+		assert.deepEqual(normalizeTitlebarToolbarHidden(['split', 'edit', 'find']), ['find', 'viewMode']);
+		assert.deepEqual(normalizeTitlebarToolbarHidden(['split', 'find']), ['find']);
+		assert.deepEqual(normalizeTitlebarToolbarHidden(['viewMode']), ['viewMode']);
+	});
+
+	test('the group inherits Split View placement, and a stored one wins', () => {
+		assert.equal(normalizeTitlebarToolbarPlacement({ split: 'menu', edit: 'bar' }).viewMode, 'menu');
+		assert.equal(normalizeTitlebarToolbarPlacement({ edit: 'menu' }).viewMode, 'menu');
+		assert.equal(normalizeTitlebarToolbarPlacement({ split: 'menu', viewMode: 'bar' }).viewMode, 'bar');
+		assert.equal(normalizeTitlebarToolbarPlacement({}).viewMode, 'bar');
+	});
+
+	test('the mode is read off the two tab flags, split first', () => {
+		assert.equal(viewModeOf({ isEditing: false, isSplit: false }), 'preview');
+		assert.equal(viewModeOf({ isEditing: true, isSplit: false }), 'edit');
+		assert.equal(viewModeOf({ isEditing: true, isSplit: true }), 'split');
+		assert.equal(viewModeOf({ isEditing: false, isSplit: true }), 'split');
+	});
+
+	test('Settings gives a condition to exactly the buttons that can go missing in a Markdown document', () => {
+		const contexts = [
+			{ isEditing: false, isSplit: false },
+			{ isEditing: true, isSplit: false },
+			{ isEditing: true, isSplit: true },
+			{ currentFile: '' },
+			{ zoomLevel: 150 },
+		].map((context) => visibleTitlebarActionIds({ ...documentContext, zoomLevel: 100, ...context }));
+
+		for (const action of getTitlebarToolbarActions(null)) {
+			// Its note lists the three modes rather than a condition.
+			if (action.id === 'viewMode') continue;
+			const alwaysThere = contexts.every((ids) => ids.includes(action.id));
+			assert.equal(!action.hintKey, alwaysThere, action.id);
+		}
+	});
+});
