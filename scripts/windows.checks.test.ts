@@ -560,14 +560,6 @@ describe('window state restore', () => {
 		assert.match(viewer, /await windowSession\.restore\(\);/);
 	});
 
-	test('an editor on a buffer that is not the whole file refuses typing', () => {
-		// An unread or unreadable tab in edit mode shows an empty buffer that no
-		// save will ever accept. Read-only at the keyboard, not a toast at the save.
-		assert.match(viewer, /readOnly=\{tabManager\.activeTab\.isTruncated === true\}/);
-		const editor = readSource('src/lib/components/Editor.svelte');
-		assert.match(editor, /editor\.updateOptions\(\{ \.\.\.editorOptionsFromSettings\(settings, zoomLevel, fontIsMonospace\), readOnly \}\)/);
-	});
-
 	test('the close flow resolves dirty tabs before serializing window state', () => {
 		const body = settleForExit();
 		const walk = offsetOf(body, 'reviewDirtyTabs({');

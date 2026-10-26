@@ -69,6 +69,7 @@ const { documentParentDir, imageEmbed, resolveImageDirectory } = await import(
 	'../src/lib/utils/imageEmbed.js'
 );
 const { routeDroppedFile } = await import('../src/lib/utils/fileDrop.js');
+const { clipboardTextForSelection } = await import('../src/lib/utils/editorEdits.js');
 
 // ------------------------------------------------- the component, as written
 
@@ -266,7 +267,7 @@ type Component = {
  * the statements that run are the component's own.
  */
 const factorySource = ts.transpileModule(
-	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed, routeDroppedFile) => {
+	`const __component = (invoke, settings, tabManager, monaco, editor, lineEndingLabel, countWords, resolveImageDirectory, documentParentDir, imageEmbed, routeDroppedFile, clipboardTextForSelection) => {
 		let wordCount = 0;
 		let wordCountTimer;
 		let emittedText = null;
@@ -279,7 +280,6 @@ const factorySource = ts.transpileModule(
 
 		${functionSource(source, 'handleDroppedFile')}
 		${pasteCommandBody}
-		${functionSource(source, 'clipboardTextForSelection')}
 		${functionSource(source, 'cutToClipboard')}
 
 		return {
@@ -339,6 +339,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		parentDir: unknown,
 		embed: unknown,
 		routeDroppedFile: unknown,
+		clipboardTextForSelection: unknown,
 	) => Component;
 
 	const component = factory(
@@ -353,6 +354,7 @@ function createComponent(backend: Backend, editor: unknown): Component {
 		documentParentDir,
 		imageEmbed,
 		routeDroppedFile,
+		clipboardTextForSelection,
 	);
 	const doc = new EditorDocument({
 		monaco: () => monacoStub as any,

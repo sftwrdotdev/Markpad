@@ -3,7 +3,9 @@
 	import { tabManager } from "../stores/tabs.svelte.js";
 	import { settings, wheelZoomFactor } from "../stores/settings.svelte.js";
 	import { t, type LanguageCode } from '../utils/i18n.js';
-	import { MARKDOWN_LANGUAGE_ID, shouldLinkifyPastedUrl } from '../utils/pasteContext.js';
+	import { isLinkifyPasteTarget, MARKDOWN_LANGUAGE_ID } from '../utils/pasteContext.js';
+	import * as editorEdits from '../utils/editorEdits.js';
+	import { clipboardTextForSelection } from '../utils/editorEdits.js';
 	import {
 		INLINE_WRAP_LOOKAROUND,
 		inlineWrapEdit,
@@ -12,25 +14,24 @@
 		type InlineWrapToolId,
 		type LineMarkerToolId,
 	} from '../utils/editorToolbar.js';
-	import { isInFencedCode } from '../utils/codeFence.js';
-	import { frontMatterFenceLines, frontMatterLineOffset } from '../utils/frontMatter.js';
+	import { editorFrontMatterScrollEnd } from '../utils/editorFrontMatter.js';
 	import { isAltGraphChord, type ViewerCommand } from '../utils/viewerKeymap.js';
 	import { platformOf } from '../utils/platform.js';
-	import { blockEnter, parseListItem, shiftListItem, type ListEdit } from '../utils/listEditing.js';
-	import { tableOperation, tableStep, type TableEdit, type TableOperation } from '../utils/tableEditing.js';
-	import { editorOptionsFromSettings } from '../utils/editorOptions.js';
-	import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../utils/editorTheme.js';
+	import { editorKeyHandlers } from '../utils/editorKeyHandlers.js';
+	import type { TableOperation } from '../utils/tableEditing.js';
+	import { createdEditorOptions, updatedEditorOptions } from '../utils/editorOptions.js';
+	import { defineAppThemes, monacoThemeName } from '../utils/editorTheme.js';
 	import { paragraphAround } from '../utils/focusParagraph.js';
 	import { createMarkdownSemanticTokensProvider } from '../utils/semanticTokens.js';
 	import { EditorDocument } from '../utils/editorDocument.svelte.js';
 	import { bindScrollSync, EditorJumps, type RevealPlacement } from '../utils/editorJumps.js';
-	import { installVimScrollCommands } from '../utils/vimScrollCommands.js';
-	import { installVimClipboardRegisters } from '../utils/vimClipboardRegisters.js';
+	import { attachVimMode } from '../utils/vimAttach.js';
+	import { mountAfterLoad } from '../utils/editorMount.js';
 	import {
-		headingLinkContext,
-		headingQueryStart,
-		type HeadingAnchor,
-	} from '../utils/headingCompletion.js';
+		createDocumentOutline,
+		MARKDOWN_COMPLETION_TRIGGERS,
+		provideMarkdownCompletionItems,
+	} from '../utils/markdownCompletion.js';
 	import { headingFoldRanges, headingSymbols } from '../utils/headingSymbols.js';
 	import {
 		getLineAtVerticalOffset,
@@ -188,28 +189,8 @@
 		},
 	};
 
-	onMount(() => {
-		let cancelled = false;
-		let teardown: (() => void) | null = null;
-
-		// `onMount` itself stays synchronous: Svelte only treats a *synchronously*
-		// returned function as the unmount cleanup, so an `async` callback would
-		// hand it a promise and silently leak the editor, its listeners and the
-		// `window.open` patch. The await lives in this inner task instead, and the
-		// synchronous return closes over both the cancel flag (the component can
-		// be destroyed while the chunk is still in flight — Ctrl+E then Ctrl+E
-		// again) and whatever cleanup `createEditor` produced.
-		void (async () => {
-			monaco = await import("monaco-editor");
-			if (cancelled) return;
-			teardown = createEditor();
-		})();
-
-		return () => {
-			cancelled = true;
-			teardown?.();
-		};
-	});
+	// `onMount` itself stays synchronous; see utils/editorMount.ts.
+	onMount(() => mountAfterLoad(async () => (monaco = await import("monaco-editor")), createEditor));
 
 	function createEditor() {
 		const originalOpen = window.open;
@@ -228,47 +209,7 @@
 			return originalOpen.apply(this, arguments as any);
 		};
 
-		const defineThemes = () => {
-			monaco.editor.defineTheme("app-theme-dark", {
-				base: "vs-dark",
-				inherit: true,
-				rules: [...markdownTokenRules('dark'), ...semanticTokenRules('dark')],
-				colors: {
-					"editor.background": "#181818",
-					"menu.background": "#181818",
-					"menu.foreground": "#cccccc",
-					"menu.selectionBackground": "#2a2d2e",
-					"menu.selectionForeground": "#ffffff",
-					"menu.separatorBackground": "#454545",
-					"editorWidget.background": "#181818",
-					"editorWidget.border": "#454545",
-					"scrollbarSlider.background": "#78787859",
-					"scrollbarSlider.hoverBackground": "#7878788c",
-					"scrollbarSlider.activeBackground": "#7878788c",
-				},
-			});
-
-			monaco.editor.defineTheme("app-theme-light", {
-				base: "vs",
-				inherit: true,
-				rules: [...markdownTokenRules('light'), ...semanticTokenRules('light')],
-				colors: {
-					"editor.background": "#FDFDFD",
-					"menu.background": "#FDFDFD",
-					"menu.foreground": "#333333",
-					"menu.selectionBackground": "#eeeeee",
-					"menu.selectionForeground": "#000000",
-					"menu.separatorBackground": "#cccccc",
-					"editorWidget.background": "#FDFDFD",
-					"editorWidget.border": "#cccccc",
-					"scrollbarSlider.background": "#78787859",
-					"scrollbarSlider.hoverBackground": "#7878788c",
-					"scrollbarSlider.activeBackground": "#7878788c",
-				},
-			});
-		};
-
-		defineThemes();
+		defineAppThemes(monaco);
 
 		// The active tab can change while the Monaco chunk is downloading (open a
 		// document in edit mode, then Ctrl+Tab before it lands). The effect that
@@ -304,138 +245,11 @@
 		editor = monaco.editor.create(container, {
 			...documentOptions,
 			theme: getTheme(),
-			dragAndDrop: true,
-			automaticLayout: true,
-			// Off by default, and `'configuredByTheme'` cannot turn it on here:
-			// `StandaloneTheme.semanticHighlighting` is hard-coded false, so the
-			// switch has to be explicit or the provider above is never asked.
-			'semanticHighlighting.enabled': true,
-			// The settings-derived options, shared with the updateOptions
-			// effect below. The real zoom, not 100: the view state, the
-			// anchor line and a pending sync are all placed before that
-			// effect runs, and a font size changed under them afterwards
-			// keeps the pixel offset, not the line (#799).
-			...editorOptionsFromSettings(settings, zoomLevel),
-			readOnly,
-			scrollBeyondLastLine: true,
-			stickyScroll: { enabled: settings.stickyScroll },
-			wordBasedSuggestions: "off",
-			quickSuggestions: false,
-			// Monaco's Unicode highlighter is built for source code, where a
-			// character that looks like ASCII but is not is an attack vector. In
-			// prose it fires on the punctuation CJK authors type all day: `，`
-			// `！` `？` `（` `）` `；` `：` are all confusables of an ASCII
-			// counterpart, so Monaco outlines each one (#186, #94).
-			//
-			// It only fires when the confusable shares a word with basic ASCII —
-			// shouldHighlightNonBasicASCII() suppresses the box when the
-			// surrounding word is entirely non-ASCII — which is why pure CJK
-			// looks fine and `使用 Monaco，然后保存。` or `安装依赖（npm ci）` does
-			// not. Latin technical terms inside CJK prose are the normal case,
-			// and `**粗体**，` triggers it with no Latin word at all.
-			//
-			// invisibleCharacters stays on, but not for the reason first written
-			// here. That comment claimed it "never fires on something typed on
-			// purpose"; measured against this Monaco build, U+3000 IDEOGRAPHIC
-			// SPACE — the space bar under every CJK IME — is in the invisible
-			// set and gets outlined, which is the same complaint as #186/#94 one
-			// option over. The set is the flattened union of every locale bucket
-			// (`strings.js` getData()), 465 code points, so `allowedLocales`
-			// cannot exclude it; only `allowedCharacters` can.
-			//
-			// The rest stays on because the NBSP hazard is real: an NBSP after
-			// `-` stops a list from parsing. Worth recording that the other
-			// stated hazard does NOT hold — a zero-width space inside CJK text
-			// is not flagged at all, because shouldHighlightNonBasicASCII()
-			// suppresses it when the surrounding word has no basic ASCII.
-			//
-			// nonBasicASCII needs no setting — it defaults to
-			// `inUntrustedWorkspace` and standalone Monaco's workspace-trust
-			// service returns true unconditionally, so it is already off; were it
-			// on, every ideograph would be boxed rather than the punctuation.
-			unicodeHighlight: {
-				ambiguousCharacters: false,
-				allowedCharacters: { "　": true },
-			},
-			// Word-wise navigation — ⌥←/→, double-click-to-select, ⌥⌫ — splits on
-			// `wordSeparators`, and a language that does not put spaces between
-			// its words has none. So a whole Chinese clause counts as one word:
-			// ⌥→ jumps the sentence, double-click selects it, ⌥⌫ deletes it.
-			//
-			// A non-empty list switches on `Intl.Segmenter` (see
-			// `wordCharacterClassifier.js`), which knows where the words are.
-			//
-			// It is closer to a switch than to a whitelist, and the naming hides
-			// that: ICU dispatches its dictionary breaking by SCRIPT, not by this
-			// list. Thai, Khmer, Lao, Burmese and Tibetan get segmented too and
-			// none of them are named here, while `['zh']`, `['ja']` and
-			// `['zh','ja']` all produce identical output — even on Han text,
-			// where the two dictionaries might have been expected to disagree.
-			// Written as the two the app has locales for, rather than a longer
-			// list that would read as a claim about coverage it does not make.
-			//
-			// Nothing is taken from space-delimited languages: Korean,
-			// Vietnamese, Russian and English segment word-for-word identically
-			// to splitting on whitespace. An unsupported tag is dropped by
-			// Monaco's own `validate()`, so this cannot fail closed.
-			wordSegmenterLocales: ['zh', 'ja'],
-			// Markpad draws the editor's context menu itself, in
-			// MarkdownViewer.svelte, beside the one the preview already had.
-			//
-			// Not a style choice. Monaco's menu offers Cut, Copy and Paste, and
-			// its Paste cannot work here: it reads the clipboard through the
-			// webview, which wry leaves switched off and which Tauri has no
-			// answer for (tauri-apps/tauri#12007). Everything else Monaco would
-			// contribute to that menu — Go to Definition, Go to References,
-			// inlay hints — needs a language provider this app does not
-			// register, so nothing is lost by drawing our own.
-			contextmenu: false,
-			// Monaco writes a styled `text/html` flavour beside the plain text on a
-			// copy. Everything Markpad produces IS plain text, so pasting into Word
-			// or Outlook gave coloured monospace instead of the Markdown that was
-			// copied — the styled flavour has no audience here (#393).
-			//
-			// Still needed after cut/copy/paste were collapsed onto three functions
-			// of our own, which is easy to get wrong: those cover ⌘C and the context
-			// menu, and macOS has a third way in. Edit > Copy in the menu bar is a
-			// predefined Copy item (#527), which asks the webview to perform
-			// its own copy — Monaco's, not ours. Without this the menu bar would put
-			// a different clipboard on the pasteboard than the other two routes.
-			copyWithSyntaxHighlighting: false,
-			// The same argument one option over. U+2028 (LINE SEPARATOR) and
-			// U+2029 (PARAGRAPH SEPARATOR) break a JavaScript string literal,
-			// which is what Monaco's guard is for; in Markdown they are just
-			// characters, and they arrive by ordinary means — several word
-			// processors and PDF text extractors emit U+2028 for a soft line
-			// break, so pasting one in is normal here.
-			//
-			// The default is 'prompt', and in standalone Monaco that prompt is
-			// `StandaloneDialogService.doConfirm`, i.e. a bare
-			// `mainWindow.confirm()`: an unstyled browser dialog inside a Tauri
-			// window, carrying Monaco's English string in an app translated
-			// into 26 locales, offering to rewrite the user's bytes. 'auto'
-			// would rewrite them without asking, which is worse.
-			//
-			// 'off' loses no visibility: the line renderer substitutes U+FFFD
-			// for LINE_SEPARATOR and PARAGRAPH_SEPARATOR unconditionally, so
-			// they stay as visible as they ever were. Only the dialog goes.
-			unusualLineTerminators: "off",
-			padding: { top: 20 },
-			// The overview ruler sits under the vertical scrollbar, and its
-			// border drew a 1px line down the track's left edge.
-			overviewRulerBorder: false,
-			scrollbar: {
-				vertical: "visible",
-				horizontal: "visible",
-				useShadows: false,
-				verticalHasArrows: false,
-				horizontalHasArrows: false,
-				// Same track and thumb as the preview's ::-webkit-scrollbar in styles.css.
-				verticalScrollbarSize: 14,
-				horizontalScrollbarSize: 14,
-				verticalSliderSize: 8,
-				horizontalSliderSize: 8,
-			},
+			// The real zoom, not 100: the view state, the anchor line and a
+			// pending sync are all placed before the update effect runs, and a
+			// font size changed under them afterwards keeps the pixel offset, not
+			// the line (#799).
+			...createdEditorOptions(settings, zoomLevel, readOnly),
 		});
 
 		// Feeds the wrapping strategy in `editorOptionsFromSettings`. `fontInfo`
@@ -530,46 +344,9 @@
 
 		container.addEventListener("wheel", wheelListener, { capture: true });
 
-		/**
-	 * This document's headings, from the Rust side that renders them.
-	 *
-	 * Cached on the model's version, which changes on every edit: a completion
-	 * fires per keystroke once the dropdown is open, and re-parsing a
-	 * 3,000-line document for each of them would be paid for nothing — the
-	 * headings cannot have moved between two keystrokes of the same edit.
-	 *
-	 * Asked of Rust rather than derived here: the ids come out of comrak's
-	 * anchorizer, and a second implementation in TypeScript would drift from
-	 * it silently, producing links that look right and land nowhere.
-	 *
-	 * Keyed on the model as well: each tab has its own, and version ids are
-	 * counted per model, so two tabs can stand at the same one.
-	 *
-	 * The block folds come with them, from the same parse: the folding provider
-	 * wants both for every version. The promise is what is cached, so the
-	 * folding and symbol providers asking at once share one call.
-	 */
-	type Outline = { anchors: HeadingAnchor[]; folds: Monaco.languages.FoldingRange[] };
-	let outlineCache: { model: Monaco.editor.ITextModel; version: number; outline: Promise<Outline> } | null = null;
-
-	function documentOutline(model: Monaco.editor.ITextModel): Promise<Outline> {
-		const version = model.getVersionId();
-		if (outlineCache?.model === model && outlineCache.version === version) return outlineCache.outline;
-
-		const markdown = model.getValue();
-		const outline = (
-			invoke("markdown_outline", {
-				markdown,
-				frontMatterLines: frontMatterFenceLines(markdown),
-			}) as Promise<Outline>
-		).catch(() => ({ anchors: [], folds: [] }));
-		outlineCache = { model, version, outline };
-		return outline;
-	}
-
-	async function headingAnchors(model: Monaco.editor.ITextModel): Promise<HeadingAnchor[]> {
-		return (await documentOutline(model)).anchors;
-	}
+		// This document's headings and block folds, from Rust, cached per model
+		// version: utils/markdownCompletion.ts.
+		const { documentOutline, headingAnchors } = createDocumentOutline(invoke);
 
 	// The colours that come from the renderer rather than from the grammar's
 	// regexes (`utils/semanticTokens.ts`). Registered once per editor, beside the
@@ -601,104 +378,15 @@
 	const completionProvider = monaco.languages.registerCompletionItemProvider(
 			"markdown",
 			{
-				triggerCharacters: ["(", "/", "\\", '"', "#"],
-				provideCompletionItems: async (model, position) => {
-					const lineContent = model.getLineContent(position.lineNumber);
-					const prefix = lineContent.substring(0, position.column - 1);
-
-					// #200: this document's headings, as link targets. Asked
-					// first because `](#` is also the tail of the embed context
-					// below — once a `#` is typed the answer is headings, not
-					// files.
-					const headingContext = headingLinkContext(prefix);
-					if (headingContext) {
-						const anchors = await headingAnchors(model);
-						const range = new monaco.Range(
-							position.lineNumber,
-							headingQueryStart(prefix) + 1,
-							position.lineNumber,
-							position.column,
-						);
-
-						return {
-							suggestions: anchors.map((anchor, index) => ({
-								// Labelled by what it reads as, inserted as
-								// whatever that context needs. Monaco filters on
-								// the label, so typing "mermaid" finds
-								// "11. Mermaid Diagrams" and writes the slug.
-								label: anchor.text,
-								detail: `#${anchor.slug}`,
-								kind: monaco.languages.CompletionItemKind.Reference,
-								insertText:
-									headingContext === "slug" ? anchor.slug : anchor.text,
-								// Document order, not alphabetical: a heading's
-								// neighbours are what the writer is thinking in.
-								sortText: String(index).padStart(5, "0"),
-								range,
-							})),
-						};
-					}
-
-					const isEmbedContext = /(!?\[.*\]\(|<img.*src=["']|src=["'])$/.test(
-						prefix,
-					);
-					if (!isEmbedContext) return { suggestions: [] };
-
-					const tab = tabManager.activeTab;
-					if (!tab?.path) return { suggestions: [] };
-
-					const lastSlash = Math.max(
-						tab.path.lastIndexOf("\\"),
-						tab.path.lastIndexOf("/"),
-					);
-					const parentDir = tab.path.substring(0, lastSlash);
-					const imgDirName = resolveImageDirectory(
-						settings.imageDirectory,
-						tab.path,
-					);
-
-					try {
-						const [currentEntries, imgEntries] = await Promise.all([
-							invoke("list_directory_contents", { path: parentDir })
-								.then((r) => r as string[])
-								.catch(() => []),
-							invoke("list_directory_contents", { path: `${parentDir}/${imgDirName}` })
-								.then((r) => r as string[])
-								.catch(() => []),
-						]);
-
-						const word = model.getWordUntilPosition(position);
-						const range = new monaco.Range(
-							position.lineNumber,
-							word.startColumn,
-							position.lineNumber,
-							word.endColumn,
-						);
-
-						const suggestions: Monaco.languages.CompletionItem[] = [
-							...currentEntries.map((e) => ({
-								label: e,
-								kind: e.endsWith("/")
-									? monaco.languages.CompletionItemKind.Folder
-									: monaco.languages.CompletionItemKind.File,
-								insertText: e,
-								range,
-							})),
-							...imgEntries.map((e) => ({
-								label: `${imgDirName}/${e}`,
-								kind: e.endsWith("/")
-									? monaco.languages.CompletionItemKind.Folder
-									: monaco.languages.CompletionItemKind.File,
-								insertText: `${imgDirName}/${e}`,
-								range,
-							})),
-						];
-
-						return { suggestions };
-					} catch (err) {
-						return { suggestions: [] };
-					}
-				},
+				triggerCharacters: MARKDOWN_COMPLETION_TRIGGERS,
+				provideCompletionItems: (model, position) =>
+					provideMarkdownCompletionItems(model, position, {
+						monaco,
+						headingAnchors,
+						invoke,
+						activeTabPath: () => tabManager.activeTab?.path,
+						imageDirectory: () => settings.imageDirectory,
+					}),
 			},
 		);
 
@@ -754,13 +442,7 @@
 	// component scope, not inside `onMount`, because the actions that call them
 	// are torn down and rebuilt whenever the UI language changes.
 
-	const insertTextAtCursor = (text: string) => {
-		const selection = editor.getSelection();
-		if (!selection) return;
-		const op = { range: selection, text: text, forceMoveMarkers: true };
-		editor.pushUndoStop();
-		editor.executeEdits("my-source", [op]);
-	};
+	const insertTextAtCursor = (text: string) => editorEdits.insertTextAtCursor(editor, text);
 
 	// Which markers each of these tools writes and which it accepts back lives in
 	// `utils/editorToolbar.ts`, beside the line-marker table and keyed by the same
@@ -892,261 +574,18 @@
 		transformSelectedLines(id, (lines) => toggleLineMarker(id, lines));
 	};
 
-	/**
-	 * Enter on a list item writes the next item's marker; Enter on a block quote
-	 * writes the quote (#700); Enter on either with a marker and no text takes
-	 * the marker away instead, which is how the block ends — except on a nested
-	 * list item, where it takes one level away (#856). What the next line
-	 * should say is decided by `blockEnter` in utils/listEditing.ts, where it can
-	 * be tested without a browser.
-	 *
-	 * Only a single collapsed caret is claimed. A selection, or several carets,
-	 * gets the ordinary Enter: replacing a multi-cursor edit with one edit at
-	 * the primary selection would silently drop the others' work.
-	 */
-	const continueListOnEnter = () => {
-		// The key's ordinary meaning, re-sent. `type` with a newline is what the
-		// keyboard itself delivers, so auto-indent and the model's own EOL still
-		// apply — this handler is a detour, never a replacement.
-		const plainEnter = () => editor.trigger("keyboard", "type", { text: "\n" });
-		const caret = soleCaret();
-		if (!caret) return plainEnter();
+	// Enter, Tab, Shift+Tab and the two Mod+Enter keys: utils/editorKeyHandlers.ts.
+	const keyHandlers = () => editorKeyHandlers(editor, monaco);
+	const continueListOnEnter = () => keyHandlers().continueListOnEnter();
+	const editTable = (operation: TableOperation) => keyHandlers().editTable(operation);
+	const handleTabKey = () => keyHandlers().handleTabKey();
+	const handleShiftTabKey = () => keyHandlers().handleShiftTabKey();
+	const handleModEnterKey = () => keyHandlers().handleModEnterKey();
+	const handleModShiftEnterKey = () => keyHandlers().handleModShiftEnterKey();
 
-		const { model, line, column } = caret;
-		const next = blockEnter(model.getLineContent(line), column);
-		if (!next) return plainEnter();
-
-		// An empty item below the margin gives up one level, as Shift+Tab would
-		// (#856); only an item with no level left ends the list.
-		if (next.kind === "clear") {
-			const level = shiftListItem(model, line, column, true);
-			if (level) return applyLineEdit(level, "list-outdent");
-		}
-
-		// Its own undo step, so one Ctrl+Z gives back the marker this took away
-		// rather than unwinding the sentence typed before it.
-		editor.pushUndoStop();
-
-		if (next.kind === "clear") {
-			editor.executeEdits(
-				"list-continuation",
-				[{ range: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)), text: next.line }],
-				[new monaco.Selection(line, next.line.length + 1, line, next.line.length + 1)],
-			);
-			return;
-		}
-
-		const after = next.text.length + 1;
-		editor.executeEdits(
-			"list-continuation",
-			[{ range: new monaco.Range(line, column, line, column), text: `${model.getEOL()}${next.text}` }],
-			[new monaco.Selection(line + 1, after, line + 1, after)],
-		);
-	};
-
-	/**
-	 * The single collapsed caret these keys claim, or null.
-	 *
-	 * A selection, or several carets, is handed back to the key's ordinary
-	 * meaning everywhere below: one edit at the primary selection would silently
-	 * drop what the other carets were about to do, and Monaco's own Tab already
-	 * indents every line of a multi-line selection.
-	 *
-	 * So is a caret inside a fenced code block. `1. a` or `|a|b|` there is code,
-	 * and renumbering or re-aligning it rewrites the code; Enter, Tab and the
-	 * table keys all ask here, so none of them can forget.
-	 */
-	const soleCaret = () => {
-		const model = editor.getModel();
-		const selections = editor.getSelections();
-		if (!model || selections?.length !== 1 || !selections[0].isEmpty()) return null;
-		const line = selections[0].startLineNumber;
-		if (isInFencedCode(model, line)) return null;
-		return { model, line, column: selections[0].startColumn };
-	};
-
-	/**
-	 * Replace a run of lines with what a Markdown edit says they should be, and
-	 * put the caret where it says. Every table operation ends here, because every
-	 * one of them changes a column's width and therefore has to redraw the pipes;
-	 * so does every list level change (#711), which renumbers the items the moved
-	 * one left behind and is therefore a run of lines rather than one line.
-	 *
-	 * An edit that changes nothing but the caret — Shift+Tab in the first cell of
-	 * an already-aligned table — moves the caret WITHOUT an edit, so it does not
-	 * push an undo step that undoes nothing.
-	 */
-	const applyLineEdit = (edit: TableEdit | ListEdit, source: string) => {
-		const model = editor.getModel();
-		if (!model) return;
-
-		const range = new monaco.Range(
-			edit.startLine,
-			1,
-			edit.endLine,
-			model.getLineMaxColumn(edit.endLine),
-		);
-		const text = edit.lines.join(model.getEOL());
-		const caret = new monaco.Selection(
-			edit.caretLine,
-			edit.caretColumn,
-			edit.caretLine,
-			edit.caretColumn,
-		);
-
-		if (model.getValueInRange(range) === text) {
-			editor.setSelection(caret);
-			return;
-		}
-		editor.pushUndoStop();
-		editor.executeEdits(source, [{ range, text }], [caret]);
-	};
-
-	/** Tab / Shift+Tab inside a table. False when the caret is not in one. */
-	const stepTableCell = (back: boolean) => {
-		const caret = soleCaret();
-		if (!caret) return false;
-		const step = tableStep(caret.model, caret.line, caret.column, back);
-		if (!step) return false;
-		applyLineEdit(step, "table-step");
-		return true;
-	};
-
-	/**
-	 * The row and column commands, which are the same edit one level up. False
-	 * when the caret is not in a table, or when the table refuses the edit — which
-	 * is what lets the two Enter keys hand themselves back to Monaco.
-	 */
-	const editTable = (operation: TableOperation) => {
-		const caret = soleCaret();
-		if (!caret) return false;
-		const edit = tableOperation(caret.model, caret.line, caret.column, operation);
-		if (!edit) return false;
-		applyLineEdit(edit, `table-${operation}`);
-		return true;
-	};
-
-	/**
-	 * Tab / Shift+Tab on a list item: the level, decided by `shiftListItem` in
-	 * utils/listEditing.ts, where it can be tested without a browser.
-	 *
-	 * A LIST ITEM'S TAB NEVER FALLS THROUGH, not even when the edit is refused.
-	 * On a list item this key means the level and only the level, and the two
-	 * refusals are both "there is no other level": Tab on the first item of a
-	 * list, which has nothing to nest under, and Shift+Tab on an item already at
-	 * the margin. Handing those to `indentLines` or `outdent` would move the line
-	 * by `tabSize` into a column that nests under nothing — which is half of
-	 * #711 — so the key does nothing instead, as it does in every outliner.
-	 */
-	const shiftListLevel = (back: boolean) => {
-		const caret = soleCaret();
-		if (!caret || !parseListItem(caret.model.getLineContent(caret.line))) return false;
-		const edit = shiftListItem(caret.model, caret.line, caret.column, back);
-		if (edit) applyLineEdit(edit, back ? "list-outdent" : "list-indent");
-		return true;
-	};
-
-	/** Tab: the next cell of a table, else a list item's nesting level, else a Tab. */
-	const handleTabKey = () => {
-		if (stepTableCell(false)) return;
-		if (shiftListLevel(false)) return;
-		editor.trigger("keyboard", "tab", null);
-	};
-
-	/**
-	 * Shift+Tab: the previous cell of a table, else a list item's level, else
-	 * Monaco's own `outdent`.
-	 *
-	 * IT USED TO BE A PURE FALL-THROUGH, and the reason it no longer is, is #711.
-	 * `outdent` takes `tabSize` columns off the line wherever the caret sits on
-	 * it, which was close enough to right while nothing renumbered — but a level
-	 * is not a `tabSize`, and an item that leaves a sub-list has to take the
-	 * number of the list it rejoins. Both are `shiftListItem`'s, in the same
-	 * function as Tab's, because they are the same edit with the sign flipped.
-	 *
-	 * `outdent` remains what the chord means on every line that is not a list
-	 * item, which is what the third line preserves.
-	 */
-	const handleShiftTabKey = () => {
-		if (stepTableCell(true)) return;
-		if (shiftListLevel(true)) return;
-		editor.trigger("keyboard", "outdent", null);
-	};
-
-	/**
-	 * Mod+Enter: a row below in a table, else Monaco's own "Insert Line Below".
-	 *
-	 * THE KEY IS NOT BEING TAKEN, IT IS BEING SPECIALISED. Monaco already binds
-	 * `Mod+Enter` to `editor.action.insertLineAfter` and `Mod+Shift+Enter` to
-	 * `insertLineBefore`, and inside a table "the line below" IS "the row below" —
-	 * so these two handlers are the same shape as Shift+Tab's above: take the key,
-	 * and hand it straight back everywhere the table branch declines.
-	 *
-	 * The rows used to be on `Mod+K R`, and a two-key chord for the commonest edit
-	 * a table gets is a chord nobody presses. Columns keep theirs: they are rarer,
-	 * and no unmodified key means "insert a column" in any editor.
-	 */
-	const handleModEnterKey = () => {
-		if (editTable("insert-row")) return;
-		editor.trigger("keyboard", "editor.action.insertLineAfter", null);
-	};
-
-	/** Mod+Shift+Enter: a row above in a table, else "Insert Line Above". */
-	const handleModShiftEnterKey = () => {
-		if (editTable("insert-row-above")) return;
-		editor.trigger("keyboard", "editor.action.insertLineBefore", null);
-	};
-
-	const wrapAsCodeBlock = () => {
-		const selection = editor.getSelection();
-		const model = editor.getModel();
-		if (!selection || !model) return;
-
-		const text = model.getValueInRange(selection);
-		const block = text.startsWith("```\n") && text.endsWith("\n```")
-			? text.slice(4, -4).replace(/\n$/, "")
-			: `\`\`\`\n${text}\n\`\`\``;
-		editor.pushUndoStop();
-		editor.executeEdits("fmt-code-block", [
-			{ range: selection, text: block, forceMoveMarkers: true },
-		]);
-	};
-
-	const insertLink = () => {
-		const selection = editor.getSelection();
-		const model = editor.getModel();
-		if (!selection || !model) return;
-
-		const text = model.getValueInRange(selection);
-		const label = text || "link text";
-		const link = `[${label}](url)`;
-		editor.pushUndoStop();
-		editor.executeEdits("fmt-link", [
-			{ range: selection, text: link, forceMoveMarkers: true },
-		]);
-	};
-
-	/**
-	 * Pasting a URL only turns into `[label](url)` where markdown links mean
-	 * something. Inside a fenced or indented code block, inside inline code, or
-	 * inside YAML front matter, the user wants the bare URL they copied.
-	 *
-	 * The decision is taken once per paste, from the primary selection: a paste
-	 * is a single user action, and re-tokenizing for every cursor of a large
-	 * multi-cursor selection would cost far more than the edge case is worth.
-	 */
-	function isLinkifyPasteTarget(
-		model: Monaco.editor.ITextModel,
-		selection: Monaco.Selection,
-	): boolean {
-		return shouldLinkifyPastedUrl({
-			languageId: model.getLanguageId(),
-			content: model.getValue(),
-			linesUpToCaret: model.getLinesContent().slice(0, selection.startLineNumber),
-			column: selection.startColumn,
-			tokenize: (text) => monaco.editor.tokenize(text, MARKDOWN_LANGUAGE_ID),
-		});
-	}
+	// utils/editorEdits.ts.
+	const wrapAsCodeBlock = () => editorEdits.wrapAsCodeBlock(editor);
+	const insertLink = () => editorEdits.insertLink(editor);
 
 	function disposeLocalizedActions() {
 		for (const action of localizedActions) action.dispose();
@@ -1225,28 +664,7 @@
 		return Math.max(0, editor.getContentHeight() - layout.height);
 	}
 
-	let frontMatterOffsetCache: { model: Monaco.editor.ITextModel; version: number; offset: number } | null = null;
-
-	function getEditorFrontMatterScrollEnd() {
-		if (!editor) return 0;
-
-		const model = editor.getModel();
-		if (!model) return 0;
-
-		// The preview's rule, not a second one: a leading `---` block that is not
-		// a YAML mapping is body there, and the two panes must agree on where the
-		// front matter ends or every position above it syncs to the top. Cached on
-		// the model's version because this runs on every scroll event.
-		const version = model.getVersionId();
-		if (frontMatterOffsetCache?.model !== model || frontMatterOffsetCache.version !== version) {
-			frontMatterOffsetCache = { model, version, offset: frontMatterLineOffset(model.getValue()) };
-		}
-		const bodyStartLine = frontMatterOffsetCache.offset + 1;
-		if (bodyStartLine <= 1) return 0;
-
-		const safeBodyStartLine = Math.max(1, Math.min(model.getLineCount(), bodyStartLine));
-		return Math.max(0, Math.min(getEditorContentScrollMax(), editor.getTopForLineNumber(safeBodyStartLine)));
-	}
+	const getEditorFrontMatterScrollEnd = editorFrontMatterScrollEnd(() => editor, getEditorContentScrollMax);
 
 	// Monaco's own line -> pixel measurement, which already accounts for folded
 	// regions, wrapped lines and view zones. `getLineAtVerticalOffset` inverts it
@@ -1302,35 +720,9 @@
 	 * menu items were Monaco's — of which Paste could not work in a webview at
 	 * all (#207) and Cut and Copy are dead on Linux, where the same wry default
 	 * gates `set_javascript_can_access_clipboard`.
+	 *
+	 * What cut and copy take: `clipboardTextForSelection` in utils/editorEdits.ts.
 	 */
-	function clipboardTextForSelection(): { text: string; range: Monaco.Range | null } {
-		const selection = editor?.getSelection();
-		const model = editor?.getModel();
-		if (!selection || !model) return { text: '', range: null };
-
-		if (!selection.isEmpty()) {
-			return { text: model.getValueInRange(selection), range: selection };
-		}
-
-		// Nothing selected copies the whole line, line ending included —
-		// Monaco's `emptySelectionClipboard` default, and VS Code's and Sublime
-		// Text's. Kept because it is what this editor has always done; whether
-		// an app that calls itself the Notepad equivalent should do it at all
-		// is a separate question (#393).
-		const line = selection.startLineNumber;
-		const lastLine = model.getLineCount();
-		return {
-			text: model.getLineContent(line) + model.getEOL(),
-			// Cutting that line has to take its line ending with it, so the
-			// range runs to the start of the next one. The last line has no
-			// next, and the range stops at its end.
-			range:
-				line < lastLine
-					? new monaco.Range(line, 1, line + 1, 1)
-					: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)),
-		};
-	}
-
 	export async function pasteFromClipboard() {
 		// Focus first, as `runEditorAction` does, and for the same reason: this
 		// runs from the context menu as well as from ⌘V, and a menu item leaves
@@ -1435,7 +827,7 @@
 				const hasSelection = selections.some((s) => !s.isEmpty());
 				const isMultiLine = selections.some((s) => s.startLineNumber !== s.endLineNumber);
 
-				if (!isUrl || isMultiLine || !isLinkifyPasteTarget(model, selections[0])) {
+				if (!isUrl || isMultiLine || !isLinkifyPasteTarget(model, selections[0], monaco.editor)) {
 					const edits = selections.map(s => ({
 						range: s,
 						text: rawText,
@@ -1514,13 +906,13 @@
 
 	export async function copyToClipboard() {
 		editor?.focus();
-		const { text } = clipboardTextForSelection();
+		const { text } = clipboardTextForSelection(editor, monaco);
 		if (text) await invoke('clipboard_write_text', { text }).catch(console.error);
 	}
 
 	export async function cutToClipboard() {
 		editor?.focus();
-		const { text, range } = clipboardTextForSelection();
+		const { text, range } = clipboardTextForSelection(editor, monaco);
 		if (!text || !range || !editor) return;
 		const model = editor.getModel();
 		await invoke('clipboard_write_text', { text }).catch(console.error);
@@ -1664,7 +1056,7 @@
 
 	/** The one place the settings, and `readOnly`, reach Monaco after creation: the effect below, and `onMount` once the font is measured. */
 	function applySettingsOptions() {
-		editor.updateOptions({ ...editorOptionsFromSettings(settings, zoomLevel, fontIsMonospace), readOnly });
+		editor.updateOptions(updatedEditorOptions(settings, zoomLevel, fontIsMonospace, readOnly));
 	}
 
 	$effect(() => {
@@ -1726,18 +1118,8 @@
 			let vim: { dispose: () => void } | null = null;
 			const currentEditor = editor;
 			const currentStatusNode = vimStatusNode;
-			import("monaco-vim").then(({ initVimMode, VimMode }) => {
-				// Before the adapter is attached, and unconditionally: it patches
-				// monaco-vim's own module-level command tables, which outlive this
-				// effect, and it is idempotent. See vimScrollCommands.ts for what
-				// 0.4.4 does to `zz`, `zt`, `zb`, `z.`, `z-` and `z<CR>` (#104).
-				installVimScrollCommands(VimMode);
-				// Same reason, for `"+` and `"*` (#775).
-				installVimClipboardRegisters(VimMode, (text) => {
-					invoke('clipboard_write_text', { text }).catch(console.error);
-				});
-				if (disposed) return;
-				vim = initVimMode(currentEditor, currentStatusNode);
+			import("monaco-vim").then((module) => {
+				vim = attachVimMode(module, currentEditor, currentStatusNode, invoke, () => disposed);
 			});
 			return () => {
 				disposed = true;

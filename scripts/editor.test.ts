@@ -17,14 +17,16 @@ import { getSupportedLanguages, type LanguageCode, t, type Translation } from '.
 import { translations } from './allTranslations.js';
 import { editorLanguageFor } from '../src/lib/utils/editorLanguage.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
-import { editorOptionsFromSettings } from '../src/lib/utils/editorOptions.js';
+import { createdEditorOptions, editorOptionsFromSettings, editorReadOnly, updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 import { markdownTokenRules, monacoThemeName, semanticTokenRules } from '../src/lib/utils/editorTheme.js';
 import { importedThemeRules, MARKDOWN_SCOPE_ALIASES, markdownKindColors, monacoTokenRules } from '../src/lib/utils/theme.js';
 import { encodeSemanticTokens, TOKEN_MODIFIERS, TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { resolveExportImagePath } from '../src/lib/utils/exportHtml.js';
 import { DEFAULT_IMAGE_DIRECTORY, documentParentDir, encodeImageDestination, imageEmbed, resolveImageDirectory } from '../src/lib/utils/imageEmbed.js';
 import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
-import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
+import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, isLinkifyPasteTarget, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
+import { clipboardTextForSelection, type EditingEditor, insertLink, insertTextAtCursor, wrapAsCodeBlock } from '../src/lib/utils/editorEdits.js';
+import { mountAfterLoad } from '../src/lib/utils/editorMount.js';
 import { paragraphAround } from '../src/lib/utils/focusParagraph.js';
 
 // WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
@@ -182,7 +184,9 @@ describe('editor options', () => {
 	 */
 	function effectiveUnicodeHighlight(passed: unknown): UnicodeHighlightOptions {
 		const option = EditorOptions.unicodeHighlight;
-		return option.applyUpdate(option.defaultValue, passed ?? {}).newValue;
+		// A copy: Monaco's `applyUpdate` merges in place unless the update carries
+		// `allowedCharacters`, and the shipped defaults are one shared object.
+		return option.applyUpdate(structuredClone(option.defaultValue), passed ?? {}).newValue;
 	}
 
 	/**
@@ -415,6 +419,168 @@ describe('editor options', () => {
 		const on = editorOptionsFromSettings({ ...SETTINGS, typewriterMode: true }, 100);
 		assert.ok(on.cursorSurroundingLines! > 1000, 'more lines than any screen, which Monaco caps at half the viewport');
 		assert.equal(on.cursorSurroundingLinesStyle, 'all');
+	});
+
+	/** What `monaco.editor.create` gets for a settings store, on a whole buffer. */
+	function created(settings: Partial<typeof SETTINGS> = {}) {
+		return createdEditorOptions({ ...SETTINGS, stickyScroll: true, ...settings }, 100, false);
+	}
+
+	test('an option a setting can change is one `updateOptions` re-applies', () => {
+		// `smoothScrolling` used to be a bare `true` in the creation literal, where
+		// options that are set once and never re-applied live. Left there, the
+		// toggle would have taken effect only on a newly created editor — the same
+		// shape as the `fontSize` divergence #369 removed. So: change each setting,
+		// and every option that moves at creation has to move the same way in what
+		// the update effect re-applies to the open editor.
+		// `stickyScroll` is left out: it is set only at creation today (known bug,
+		// reported, not fixed here).
+		const OTHER: Record<string, string> = { wordWrap: 'off', lineNumbers: 'off', renderLineHighlight: 'none', editorFont: 'Georgia' };
+		for (const [field, value] of Object.entries(SETTINGS)) {
+			const changed = { ...SETTINGS, [field]: typeof value === 'boolean' ? !value : typeof value === 'number' ? value + 6 : OTHER[field] };
+			const before = created();
+			const after = created(changed);
+			const reapplied = updatedEditorOptions(changed, 100, true, false) as Record<string, unknown>;
+			const moved = Object.keys(after).filter((key) => JSON.stringify(Reflect.get(after, key)) !== JSON.stringify(Reflect.get(before, key)));
+			assert.ok(moved.length > 0, `${field} changes some option`);
+			for (const key of moved) {
+				assert.deepEqual(reapplied[key], Reflect.get(after, key), `changing ${field} re-applies ${key} to an open editor`);
+			}
+		}
+	});
+
+	test('renderLineHighlight is a Monaco string enum, not a boolean flag', () => {
+		// Any non-empty string is truthy, so a ternary on the stored 'line' / 'none'
+		// can only ever produce "line" — which defeats both the line-highlight
+		// toggle and Zen mode. Both stored values have to survive the trip, at
+		// creation and on update; a ternary passes for 'line' and fails for 'none'.
+		for (const stored of ['line', 'none'] as const) {
+			assert.equal(created({ renderLineHighlight: stored }).renderLineHighlight, stored);
+			assert.equal(updatedEditorOptions({ ...SETTINGS, renderLineHighlight: stored }, 100, true, false).renderLineHighlight, stored);
+		}
+	});
+
+	test('editor options are applied by a single updateOptions effect', () => {
+		// Two competing effects wrote the same Monaco options with different
+		// values — notably fontSize with and without the zoom factor. What the one
+		// update applies: every option the two effects used to fight over, and the
+		// zoom-aware font size that was the value they disagreed on.
+		const applied = updatedEditorOptions({ ...SETTINGS, editorFontSize: 20, editorMaxWidth: 90 }, 150, true, false);
+		assert.equal(applied.fontSize, 30, 'the surviving font size carries the zoom factor');
+		assert.equal(applied.wordWrapColumn, 90, 'wordWrapColumn survived the merge');
+		assert.equal(created({ editorFontSize: 20 }).fontSize, 20, 'and creation derives it the same way');
+	});
+
+	test('a proportional font wraps on measured widths, a monospace font keeps the fast path', () => {
+		// #758: 'simple' wrapped Times New Roman and Roboto lines well short of the
+		// window edge. Both values are asserted because 'advanced' everywhere would
+		// also fix the report, and would make every large file pay for it.
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).wrappingStrategy, 'simple');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, false, false).wrappingStrategy, 'advanced');
+	});
+
+	test('Show Whitespace renders every whitespace run, not just trailing', () => {
+		// The setting is labelled without qualification ("Show Whitespace" /
+		// "显示空白字符"), so "trailing" left interior spaces unmarked.
+		assert.equal(created({ showWhitespace: true }).renderWhitespace, 'all');
+		assert.equal(created({ showWhitespace: false }).renderWhitespace, 'none');
+		assert.equal(updatedEditorOptions({ ...SETTINGS, showWhitespace: true }, 100, true, false).renderWhitespace, 'all');
+	});
+
+	test('the editor narrows the Unicode highlighter without switching it off', () => {
+		// Reports #186 and #94 are both Monaco outlining fullwidth punctuation.
+		// Narrowness is the assertion: `unicodeHighlight: false`, or turning
+		// `invisibleCharacters` off, would also make the boxes go away and would
+		// take the NBSP warning with it. Two overrides, and only two: the
+		// confusable rule off, and U+3000 exempted from the invisible rule (#393).
+		const passed = created().unicodeHighlight as object;
+		assert.deepEqual(Object.keys(passed).sort(), ['allowedCharacters', 'ambiguousCharacters'], 'no third sub-option');
+		const effective = effectiveUnicodeHighlight(passed);
+		assert.equal(effective.ambiguousCharacters, false);
+		assert.deepEqual(effective.allowedCharacters, { '　': true }, 'exactly one character is exempted');
+	});
+
+	test('no box is drawn on fullwidth CJK punctuation', () => {
+		const found = outlined(CJK_PROSE, effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(
+			found.ranges.length,
+			0,
+			`nothing outlined in CJK prose, got ${JSON.stringify(
+				found.ranges.map((r) => CJK_PROSE[r.startLineNumber - 1].slice(r.startColumn - 1, r.endColumn - 1)),
+			)}`,
+		);
+		assert.equal(found.ambiguousCharacterCount, 0);
+	});
+
+	test('the invisible-character warning survives the fix', () => {
+		// A stray NBSP or zero-width space is a real hazard in Markdown — an NBSP
+		// after `-` stops a list from parsing.
+		const effective = effectiveUnicodeHighlight(created().unicodeHighlight);
+		assert.equal(effective.invisibleCharacters, true, 'left at the Monaco default');
+		const found = outlined(['a b', 'x​z'], effective);
+		assert.equal(found.invisibleCharacterCount, 2, 'NBSP and zero-width space are still flagged');
+	});
+
+	test('the space bar under a CJK IME is not outlined', () => {
+		const found = outlined(CJK_IDEOGRAPHIC_SPACE, effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(
+			found.ranges.length,
+			0,
+			`nothing outlined around U+3000, got ${JSON.stringify(found.ranges.map((r) => CJK_IDEOGRAPHIC_SPACE[r.startLineNumber - 1]))}`,
+		);
+	});
+
+	test('exempting U+3000 does not exempt the NBSP that breaks a list', () => {
+		const found = outlined(['- item', '今天　天气'], effectiveUnicodeHighlight(created().unicodeHighlight));
+		assert.equal(found.invisibleCharacterCount, 1, 'the NBSP is flagged, the U+3000 is not');
+		assert.equal(found.ranges[0].startLineNumber, 1, 'and it is the NBSP line');
+	});
+
+	test('"Highlight Occurrences" off leaves nothing highlighting occurrences', () => {
+		// Monaco splits the feature in two: `SelectionHighlighter` gates itself on
+		// `selectionHighlight` and consults `occurrencesHighlight` only to choose a
+		// decoration style. So at the setting's own default, selecting a word still
+		// highlighted every other copy of it. Read through each option's own
+		// `validate`, at creation and on update, for both values of the setting.
+		for (const occurrencesHighlight of [false, true]) {
+			for (const options of [created({ occurrencesHighlight }), updatedEditorOptions({ ...SETTINGS, occurrencesHighlight }, 100, true, false)]) {
+				assert.deepEqual(
+					{
+						occurrencesHighlight: EditorOptions.occurrencesHighlight.validate(options.occurrencesHighlight),
+						selectionHighlight: EditorOptions.selectionHighlight.validate(options.selectionHighlight),
+					},
+					occurrencesHighlight
+						? { occurrencesHighlight: 'singleFile', selectionHighlight: true }
+						: { occurrencesHighlight: 'off', selectionHighlight: false },
+				);
+			}
+		}
+	});
+
+	test('the editor does not offer to rewrite a document containing U+2028', () => {
+		// `unusualLineTerminators` defaults to 'prompt', which in standalone Monaco
+		// is a bare `mainWindow.confirm()` offering to delete characters out of the
+		// user's file. 'auto' makes the same edit with no dialog. Read through
+		// `validate`, because anything it does not recognise resolves back to the
+		// dialog.
+		assert.equal(EditorOptions.unusualLineTerminators.validate(created().unusualLineTerminators), 'off');
+	});
+
+	test('the editor turns the semantic layer on, because the default is off', () => {
+		// `StandaloneTheme.semanticHighlighting` is hard-coded false, so
+		// `'configuredByTheme'` cannot reach it and the provider is never asked.
+		assert.equal(Reflect.get(created(), 'semanticHighlighting.enabled'), true);
+	});
+
+	test('an editor on a buffer that is not the whole file refuses typing', () => {
+		// An unread or unreadable tab in edit mode shows an empty buffer that no
+		// save will ever accept. Read-only at the keyboard, not a toast at the save.
+		assert.equal(editorReadOnly({ isTruncated: true }), true);
+		assert.equal(editorReadOnly({ isTruncated: false }), false);
+		assert.equal(editorReadOnly({}), false);
+		assert.equal(createdEditorOptions({ ...SETTINGS, stickyScroll: true }, 100, true).readOnly, true, 'at creation');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, true).readOnly, true, 'and when a tab is read later');
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).readOnly, false, 'and typing is back once it is whole');
 	});
 });
 
@@ -1040,6 +1206,29 @@ describe('paste URL context', () => {
 		});
 	}
 
+	test('the paste path consults the context guard before building a link', () => {
+		// The guard the paste path calls, over a model and the primary selection:
+		// the lines above the caret go through Monaco's tokenizer for markdown.
+		const languages: string[] = [];
+		const model = (lines: string[]) => ({
+			getLanguageId: () => 'markdown',
+			getValue: () => lines.join('\n'),
+			getLinesContent: () => lines,
+		});
+		const monacoEditor = {
+			tokenize: (text: string, languageId: string) => {
+				languages.push(languageId);
+				return tokenize(text);
+			},
+		};
+		const fenced = ['```', 'const a = ', '```'];
+		assert.equal(isLinkifyPasteTarget(model(fenced), { startLineNumber: 2, startColumn: 11 }, monacoEditor), false, 'a URL pasted in code stays bare');
+		assert.equal(isLinkifyPasteTarget(model(['```', 'code', '```', 'prose ']), { startLineNumber: 4, startColumn: 7 }, monacoEditor), true);
+		// Only the lines up to the caret count: a fence opened below it is not one the caret is in.
+		assert.equal(isLinkifyPasteTarget(model(['prose ', '```', 'code']), { startLineNumber: 1, startColumn: 7 }, monacoEditor), true);
+		assert.ok(languages.length > 0 && languages.every((id) => id === 'markdown'), `tokenized as ${languages}`);
+	});
+
 	test('a URL pasted into prose still becomes a markdown link', () => {
 		assert.equal(linkifiesAt('some prose |here'), true);
 		assert.equal(linkifiesAt('# A heading |'), true);
@@ -1161,5 +1350,129 @@ describe('focus paragraph', () => {
 		assert.deepEqual(paragraphAround(read, LINES.length, 3), { start: 3, end: 4 }, 'from its first line');
 		assert.deepEqual(paragraphAround(read, LINES.length, 6), { start: 6, end: 6 }, 'a whitespace-only line ends a paragraph');
 		assert.deepEqual(paragraphAround(read, LINES.length, 2), { start: 2, end: 2 }, 'a blank line is its own');
+	});
+});
+
+describe('editor clipboard and format tools', () => {
+	class FakeRange {
+		constructor(
+			readonly startLineNumber: number,
+			readonly startColumn: number,
+			readonly endLineNumber: number,
+			readonly endColumn: number,
+		) {}
+		isEmpty() {
+			return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
+		}
+	}
+
+	/** An editor over `lines` with one selection, recording the calls the tools make. */
+	function fakeEditor(lines: string[], selection: number[], eol = '\n') {
+		const calls: string[] = [];
+		const edits: Array<{ text: string }> = [];
+		const model = {
+			getLineContent: (line: number) => lines[line - 1],
+			getLineCount: () => lines.length,
+			getLineMaxColumn: (line: number) => lines[line - 1].length + 1,
+			getEOL: () => eol,
+			getValueInRange: (r: FakeRange) => {
+				const span = lines.slice(r.startLineNumber - 1, r.endLineNumber);
+				span[span.length - 1] = span[span.length - 1].slice(0, r.endColumn - 1);
+				span[0] = span[0].slice(r.startColumn - 1);
+				return span.join(eol);
+			},
+		};
+		const editor = {
+			getModel: () => model,
+			getSelection: () => new FakeRange(selection[0], selection[1], selection[2], selection[3]),
+			pushUndoStop: () => {
+				calls.push('pushUndoStop');
+				return true;
+			},
+			executeEdits: (_source: string, ops: Array<{ text: string }>) => {
+				calls.push('executeEdits');
+				edits.push(...ops);
+				return true;
+			},
+		};
+		return { editor: editor as unknown as EditingEditor, calls, edits };
+	}
+
+	const monaco = { Range: FakeRange } as unknown as Parameters<typeof clipboardTextForSelection>[1];
+	const numbers = (r: unknown) => {
+		const range = r as FakeRange;
+		return [range.startLineNumber, range.startColumn, range.endLineNumber, range.endColumn];
+	};
+
+	test("custom copy keeps Monaco's whole-line copy on an empty selection", () => {
+		// Monaco's `emptySelectionClipboard` default, VS Code's and Sublime Text's:
+		// nothing selected copies the caret's line with its line ending.
+		const { editor } = fakeEditor(['first', 'second', 'last'], [2, 3, 2, 3], '\r\n');
+		const line = clipboardTextForSelection(editor, monaco);
+		assert.equal(line.text, 'second\r\n');
+		assert.deepEqual(numbers(line.range), [2, 1, 3, 1], 'a cut takes the line ending with the line');
+
+		const last = clipboardTextForSelection(fakeEditor(['first', 'last'], [2, 1, 2, 1]).editor, monaco);
+		assert.equal(last.text, 'last\n');
+		assert.deepEqual(numbers(last.range), [2, 1, 2, 5], 'the last line has no next line to run to');
+
+		const selected = clipboardTextForSelection(fakeEditor(['hello world'], [1, 1, 1, 6]).editor, monaco);
+		assert.equal(selected.text, 'hello', 'a real selection takes just the selection');
+		assert.deepEqual(numbers(selected.range), [1, 1, 1, 6]);
+
+		assert.deepEqual(clipboardTextForSelection(undefined, monaco), { text: '', range: null }, 'no editor yet, nothing to copy');
+	});
+
+	test('the format tools each push an undo stop before they edit', () => {
+		const tools: Record<string, (editor: EditingEditor) => void> = {
+			insertTextAtCursor: (editor) => insertTextAtCursor(editor, 'x'),
+			wrapAsCodeBlock,
+			insertLink,
+		};
+		for (const [name, run] of Object.entries(tools)) {
+			const { editor, calls, edits } = fakeEditor(['hello'], [1, 1, 1, 6]);
+			run(editor);
+			assert.equal(edits.length, 1, name);
+			assert.deepEqual(calls, ['pushUndoStop', 'executeEdits'], `${name} edits inside the undo step typing left open`);
+		}
+	});
+});
+
+describe('editor mount', () => {
+	/** A load the test resolves by hand. */
+	function deferred() {
+		let resolve!: () => void;
+		const promise = new Promise<void>((r) => (resolve = r));
+		return { promise, resolve };
+	}
+	const settle = () => new Promise((r) => setImmediate(r));
+
+	test('unmounting while Monaco is still loading creates no editor', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.equal(typeof cleanup, 'function', 'the cleanup is returned synchronously, not as a promise');
+		cleanup();
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, []);
+	});
+
+	test('the editor is created once Monaco lands, and torn down on unmount', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.deepEqual(events, [], 'nothing is created before the module arrives');
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, ['create']);
+		cleanup();
+		assert.deepEqual(events, ['create', 'teardown']);
 	});
 });

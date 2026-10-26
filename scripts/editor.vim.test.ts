@@ -121,6 +121,45 @@ describe('vim clipboard registers', () => {
 		assert.equal(installVimClipboardRegisters({ Vim: {} }, () => {}), false);
 		assert.equal(installVimClipboardRegisters({ Vim: { defineRegister() {}, getRegisterController: () => undefined } }, () => {}), false);
 	});
+
+	test('Editor.svelte installs the commands on the module it just imported', async () => {
+		// `attachVimMode` is what the editor's `import("monaco-vim").then` runs. It
+		// has to install before `initVimMode` attaches the adapter, and it has to
+		// install even on the disposed path, because the tables it writes to are
+		// the package's and outlive this editor.
+		const { attachVimMode } = await import('../src/lib/utils/vimAttach.js');
+		for (const disposed of [false, true]) {
+			const { VimMode, controller } = await freshVim();
+			const events: string[] = [];
+			const realMapCommand = VimMode.Vim.mapCommand;
+			VimMode.Vim.mapCommand = function (this: unknown, ...args: unknown[]) {
+				events.push(`map ${String(args[0])}`);
+				return realMapCommand.apply(this, args);
+			};
+			const written: unknown[] = [];
+			const invoke = (command: string, args: unknown) => {
+				written.push([command, args]);
+				return Promise.resolve();
+			};
+			const adapter = { dispose() {} };
+			const initVimMode = () => {
+				events.push(controller.isValidRegister('+') ? 'attach with "+' : 'attach without "+');
+				return adapter;
+			};
+
+			const vim = attachVimMode({ initVimMode, VimMode }, {}, {}, invoke, () => disposed);
+			if (disposed) {
+				assert.equal(vim, null, 'a disposed effect attaches nothing');
+				assert.deepEqual(events, ['map zb', 'map z-'], 'a disposed effect still patches the package');
+				assert.equal(controller.isValidRegister('+'), true);
+			} else {
+				assert.equal(vim, adapter, 'the adapter is handed back for disposal');
+				assert.deepEqual(events, ['map zb', 'map z-', 'attach with "+'], 'the commands must be in place before the adapter attaches');
+			}
+			controller.pushText('+', 'yank', 'yanked', false);
+			assert.deepEqual(written, [['clipboard_write_text', { text: 'yanked' }]], '"+ writes through the Rust clipboard');
+		}
+	});
 });
 
 /*

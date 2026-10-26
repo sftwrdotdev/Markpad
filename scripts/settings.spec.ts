@@ -5,6 +5,7 @@ import { afterAll, describe, onTestFinished, test } from 'vitest';
 
 import { getSupportedLanguages } from '../src/lib/utils/i18n.js';
 import { translations } from './allTranslations.js';
+import { updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 
 // Plain TypeScript, no runes: safe to import statically, unlike the store below.
 describe('settings persistence', async () => {
@@ -808,6 +809,23 @@ describe('settings persistence', async () => {
 			assert.equal(Reflect.get(restarted, field), value, `${field} came back as the user left it`);
 		}
 		assert.equal(restarted.preZenState, null, 'the snapshot is spent once it has been restored');
+	});
+
+	test('the line-highlight toggle and zen mode reach the editor as Monaco\'s string enum', () => {
+		// A ternary on the stored 'line' / 'none' can only produce "line": any
+		// non-empty string is truthy. So the store is driven the way the menu and
+		// zen mode drive it, and what reaches an open editor is read back.
+		resetStorage();
+		const store = createStore();
+		const reaching = () => updatedEditorOptions(store, 100, true, false).renderLineHighlight;
+		assert.equal(reaching(), 'line', 'the default draws the line');
+		store.toggleLineHighlight();
+		assert.equal(reaching(), 'none', 'the toggle turns it off');
+		store.toggleLineHighlight();
+		store.toggleZenMode();
+		assert.equal(reaching(), 'none', 'zen mode turns it off');
+		store.toggleZenMode();
+		assert.equal(reaching(), 'line', 'and leaving zen mode brings it back');
 	});
 
 	test('the zen fallback is each setting own default', () => {

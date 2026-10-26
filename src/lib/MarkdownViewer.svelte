@@ -28,6 +28,7 @@
 	import { copyableFlavours } from './utils/previewCopy.js';
 	import { hasExportableDocument, hasRealFilePath } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
+	import { editorReadOnly } from './utils/editorOptions.js';
 	import { type ViewMode, viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
@@ -4305,7 +4306,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 							<Editor
 								bind:this={editorPane}
 								value={tabManager.activeTab.rawContent}
-								readOnly={tabManager.activeTab.isTruncated === true}
+								readOnly={editorReadOnly(tabManager.activeTab)}
 								language={editorLanguage}
 								theme={settings.theme}
 								zoomLevel={settings.zoomLevel}

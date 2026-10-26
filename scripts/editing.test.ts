@@ -6,12 +6,16 @@ import type * as Monaco from 'monaco-editor';
 import { blockEnter, parseListItem, shiftListItem } from '../src/lib/utils/listEditing.js';
 import { displayWidth, formatTable, parseTableAt, type TableDocument, type TableEdit, tableOperation, type TableOperation, tableStep } from '../src/lib/utils/tableEditing.js';
 import { isInFencedCode } from '../src/lib/utils/codeFence.js';
+import { editorKeyHandlers, type KeyHandlerEditor } from '../src/lib/utils/editorKeyHandlers.js';
 import { installShimDom, parseHtml } from './renderProtocolDom.ts';
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
+import { createDocumentOutline, MARKDOWN_COMPLETION_TRIGGERS, type MarkdownCompletionDeps, provideMarkdownCompletionItems } from '../src/lib/utils/markdownCompletion.js';
 import { headingFoldRanges, headingSymbols } from '../src/lib/utils/headingSymbols.js';
 import { DEFAULT_REFERENCE_STYLE, headingReference, preferredReferenceStyle } from '../src/lib/utils/headingReference.js';
 import { findSeedFromSelection } from '../src/lib/utils/findSeed.js';
-import { addFrontMatterListItems, getFrontMatterListItems, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
+import { editorFrontMatterScrollEnd } from '../src/lib/utils/editorFrontMatter.js';
+import { createMarkdownSemanticTokensProvider } from '../src/lib/utils/semanticTokens.js';
+import { addFrontMatterListItems, getFrontMatterListItems, frontMatterFenceLines, getMarkdownBodyWithoutFrontMatter, parseFrontMatter, removeFrontMatterListItem, updateFrontMatterField, updateFrontMatterListItem } from '../src/lib/utils/frontMatter.js';
 import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetPath } from '../src/lib/utils/markdownLinks.js';
 
 /*
@@ -25,17 +29,7 @@ import { getMarkdownLinkTarget, hasMarkdownLinkExtension, resolveMarkdownTargetP
  * here, once per shape of list item and block quote the app claims to
  * understand.
  *
- * The two handlers in `Editor.svelte` are lifted out of the component and run
- * against a stub editor, the same trick `keymapHarness.ts` uses, so what is
- * asserted is the edit they really produce rather than the shape of the source
- * that produces it.
- *
- * What NO test here can establish is that Monaco delivers these two keys at
- * runtime: keybinding resolution, the `when` clauses and the vim adapter all
- * live in a browser. What is pinned instead is the condition the app DECLARES —
- * the `when` expression is evaluated out of the source and read back — because
- * an Enter binding that forgets `!suggestWidgetVisible` breaks the completion
- * popup silently, and that is the one mistake this feature invites.
+ * The key handlers themselves run in 'editing keys in the editor' below.
  */
 
 // ------------------------------------------------------------- the pure part
@@ -376,14 +370,7 @@ describe('list continuation and nesting', () => {
  * being called: parsing, the alignment arithmetic, where the caret lands. None
  * of it is a source-shape assertion, because none of it needs a browser.
  *
- * The last section runs the two Tab handlers out of `Editor.svelte` against a
- * stub editor (`runEditorHandler` in ./keymapHarness.ts), so what is asserted is
- * the edit they really produce — including the one case where the right answer
- * is to move the caret and make no edit at all.
- *
- * NOT ESTABLISHED HERE: that Monaco delivers Tab and Shift+Tab at runtime. The
- * `when` clauses that decide it are pinned in `listContinuation.test.ts`, which
- * owns the other half of the same two keys.
+ * The table keys themselves run in 'editing keys in the editor' below.
  */
 describe('table editing', () => {
 	/** A document from its lines — the shape Monaco's model already has. */
@@ -915,6 +902,467 @@ describe('table editing', () => {
 	});
 });
 
+/*
+ * The editing keys themselves: `src/lib/utils/editorKeyHandlers.ts`, run
+ * against a stub editor whose model is a list of lines. The list, table and
+ * code-fence modules behind them are the real ones, so what is asserted is the
+ * edit the key really produces.
+ *
+ * NOT ESTABLISHED HERE: that Monaco delivers these keys at runtime, or the
+ * `when` clauses they are bound behind.
+ */
+describe('editing keys in the editor', () => {
+	type Recorded = {
+		triggers: string[];
+		edits: Array<{ range: number[]; text: string; cursor: number[] }>;
+		/** `setSelection` calls: a caret moved without an edit. */
+		selections: number[][];
+		undoStops: number;
+	};
+
+	class FakeRange {
+		constructor(
+			readonly startLineNumber: number,
+			readonly startColumn: number,
+			readonly endLineNumber: number,
+			readonly endColumn: number,
+		) {}
+		isEmpty() {
+			return this.startLineNumber === this.endLineNumber && this.startColumn === this.endColumn;
+		}
+		numbers() {
+			return [this.startLineNumber, this.startColumn, this.endLineNumber, this.endColumn];
+		}
+	}
+
+	type Key = Exclude<keyof ReturnType<typeof editorKeyHandlers>, 'editTable'>;
+
+	function runKey(key: Key, options: { lines: string[]; selections: number[][]; eol?: string }): Recorded {
+		const recorded: Recorded = { triggers: [], edits: [], selections: [], undoStops: 0 };
+		const { lines } = options;
+		const eol = options.eol ?? '\n';
+		const selections = options.selections.map((s) => new FakeRange(s[0], s[1], s[2], s[3]));
+		const model = {
+			getLineContent: (line: number) => lines[line - 1],
+			getLineCount: () => lines.length,
+			getLineMaxColumn: (line: number) => lines[line - 1].length + 1,
+			getEOL: () => eol,
+			getValueInRange: (range: FakeRange) => {
+				const span = lines.slice(range.startLineNumber - 1, range.endLineNumber);
+				span[span.length - 1] = span[span.length - 1].slice(0, range.endColumn - 1);
+				span[0] = span[0].slice(range.startColumn - 1);
+				return span.join(eol);
+			},
+		};
+		const editor = {
+			getModel: () => model,
+			getSelections: () => selections,
+			pushUndoStop: () => {
+				recorded.undoStops += 1;
+				return true;
+			},
+			setSelection: (selection: FakeRange) => {
+				recorded.selections.push(selection.numbers());
+			},
+			trigger: (_source: string, handlerId: string, payload: { text?: string } | null) => {
+				recorded.triggers.push(payload?.text ? `${handlerId}:${JSON.stringify(payload.text)}` : handlerId);
+			},
+			executeEdits: (_source: string, edits: Array<{ range: FakeRange; text: string }>, cursor?: FakeRange[]) => {
+				for (const [index, edit] of edits.entries()) {
+					recorded.edits.push({ range: edit.range.numbers(), text: edit.text, cursor: cursor?.[index]?.numbers() ?? [] });
+				}
+				return true;
+			},
+		};
+		const ranges = { Range: FakeRange, Selection: FakeRange } as unknown as Pick<typeof Monaco, 'Range' | 'Selection'>;
+		editorKeyHandlers(editor as unknown as KeyHandlerEditor, ranges)[key]();
+		return recorded;
+	}
+
+	/** The table Markpad's own Insert Table command writes, once. */
+	const INSERTED = [
+		'| Header | Header | Header |',
+		'| --- | --- | --- |',
+		'| Cell | Cell | Cell |',
+		'| Cell | Cell | Cell |',
+	];
+
+	test('Enter on a list item inserts the line break and the next marker in one edit', () => {
+		const run = runKey('continueListOnEnter', { lines: ['- item'], selections: [[1, 7, 1, 7]] });
+
+		assert.deepEqual(run.triggers, [], 'the plain Enter must not fire as well');
+		assert.deepEqual(run.edits, [
+			{ range: [1, 7, 1, 7], text: '\n- ', cursor: [2, 3, 2, 3] },
+		]);
+		assert.equal(run.undoStops, 1, 'the continuation is its own undo step');
+	});
+
+	test('the line break is the document\'s, not a hard-coded \\n', () => {
+		// The CRLF class of defect this repo has been bitten by before (#148): a
+		// handler that writes '\n' into a CRLF document leaves one mixed line
+		// behind, and nothing downstream reports it.
+		const run = runKey('continueListOnEnter', {
+			lines: ['1. item'],
+			selections: [[1, 8, 1, 8]],
+			eol: '\r\n',
+		});
+		assert.deepEqual(run.edits.map((edit) => edit.text), ['\r\n2. ']);
+	});
+
+	test('Enter on an empty item replaces the line instead of breaking it', () => {
+		const run = runKey('continueListOnEnter', { lines: ['- ', 'x'], selections: [[1, 3, 1, 3]] });
+
+		assert.deepEqual(run.triggers, []);
+		assert.deepEqual(run.edits, [
+			// The whole line, marker and all, becomes nothing — and the caret stays
+			// on it. No line is added: this keystroke leaves the list, it does not
+			// extend it.
+			{ range: [1, 1, 1, 3], text: '', cursor: [1, 1, 1, 1] },
+		]);
+	});
+
+	test('Enter on an empty nested item gives up one level instead of ending the list', () => {
+		// #856: the list ends only from the margin. Below it, Enter is Shift+Tab —
+		// the same `shiftListItem` edit, renumbering included.
+		const bullet = runKey('continueListOnEnter', {
+			lines: ['- a', '  - b', '  - '],
+			selections: [[3, 5, 3, 5]],
+		});
+		assert.deepEqual(bullet.triggers, []);
+		assert.deepEqual(bullet.edits, [{ range: [3, 1, 3, 5], text: '- ', cursor: [3, 3, 3, 3] }]);
+		assert.equal(bullet.undoStops, 1);
+
+		const ordered = runKey('continueListOnEnter', {
+			lines: ['1. a', '   1. b', '   2. '],
+			selections: [[3, 7, 3, 7]],
+		});
+		assert.deepEqual(ordered.edits, [{ range: [3, 1, 3, 7], text: '2. ', cursor: [3, 4, 3, 4] }]);
+
+		const quoted = runKey('continueListOnEnter', {
+			lines: ['> - a', '>   - '],
+			selections: [[2, 7, 2, 7]],
+		});
+		assert.deepEqual(quoted.edits, [{ range: [2, 1, 2, 7], text: '> - ', cursor: [2, 5, 2, 5] }]);
+
+		// At the margin there is no level left, so the list ends as before.
+		const margin = runKey('continueListOnEnter', {
+			lines: ['- a', '- '],
+			selections: [[2, 3, 2, 3]],
+		});
+		assert.deepEqual(margin.edits, [{ range: [2, 1, 2, 3], text: '', cursor: [2, 1, 2, 1] }]);
+	});
+
+	test('Enter anywhere else is a plain Enter', () => {
+		for (const lines of [['plain text'], ['---'], ['']]) {
+			const run = runKey('continueListOnEnter', {
+				lines,
+				selections: [[1, lines[0].length + 1, 1, lines[0].length + 1]],
+			});
+			assert.deepEqual(run.edits, [], JSON.stringify(lines[0]));
+			assert.deepEqual(run.triggers, ['type:"\\n"'], JSON.stringify(lines[0]));
+		}
+	});
+
+	test('a quoted line continues in the editor too', () => {
+		const run = runKey('continueListOnEnter', { lines: ['> quoted'], selections: [[1, 9, 1, 9]] });
+		assert.deepEqual(run.triggers, []);
+		assert.deepEqual(run.edits, [{ range: [1, 9, 1, 9], text: '\n> ', cursor: [2, 3, 2, 3] }]);
+		assert.equal(run.undoStops, 1);
+
+		const leaving = runKey('continueListOnEnter', { lines: ['> ', 'x'], selections: [[1, 3, 1, 3]] });
+		assert.deepEqual(leaving.edits, [{ range: [1, 1, 1, 3], text: '', cursor: [1, 1, 1, 1] }]);
+	});
+
+	test('a selection, or a second caret, gets the plain Enter', () => {
+		// One edit at the primary selection would silently discard what the other
+		// carets were about to do.
+		const spanning = runKey('continueListOnEnter', {
+			lines: ['- item'],
+			selections: [[1, 3, 1, 7]],
+		});
+		assert.deepEqual(spanning.edits, []);
+		assert.deepEqual(spanning.triggers, ['type:"\\n"']);
+
+		const multi = runKey('continueListOnEnter', {
+			lines: ['- one', '- two'],
+			selections: [
+				[1, 6, 1, 6],
+				[2, 6, 2, 6],
+			],
+		});
+		assert.deepEqual(multi.edits, []);
+		assert.deepEqual(multi.triggers, ['type:"\\n"']);
+	});
+
+	test('Tab on a list item is the list module’s edit, and Tab anywhere else is a Tab', () => {
+		// The handler no longer sends `editor.action.indentLines`: that command moves
+		// the line by `tabSize`, which is not a nesting level, and leaves the number
+		// alone — both halves of #711. What it sends now is one `executeEdits` built
+		// from `shiftListItem`, and nothing else, because a trigger AND an edit would
+		// indent the line twice.
+		const run = runKey('handleTabKey', {
+			lines: ['1. something', '2. ', '3. c'],
+			selections: [[2, 4, 2, 4]],
+		});
+		assert.deepEqual(run.triggers, [], 'a core command fired as well as the edit');
+		assert.deepEqual(run.edits, [{ range: [2, 1, 3, 5], text: '   1. \n2. c', cursor: [2, 7, 2, 7] }]);
+		assert.equal(run.undoStops, 1, 'one Ctrl+Z must give the level back');
+
+		// A LIST ITEM’S TAB NEVER FALLS THROUGH. The first item of a list has nothing
+		// to nest under, so the key does nothing — handing it to `indentLines` would
+		// indent a line that no longer nests anywhere, which is the state #711’s
+		// reporter was left in.
+		for (const line of ['- item', '  1. item', '> - [x] item', '- ']) {
+			const alone = runKey('handleTabKey', { lines: [line], selections: [[1, 3, 1, 3]] });
+			assert.deepEqual(alone.triggers, [], line);
+			assert.deepEqual(alone.edits, [], line);
+		}
+
+		for (const line of ['plain text', '# heading', '']) {
+			const prose = runKey('handleTabKey', { lines: [line], selections: [[1, 1, 1, 1]] });
+			assert.deepEqual(prose.triggers, ['tab'], JSON.stringify(line));
+		}
+
+		// A selection spans lines on purpose or by accident; Monaco's own Tab
+		// already indents every line of it.
+		const selected = runKey('handleTabKey', {
+			lines: ['- one', '- two'],
+			selections: [[1, 1, 2, 6]],
+		});
+		assert.deepEqual(selected.triggers, ['tab']);
+	});
+
+	test('Shift+Tab on a list item is the list’s level, not Monaco’s outdent', () => {
+		const run = runKey('handleShiftTabKey', {
+			lines: ['1. a', '   1. b', '   2. c'],
+			selections: [[3, 10, 3, 10]],
+		});
+		assert.deepEqual(run.triggers, [], 'outdent fired as well as the edit');
+		// It rejoins the list it left, so it is that list’s second item and not `1.`.
+		assert.deepEqual(run.edits, [{ range: [3, 1, 3, 8], text: '2. c', cursor: [3, 7, 3, 7] }]);
+
+		// Prose still gets Monaco’s own outdent.
+		for (const line of ['plain text', '']) {
+			const fallback = runKey('handleShiftTabKey', { lines: [line], selections: [[1, 1, 1, 1]] });
+			assert.deepEqual(fallback.triggers, ['outdent'], JSON.stringify(line));
+			assert.deepEqual(fallback.edits, [], JSON.stringify(line));
+		}
+
+		// A list item at the margin has no level to give up, and — like Tab’s first
+		// item — does not fall through either. `outdent` on a line with no
+		// indentation does nothing anyway; what the swallow rules out is the day a
+		// list item carries indentation Monaco would happily eat a `tabSize` of,
+		// leaving the item nested under nothing.
+		const margin = runKey('handleShiftTabKey', { lines: ['1. a'], selections: [[1, 1, 1, 1]] });
+		assert.deepEqual(margin.triggers, []);
+		assert.deepEqual(margin.edits, []);
+	});
+
+	test('inside a fenced code block, Tab, Shift+Tab and Enter mean what they mean in code', () => {
+		// `1. a` and `|a|bb|` inside ``` are code someone is writing, not a list or a
+		// table; renumbering or re-aligning them rewrites the code.
+		const table = ['```', '|a|bb|', '|-|-|', '|1|2|', '```'];
+		const tab = runKey('handleTabKey', { lines: table, selections: [[2, 2, 2, 2]] });
+		assert.deepEqual(tab.edits, []);
+		assert.deepEqual(tab.triggers, ['tab']);
+
+		const list = ['~~~', '1. a', '2. b', '3. c', '~~~'];
+		const nest = runKey('handleTabKey', { lines: list, selections: [[3, 5, 3, 5]] });
+		assert.deepEqual(nest.edits, []);
+		assert.deepEqual(nest.triggers, ['tab']);
+		// The first item used to swallow the key: nothing to nest under.
+		const first = runKey('handleTabKey', { lines: list, selections: [[2, 5, 2, 5]] });
+		assert.deepEqual(first.triggers, ['tab']);
+
+		const back = runKey('handleShiftTabKey', {
+			lines: ['```', '1. a', '   1. b', '```'],
+			selections: [[3, 8, 3, 8]],
+		});
+		assert.deepEqual(back.edits, []);
+		assert.deepEqual(back.triggers, ['outdent']);
+
+		const enter = runKey('continueListOnEnter', { lines: ['```', '- item', '```'], selections: [[2, 7, 2, 7]] });
+		assert.deepEqual(enter.edits, []);
+		assert.deepEqual(enter.triggers, ['type:"\\n"']);
+
+		// …and below the closing fence the list is a list again.
+		const after = runKey('continueListOnEnter', { lines: ['```', 'x', '```', '- item'], selections: [[4, 7, 4, 7]] });
+		assert.deepEqual(after.edits.map((edit) => edit.text), ['\n- ']);
+	});
+
+	test('Shift+Tab still means outdent everywhere except inside a table', () => {
+		// Shift+Tab used to be left unbound because Monaco's `outdent` already did
+		// the right thing. Tables (no core "previous cell") and #711 (a level is not
+		// a `tabSize`) gave it a handler, and the handler's LAST path re-sends
+		// `outdent` rather than reimplementing it, so a paragraph, a code block and
+		// a blank line all still get exactly Monaco's own behaviour.
+		for (const lines of [['plain text'], [''], ['```', '  code', '```']]) {
+			const run = runKey('handleShiftTabKey', { lines, selections: [[lines.length > 1 ? 2 : 1, 1, lines.length > 1 ? 2 : 1, 1]] });
+			assert.deepEqual(run.triggers, ['outdent'], JSON.stringify(lines));
+			assert.deepEqual(run.edits, [], JSON.stringify(lines));
+		}
+	});
+
+	test('Tab in a table writes the re-aligned table in one edit, and no plain Tab', () => {
+		const run = runKey('handleTabKey', { lines: [...INSERTED], selections: [[4, 26, 4, 26]] });
+
+		assert.deepEqual(run.triggers, [], 'the plain Tab must not fire as well');
+		assert.equal(run.undoStops, 1, 'growing the table is its own undo step');
+		assert.deepEqual(run.edits, [
+			{
+				// The whole table, replaced — because every column may have changed width.
+				range: [1, 1, 4, 23],
+				text: [
+					'| Header | Header | Header |',
+					'| ------ | ------ | ------ |',
+					'| Cell   | Cell   | Cell   |',
+					'| Cell   | Cell   | Cell   |',
+					'|        |        |        |',
+				].join('\n'),
+				cursor: [5, 3, 5, 3],
+			},
+		]);
+	});
+
+	test("the line break between rows is the document's, not a hard-coded \\n", () => {
+		// The CRLF class of defect this repo has been bitten by before (#148): a
+		// handler that writes '\n' into a CRLF document leaves mixed lines behind and
+		// nothing downstream reports it.
+		const run = runKey('handleTabKey', {
+			lines: [...INSERTED],
+			selections: [[4, 26, 4, 26]],
+			eol: '\r\n',
+		});
+		assert.ok(run.edits[0].text.includes('\r\n'), run.edits[0].text);
+		assert.ok(!/[^\r]\n/.test(run.edits[0].text), 'a bare \\n slipped into a CRLF document');
+	});
+
+	test('Shift+Tab in the first cell moves the caret and writes nothing', () => {
+		// An ALREADY ALIGNED table, so the "edit" would be the same text it replaces.
+		// Executing it anyway would push an undo step that undoes nothing and mark the
+		// document dirty for a keystroke that changed no character.
+		const run = runKey('handleShiftTabKey', {
+			lines: ['| a   | b   |', '| --- | --- |', '| 1   | 2   |'],
+			selections: [[1, 3, 1, 3]],
+		});
+		assert.deepEqual(run.edits, []);
+		assert.deepEqual(run.triggers, [], 'and it must not fall through to outdent either');
+		assert.equal(run.undoStops, 0);
+		// It still MOVES: from the start of `a` to the end of it, which is where every
+		// landing in a cell now is.
+		assert.deepEqual(run.selections, [[1, 4, 1, 4]]);
+	});
+
+	test('Shift+Tab outside a table and outside a list is Monaco’s own outdent', () => {
+		for (const line of ['plain text', '']) {
+			const run = runKey('handleShiftTabKey', { lines: [line], selections: [[1, 1, 1, 1]] });
+			assert.deepEqual(run.triggers, ['outdent'], JSON.stringify(line));
+			assert.deepEqual(run.edits, [], JSON.stringify(line));
+		}
+
+		// A list item stopped falling through with #711: `outdent` moves the line by
+		// `tabSize`, which lands on a level only by coincidence, and it renumbers
+		// nothing. The middle branch owns it now — table, then list, then the key.
+		const item = runKey('handleShiftTabKey', {
+			lines: ['  - a nested list item'],
+			selections: [[1, 1, 1, 1]],
+		});
+		assert.deepEqual(item.triggers, []);
+		assert.deepEqual(item.edits, [{ range: [1, 1, 1, 23], text: '- a nested list item', cursor: [1, 1, 1, 1] }]);
+	});
+
+	test('Tab on a list item is still the list’s Tab, and Tab in prose is still a Tab', () => {
+		// The dispatch order this feature had to fit into: table, then list, then the
+		// key's own meaning. #636 owns the middle branch and must not have moved.
+		// #711 changed what the middle branch DOES — one `executeEdits` from
+		// `shiftListItem` instead of `editor.action.indentLines` — but not where it
+		// sits, which is what this file is about.
+		const list = runKey('handleTabKey', { lines: ['- a', '- item'], selections: [[2, 3, 2, 3]] });
+		assert.deepEqual(list.triggers, []);
+		assert.deepEqual(list.edits, [{ range: [2, 1, 2, 7], text: '  - item', cursor: [2, 5, 2, 5] }]);
+
+		const prose = runKey('handleTabKey', { lines: ['plain text'], selections: [[1, 1, 1, 1]] });
+		assert.deepEqual(prose.triggers, ['tab']);
+	});
+
+	/*
+	 * Mod+Enter and Mod+Shift+Enter: "insert a line below / above", one Markdown
+	 * rule further on.
+	 *
+	 * These are Monaco's own `editor.action.insertLineAfter` and
+	 * `insertLineBefore`, and the reason they are the right keys for a table row is
+	 * that they keep meaning exactly what they already meant — inside a table, the
+	 * line below IS the row below. The row verbs used to live on `Mod+K R`, which
+	 * the user's verdict was 太难按: a two-key chord for the commonest table edit.
+	 */
+
+	test('Mod+Enter in a table inserts a row below and does not also insert a line', () => {
+		const run = runKey('handleModEnterKey', { lines: [...INSERTED], selections: [[3, 3, 3, 3]] });
+
+		assert.deepEqual(run.triggers, [], "Monaco's own insertLineAfter must not fire as well");
+		assert.equal(run.undoStops, 1);
+		assert.deepEqual(run.edits, [
+			{
+				range: [1, 1, 4, 23],
+				text: [
+					'| Header | Header | Header |',
+					'| ------ | ------ | ------ |',
+					'| Cell   | Cell   | Cell   |',
+					'|        |        |        |',
+					'| Cell   | Cell   | Cell   |',
+				].join('\n'),
+				cursor: [4, 3, 4, 3],
+			},
+		]);
+	});
+
+	test('Mod+Shift+Enter in a table inserts a row above', () => {
+		// Same caret as the test above, so the two keys are told apart by WHERE the
+		// new row goes: above the first body row rather than below it.
+		const run = runKey('handleModShiftEnterKey', { lines: [...INSERTED], selections: [[3, 3, 3, 3]] });
+		assert.deepEqual(run.triggers, []);
+		assert.deepEqual(run.edits[0].text.split('\n')[2], '|        |        |        |');
+		assert.deepEqual(run.edits[0].cursor, [3, 3, 3, 3]);
+	});
+
+	test('outside a table both keys are Monaco’s own, unchanged', () => {
+		// THE FALL-THROUGH IS THE POINT, the same as Shift+Tab's. These two chords
+		// already had a meaning; this feature specialises it inside a table and hands
+		// the key straight back everywhere else.
+		for (const line of ['plain text', '- a list item', '']) {
+			assert.deepEqual(
+				runKey('handleModEnterKey', { lines: [line], selections: [[1, 1, 1, 1]] }).triggers,
+				['editor.action.insertLineAfter'],
+				JSON.stringify(line),
+			);
+			assert.deepEqual(
+				runKey('handleModShiftEnterKey', { lines: [line], selections: [[1, 1, 1, 1]] }).triggers,
+				['editor.action.insertLineBefore'],
+				JSON.stringify(line),
+			);
+		}
+	});
+
+	test('a selection, or a second caret, gets the ordinary key', () => {
+		// One edit at the primary selection would silently discard what the other
+		// carets were about to do — and Monaco's own Tab already indents every line
+		// of a multi-line selection.
+		const spanning = runKey('handleTabKey', { lines: [...INSERTED], selections: [[3, 3, 3, 8]] });
+		assert.deepEqual(spanning.edits, []);
+		assert.deepEqual(spanning.triggers, ['tab']);
+
+		const multi = runKey('handleShiftTabKey', {
+			lines: [...INSERTED],
+			selections: [
+				[3, 3, 3, 3],
+				[4, 3, 4, 3],
+			],
+		});
+		assert.deepEqual(multi.edits, []);
+		assert.deepEqual(multi.triggers, ['outdent']);
+	});
+});
+
 describe('fenced code detection', () => {
 	/** Every line of `text`, 1-based, answered in order. */
 	function inside(text: string): boolean[] {
@@ -1087,6 +1535,111 @@ describe('heading link completion', () => {
 		const prefix = 'See [the diagrams](#mer';
 		assert.equal(headingQueryStart(prefix), prefix.indexOf('#') + 1);
 		assert.equal(prefix.slice(headingQueryStart(prefix)), 'mer');
+	});
+
+	// The provider the editor registers, run against a one-line model and an
+	// injected `invoke` standing in for Rust.
+	const ANCHORS = [
+		{ line: 1, level: 1, text: '11. Mermaid Diagrams', slug: '11-mermaid-diagrams' },
+		{ line: 3, level: 2, text: 'Setup', slug: 'setup' },
+	];
+
+	function complete(line: string, invoked: string[] = []) {
+		const model = {
+			getLineContent: () => line,
+			getWordUntilPosition: () => ({ word: '', startColumn: line.length + 1, endColumn: line.length + 1 }),
+		} as unknown as Monaco.editor.ITextModel;
+		const position = { lineNumber: 1, column: line.length + 1 } as Monaco.Position;
+		return provideMarkdownCompletionItems(model, position, {
+			monaco: {
+				Range: class {
+					constructor(...range: number[]) {
+						Object.assign(this, { range });
+					}
+				},
+				languages: { CompletionItemKind: { Reference: 17, File: 20, Folder: 23 } },
+			} as unknown as MarkdownCompletionDeps['monaco'],
+			headingAnchors: async () => ANCHORS,
+			invoke: async (command) => {
+				invoked.push(command);
+				return ['notes.md'];
+			},
+			activeTabPath: () => '/docs/readme.md',
+			imageDirectory: () => 'assets',
+		});
+	}
+
+	test('the heading context is asked before the path context, which shares its prefix', async () => {
+		// `](#` also satisfies the embed test — `/!?\[.*\]\($/` matches everything
+		// up to the paren. Asking for files first would answer a `#` with a list of
+		// filenames.
+		const invoked: string[] = [];
+		const { suggestions } = await complete('See [the diagrams](#', invoked);
+		assert.deepEqual(suggestions.map((s) => s.label), ['11. Mermaid Diagrams', 'Setup']);
+		assert.deepEqual(invoked, [], 'the path completion ran too');
+		// …while the bare paren is still the path completion.
+		assert.deepEqual((await complete('See [x](')).suggestions.map((s) => s.label), ['notes.md', 'assets/notes.md']);
+		// And `#` has to open the dropdown, or the reader types it and nothing
+		// happens until the next character.
+		assert.ok(MARKDOWN_COMPLETION_TRIGGERS.includes('#'));
+	});
+
+	test('each context writes the text its own syntax resolves', async () => {
+		const slug = (await complete('See [the diagrams](#')).suggestions;
+		assert.deepEqual(slug.map((s) => s.insertText), ['11-mermaid-diagrams', 'setup']);
+		const wikilink = (await complete('[[#')).suggestions;
+		assert.deepEqual(wikilink.map((s) => s.insertText), ['11. Mermaid Diagrams', 'Setup']);
+		// Labelled by the heading, so typing a word of it finds the entry whatever
+		// the slug turned that word into.
+		assert.deepEqual(wikilink.map((s) => [s.label, s.detail]), [
+			['11. Mermaid Diagrams', '#11-mermaid-diagrams'],
+			['Setup', '#setup'],
+		]);
+	});
+
+	function outlineModel(text: string) {
+		let version = 1;
+		return {
+			model: { getVersionId: () => version, getValue: () => text } as unknown as Monaco.editor.ITextModel,
+			edit: () => (version += 1),
+		};
+	}
+
+	test('the list is read from Rust, and re-read only when the buffer changes', async () => {
+		// A second anchorizer written in TypeScript would drift from comrak's
+		// without anything failing — the links would simply stop landing.
+		const calls: Array<[string, unknown]> = [];
+		const { headingAnchors } = createDocumentOutline(async (command, args) => {
+			calls.push([command, args]);
+			return { anchors: ANCHORS, folds: [] };
+		});
+		const one = outlineModel('# A\n');
+		assert.deepEqual(await headingAnchors(one.model), ANCHORS);
+		assert.deepEqual(calls, [['markdown_outline', { markdown: '# A\n', frontMatterLines: 0 }]]);
+		// Completion fires per keystroke while the dropdown is open; the headings
+		// cannot have moved between two keystrokes of one edit.
+		await headingAnchors(one.model);
+		assert.equal(calls.length, 1, 'the same version was parsed twice');
+		// Keyed on the model too, because version ids are counted per model and
+		// each tab has its own.
+		await headingAnchors(outlineModel('# B\n').model);
+		assert.equal(calls.length, 2, 'another tab at the same version got this tab\'s headings');
+		one.edit();
+		await headingAnchors(one.model);
+		assert.equal(calls.length, 3, 'an edit must invalidate it');
+	});
+
+	// The folding provider and the sticky-scroll symbols ask for the same version
+	// together, and each ask sends the whole buffer to Rust to be parsed.
+	test('two asks for one version share one Rust call', async () => {
+		const calls: string[] = [];
+		const { documentOutline, headingAnchors } = createDocumentOutline(async (command) => {
+			calls.push(command);
+			return { anchors: [], folds: [] };
+		});
+		const { model } = outlineModel('# A\n');
+		await Promise.all([headingAnchors(model), documentOutline(model)]);
+		assert.equal(calls.length, 1, `one version, ${calls.length} calls: ${calls.join(', ')}`);
 	});
 });
 
@@ -1484,6 +2037,90 @@ Body starts here.
 		assert.equal(parsed.valid, false);
 		assert.match(parsed.error ?? '', /alias/i);
 		assert.equal(parsed.body, '# Body\n');
+	});
+
+	/** An editor over `text`, as `editorFrontMatterScrollEnd` reads it: line N sits at N*10 px. */
+	function scrollEditor(text: string) {
+		const state = { version: 1, reads: 0 };
+		const model = {
+			getVersionId: () => state.version,
+			getValue: () => (state.reads++, text),
+			getLineCount: () => text.split('\n').length,
+		};
+		const editor = { getModel: () => model, getTopForLineNumber: (line: number) => line * 10 };
+		const scrollEnd = editorFrontMatterScrollEnd(() => editor as never, () => 100_000);
+		return { state, scrollEnd };
+	}
+
+	// Split view hands scroll positions across as "inside the front matter" or
+	// "this line of the body", so both panes have to agree on where the front
+	// matter ends. The editor used to scan for any two `---` lines on its own, so
+	// a document opening with a thematic break told the preview it was inside a
+	// front matter panel the preview did not have.
+	test('the editor finds the end of the front matter through parseFrontMatter too', () => {
+		const leadingRule = `---\n\n${Array.from({ length: 40 }, (_, i) => `Paragraph ${i + 1}.`).join('\n\n')}\n\n---\n\n# Next\n`;
+		assert.equal(scrollEditor(leadingRule).scrollEnd(), 0, 'a leading rule is body, not front matter');
+		assert.equal(scrollEditor('---\ntitle: x\n---\n\n# Body\n').scrollEnd(), 50);
+	});
+
+	// Split view asks for it on every scroll event, and it costs a copy of the
+	// buffer plus a YAML parse: once per document version is enough.
+	test('the editor parses the front matter once per document version, not per scroll event', () => {
+		const { state, scrollEnd } = scrollEditor('---\ntitle: x\n---\n\n# Body\n');
+		assert.equal(scrollEnd(), 50);
+		scrollEnd();
+		assert.equal(state.reads, 1, 'the buffer was re-read and re-parsed at the same version');
+		state.version = 2;
+		scrollEnd();
+		assert.equal(state.reads, 2, 'an edit must invalidate it');
+	});
+
+	// The editor's analyses (headings, folds, colours) run in Rust on the whole
+	// buffer and blank the front matter lines first, so the closing `---` does not
+	// underline the YAML into a heading. Rust used to find those lines itself, with
+	// any two leading `---` lines, and blanked a thematic break plus the prose
+	// under it that the preview renders. Now it is told, by the same rule.
+	test('the editor tells Rust how many lines the front matter spans, fence to fence', async () => {
+		assert.equal(frontMatterFenceLines('---\n\n# Title\n\nSome intro text.\n\n---\n\n## Part 2\n'), 0);
+		assert.equal(frontMatterFenceLines('# Plain\n'), 0);
+		assert.equal(frontMatterFenceLines('---\ntitle: x\ntags: [a]\n---\n\n# Body\n'), 4);
+		assert.equal(frontMatterFenceLines('\uFEFF--- \r\ntitle: x\r\n  ---\r\n# Body\r\n'), 3);
+		assert.equal(frontMatterFenceLines('---\n---\n'), 2);
+		// No newline after the closing fence: it is still one of the lines.
+		assert.equal(frontMatterFenceLines('---\ntitle: x\n---'), 3);
+		// Malformed is still front matter: the preview strips it too.
+		assert.equal(frontMatterFenceLines('---\ntitle: [broken\n---\n'), 3);
+
+		const text = '---\ntitle: x\ntags: [a]\n---\n\n# Body\n';
+		const model = { uri: 'file:///a.md', getVersionId: () => 1, getValue: () => text };
+		const sent: Array<[string, unknown]> = [];
+
+		const { documentOutline } = createDocumentOutline(async (command, args) => {
+			sent.push([command, args]);
+			return { anchors: [], folds: [] };
+		});
+		await documentOutline(model as never);
+
+		// The semantic-token provider calls Tauri's `invoke` itself, so the
+		// stand-in goes where Tauri's runtime puts it.
+		const scope = globalThis as { window?: unknown };
+		const previous = scope.window;
+		scope.window = {
+			__TAURI_INTERNALS__: {
+				invoke: async (command: string, args: unknown) => (sent.push([command, args]), []),
+			},
+		};
+		try {
+			const { provider } = createMarkdownSemanticTokensProvider({} as never);
+			await provider.provideDocumentSemanticTokens(model as never);
+		} finally {
+			scope.window = previous;
+		}
+
+		assert.deepEqual(sent, [
+			['markdown_outline', { markdown: text, frontMatterLines: 4 }],
+			['markdown_semantic_spans', { content: text, frontMatterLines: 4 }],
+		]);
 	});
 });
 
