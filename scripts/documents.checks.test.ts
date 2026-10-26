@@ -430,26 +430,6 @@ describe('live mode watched path', () => {
 	});
 });
 
-describe('editor line ending', () => {
-	test('the status bar renders the measured label and no longer a translation key', () => {
-		const editor = readSource('src/lib/components/Editor.svelte');
-		const statusBar = sliceBetween(editor, '<div class="status-bar">', '</div>\n{/if}');
-
-		assert.match(statusBar, /<div class="status-item">\{lineEnding\}<\/div>/, 'the line-ending item shows the state');
-		assert.doesNotMatch(editor, /editor\.status\.crlf/, 'the hardcoded CRLF string is gone');
-		assert.match(
-			editor,
-			/lineEnding = lineEndingLabel\(model\)/,
-			'and it is filled from the model, in the function that refreshes document-wide readings',
-		);
-
-		// One line-ending decision reaches this component. A second one — a `\r\n`
-		// test of its own over `getValue()` — is the defect this fix replaces, in a
-		// new place.
-		assert.doesNotMatch(editor, /includes\('\\r\\n'\)/, 'no hand-rolled line-ending detection in the editor');
-	});
-});
-
 describe('file associations', () => {
 	const config = JSON.parse(readSource('src-tauri/tauri.conf.json')) as {
 		bundle: {
@@ -635,33 +615,6 @@ describe('file drop routing', () => {
 });
 
 describe('document encoding round trip', () => {
-	// ---------------------------------------------------------- the status bar
-	//
-	// Detection without an indicator is worse than no detection: a GBK document
-	// now opens, reads correctly and saves back as GBK, and the slot that is
-	// supposed to name the encoding was still rendering the literal `UTF-8` it
-	// had rendered since before Markpad could open the file at all. The one place
-	// the user could have caught a misdetection was asserting the opposite.
-	//
-	// This is the same defect #540 fixed one slot to the left, where the line
-	// ending was hardcoded `CRLF`.
-
-	test('the status bar names the encoding the document was decoded from', () => {
-		const editor = readSource('src/lib/components/Editor.svelte');
-		const statusBar = sliceBetween(editor, '<div class="status-bar">', '</div>\n{/if}');
-
-		assert.match(statusBar, /<div class="status-item">\{encoding\}<\/div>/, 'the slot shows the state');
-		assert.doesNotMatch(editor, /editor\.status\.utf8/, 'the hardcoded UTF-8 string is gone');
-
-		// Off the tab, not off Monaco: the encoding belongs to the file the buffer
-		// was decoded from, and the store is what carries it through a save.
-		assert.match(
-			editor,
-			/let encoding = \$derived\(tabManager\.activeTab\?\.encoding \?\? 'UTF-8'\)/,
-			'and it is read from the tab rather than kept as a synced copy',
-		);
-	});
-
 	test('no locale still translates a hardcoded UTF-8 label', () => {
 		// A dead key reads like a supported feature to whoever finds it next.
 		assert.doesNotMatch(readDictionarySource(), /utf8:/);

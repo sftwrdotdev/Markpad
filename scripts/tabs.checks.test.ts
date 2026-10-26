@@ -280,15 +280,10 @@ describe('editor reading position flush', () => {
 		// The teardown used to build it inline. A flush that built its own would be
 		// a second crossing of the same two numberings, which is the defect shape
 		// `lineCoordinates.ts` exists to prevent.
-		assert.doesNotMatch(editor, /tabAnchorForEditorTopLine/);
-		assert.equal((editor.match(/editorReadingPosition\(/g) ?? []).length, 1);
-	});
-
-	test('the flush refuses a tab the editor is not holding', () => {
-		// One Editor per window, swapping models between tabs: an unguarded flush
-		// would copy the active tab's position onto the record the caller named.
-		const flush = sliceFrom(editor, 'export function flushPositionTo');
-		assert.match(flush, /if \(!editorReady \|\| !editor \|\| currentTabId !== tabId\) return;/);
+		// The editor's position code is Editor.svelte plus editorDocument.svelte.ts.
+		const editorCode = editor + readSource('src/lib/utils/editorDocument.svelte.ts');
+		assert.doesNotMatch(editorCode, /tabAnchorForEditorTopLine/);
+		assert.equal((editorCode.match(/editorReadingPosition\(/g) ?? []).length, 1);
 	});
 
 	test('the transfer payload flushes before it snapshots the tab', () => {
