@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import { tabManager } from "../stores/tabs.svelte.js";
 	import { settings, wheelZoomFactor } from "../stores/settings.svelte.js";
-	import { t, type LanguageCode } from '../utils/i18n.js';
+	import { t } from '../utils/i18n.js';
 	import { MARKDOWN_LANGUAGE_ID } from '../utils/pasteContext.js';
 	import * as editorEdits from '../utils/editorEdits.js';
 	import {
@@ -47,6 +47,7 @@
 	} from '../utils/lineCoordinates.js';
 	import { editorActions, editorKeyCommands, type EditorKeyHandler } from '../utils/editorActions.js';
 	import * as editorClipboard from '../utils/editorClipboard.js';
+	import { localizedEditorActions } from '../utils/editorLocalizedActions.svelte.js';
 	import type { EditorClipboardDeps } from '../utils/editorClipboard.js';
 
 	// Monaco is ~86% of the startup JavaScript (a 4.4 MB chunk, ~360ms of
@@ -134,14 +135,6 @@
 		showWordCount: () => settings.wordCount,
 	});
 
-	// A Monaco action captures its label when it is registered, so actions built
-	// once at mount keep whatever language they were built with — switching the
-	// UI language used to leave the editor's context menu in the old one until
-	// the app was restarted. `addAction` returns an `IDisposable` for exactly
-	// this case: the registration below is re-run on every language change, and
-	// the previous disposables are released first so ids are never registered
-	// twice (a duplicate id leaves a duplicate context-menu entry behind).
-	//
 	// `editorReady` has to be `$state` rather than a plain `if (editor)` guard:
 	// `editor` is assigned inside `onMount` and is not reactive, so an effect
 	// that bailed out on it would never re-run once the editor appeared. That
@@ -158,7 +151,6 @@
 		scrollTo: scrollToSyncPosition,
 	});
 	let fontIsMonospace = $state(true);
-	let localizedActions: Monaco.IDisposable[] = [];
 
 	// Synchronous, so the keybindings can be registered once at mount; see
 	// `platformOf` for why its fallback cannot disagree with `settings.osType`.
@@ -580,23 +572,16 @@
 	const wrapAsCodeBlock = () => editorEdits.wrapAsCodeBlock(editor);
 	const insertLink = () => editorEdits.insertLink(editor);
 
-	function disposeLocalizedActions() {
-		for (const action of localizedActions) action.dispose();
-		localizedActions = [];
-	}
-
 	/**
-	 * Every action whose label comes from `t()` is registered here, so the whole
-	 * set can be rebuilt in one place when the UI language changes. Actions with
-	 * no user-visible label (the Ctrl+V command) stay in `onMount`.
+	 * Every action whose label comes from `t()`, rebuilt when the UI language
+	 * changes: utils/editorLocalizedActions.svelte.ts. Actions with no
+	 * user-visible label (the Ctrl+V command) stay in `onMount`.
 	 */
-	function registerLocalizedActions(lang: LanguageCode) {
-		// Belt and braces: Svelte runs the effect cleanup before a re-run, but
-		// re-registering an id without disposing the old action would leave a
-		// duplicate entry in the context menu, so never assume it happened.
-		disposeLocalizedActions();
-
-		const descriptors = editorActions(
+	const disposeLocalizedActions = localizedEditorActions({
+		language: () => settings.language,
+		ready: () => editorReady,
+		editor: () => editor,
+		descriptors: (lang) => editorActions(
 			{
 				monaco,
 				isMac: isMacPlatform(),
@@ -612,9 +597,8 @@
 				editTable,
 			},
 			lang,
-		);
-		localizedActions = descriptors.map((descriptor) => editor.addAction(descriptor));
-	}
+		),
+	});
 
 	const insertSimpleTable = () => {
 		const selection = editor.getSelection();
@@ -639,14 +623,6 @@
 			},
 		]);
 	};
-
-	$effect(() => {
-		const lang = settings.language;
-		if (!editorReady) return;
-
-		registerLocalizedActions(lang);
-		return disposeLocalizedActions;
-	});
 
 	onDestroy(disposeLocalizedActions);
 

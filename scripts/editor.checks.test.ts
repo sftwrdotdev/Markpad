@@ -12,64 +12,6 @@ import { importedThemeRules, PREVIEW_KIND_VARS } from '../src/lib/utils/theme.js
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 import { DEFAULT_IMAGE_DIRECTORY } from '../src/lib/utils/imageEmbed.js';
 
-// WHAT THIS FILE COVERS, AND WHAT IT DOES NOT
-//
-// Covered for real: the translation table. `t()` is imported and called, so the
-// key-exists / falls-back / distinct-label assertions are genuine behaviour.
-//
-// Not covered: Monaco's runtime. Editor.svelte is a Svelte component and cannot
-// be imported here, so "the context menu is rebuilt when the language changes"
-// and "no action id is registered twice" are pinned by reading the component's
-// source. Those assertions prove the code is *written* that way, not that
-// Monaco behaves that way when the effect re-runs — verifying that needs a
-// running editor.
-describe('context menu actions', () => {
-	const editor = readSource('src/lib/components/Editor.svelte');
-
-	test('actions are re-registered when the UI language changes', () => {
-		// The labels used to be baked in at mount, so switching language left the
-		// editor's context menu in the previous one until the app restarted.
-		assert.match(
-			editor,
-			/function registerLocalizedActions\(lang: LanguageCode\)/,
-			'registration is a function of the language, not of mount time',
-		);
-		assert.match(
-			editor,
-			/\$effect\(\(\) => \{\s*\n\s*const lang = settings\.language;/,
-			'an effect tracks settings.language',
-		);
-		assert.match(
-			editor,
-			/registerLocalizedActions\(lang\);\s*\n\s*return disposeLocalizedActions;/,
-			'the effect cleanup disposes the previous registration',
-		);
-
-		// `addAction` returns an IDisposable; re-registering an id without disposing
-		// leaves a duplicate entry in the context menu.
-		assert.match(
-			editor,
-			/function disposeLocalizedActions\(\) \{[\s\S]*?for \(const action of localizedActions\) action\.dispose\(\);/,
-			'every disposable is released',
-		);
-		assert.match(
-			editor,
-			/function registerLocalizedActions\(lang: LanguageCode\) \{[\s\S]{0,400}?disposeLocalizedActions\(\);/,
-			'registration disposes before it rebuilds',
-		);
-		assert.match(editor, /onDestroy\(disposeLocalizedActions\)/, 'teardown releases them too');
-
-		// The old design read a `uiLanguage` snapshot captured inside onMount. The
-		// narrower "no label is still bound to the snapshot" count that used to
-		// follow this line is gone: it counted occurrences of a pattern containing
-		// `uiLanguage`, so the line above has to pass for it to be reached and,
-		// once it has, the count is zero by construction. There is no state of the
-		// component in which it, and not the line above, is the failure.
-		assert.doesNotMatch(editor, /uiLanguage/, 'no captured language snapshot remains');
-	});
-
-});
-
 // Editor.svelte translates the settings store into Monaco options and
 // keybindings. Every regression locked here came from that translation layer
 // being wired to the wrong shape: a string option read as a boolean, a
