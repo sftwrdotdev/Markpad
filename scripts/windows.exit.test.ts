@@ -26,6 +26,7 @@ function stubWindow(
 	tabs: Tab[],
 	settings: Partial<WindowExitOptions['settings']> = {},
 	answers: Record<string, Answer> = {},
+	recovery: Partial<WindowExitOptions['recovery']> = {},
 ) {
 	invoked = [];
 	const log: string[] = [];
@@ -81,7 +82,7 @@ function stubWindow(
 			},
 		},
 		allWindows: async () => others,
-		recovery: { isReady: () => false, keep: async () => true, drop: async () => true },
+		recovery: { isReady: () => false, keep: async () => true, drop: async () => true, ...recovery },
 		persistWindowState: async (remember) => void log.push(`persist:${remember}`),
 		canCloseTab: async (id) => {
 			log.push(`ask:${id}`);
@@ -255,6 +256,41 @@ describe('the window close handler', () => {
 		assert.deepEqual(invoked[0], { cmd: 'set_quitting', args: { quitting: true } });
 		assert.deepEqual(w.log, ['close-window:second', 'close-window:main']);
 		assert.equal(w.log.some((line) => line === 'persist:false'), false, 'nothing is discarded');
+	});
+});
+
+// Hot exit ("Restore unsaved changes on launch"): the close keeps the dirty
+// buffers in the backup instead of asking about them.
+describe('hot exit keeps unsaved buffers', () => {
+	function hotExitWindow(autoSave: boolean) {
+		const kept: string[] = [];
+		const w = stubWindow(files(true, false), { autoSave, persistOpenEditors: true }, {}, {
+			isReady: () => true,
+			keep: async () => {
+				kept.push(w.tabs.filter((tab) => tab.isDirty).map((tab) => tab.id).join(','));
+				return true;
+			},
+		});
+		return { ...w, kept };
+	}
+
+	test('with auto-save off, the dirty buffer is kept and its file is not written', async () => {
+		// Auto-save off means the reader decides when a file is written. Closing
+		// the window is not that decision: the buffer goes to the backup, and the
+		// file on disk stays as it was.
+		const w = hotExitWindow(false);
+		await w.exit.handleCloseRequested(closeEvent(w.log));
+		assert.deepEqual(w.log.filter((line) => line.startsWith('silent:')), [], 'nothing is saved to disk');
+		assert.deepEqual(w.kept, ['a'], 'the dirty buffer is in the backup');
+		assert.equal(w.log.some((line) => line.startsWith('ask:')), false, 'and nothing is asked');
+		assert.ok(w.log.includes('persist:true'));
+	});
+
+	test('with auto-save on, pending saves write their files before the backup', async () => {
+		const w = hotExitWindow(true);
+		await w.exit.handleCloseRequested(closeEvent(w.log));
+		assert.deepEqual(w.log.filter((line) => line.startsWith('silent:')), ['silent:a']);
+		assert.deepEqual(w.kept, [''], 'the backup is written after the save, with nothing left dirty');
 	});
 });
 
