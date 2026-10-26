@@ -14,6 +14,7 @@ import {
 	validateTransferPayload,
 	type TransferableTab,
 } from '../src/lib/utils/tabTransfer.js';
+import { commitWithoutTransitions } from '../src/lib/utils/motion.js';
 import { nextUntitledTitle } from '../src/lib/utils/untitledTitle.js';
 import { outgoingTabAnchorLine, type StoredTabPosition, editorReadingPosition } from '../src/lib/utils/editorPosition.js';
 import { EditorJumps, type JumpEditor } from '../src/lib/utils/editorJumps.js';
@@ -542,5 +543,30 @@ describe('editor reading position flush', () => {
 
 		jumps.syncScrollToPosition(position);
 		assert.deepEqual(log.at(-1), ['scroll', position, { cursorIntoView: false }], 'once ready, a sync is not queued');
+	});
+});
+
+describe('tab switch is not a render', () => {
+	// A tab switch must not animate: the class that turns transitions off has to
+	// be on the element during a forced style recalculation, or it is added and
+	// removed within one style computation and suppresses nothing.
+	test('a tab switch commits the new pane geometry with transitions off', () => {
+		const log: string[] = [];
+		const classes = new Set<string>();
+		const el = {
+			classList: {
+				add: (name: string) => (classes.add(name), log.push(`add ${name}`)),
+				remove: (name: string) => (classes.delete(name), log.push(`remove ${name}`)),
+			},
+			get offsetHeight() {
+				log.push(`recalc with ${[...classes].join(',') || 'nothing'}`);
+				return 0;
+			},
+		} as unknown as HTMLElement;
+
+		commitWithoutTransitions(el);
+
+		assert.deepEqual(log, ['add tab-switching', 'recalc with tab-switching', 'remove tab-switching']);
+		assert.equal(classes.size, 0, 'the class does not stay on');
 	});
 });

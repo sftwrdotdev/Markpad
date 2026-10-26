@@ -10,6 +10,7 @@ import {
 	DROPPABLE_IMAGE_EXTENSIONS,
 	dropPaneFor,
 	dropZoneLabel,
+	handleDrop,
 	routeDroppedFile,
 	type DropAction,
 	type DropPane,
@@ -23,6 +24,7 @@ import {
 	isOpenFileMode,
 	resolveOpenFileMode,
 } from '../src/lib/utils/openFileMode.js';
+import { MARKDOWN_OPEN_FILTERS } from '../src/lib/utils/markdownLinks.js';
 import { lineEndingLabel } from '../src/lib/utils/tabModels.js';
 import { buildTransferredTab, snapshotTab, validateTransferPayload, type TransferableTab } from '../src/lib/utils/tabTransfer.js';
 import { dispatchViewerKey, viewerCommandFor, type KeyContext } from '../src/lib/utils/viewerKeymap.js';
@@ -656,5 +658,43 @@ describe('file drop routing', () => {
 		// The editor pane is only the editor while an editor is mounted there.
 		assert.equal(dropPaneFor('editor', false), 'preview');
 		assert.equal(dropPaneFor('preview', true), 'preview');
+	});
+
+	test('the viewer routes both panes through it, and acts on all three answers', () => {
+		const drop = (target: DropPane | null, hasEditor: boolean, paths: string[]) => {
+			const calls: string[] = [];
+			handleDrop(paths, target, hasEditor, {
+				insert: (path) => calls.push(`insert ${path}`),
+				open: (path) => calls.push(`open ${path}`),
+				unsupported: (path) => calls.push(`unsupported ${path}`),
+			});
+			return calls;
+		};
+		const batch = ['/n/spec.md', '/n/figure.png', '/n/archive.zip'];
+
+		assert.deepEqual(drop('editor', true, batch), [
+			'open /n/spec.md',
+			'insert /n/figure.png',
+			'unsupported /n/archive.zip',
+		]);
+		assert.deepEqual(drop('preview', true, batch), [
+			'open /n/spec.md',
+			'unsupported /n/figure.png',
+			'unsupported /n/archive.zip',
+		]);
+		// Off both panes, a document still opens.
+		assert.deepEqual(drop(null, true, ['/n/spec.md']), ['open /n/spec.md']);
+		// No editor mounted: the editor pane answers as the preview.
+		assert.deepEqual(drop('editor', false, ['/n/figure.png']), ['unsupported /n/figure.png']);
+	});
+});
+
+describe('the Open dialog', () => {
+	test('the Open dialog offers every extension Markpad treats as a document', () => {
+		// Markpad opens, renders and saves `.txt` like any other note (#535); a
+		// shorter list hid those files behind "All Files".
+		const [markdown, all] = MARKDOWN_OPEN_FILTERS;
+		assert.deepEqual([...markdown.extensions].sort(), ['markdown', 'md', 'mdown', 'mkd', 'txt']);
+		assert.deepEqual(all.extensions, ['*']);
 	});
 });

@@ -10,3 +10,16 @@
 export function jumpScrollBehavior(animate: boolean): ScrollBehavior {
 	return animate ? 'smooth' : 'auto';
 }
+
+/**
+ * Commit `el`'s current style without animating it: add `tab-switching`
+ * (transitions off, see styles.css), force a style recompute, remove it. The
+ * forced read between the two is the mechanism, not a formality: without it
+ * the class is added and removed within one style computation and suppresses
+ * nothing.
+ */
+export function commitWithoutTransitions(el: Pick<HTMLElement, 'classList' | 'offsetHeight'>): void {
+	el.classList.add('tab-switching');
+	void el.offsetHeight;
+	el.classList.remove('tab-switching');
+}

@@ -4,8 +4,6 @@ import { describe, test } from 'node:test';
 import {
 	readSource,
 	sliceBetween,
-	sliceFrom,
-	offsetOf,
 } from './sourceTree.js';
 
 describe('cross-window tab transfer wiring', () => {
@@ -20,83 +18,25 @@ describe('cross-window tab transfer wiring', () => {
 	});
 });
 
-describe('tab transfer handoff', () => {
-	const viewer = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
-
-	// A tab transfer is only ever allowed to end in one of two states: the source
-	// still has the tab, or the destination does. Every defect below produced the
-	// third state -- present in both windows, each with its own auto-save timer
-	// writing over the other.
-
-	test('a failed render undoes the inserted tab', () => {
-		// The tab must exist before it can be rendered, so the destination owns a
-		// document the source still shows until the render succeeds.
-		const accept = sliceBetween(viewer, 'acceptTransferredTab: async (snapshot)', 'onError: (message, error)');
-		assert.match(accept, /\} catch \(error\) \{\s*\n\s*tabManager\.closeTab\(id\);\s*\n\s*throw error;/);
-		assert.match(accept, /if \(isDisposed\) \{\s*\n\s*tabManager\.closeTab\(id\);/);
-	});
-
-	test('the arriving tab is put back where its reader was, after its document lands', () => {
-		// The position travels in the payload (tabTransfer.ts) and nothing put it
-		// back. `insertTransferredTab` activates the tab synchronously, while its
-		// rendered `content` is still `''`, so the preview's restore effect runs on
-		// that activation against a host holding no document: no block owns the
-		// anchor line, there is no scroll range for the percentage, and the pixel
-		// offset has nowhere to go. The document arrives afterwards, at the top.
-		//
-		// The effect cannot cover this by depending on the render. It also runs
-		// while the reader is typing — split view and edit-with-outline re-render on
-		// a debounce — and a per-render dependency would drag the preview back to
-		// the saved position on every pause in typing. So the arrival asks again
-		// itself, once `renderTabPreviewFromRaw` has awaited the patch.
-		//
-		// Ordering is the whole assertion, which is why it is a source assertion:
-		// what goes wrong is WHEN the restore is called, and the two moments are one
-		// `await` apart inside a Svelte component.
-		const accept = sliceBetween(viewer, 'acceptTransferredTab: async (snapshot)', 'onError: (message, error)');
-		const rendered = accept.indexOf('await renderTabPreviewFromRaw(transferred);');
-		const restored = accept.indexOf('restorePreviewReadingPosition(');
-		assert.ok(rendered !== -1, 'the arrival must render the document it was handed');
-		assert.ok(restored > rendered, 'the restore must run after the render, not before it');
-		// Only the active tab's host is displayed, and they all share one scrolling
-		// article: restoring for a tab the user has since switched away from would
-		// move whichever document is on screen instead.
-		assert.match(accept, /tabManager\.activeTabId === id/);
-	});
-});
-
 describe('tab switch is not a render', () => {
 	/**
 	 * The switch-time transition suppression is a contract between two files, and
 	 * both halves fail silently on their own.
 	 *
-	 * The viewer adds a class to `.layout-container`, forces a style recalculation
-	 * so the new pane geometry commits while transitions are off, and removes it —
-	 * in one statement, before the first paint of the switch. The rule that makes
-	 * the class mean anything lives in `styles.css`.
+	 * The viewer calls `commitWithoutTransitions` (utils/motion.ts), which adds a
+	 * class to `.layout-container`, forces a style recalculation and removes it;
+	 * `tabs.test.ts` runs that half. The rule that makes the class mean anything
+	 * lives in `styles.css`, and jsdom has no style recalculation to observe it in.
 	 *
-	 * Neither half can be a behaviour test: the ordering being asserted is
-	 * "the class is on the element during the browser's style recalculation", and
-	 * jsdom has no style recalculation to be inside of.
-	 *
-	 * The interesting failure is the third assertion. Svelte deletes scoped
+	 * The interesting failure is the last assertion. Svelte deletes scoped
 	 * selectors it cannot see applied in the markup, and this class is applied
 	 * through `classList` — so moving these rules into the component's `<style>`
 	 * block, which is where they look like they belong, compiles them away and
 	 * restores every animation with nothing going red.
 	 */
-	test('a tab switch commits the new pane geometry with transitions off', () => {
+	test('styles.css switches transitions off under .tab-switching', () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		const styles = readSource('src/styles.css');
-
-		// The viewer's half: add, force the recalculation, remove. The forced read
-		// between the two is the mechanism, not a formality — without it the class
-		// is added and removed within one style computation and suppresses nothing.
-		assert.match(
-			viewer,
-			/classList\.add\('tab-switching'\);\s*void [\w.]+\.offsetHeight;\s*[\w.]+\.classList\.remove\('tab-switching'\);/,
-			'the viewer must add the class, force a style recalculation, and remove it in one statement',
-		);
 
 		// The stylesheet's half, and that it reaches the outline wrapper, whose
 		// shadow follows the tab's mode.
@@ -161,26 +101,8 @@ describe('tab switch is not a render', () => {
 	});
 });
 
-describe('background edit-only tab position', () => {
-	test('both gates that drop the view state ask for the anchor first', () => {
-		// The two moments a tab's position leaves memory. Neither carries
-		// `editorViewState`: `serializeState` omits it and `restoreState` seeds
-		// null, and `tabTransfer.ts` excludes it as a live Monaco object.
-		const store = readSource('src/lib/stores/tabs.svelte.ts');
-		const serialize = sliceFrom(store, 'serializeState(extra: Record<string, unknown> = {}): string {');
-		assert.match(serialize, /anchorLine: outgoingTabAnchorLine\(t, this\.activeTabId\)/);
-
-		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const payload = sliceFrom(viewer, 'transferPayload: (tabId) => {');
-		assert.match(payload, /anchorLine: outgoingTabAnchorLine\(tab, tabManager\.activeTabId\)/);
-		// After the spread, or the snapshot's own field would win.
-		assert.ok(offsetOf(payload, '...snapshotTab(tab)') < offsetOf(payload, 'outgoingTabAnchorLine'));
-	});
-});
-
 describe('editor reading position flush', () => {
 	const editor = readSource('src/lib/components/Editor.svelte');
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	test('the editor derives the anchor in exactly one place', () => {
 		// The teardown used to build it inline. A flush that built its own would be
@@ -191,22 +113,4 @@ describe('editor reading position flush', () => {
 		assert.doesNotMatch(editorCode, /tabAnchorForEditorTopLine/);
 		assert.equal((editorCode.match(/editorReadingPosition\(/g) ?? []).length, 1);
 	});
-
-	test('the transfer payload flushes before it snapshots the tab', () => {
-		// `snapshotTab` is synchronous and runs with the editor still mounted, so
-		// without this the tab travels at the position of the last teardown.
-		const flushAt = offsetOf(viewer, 'editorPane?.flushPositionTo(tabId);');
-		const snapshotAt = offsetOf(viewer, 'snapshotTab(tab)');
-		assert.ok(flushAt < snapshotAt);
-	});
-
-	test('the window-state snapshot flushes too', () => {
-		// Same staleness at window close: `serializeState` persists the same three
-		// fields and the editor has not come down yet.
-		const serialize = sliceFrom(viewer, 'serializeState: () => {');
-		const flushAt = offsetOf(serialize, 'flushPositionTo(tabManager.activeTabId)');
-		const stateAt = offsetOf(serialize, 'return windowStateJson();');
-		assert.ok(flushAt < stateAt);
-	});
-
 });

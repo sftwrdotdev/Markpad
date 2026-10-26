@@ -29,7 +29,7 @@ import { createColdEnrichmentRestore } from './sessions/coldEnrichmentRestore.js
 	import { autoSaveFailureNeedsToast, isAutoSaveEligible } from './utils/autoSaveTimer.js';
 	import { exportAsHtml as _exportHtml, exportAsPdf as _exportPdf } from './utils/export';
 	import { askToOpenExportedFile } from './utils/openExportedFile.js';
-	import { isHomePath, showsHomeScreen } from './utils/homeTab.js';
+	import { showsHomeScreen } from './utils/homeTab.js';
 	import { handleCopy as handlePreviewCopy } from './utils/previewCopy.js';
 	import { hasExportableDocument } from './utils/tabFileActions.js';
 	import { editorLanguageFor } from './utils/editorLanguage.js';
@@ -37,7 +37,7 @@ import { createColdEnrichmentRestore } from './sessions/coldEnrichmentRestore.js
 	import { viewModeOf } from './utils/titlebarToolbar.js';
 	import { buildMenuModel, installAppMenu, type MenuAction } from './utils/appMenu.js';
 	import ZoomOverlay from './components/ZoomOverlay.svelte';
-import { MARKDOWN_LINK_EXTENSIONS } from './utils/markdownLinks.js';
+import { MARKDOWN_OPEN_FILTERS } from './utils/markdownLinks.js';
 import {
 	resolveMermaidTheme,
 } from './utils/mermaidPrint.js';
@@ -56,7 +56,7 @@ import {
 	toggleFoldFromClick,
 	type FoldHost,
 } from './utils/foldState.js';
-import { dropPaneFor, dropZoneLabel, routeDroppedFile } from './utils/fileDrop.js';
+import { dropPaneFor, dropZoneLabel, handleDrop } from './utils/fileDrop.js';
 import { headingSlug, headingText, referenceForTab } from './utils/headingReference.js';
 import {
 	measureAnchorBox,
@@ -97,22 +97,14 @@ import { canonicalizePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
 import { contextMenuFor, editorContextMenuItems, imageMenuItems, saveImageAs as saveImageAsFile } from './utils/viewerContextMenu.js';
 import { seedFindBar } from './utils/findSeed.js';
-import {
-	dropRecentFile,
-	isRecentFilesStorageEvent,
-	promoteRecentFile,
-	readStoredRecentFiles,
-	renameRecentFile,
-	updateStoredRecentFiles,
-} from './utils/recentFiles.js';
+import { createRecentFiles } from './utils/recentFiles.js';
 
 	const appWindow = getCurrentWindow();
 
 	import HomePage from './components/HomePage.svelte';
 	import { openNewWindow, pinnedTagFromWindowLabel } from './utils/pinnedTagWindow.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
-import { snapshotTab } from './utils/tabTransfer.js';
-import { outgoingTabAnchorLine } from './utils/editorPosition.js';
+import { createTabMovers, createTransferOptions } from './sessions/windowTransfer.js';
 import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSlide.js';
 import { adjustPreviewMaxWidth } from './utils/previewWidth.js';
 import { dismissesToc, tocAutoCollapses } from './utils/tocOverlay.js';
@@ -128,7 +120,7 @@ import { type ScrollSyncPosition } from './utils/scrollSync.js';
 import { resolveTheme, settings, TOC_WIDTH_RANGE, wheelZoomFactor } from './stores/settings.svelte.js';
 import { t } from './utils/i18n.js';
 import { formatChord, modifierFor, opensInNewTab } from './utils/shortcuts.js';
-import { jumpScrollBehavior } from './utils/motion.js';
+import { commitWithoutTransitions, jumpScrollBehavior } from './utils/motion.js';
 import { createWindowSession } from './sessions/windowSession.svelte.js';
 import { reportWindowMeta } from './sessions/windowMeta.svelte.js';
 import { createBoundedWriter, restoreRecords, recoverySnapshot } from './sessions/unsavedRecovery.js';
@@ -144,6 +136,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	let showSettings = $state(false);
 
 	let recentFiles = $state<string[]>([]);
+	const recentFileList = createRecentFiles((files) => (recentFiles = files));
 	let isFocused = $state(true);
 	
 	let markdownBody: HTMLElement | null = $state(null);
@@ -567,19 +560,22 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	const windowStateJson = () => tabManager.serializeState({ folderRoot: folderManager.root });
 	let restoredFolder: string | null = null;
 
+	const transferOptions = createTransferOptions({
+		editorPane: () => editorPane,
+		windowStateJson,
+		isCloseWalkActive: () => windowExit.isCloseWalkActive(),
+		isDisposed: () => isDisposed,
+		renderPreview: renderTabPreviewFromRaw,
+		restoreReadingPosition: (tab) => {
+			if (markdownBody) restorePreviewReadingPosition(markdownBody, tab, getPreviewScrollMax(markdownBody), measurePreviewBox);
+		},
+	});
+
 	const windowSession = createWindowSession({
 		windowStateKey: WINDOW_STATE_KEY,
 		legacyStateKey: LEGACY_STATE_KEY,
 		restoreInProgressKey: RESTORE_IN_PROGRESS_KEY,
-		serializeState: () => {
-			// Same reason as `transferPayload` below, at a different moment: this
-			// runs at close and at each checkpoint with the editor still mounted,
-			// so the tab being edited would be persisted at the position it held
-			// when the editor last came down. Only the active tab can be the one
-			// the editor holds.
-			if (tabManager.activeTabId) editorPane?.flushPositionTo(tabManager.activeTabId);
-			return windowStateJson();
-		},
+		serializeState: transferOptions.serializeState,
 		shouldRestoreState: () => settings.restoreStateOnReopen,
 		isDisposed: () => isDisposed,
 		restoreState: (json) => {
@@ -589,87 +585,11 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		restoredTabs: () => tabManager.tabs.map((tab) => ({ id: tab.id, path: tab.path })),
 		loadRestoredTab: (tabId) => documentSession.readRestoredTab(tabId),
 		dropRestoredTab: (tabId) => tabManager.closeTab(tabId),
-		// A partially loaded buffer must never be handed to another window.
-		// The transfer payload has no field for "incomplete" (see
-		// tabTransfer.ts) and the destination rebuilds the tab from the
-		// payload alone, so the arriving copy would look authoritative and its
-		// auto-save would truncate the file. handleDetach and moveTabToWindow
-		// complete the buffer first; these predicates are the backstop.
-		canTransfer: (tabId) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated;
-		},
-		canDetach: (tabId) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			return !windowExit.isCloseWalkActive() && tab !== undefined && !isHomePath(tab.path) && !tab.isTruncated && tabManager.tabs.length >= 2;
-		},
-		transferPayload: (tabId) => {
-			const tab = tabManager.tabs.find((item) => item.id === tabId);
-			if (!tab) throw new Error('Tab disappeared before transfer');
-			// The snapshot carries the reading position and is taken here,
-			// synchronously, with the editor still mounted — so a tab being
-			// edited would travel with the position from its last teardown, and a
-			// tab opened straight into edit mode with 0. The preview writes its
-			// own fields on every scroll and needs nothing; this is edit mode's
-			// equivalent, and it is a no-op for any tab the editor is not on.
-			editorPane?.flushPositionTo(tabId);
-			// The other half of the same problem: the flush can only speak for
-			// the tab the editor is holding, and any other tab can be sent from
-			// here too — the tab context menu names one, and `mergeSelfInto`
-			// walks all of them. `editorViewState` is what covers a background
-			// edit-mode tab in memory and it is excluded from the payload, so
-			// the anchor is recovered from it before it is dropped.
-			return JSON.stringify({
-				...snapshotTab(tab),
-				anchorLine: outgoingTabAnchorLine(tab, tabManager.activeTabId),
-			});
-		},
+		canTransfer: transferOptions.canTransfer,
+		canDetach: transferOptions.canDetach,
+		transferPayload: transferOptions.transferPayload,
 		onTransferClaimed: (tabId) => tabManager.closeTab(tabId),
-		acceptTransferredTab: async (snapshot) => {
-			// The tab has to exist before it can be rendered, which leaves a
-			// window where this side owns a document the source still shows.
-			// Anything that goes wrong from here must undo the insert, or the
-			// same file stays open in both windows with two auto-save timers
-			// writing over each other.
-			const id = tabManager.insertTransferredTab(snapshot);
-			try {
-				const transferred = tabManager.tabs.find((tab) => tab.id === id);
-				if (!transferred) return null;
-				await renderTabPreviewFromRaw(transferred);
-				if (isDisposed) {
-					tabManager.closeTab(id);
-					return null;
-				}
-				// The reading position travels with the tab, and until here nothing
-				// put it back. `insertTransferredTab` activates the tab
-				// synchronously, while its `content` is still `''`; the restore
-				// effect below runs on that activation against a host with no
-				// document in it, finds no anchor and no scroll range, and the
-				// document the reader left arrives afterwards at the top. That effect
-				// cannot cover this by depending on the render — it also runs while
-				// the reader is typing in split view, where a per-render dependency
-				// would drag the preview back on every debounce — so the arrival
-				// asks again, now that `renderTabPreviewFromRaw` has awaited the
-				// patch and the host holds the document.
-				//
-				// Guarded on the tab still being the active one: only the active
-				// host is displayed, and `markdownBody` is the article all of them
-				// share, so scrolling it for a tab the user has since switched away
-				// from would move somebody else's document.
-				if (markdownBody && tabManager.activeTabId === id) {
-					restorePreviewReadingPosition(
-						markdownBody,
-						transferred,
-						getPreviewScrollMax(markdownBody),
-						measurePreviewBox,
-					);
-				}
-				return id;
-			} catch (error) {
-				tabManager.closeTab(id);
-				throw error;
-			}
-		},
+		acceptTransferredTab: transferOptions.acceptTransferredTab,
 		onError: (message, error) => {
 			console.error(message, error);
 			addToast(`${message}: ${String(error)}`, 'error');
@@ -686,6 +606,11 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 					: t('toast.restoreInterrupted', settings.language),
 				'warning',
 			),
+	});
+	const { handleDetach, moveTabToWindow } = createTabMovers({
+		ensureFullContent: (tabId) => documentSession.ensureFullContent(tabId),
+		onPartialDocument: () => addToast(t('toast.partialDocument', settings.language), 'error'),
+		session: windowSession,
 	});
 
 	// The session is recorded as it changes, so a crash or kill brings this
@@ -903,11 +828,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	$effect(() => {
 		const _ = tabManager.activeTabId;
 		const container = untrack(() => layoutContainerEl);
-		if (container) {
-			container.classList.add('tab-switching');
-			void container.offsetHeight;
-			container.classList.remove('tab-switching');
-		}
+		if (container) commitWithoutTransitions(container);
 		showHome = false;
 		findOpen = false;
 	});
@@ -1558,10 +1479,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		const resolved = resolveMarkdownTargetPath(currentFile, target);
 		if (!resolved) return;
 
-		// The ordinary open path, as the Open dialog takes it: `loadMarkdown`
-		// resolves the file's identity first, so a tab already holding it under
-		// another spelling is activated instead of a second tab being built.
-		await loadMarkdown(resolved, { inNewTab: true });
+		await documentSession.openInNewTab(resolved);
 		if (target.hash) {
 			await scrollToAnchorWhenReady(target.hash, { pushHistory: false }, tabManager.activeTab?.path);
 		}
@@ -1604,37 +1522,21 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 
 
-	/*
-	 * All three mutations go through `updateStoredRecentFiles`, which re-reads
-	 * the stored list first. Writing `JSON.stringify(recentFiles)` from this
-	 * window's copy published a snapshot from whenever this window last looked,
-	 * so with two windows open the later write erased the other's entries.
-	 */
 	function saveRecentFile(path: string) {
-		recentFiles = updateStoredRecentFiles((current) => promoteRecentFile(current, path));
+		recentFileList.save(path);
 	}
 
 	function loadRecentFiles() {
-		recentFiles = readStoredRecentFiles();
+		recentFileList.load();
 	}
 
 	function deleteRecentFile(path: string) {
-		recentFiles = updateStoredRecentFiles((current) => dropRecentFile(current, path));
+		recentFileList.remove(path);
 	}
 
-	/*
-	 * localStorage fires `storage` in every *other* same-origin document, so
-	 * this is how a window learns that a sibling opened or removed a file. Home
-	 * screens in other windows used to keep showing a stale list until restart,
-	 * and — worse — that stale list was what their next write published.
-	 */
 	$effect(() => {
 		if (typeof window === 'undefined') return;
-		const onStorage = (event: StorageEvent) => {
-			if (isRecentFilesStorageEvent(event)) recentFiles = readStoredRecentFiles();
-		};
-		window.addEventListener('storage', onStorage);
-		return () => window.removeEventListener('storage', onStorage);
+		return recentFileList.listen(window);
 	});
 
 	function removeRecentFile(path: string, event: MouseEvent) {
@@ -1931,14 +1833,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	async function selectFile() {
 		const selected = await open({
 			multiple: true,
-			filters: [
-				// The one list every other part of the app already treats as a
-				// Markpad document — including `.txt`, which loads, renders and
-				// saves like any other note (#535). Hardcoding a shorter list here
-				// only hid those files behind "All Files".
-				{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS },
-				{ name: 'All Files', extensions: ['*'] },
-			],
+			filters: MARKDOWN_OPEN_FILTERS,
 		});
 		if (!selected) return;
 		const paths = Array.isArray(selected) ? selected : [selected];
@@ -2449,34 +2344,6 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
-	// Moving a tab to a new window preserves its state as-is — dirty content,
-	// edit/split mode, history — so there is deliberately no canCloseTab()
-	// save prompt here: movement is not closing. The content travels through
-	// the Rust broker (never disk, never localStorage), and the source tab is
-	// deleted only after the destination confirms the claim, so any failure —
-	// window creation error, timeout — leaves the tab exactly where it was.
-	// A large file may still be holding only its preview slice. The receiving
-	// window cannot tell, so the buffer is completed here, before the payload
-	// is built — otherwise the document arrives short and gets written back
-	// that way.
-	async function handleDetach(tabId: string) {
-		if (!(await documentSession.ensureFullContent(tabId))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return false;
-		}
-		return windowSession.detach(tabId);
-	}
-
-	async function moveTabToWindow(tabId: string, targetLabel: string, focusAfter = false) {
-		if (!(await documentSession.ensureFullContent(tabId))) {
-			addToast(t('toast.partialDocument', settings.language), 'error');
-			return false;
-		}
-		const moved = await windowSession.transfer(tabId, (token) => invoke('offer_tab_to_window', { targetLabel, token }));
-		if (moved && focusAfter) await invoke('focus_window', { label: targetLabel });
-		return moved;
-	}
-
 	async function carryActiveTabToNextWindow() {
 		const activeId = tabManager.activeTabId;
 		if (!activeId) return;
@@ -2626,21 +2493,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			document.addEventListener('visibilitychange', checkpointWhenHidden);
 			unlisteners.push(() => document.removeEventListener('visibilitychange', checkpointWhenHidden));
 			unlisteners.push(
-				await appWindow.listen('file-changed', async (event) => {
-					const changedPath = event.payload as string;
-					// The event names the changed file. Which tab that touches —
-					// and whether it may be reloaded at all — is decided by the
-					// session: it owns the self-write grace window (so our own
-					// auto-save does not bounce back) and it refuses to reload a
-					// tab with unsaved edits.
-					const outcome = await documentSession.resolveExternalChange(changedPath);
-					if (outcome.action === 'ignore') return;
-					if (outcome.action === 'conflict') {
-						noteExternalChangeConflict(outcome.tabId);
-						return;
-					}
-					if (liveMode) loadMarkdown(outcome.path);
-				}),
+				await appWindow.listen('file-changed', (event) => externalChange.handleFileChanged(event.payload as string, liveMode)),
 			);
 
 			const listeners: [string, EventCallback<any>][] = [
@@ -2662,7 +2515,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 						const newPath = oldPath.replace(/[/\\][^/\\]+$/, (m) => m.charAt(0) + newName);
 						try {
 							await documentSession.renameFile(tabId, newPath);
-							recentFiles = updateStoredRecentFiles((current) => renameRecentFile(current, oldPath, newPath));
+							recentFileList.rename(oldPath, newPath);
 						} catch (e) {
 							console.error('Failed to rename file', e);
 							await askCustom(`Failed to rename file: ${e}`, { title: 'Error', kind: 'error' });
@@ -2743,23 +2596,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 						const paths = event.payload.paths;
 						const currentEditor = editorPane;
 						if (currentEditor) currentEditor.hideDragCaret();
-						// Both panes route through `routeDroppedFile`. The editor's
-						// branch used to look for an image and silently discard
-						// everything else, so a `.md` dropped there did nothing at
-						// all while the same drop on the preview opened it.
-						const pane = dropPaneFor(dragTarget, !!currentEditor);
-						paths.forEach(path => {
-							switch (routeDroppedFile(path, pane)) {
-								case 'insert':
-									currentEditor?.handleDroppedFile(path, x, y);
-									break;
-								case 'open':
-									loadMarkdown(path);
-									break;
-								case 'unsupported':
-									reportUnsupportedDrop(path);
-									break;
-							}
+						handleDrop(paths, dragTarget, !!currentEditor, {
+							insert: (path) => currentEditor?.handleDroppedFile(path, x, y),
+							open: (path) => loadMarkdown(path),
+							unsupported: reportUnsupportedDrop,
 						});
 						
 						isDragging = false;
@@ -2783,7 +2623,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			try {
 				const args: string[] = await invoke('send_markdown_path');
 				if (!isDisposed && args?.length > 0) {
-					for (const path of args) await loadMarkdown(path);
+					await documentSession.openFiles(args);
 				}
 			} catch (error) {
 				console.error('Error receiving Markdown file path:', error);

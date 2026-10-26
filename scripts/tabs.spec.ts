@@ -18,6 +18,10 @@ const { createDocumentSession, claimTabForRead } = await import('../src/lib/sess
 const { createWindowSession } = await import('../src/lib/sessions/windowSession.svelte.js');
 const { settings } = await import('../src/lib/stores/settings.svelte.js');
 const { loadLocale } = await import('../src/lib/utils/i18n.js');
+const { createTabMovers, createTransferOptions } = await import('../src/lib/sessions/windowTransfer.js');
+const { snapshotTab } = await import('../src/lib/utils/tabTransfer.js');
+const { outgoingTabAnchorLine } = await import('../src/lib/utils/editorPosition.js');
+type Tab = import('../src/lib/stores/tabs.svelte.js').Tab;
 
 describe('a preview host per tab', () => {
 	function patchPreviewBlocks(host: HTMLElement, html: string) {
@@ -512,6 +516,40 @@ describe('path identity on a case-folding volume', () => {
 		await session.loadMarkdown('/notes/b.md');
 
 		assert.equal(tabManager.tabs.length, 2);
+	});
+
+	// A link opened in a new tab takes the ordinary open path, which resolves the
+	// file's identity before picking a tab. Putting the path on a tab first and
+	// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
+	// link opened a second tab beside the `C:\n\b.md` the user already had open.
+	test('every file the OS hands the launch window opens, in order', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/a.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+		disk.set('/notes/c.md', { body: 'c', lossy: false });
+
+		await session.openFiles(['/notes/a.md', '/notes/b.md', '/notes/c.md']);
+
+		assert.deepEqual(
+			tabManager.tabs.map((tab) => tab.path),
+			['/notes/a.md', '/notes/b.md', '/notes/c.md'],
+		);
+	});
+
+	test('a link opened in a new tab goes through the ordinary open path', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/A.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/A.md');
+		const first = tabManager.activeTabId!;
+		await session.loadMarkdown('/notes/b.md');
+		await session.openInNewTab('/notes/a.md');
+
+		assert.equal(tabManager.tabs.length, 2, 'a link to an open file opened a second tab');
+		assert.equal(tabManager.activeTabId, first);
 	});
 
 	// Back/forward and a tab arriving from another window put a path on a tab
@@ -1390,6 +1428,165 @@ describe('tab transfer races', () => {
 		emit('tab-transfer-claimed', TOKEN);
 		assert.equal(await first, true);
 		assert.equal(await second, false);
+	});
+
+	// --- the viewer's side: what this window sends and how it takes a tab in ---
+
+	function makeTransfer(overrides: Partial<Parameters<typeof createTransferOptions>[0]> = {}) {
+		return createTransferOptions({
+			editorPane: () => null,
+			windowStateJson: () => tabManager.serializeState(),
+			isCloseWalkActive: () => false,
+			isDisposed: () => false,
+			renderPreview: async () => {},
+			restoreReadingPosition: () => {},
+			...overrides,
+		});
+	}
+
+	/** A payload as another window would send it, with this store left empty. */
+	function arrivingSnapshot() {
+		const tabId = openTab('# arriving');
+		const snapshot = snapshotTab(tabManager.tabs.find((tab) => tab.id === tabId)!);
+		tabManager.closeAll();
+		return snapshot;
+	}
+
+	test('a failed render undoes the inserted tab', async () => {
+		// The tab must exist before it can be rendered, so the destination owns a
+		// document the source still shows until the render succeeds.
+		const snapshot = arrivingSnapshot();
+		const failing = makeTransfer({ renderPreview: () => Promise.reject(new Error('render failed')) });
+		await assert.rejects(failing.acceptTransferredTab(snapshot), /render failed/);
+		assert.equal(tabManager.tabs.length, 0);
+
+		let disposed = false;
+		const closing = makeTransfer({ isDisposed: () => disposed, renderPreview: async () => void (disposed = true) });
+		assert.equal(await closing.acceptTransferredTab(snapshot), null);
+		assert.equal(tabManager.tabs.length, 0, 'a window torn down mid-render keeps no half-arrived tab');
+	});
+
+	test('the arriving tab is put back where its reader was, after its document lands', async () => {
+		// `insertTransferredTab` activates the tab while its preview is still
+		// empty, so a restore before the render has nothing to scroll.
+		const snapshot = arrivingSnapshot();
+		const log: string[] = [];
+		const transfer = makeTransfer({
+			renderPreview: async () => {
+				await Promise.resolve();
+				log.push('rendered');
+			},
+			restoreReadingPosition: (tab) => log.push(`restored ${tab.path}`),
+		});
+		const id = await transfer.acceptTransferredTab(snapshot);
+		assert.equal(id, tabManager.activeTabId);
+		assert.deepEqual(log, ['rendered', 'restored /notes/a.md']);
+
+		// Only the active tab's host is displayed: a reader who switched away
+		// during the render must not have the document on screen moved.
+		tabManager.closeAll();
+		log.length = 0;
+		const switching = makeTransfer({
+			renderPreview: async () => void tabManager.addTab('/notes/other.md', 'other'),
+			restoreReadingPosition: () => log.push('restored'),
+		});
+		await switching.acceptTransferredTab(snapshot);
+		assert.deepEqual(log, []);
+	});
+
+	test('both gates that drop the view state ask for the anchor first', () => {
+		// The two moments a tab's position leaves memory. Neither carries
+		// `editorViewState`, so a background edit-only tab would leave at the
+		// anchor of its last preview scroll.
+		const lines = Array.from({ length: 80 }, (_, index) => `line ${index + 1}`).join('\n');
+		const backgroundId = openTab(lines);
+		tabManager.addTab('/notes/active.md', 'active');
+		const background = tabManager.tabs.find((tab) => tab.id === backgroundId)!;
+		background.isEditing = true;
+		background.anchorLine = 3 as typeof background.anchorLine;
+		background.editorViewState = { viewState: { firstPosition: { lineNumber: 40, column: 1 } } };
+		const expected = outgoingTabAnchorLine(background, tabManager.activeTabId);
+		assert.notEqual(expected, 3);
+
+		const transfer = makeTransfer();
+		assert.equal(JSON.parse(transfer.transferPayload(backgroundId)).anchorLine, expected);
+		const saved = JSON.parse(transfer.serializeState()).tabs.find((tab: { path: string; anchorLine: number }) => tab.anchorLine === expected);
+		assert.ok(saved, 'the window snapshot records the editor position too');
+	});
+
+	test('the transfer payload flushes before it snapshots the tab', () => {
+		// The editor holds the live position; without the flush the tab travels
+		// at the position of the last teardown.
+		const tabId = openTab('doc');
+		const editorPane = {
+			flushPositionTo: (id: string) => {
+				tabManager.tabs.find((tab) => tab.id === id)!.anchorLine = 12 as Tab['anchorLine'];
+			},
+		};
+		const transfer = makeTransfer({ editorPane: () => editorPane });
+		assert.equal(JSON.parse(transfer.transferPayload(tabId)).anchorLine, 12);
+	});
+
+	test('the window-state snapshot flushes too', () => {
+		// Same staleness at window close: the editor has not come down yet.
+		openTab('doc');
+		const flushed: string[] = [];
+		const editorPane = {
+			flushPositionTo: (id: string) => {
+				flushed.push(id);
+				tabManager.tabs.find((tab) => tab.id === id)!.anchorLine = 12 as Tab['anchorLine'];
+			},
+		};
+		const transfer = makeTransfer({ editorPane: () => editorPane });
+		assert.equal(JSON.parse(transfer.serializeState()).tabs[0].anchorLine, 12);
+		assert.deepEqual(flushed, [tabManager.activeTabId]);
+	});
+
+	test('a partial buffer cannot be handed to another window', async () => {
+		// The destination rebuilds the tab from the payload alone and cannot know
+		// the text is incomplete, so its auto-save would truncate the file.
+		const tabId = openTab('first 50KB');
+		tabManager.addTab('/notes/another.md', 'another');
+		const transfer = makeTransfer();
+		assert.equal(transfer.canTransfer(tabId), true);
+		assert.equal(transfer.canDetach(tabId), true);
+		tabManager.tabs.find((tab) => tab.id === tabId)!.isTruncated = true;
+		assert.equal(transfer.canTransfer(tabId), false);
+		assert.equal(transfer.canDetach(tabId), false);
+
+		// The movers complete the buffer first, and stop when they cannot.
+		const asked: string[] = [];
+		let partial = 0;
+		const movers = createTabMovers({
+			ensureFullContent: async () => false,
+			onPartialDocument: () => partial++,
+			session: {
+				detach: async (id) => (asked.push(`detach ${id}`), true),
+				transfer: async (id) => (asked.push(`transfer ${id}`), true),
+			},
+		});
+		assert.equal(await movers.handleDetach(tabId), false);
+		assert.equal(await movers.moveTabToWindow(tabId, 'w2'), false);
+		assert.deepEqual(asked, []);
+		assert.equal(partial, 2);
+	});
+
+	test('moving to an existing window uses the acknowledged transfer protocol', async () => {
+		respond = (cmd) => (cmd === 'stage_detached_tab' ? TOKEN : null);
+		const tabId = openTab('doc');
+		const { session } = makeSession();
+		const movers = createTabMovers({ ensureFullContent: async () => true, onPartialDocument: () => {}, session });
+
+		const moving = movers.moveTabToWindow(tabId, 'w2', true);
+		await settle();
+		const offer = calls.find((call) => call.cmd === 'offer_tab_to_window');
+		assert.deepEqual(offer?.args, { targetLabel: 'w2', token: TOKEN });
+		assert.equal(tabManager.tabs.length, 1, 'the source keeps the tab until the target acknowledges');
+
+		emit('tab-transfer-claimed', TOKEN);
+		assert.equal(await moving, true);
+		assert.equal(tabManager.tabs.length, 0);
+		assert.deepEqual(calls.find((call) => call.cmd === 'focus_window')?.args, { label: 'w2' });
 	});
 });
 

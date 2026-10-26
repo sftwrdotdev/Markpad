@@ -143,3 +143,26 @@ export function isRecentFilesStorageEvent(event: Pick<StorageEvent, 'key' | 'sto
 	if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function' && event.storageArea && event.storageArea !== localStorage) return false;
 	return event.key === null || event.key === RECENT_FILES_KEY;
 }
+
+/**
+ * A window's view of the list. Every change is a change to the stored list
+ * (through {@link updateStoredRecentFiles}) and `publish` gets what landed;
+ * `listen` folds in what sibling windows did, since localStorage fires
+ * `storage` only in the *other* same-origin documents.
+ */
+export function createRecentFiles(publish: (files: string[]) => void) {
+	return {
+		load: () => publish(readStoredRecentFiles()),
+		save: (path: string) => publish(updateStoredRecentFiles((current) => promoteRecentFile(current, path))),
+		remove: (path: string) => publish(updateStoredRecentFiles((current) => dropRecentFile(current, path))),
+		rename: (oldPath: string, newPath: string) =>
+			publish(updateStoredRecentFiles((current) => renameRecentFile(current, oldPath, newPath))),
+		listen(target: Pick<Window, 'addEventListener' | 'removeEventListener'>): () => void {
+			const onStorage = (event: Event) => {
+				if (isRecentFilesStorageEvent(event as StorageEvent)) publish(readStoredRecentFiles());
+			};
+			target.addEventListener('storage', onStorage);
+			return () => target.removeEventListener('storage', onStorage);
+		},
+	};
+}

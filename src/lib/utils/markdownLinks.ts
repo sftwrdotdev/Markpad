@@ -17,6 +17,17 @@ export type MarkdownLinkTarget = {
 // matches markdownLinks.ts` in scripts/wikilinkFileTargets.test.ts.
 export const MARKDOWN_LINK_EXTENSIONS = ['md', 'markdown', 'mdown', 'mkd', 'txt'];
 
+/**
+ * The Open dialog's filters: the one list every other part of the app already
+ * treats as a Markpad document — including `.txt`, which loads, renders and
+ * saves like any other note (#535). Hardcoding a shorter list here only hid
+ * those files behind "All Files".
+ */
+export const MARKDOWN_OPEN_FILTERS = [
+	{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS },
+	{ name: 'All Files', extensions: ['*'] },
+];
+
 /** `.md`, `.markdown`, … anchored at the end of a path. Also used to replace it. */
 export const MARKDOWN_LINK_EXTENSION_PATTERN = new RegExp(
 	`\\.(?:${MARKDOWN_LINK_EXTENSIONS.map((ext) => ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})$`,

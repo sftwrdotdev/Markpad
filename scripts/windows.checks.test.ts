@@ -38,14 +38,6 @@ describe('moving tabs between windows', () => {
 	const tab = readSource('src/lib/components/Tab.svelte');
 	const titleBar = readSource('src/lib/components/TitleBar.svelte');
 
-	test('moving to an existing window uses the acknowledged transfer protocol', () => {
-		assert.match(session, /async function transfer\(/);
-		assert.match(session, /invoke\('complete_detached_tab', \{ token \}\)/);
-		assert.match(session, /onTransferClaimed\(tabId\)/);
-		assert.match(session, /async function acceptOfferedTransfer/);
-		assert.match(viewer, /invoke\('offer_tab_to_window', \{ targetLabel, token \}\)/);
-	});
-
 	// `WebviewWindowBuilder::build()` deadlocks when called from a
 	// *synchronous* Tauri command on Windows/WebView2, because the main thread is
 	// blocked inside the command while WebView2 waits for that same thread to pump
@@ -151,20 +143,6 @@ describe('a cold start does not steal focus', () => {
 
 describe('every opened document path reaches a window', () => {
 	const runtime = readSource('src-tauri/src/window_runtime.rs');
-	const tauriLib = readRustBackend();
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-	test('macOS open-document events preserve every delivered file path', () => {
-		assert.match(runtime, /startup_files: Mutex<Option<Vec<String>>>/);
-		// Every delivered url is pushed, and the queue is taken whole: the
-		// defect this guards against was consuming only `urls.first()`.
-		assert.match(tauriLib, /for url in urls/);
-		assert.match(tauriLib, /deliver_opened_path\(/);
-		assert.match(runtime, /paths\.push\(path\.clone\(\)\)/);
-		assert.match(runtime, /startup_files\)\.take\(\)/);
-		assert.match(runtime, /for path in opened\.into_iter\(\)\.rev\(\)/);
-		assert.match(viewer, /for \(const path of args\) await loadMarkdown\(path\);/);
-	});
 
 	test('a second launch hands every argv path to the running window', () => {
 		// `markpad a.md b.md` with Markpad already running arrives here instead of
@@ -184,13 +162,6 @@ describe('the recent-file list is written through one helper', () => {
 
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	test('every mutation goes through the read-modify-write helper', () => {
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => promoteRecentFile\(\1, path\)\)/);
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => dropRecentFile\(\1, path\)\)/);
-		assert.match(viewer, /recentFiles = updateStoredRecentFiles\(\((\w+)\) => renameRecentFile\(\1, oldPath, newPath\)\)/);
-		assert.equal(viewer.match(/updateStoredRecentFiles\(/g)?.length, 3, 'exactly three call sites, all of them shown above');
-	});
-
 	test('nothing writes the key directly any more', () => {
 		// Any surviving `setItem('recent-files', ...)` is a window publishing its
 		// own snapshot again, which is the whole defect.
@@ -203,19 +174,9 @@ describe('the recent-file list is written through one helper', () => {
 		// `tabManager.closeTab`, with no unsaved-changes prompt.
 		assert.doesNotMatch(functionSource(viewer, 'removeRecentFile'), /closeTab/);
 	});
-
-	test('a window folds in what its siblings did', () => {
-		// localStorage fires `storage` in every OTHER same-origin document. Without
-		// this the home screen showed a stale list until restart — and that stale
-		// list was what the next write published.
-		assert.match(viewer, /isRecentFilesStorageEvent\(event\)\) recentFiles = readStoredRecentFiles\(\)/);
-		assert.match(viewer, /window\.addEventListener\('storage', onStorage\)/);
-		assert.match(viewer, /window\.removeEventListener\('storage', onStorage\)/);
-	});
 });
 
 describe('window state restore', () => {
-	const tabs = readSource('src/lib/stores/tabs.svelte.ts');
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 	const session = readSource('src/lib/sessions/windowSession.svelte.ts');
 
@@ -225,60 +186,21 @@ describe('window state restore', () => {
 	// changes are handled exclusively by the per-tab close dialogs.
 
 	test('startup restore reads content from disk, not from the snapshot', () => {
-		const restore = sliceBetween(session, 'async function restore', 'async function claimTransferredTab');
-		// The tab on screen is read the way an open reads it, through the document
-		// session's `loadMarkdown`; restore itself reads no file, and never takes a
-		// document's text from the snapshot (sessionRestoreResilience.spec.ts).
-		assert.match(restore, /await options\.loadRestoredTab\(active\.id\);/);
-		assert.doesNotMatch(restore, /invoke\('read_file/);
+		// The session half runs in windows.sessionRestore.spec.ts. This is the
+		// viewer's wiring of it: the tab on screen is read through the document
+		// session, the way an open reads it.
 		assert.match(viewer, /loadRestoredTab: \(tabId\) => documentSession\.readRestoredTab\(tabId\),/);
-		// Its read is taken before the first await, so the activation effect cannot
-		// start a second one while the breadcrumb is being written.
-		assert.ok(
-			offsetOf(restore, 'tabManager.takeUnread(active.id)') < offsetOf(restore, 'progress.pending = active.path'),
-			'the read is taken before the breadcrumb write',
-		);
-		// the others wait unread; a deferred document is unavailable instead, so
-		// activation does not read it behind the breadcrumb's back
-		assert.match(restore, /tabManager\.markTabContentUnavailable\(tab\.id\);/);
-		assert.match(restore, /else tabManager\.markTabUnread\(tab\.id\);/);
-		// dropping is reserved for an entry that is not a file at all — a legacy
-		// 'HOME' sentinel (homeSentinelSnapshot.spec.ts)
-		assert.match(restore, /if \(!hasRealFilePath\(tab\.path\)\) \{\s*\n\s*options\.dropRestoredTab\(tab\.id\);/);
 		assert.match(viewer, /await windowSession\.restore\(\);/);
 	});
 
 	test('v2 snapshots are invisible to legacy builds (Rust file, localStorage keys removed)', () => {
-		// An older build restoring a snapshot it cannot understand ends up with
-		// undefined tab content; its editor then attributes a stale buffer to the
-		// wrong tab and auto-save writes it to disk. The snapshot now lives in a
-		// Rust-written file (setItem is an async message to the WebKit storage
-		// process and loses a flush race when the last window's close ends the
-		// process); both localStorage keys are removed on write, so a downgraded
-		// build starts a fresh session instead of misreading anything.
-		const scope = sliceBetween(session, 'async function persistState', 'async function restore');
-		// Through the session's one snapshot writer, which calls the Rust command.
-		assert.match(scope, /snapshots\.flush\(/);
-		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
-		assert.doesNotMatch(scope, /setItem\(/);
-		assert.match(scope, /removeItem\(options\.windowStateKey\)/);
-		assert.match(scope, /removeItem\(options\.legacyStateKey\)/);
+		// Behaviour: windows.sessionRestore.spec.ts. What stays here is the
+		// contract: the localStorage key older builds read, and the Rust commands
+		// that hold the snapshot now.
 		assert.match(viewer, /const WINDOW_STATE_KEY = 'savedTabsDataV2';/);
-		// startup prefers the Rust file and falls back to the localStorage keys
-		// (v2 first, then legacy) for one-time migration of older snapshots
+		assert.match(session, /write: \(json\) => invoke\('save_window_state'/);
 		assert.match(session, /invoke\('load_window_state'\)/);
-		assert.match(
-			session,
-			/localStorage\.getItem\(options\.windowStateKey\) \?\?\n?\s*localStorage\.getItem\(options\.legacyStateKey\)/,
-		);
-		// The shared helper clears the Rust snapshot and both localStorage keys.
-		// Only turning the setting off uses it: a restore that goes wrong must never
-		// delete the record of which documents were open, and quitting writes the
-		// snapshot rather than discarding it.
-		const discardScope = sliceBetween(session, 'async function discardPersistedState', 'async function readProgress');
-		assert.match(discardScope, /clear_window_state/);
-		assert.match(discardScope, /removeItem\(options\.windowStateKey\)/);
-		assert.match(discardScope, /removeItem\(options\.legacyStateKey\)/);
+		assert.match(session, /invoke\('clear_window_state'\)/);
 	});
 
 });

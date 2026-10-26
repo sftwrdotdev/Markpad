@@ -11,9 +11,8 @@ import { describe, test } from 'node:test';
  * which both survived.
  *
  * The fix is the one #370 established for settings: re-read before writing, and
- * let a `storage` listener fold in what the siblings did. This file runs the
- * real module for the merge semantics; the three call sites are asserted
- * against the component's source, because they live in a Svelte file.
+ * let a `storage` listener fold in what the siblings did. Each window here is
+ * the real `createRecentFiles` the viewer builds.
  *
  * `recentFiles.ts` reaches `writeStoredSetting` in `settings.svelte.ts`, which
  * is a runes module — hence the shims below, the same ones
@@ -59,12 +58,11 @@ Object.defineProperty(globalThis, 'window', {
 Object.defineProperty(globalThis, 'navigator', { value: { language: 'en-US' }, configurable: true });
 
 const {
-	dropRecentFile,
+	createRecentFiles,
 	isRecentFilesStorageEvent,
 	parseRecentFiles,
 	promoteRecentFile,
 	readStoredRecentFiles,
-	renameRecentFile,
 	updateStoredRecentFiles,
 } = await import('../src/lib/utils/recentFiles.js');
 
@@ -96,25 +94,11 @@ describe('the recent-file list is shared by every window', () => {
 
 	const stored = () => parseRecentFiles(backing.get(KEY) ?? null);
 
-	/**
-	 * A window: its own in-memory copy of the list, exactly as the component holds
-	 * one. `open`/`remove` are what the component's `saveRecentFile` and
-	 * `deleteRecentFile` now do.
-	 */
+	/** A window: its own in-memory copy of the list, as the viewer holds one. */
 	function makeWindow(initial: string[]) {
-		const self = {
-			files: [...initial],
-			open(path: string) {
-				self.files = updateStoredRecentFiles((current) => promoteRecentFile(current, path));
-			},
-			remove(path: string) {
-				self.files = updateStoredRecentFiles((current) => dropRecentFile(current, path));
-			},
-			rename(from: string, to: string) {
-				self.files = updateStoredRecentFiles((current) => renameRecentFile(current, from, to));
-			},
-		};
-		return self;
+		const self = { files: [...initial] };
+		const list = createRecentFiles((files) => (self.files = files));
+		return Object.assign(self, { open: list.save, remove: list.remove, rename: list.rename, list });
 	}
 
 	test('a second window opening a file does not erase the first one', () => {
@@ -233,6 +217,28 @@ describe('the recent-file list is shared by every window', () => {
 			false,
 			'sessionStorage is a different store',
 		);
+	});
+
+	test('a window folds in what its siblings did', () => {
+		// localStorage fires `storage` in every OTHER same-origin document. Without
+		// this the home screen showed a stale list until restart, and that stale
+		// list was what the next write published.
+		seed(['/a.md']);
+		const a = makeWindow([]);
+		const target = new EventTarget();
+		const stop = a.list.listen(target as unknown as Window);
+		const storageEvent = (key: string | null) => Object.assign(new Event('storage'), { key, storageArea: null });
+
+		backing.set(KEY, JSON.stringify(['/from-sibling.md', '/a.md']));
+		target.dispatchEvent(storageEvent('theme'));
+		assert.deepEqual(a.files, [], 'another key is not a recent-files change');
+		target.dispatchEvent(storageEvent(KEY));
+		assert.deepEqual(a.files, ['/from-sibling.md', '/a.md']);
+
+		stop();
+		backing.set(KEY, JSON.stringify(['/later.md']));
+		target.dispatchEvent(storageEvent(KEY));
+		assert.deepEqual(a.files, ['/from-sibling.md', '/a.md'], 'a closed window stops listening');
 	});
 
 	// The Open dialog hands over `C:\n\b.md` and a followed link resolves to

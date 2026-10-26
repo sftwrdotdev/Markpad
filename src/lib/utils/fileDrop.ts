@@ -66,3 +66,26 @@ export function routeDroppedFile(path: string, pane: DropPane): DropAction {
 export function dropZoneLabel(paths: readonly string[], pane: DropPane): 'embed' | 'open' {
 	return paths.some((path) => routeDroppedFile(path, pane) === 'insert') ? 'embed' : 'open';
 }
+
+export interface DropActions {
+	insert(path: string): void;
+	open(path: string): void;
+	unsupported(path: string): void;
+}
+
+/**
+ * Act on a drop: every path is routed through `routeDroppedFile` for the pane
+ * the drop resolves to, and each of the three answers is acted on. The editor's
+ * branch used to look for an image and silently discard everything else, so a
+ * `.md` dropped there did nothing at all while the same drop on the preview
+ * opened it.
+ */
+export function handleDrop(
+	paths: readonly string[],
+	target: DropPane | null,
+	hasEditor: boolean,
+	actions: DropActions,
+): void {
+	const pane = dropPaneFor(target, hasEditor);
+	for (const path of paths) actions[routeDroppedFile(path, pane)](path);
+}

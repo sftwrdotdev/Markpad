@@ -4,8 +4,6 @@ import { describe, test } from 'node:test';
 import { LIST_MARKER, TASK_BOX } from '../src/lib/utils/listSyntax.js';
 import { MARKDOWN_LINK_EXTENSIONS } from '../src/lib/utils/markdownLinks.js';
 import {
-	functionSource,
-	offsetOf,
 	readDictionarySource,
 	readRustBackend,
 	readSource,
@@ -117,14 +115,10 @@ describe('lossy decode save guard', () => {
 	});
 
 	test('saveContent is the choke point auto-save and the close dialogs share', () => {
-		// Auto-save lives in MarkdownViewer.svelte's debounce effect and the close
-		// flow in canCloseTab; both reach saveContent, so guarding it covers them
-		// without touching either.
-		assert.match(session, /const success = await saveContent\(tabId\);/);
+		// saveSilently and canCloseTab run in documents.save.spec.ts. What stays is
+		// the debounce effect's wiring in the component: its writer is saveSilently.
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
 		assert.match(viewer, /saveSilently\(s\.id\)\.then\(/);
-		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
-		assert.match(functionSource(saves, 'saveSilently'), /documentSession\.saveContent\(tabId\)/);
 	});
 
 	test('the refusal names Save As, the only exit', () => {
@@ -153,20 +147,10 @@ describe('live mode watched path', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	test('a watcher notification is routed to its watched path', () => {
+		// The event name across Rust and TypeScript. What the viewer does with the
+		// event runs in documents.conflicts.spec.ts (handleFileChanged).
 		assert.match(runtime, /emit_to\(event_label\.as_str\(\), "file-changed", watched_path\.clone\(\)\)/);
-		// `async` because deciding what an event means now reads the file: the
-		// answer to "did somebody else write this" is the file itself, not a clock.
-		assert.match(viewer, /await appWindow\.listen\('file-changed', async \(event\) => \{/);
-		assert.match(viewer, /const changedPath = event\.payload as string;/);
-		// The listener no longer compares the payload with the active file itself:
-		// resolveExternalChange looks up the tab that OWNS the changed path (and
-		// refuses to reload it when it has unsaved edits). See
-		// externalChangeReload.spec.ts for the routing behaviour.
-		assert.match(viewer, /await documentSession\.resolveExternalChange\(changedPath\)/);
-		// A conflict is reported with Live Mode off too; Live Mode gates only the reload.
-		assert.match(viewer, /if \(liveMode\) loadMarkdown\(outcome\.path\);/);
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-		assert.match(session, /tabManager\.tabs\.find\(\(tab\) => tab\.path === changedPath\)/);
+		assert.match(viewer, /await appWindow\.listen\('file-changed', \(event\) => externalChange\.handleFileChanged\(event\.payload as string, liveMode\)\)/);
 	});
 
 	test('toggling Live Mode does not reload the document', () => {
@@ -218,11 +202,10 @@ describe('file associations', () => {
 	// note, so the Open dialog has to offer them.
 	test('the Open dialog offers every extension Markpad treats as a document', () => {
 		const viewer = readSource('src/lib/MarkdownViewer.svelte');
-		const links = readSource('src/lib/utils/markdownLinks.ts');
 
-		assert.match(links, /MARKDOWN_LINK_EXTENSIONS = \[[^\]]*'txt'/);
-		assert.match(viewer, /\{ name: 'Markdown', extensions: MARKDOWN_LINK_EXTENSIONS \}/);
-		// A literal list is how the two drifted apart in the first place.
+		// The list itself runs in documents.test.ts. What stays is that the viewer's
+		// Open dialog uses it: a literal list is how the two drifted apart.
+		assert.match(viewer, /filters: MARKDOWN_OPEN_FILTERS,/);
 		assert.doesNotMatch(viewer, /extensions: \['md/);
 	});
 });
@@ -276,18 +259,7 @@ describe('open file mode', () => {
 describe('file drop routing', () => {
 	const viewerSource = readSource(new URL('../src/lib/MarkdownViewer.svelte', import.meta.url));
 
-	test('the viewer routes both panes through it, and acts on all three answers', () => {
-		const dropHandler = sliceBetween(
-			viewerSource,
-			"} else if (event.payload.type === 'drop') {",
-			'isDragging = false;',
-		);
-
-		assert.match(dropHandler, /const pane = dropPaneFor\(dragTarget, !!currentEditor\);/);
-		assert.match(dropHandler, /switch \(routeDroppedFile\(path, pane\)\)/);
-		assert.match(dropHandler, /case 'insert':[\s\S]{0,120}?handleDroppedFile\(path, x, y\)/);
-		assert.match(dropHandler, /case 'open':[\s\S]{0,80}?loadMarkdown\(path\)/);
-		assert.match(dropHandler, /case 'unsupported':[\s\S]{0,80}?reportUnsupportedDrop\(path\)/);
+	test('the unsupported-drop toast names the file with toast.unsupportedFile', () => {
 		// One toast helper for both panes: the message used to be built inline in
 		// the preview branch, which is part of why the editor branch had nothing
 		// to say.
@@ -343,7 +315,7 @@ describe('document encoding round trip', () => {
 });
 
 describe('explicit save cancels auto-save', () => {
-	test('no call site takes the cancel duty back from saveContent', async () => {
+	test('no call site takes the cancel duty back from saveContent', () => {
 		// The regression this guards is not a broken save — it is the duty
 		// drifting back out to the call sites, where the next entry point can
 		// forget it again. A cancel immediately before a `saveContent` is the
@@ -356,16 +328,6 @@ describe('explicit save cancels auto-save', () => {
 				`${path} pairs a manual cancel with a save; saveContent already does this`,
 			);
 		}
-
-		// And the duty is discharged before the write, not after — the source-level
-		// mirror of the ordering test above, so a refactor that reorders the two
-		// inside `saveContent` is caught even if the stub harness stops seeing it.
-		const session = readSource('src/lib/sessions/documentSession.svelte.ts');
-		const saveContentBody = session.slice(session.indexOf('async function saveContent('));
-		const cancel = saveContentBody.indexOf('options.cancelPendingAutoSave(');
-		const write = saveContentBody.indexOf("invoke('save_file_content'");
-		assert.ok(cancel !== -1, 'saveContent must cancel the pending auto-save');
-		assert.ok(cancel < write, 'the cancel must come before the write it protects');
 	});
 });
 
@@ -373,13 +335,6 @@ describe('external change reload', () => {
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
 	// --- wiring that cannot be executed outside a Svelte runtime ---
-
-	test('the watcher listener routes every event through the guarded resolution', () => {
-		const body = sliceBetween(viewer, "listen('file-changed'", '}),');
-		assert.match(body, /resolveExternalChange/);
-		// The old body called loadMarkdown(currentFile) directly.
-		assert.doesNotMatch(body, /loadMarkdown\(currentFile\)/);
-	});
 
 	test('turning Live Mode on does not reload', () => {
 		// Enabling reload is not a request to discard the buffer, and this was
@@ -425,16 +380,6 @@ describe('reopening a dirty document', () => {
 	// Cwd-relative, not `import.meta.url`: see the note on `readSource`.
 	const viewer = readSource('src/lib/MarkdownViewer.svelte');
 
-	// A link opened in a new tab takes the ordinary open path, which resolves the
-	// file's identity before picking a tab. Putting the path on a tab first and
-	// loading with `skipTabManagement` compared spellings, so `C:/n/b.md` from a
-	// link opened a second tab beside the `C:\n\b.md` the user already had open.
-	test('a link opened in a new tab goes through the ordinary open path', () => {
-		const fn = sliceBetween(viewer, 'async function openMarkdownTargetInNewTab', '\n\tasync function');
-		assert.doesNotMatch(fn, /tabManager\.addTab\(/);
-		assert.match(fn, /await loadMarkdown\(resolved, \{ inNewTab: true \}\);/);
-	});
-
 	// --- reverting is still possible, and only by saying so ---
 	//
 	// Authorization is declared by the caller, never inferred by the session from
@@ -446,44 +391,6 @@ describe('reopening a dirty document', () => {
 		assert.equal(viewer.match(/discardUnsavedBuffer: true/g), null);
 		const saves = readSource('src/lib/sessions/externalChange.svelte.ts');
 		assert.equal(saves.match(/discardUnsavedBuffer: true/g)?.length, 2);
-	});
-});
-
-describe('truncated buffer guard', () => {
-	const viewer = readSource('src/lib/MarkdownViewer.svelte');
-
-	// --- wiring that cannot be executed outside a Svelte runtime ---
-
-	test('a partial buffer cannot be handed to another window', () => {
-		// The destination rebuilds the tab from the payload alone and has no way
-		// to know the text is incomplete, so its auto-save would truncate the file.
-		//
-		// Each subject is extracted by its own name. The previous form sliced
-		// `'canTransfer: (tabId)'` → `'transferPayload:'`, which ran past
-		// `canDetach`, and `'async function handleDetach'` → `'async function
-		// carryActiveTabToNextWindow'`, which ran past `moveTabToWindow`. Both
-		// swallowed neighbours end in a character-identical copy of the guard being
-		// asserted, so the `assert.match` was satisfied either way: deleting
-		// `&& !tab.isTruncated` from `canTransfer`, and separately deleting the whole
-		// four-line `ensureFullContent` guard from `handleDetach`, each left the
-		// suite green — on the transfer-then-auto-save path this file is named for.
-		//
-		// The two neighbours were therefore never asserted about, only stood in
-		// front of. Both are the same guard on the same path, so both are named.
-		for (const predicate of ['canTransfer', 'canDetach']) {
-			assert.match(
-				functionSource(viewer, predicate),
-				/!tab\.isTruncated/,
-				`${predicate} must refuse a tab whose buffer is still the preview slice`,
-			);
-		}
-		for (const mover of ['handleDetach', 'moveTabToWindow']) {
-			assert.match(
-				functionSource(viewer, mover),
-				/if \(!\(await documentSession\.ensureFullContent\(tabId\)\)\) \{[\s\S]*?return false;/,
-				`${mover} must complete the buffer before the payload is built, and stop when it cannot`,
-			);
-		}
 	});
 });
 

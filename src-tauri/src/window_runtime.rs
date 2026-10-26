@@ -1064,6 +1064,29 @@ pub fn pick_delivery_window(app: &AppHandle) -> Option<tauri::WebviewWindow> {
     windows.get(label).cloned()
 }
 
+/// Joins `path` to the launch's files while the launch window has not taken them
+/// yet, keeping every one delivered. False once they have been taken.
+fn queue_startup_file(pending: &mut Option<Vec<String>>, path: &str) -> bool {
+    match pending.as_mut() {
+        Some(paths) => {
+            paths.push(path.to_string());
+            true
+        }
+        None => false,
+    }
+}
+
+/// The launch's files: every path the OS delivered before the launch window
+/// asked, in delivery order, ahead of the argv paths it did not already name.
+fn merge_startup_files(opened: Vec<String>, mut files: Vec<String>) -> Vec<String> {
+    for path in opened.into_iter().rev() {
+        if !files.contains(&path) {
+            files.insert(0, path);
+        }
+    }
+    files
+}
+
 /// A file opened by the OS. Until the launch window has taken the launch's files it
 /// joins them, so it lands there and in no other window; after that it goes
 /// where `pick_delivery_window` says.
@@ -1071,12 +1094,10 @@ pub fn deliver_opened_path(app: &AppHandle, path: String) {
     let state = app.state::<AppState>();
     let target = {
         let mut pending = lock_recover(&state.startup_files);
-        match pending.as_mut() {
-            Some(paths) => {
-                paths.push(path.clone());
-                app.get_webview_window(LAUNCH_LABEL)
-            }
-            None => pick_delivery_window(app),
+        if queue_startup_file(&mut pending, &path) {
+            app.get_webview_window(LAUNCH_LABEL)
+        } else {
+            pick_delivery_window(app)
         }
     };
     if let Some(window) = target {
@@ -1375,13 +1396,8 @@ pub fn send_markdown_path(window: tauri::Window, state: State<'_, AppState>) -> 
         return Vec::new();
     };
     let args: Vec<String> = std::env::args().collect();
-    let mut files = startup_paths(&args, &std::env::current_dir().unwrap_or_default());
-    for path in opened.into_iter().rev() {
-        if !files.contains(&path) {
-            files.insert(0, path);
-        }
-    }
-    files
+    let files = startup_paths(&args, &std::env::current_dir().unwrap_or_default());
+    merge_startup_files(opened, files)
 }
 
 /// What the window-state plugin keeps for every window.
@@ -1446,6 +1462,29 @@ pub fn handle_window_event(window: &tauri::Window, event: &tauri::WindowEvent) {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+
+    // macOS open-document events: opening several files from Finder delivers
+    // several paths, and every one has to reach the launch window. The defect
+    // this guards against was consuming only the first.
+    #[test]
+    fn macos_open_document_events_preserve_every_delivered_file_path() {
+        let mut pending = Some(Vec::new());
+        assert!(queue_startup_file(&mut pending, "/n/a.md"));
+        assert!(queue_startup_file(&mut pending, "/n/b.md"));
+        let opened = pending.take().unwrap();
+        assert_eq!(
+            merge_startup_files(opened, vec!["/n/c.md".into()]),
+            vec!["/n/a.md", "/n/b.md", "/n/c.md"]
+        );
+        // argv naming one of them again does not open it twice.
+        assert_eq!(
+            merge_startup_files(vec!["/n/a.md".into()], vec!["/n/a.md".into()]),
+            vec!["/n/a.md"]
+        );
+        // Once taken, a later file is not queued for the launch window again.
+        assert!(!queue_startup_file(&mut pending, "/n/d.md"));
+        assert_eq!(pending, None);
+    }
 
     fn idle_watcher() -> RecommendedWatcher {
         RecommendedWatcher::new(|_: notify::Result<notify::Event>| {}, Config::default()).unwrap()
