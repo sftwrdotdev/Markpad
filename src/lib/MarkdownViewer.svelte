@@ -105,6 +105,7 @@ import { createRecentFiles } from './utils/recentFiles.js';
 
 	import HomePage from './components/HomePage.svelte';
 	import { openNewWindow, pinnedTagFromWindowLabel } from './utils/pinnedTagWindow.js';
+	import { attachTableColumnResize } from './utils/tableColumnResize.js';
 import { tabManager, type Tab } from './stores/tabs.svelte.js';
 import { createTabMovers, createTransferOptions } from './sessions/windowTransfer.js';
 import { createPaneSlider, planPaneSlide, type PanesShown } from './utils/paneSlide.js';
@@ -387,6 +388,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		// the outline stranded over the text.
 		window.addEventListener('pointerdown', dismiss, { passive: true, capture: true });
 		return () => window.removeEventListener('pointerdown', dismiss, { capture: true });
+	});
+
+	$effect(() => {
+		if (markdownBody) return attachTableColumnResize(markdownBody);
 	});
 
 	import { followTheme } from './utils/themeEffect.svelte.js';

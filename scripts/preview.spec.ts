@@ -11,6 +11,7 @@ import { type Annotation, annotationOf, hitAt, occurrenceRanges, overlapping, ra
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { copyableFlavours, copyableHtml, handleCopy } from '../src/lib/utils/previewCopy.js';
 import { linkTooltipFor } from '../src/lib/utils/previewLinks.js';
+import { attachTableColumnResize } from '../src/lib/utils/tableColumnResize.js';
 import { imageMenuItems, saveImageAs, type SaveImageDeps } from '../src/lib/utils/viewerContextMenu.js';
 import { loadLocale } from '../src/lib/utils/i18n.js';
 import { type DomPoint, pointAtSource, sourceAtPoint, type SourcePoint } from '../src/lib/utils/previewCursor.js';
@@ -1602,5 +1603,131 @@ describe('inline content in headings', () => {
 		for (const heading of headings) {
 			assert.doesNotMatch(getComputedStyle(heading).display, /flex|grid/, `${heading.tagName} lays its words out as flex items`);
 		}
+	});
+});
+
+/**
+ * Dragging a column border trades width between the two columns beside it
+ * (#1036). jsdom has no layout, so the table is modelled: each column's cells
+ * sit in a 100px box side by side, a column is 80px wide until pinned and never
+ * narrower than a 50px longest word, and the table is as wide as its columns
+ * (`min-content`), 240px before the first drag.
+ */
+describe('table column resize', () => {
+	let root: HTMLElement;
+	let detach: () => void;
+
+	const table = () => root.querySelector('table')!;
+	const headers = () => Array.from(root.querySelectorAll('th'));
+	const used = (th: Element) => Math.max((th as HTMLElement).style.width ? parseFloat((th as HTMLElement).style.width) : 80, 50);
+	const widths = () => headers().map(used);
+	const pointer = (target: EventTarget, type: string, clientX: number) => {
+		const event = new PointerEvent(type, { bubbles: true, cancelable: true, button: 0, clientX });
+		target.dispatchEvent(event);
+		return event;
+	};
+	const drag = (target: Element, from: number, to: number) => {
+		pointer(target, 'pointerdown', from);
+		pointer(window, 'pointermove', to);
+		pointer(window, 'pointerup', to);
+	};
+
+	beforeEach(() => {
+		root = document.createElement('article');
+		root.innerHTML = '<table><thead><tr><th>a</th><th>b</th><th>c</th></tr></thead><tbody><tr><td>1</td><td>2</td><td>3</td></tr></tbody></table>';
+		document.body.append(root);
+		Object.defineProperty(table(), 'offsetWidth', { value: 240 });
+		Object.defineProperty(table(), 'scrollWidth', { get: () => widths().reduce((a, b) => a + b) });
+		for (const cell of root.querySelectorAll<HTMLTableCellElement>('th, td')) {
+			cell.getBoundingClientRect = () => new DOMRect(cell.cellIndex * 100, 0, 100, 20);
+		}
+		const real = window.getComputedStyle.bind(window);
+		vi.spyOn(window, 'getComputedStyle').mockImplementation((el) => {
+			const style = real(el);
+			const rtl = el.closest('[dir=rtl]') !== null;
+			return new Proxy(style, {
+				get: (target, key) =>
+					key === 'width' ? `${used(el)}px`
+					: key === 'direction' ? (rtl ? 'rtl' : 'ltr')
+					: Reflect.get(target, key),
+			});
+		});
+		detach = attachTableColumnResize(root);
+	});
+
+	afterEach(() => {
+		detach();
+		root.remove();
+		vi.restoreAllMocks();
+	});
+
+	test('dragging a border between two columns moves width from one to the other', () => {
+		const down = pointer(headers()[0], 'pointerdown', 98);
+		assert.equal(down.defaultPrevented, true);
+		pointer(window, 'pointermove', 118);
+		pointer(window, 'pointerup', 118);
+		assert.deepEqual(widths(), [100, 60, 80]);
+		assert.equal(table().style.width, 'min-content');
+		assert.deepEqual(headers().map((th) => th.style.minWidth), ['100px', '60px', '80px']);
+		// The drag has ended: a later move changes nothing.
+		pointer(window, 'pointermove', 300);
+		assert.deepEqual(widths(), [100, 60, 80]);
+	});
+
+	test('a column stopped by its longest word gives its neighbour only what it gave up', () => {
+		drag(headers()[0], 98, 18);
+		assert.deepEqual(widths(), [50, 110, 80]);
+		assert.equal(table().scrollWidth, 240);
+	});
+
+	test('what a neighbour cannot give widens the table', () => {
+		drag(headers()[0], 98, 178);
+		assert.deepEqual(widths(), [160, 50, 80]);
+		assert.equal(table().scrollWidth, 290);
+	});
+
+	test('the outer border widens the last column but narrows it only to the first width', () => {
+		drag(headers()[2], 298, 338);
+		assert.deepEqual(widths(), [80, 80, 120]);
+		drag(headers()[2], 298, 238);
+		assert.deepEqual(widths(), [80, 80, 80]);
+	});
+
+	test('a press just past the border, on the next cell, grabs the same border', () => {
+		drag(headers()[1], 103, 83);
+		assert.deepEqual(widths(), [60, 100, 80]);
+	});
+
+	test('a border in a body row resizes the same column', () => {
+		drag(root.querySelectorAll('td')[1], 198, 218);
+		assert.deepEqual(widths(), [80, 100, 60]);
+	});
+
+	test('a press away from a border is left to the page', () => {
+		assert.equal(pointer(headers()[1], 'pointerdown', 150).defaultPrevented, false);
+		assert.equal(pointer(root.querySelector('td')!, 'pointerdown', 50).defaultPrevented, false);
+		// The leading edge of the first column is the table's edge, not a border.
+		assert.equal(pointer(root.querySelector('td')!, 'pointerdown', 2).defaultPrevented, false);
+		assert.deepEqual(headers().map((th) => th.style.width), ['', '', '']);
+	});
+
+	test('a double-click on a border puts the table back on automatic widths', () => {
+		drag(headers()[1], 199, 220);
+		headers()[1].dispatchEvent(new MouseEvent('dblclick', { bubbles: true, clientX: 220 }));
+		assert.deepEqual(headers().map((th) => th.style.width), ['', '', '']);
+		assert.deepEqual(headers().map((th) => th.style.minWidth), ['', '', '']);
+		assert.equal(table().style.width, '');
+	});
+
+	test('in a right-to-left table the trailing border is the left one and dragging left widens', () => {
+		root.setAttribute('dir', 'rtl');
+		drag(headers()[1], 102, 82);
+		assert.deepEqual(widths(), [80, 100, 60]);
+	});
+
+	test('teardown stops the preview from listening', () => {
+		detach();
+		assert.equal(pointer(headers()[0], 'pointerdown', 98).defaultPrevented, false);
+		detach = () => {};
 	});
 });

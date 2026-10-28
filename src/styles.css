@@ -738,6 +738,12 @@ body {
 	font-variant-numeric: tabular-nums;
 }
 
+/* Set by `tableColumnResize.ts` while the pointer is on a column border. */
+.markdown-body.column-resize-hover {
+	cursor: col-resize;
+	user-select: none;
+}
+
 .markdown-body table tr {
 	background-color: var(--color-canvas-default);
 	border-top: 1px solid var(--color-border-muted);
