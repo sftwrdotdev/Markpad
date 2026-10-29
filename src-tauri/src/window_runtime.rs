@@ -1712,36 +1712,8 @@ pub fn geometry_flags() -> tauri_plugin_window_state::StateFlags {
         | StateFlags::FULLSCREEN
 }
 
-/// Writes window geometry while the app runs. The plugin only saves on a
-/// clean exit, so a crash or kill brought every window back at its default
-/// size. A move or resize schedules one save of all windows 500 ms later,
-/// the bound the session snapshots use.
-/// ponytail: the plugin writes its file with `fs::write`, not by rename, so a
-/// kill mid-write can lose every window's geometry once; the session itself
-/// is unaffected.
-pub struct GeometrySaver(Mutex<Box<dyn Fn() + Send>>);
-
-impl GeometrySaver {
-    pub fn new<R: Runtime>(app: AppHandle<R>) -> Self {
-        Self(Mutex::new(Box::new(coalesced(
-            Duration::from_millis(500),
-            move || {
-                use tauri_plugin_window_state::AppHandleExt;
-                if let Err(error) = app.save_window_state(geometry_flags()) {
-                    eprintln!("Failed to save window geometry: {error}");
-                }
-            },
-        ))))
-    }
-}
-
 pub fn handle_window_event<R: Runtime>(window: &tauri::Window<R>, event: &tauri::WindowEvent) {
     match event {
-        tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-            if let Some(saver) = window.try_state::<GeometrySaver>() {
-                (lock_recover(&saver.0))();
-            }
-        }
         tauri::WindowEvent::Focused(true) => {
             let label = window.label();
             if is_viewer_label(label) {
@@ -1803,39 +1775,15 @@ mod tests {
         assert_eq!(pending, None);
     }
 
-    // The window-state plugin saves only on a clean exit, so after a crash
-    // every window came back at its default size. A move or a resize reaches
-    // the managed saver while the app runs; other events do not.
-    #[test]
-    #[cfg(not(windows))] // mock runtime; see app.rs setup_tests
-    fn a_move_or_resize_schedules_a_geometry_save() {
-        use tauri::{PhysicalPosition, PhysicalSize, WindowEvent};
-        let app = tauri::test::mock_app();
-        let calls = Arc::new(AtomicU64::new(0));
-        let counted = calls.clone();
-        app.manage(GeometrySaver(Mutex::new(Box::new(move || {
-            counted.fetch_add(1, Ordering::SeqCst);
-        }))));
-        let webview_window =
-            tauri::WebviewWindowBuilder::new(&app, "window-1", tauri::WebviewUrl::default())
-                .build()
-                .unwrap();
-        let window = webview_window.as_ref().window();
-
-        handle_window_event(&window, &WindowEvent::Focused(false));
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
-        handle_window_event(&window, &WindowEvent::Moved(PhysicalPosition::new(10, 20)));
-        assert_eq!(calls.load(Ordering::SeqCst), 1);
-        handle_window_event(&window, &WindowEvent::Resized(PhysicalSize::new(800, 600)));
-        assert_eq!(calls.load(Ordering::SeqCst), 2);
-    }
-
     // `markpad a.md b.md` with Markpad already running arrives here instead of
     // at `send_markdown_path`. Taking only the first path opened a.md alone,
     // and emitting straight to a window lost the files that arrived before
     // the launch window listened (Explorer launches one process per file).
     #[test]
-    #[cfg(not(windows))] // mock runtime; see app.rs setup_tests
+    // Not on Windows: the mock runtime pulls in Common Controls v6 entry
+    // points, and a test binary has no manifest declaring them, so it fails to
+    // load (STATUS_ENTRYPOINT_NOT_FOUND) before any test runs.
+    #[cfg(not(windows))]
     fn a_second_launch_hands_every_argv_path_to_the_running_window() {
         let app = tauri::test::mock_app();
         app.manage(AppState::new());
