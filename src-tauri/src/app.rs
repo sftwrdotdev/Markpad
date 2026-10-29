@@ -196,7 +196,6 @@ fn bindings_builder() -> tauri_specta::Builder<tauri::Wry> {
 
 /// Builds the launch window and hands it the launch's first file.
 fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::Error>> {
-    app.manage(window_runtime::GeometrySaver::new(app.handle().clone()));
     let args: Vec<String> = std::env::args().collect();
 
     let mut window_builder = tauri::WebviewWindowBuilder::new(
@@ -306,29 +305,6 @@ mod tests {
         .map(|url| tauri::Url::parse(url).unwrap())
         .to_vec();
         assert_eq!(opened_file_paths(urls), vec!["/n/a.md", "/n/b.md"]);
-    }
-}
-
-#[cfg(all(test, not(windows)))]
-// Not on Windows: the mock runtime pulls in Common Controls v6 entry points,
-// and a test binary has no manifest declaring them, so it fails to load
-// (STATUS_ENTRYPOINT_NOT_FOUND) before any test runs.
-mod setup_tests {
-    use super::*;
-    use tauri::test::{mock_builder, mock_context, noop_assets};
-
-    // The window-state plugin saves only on a clean exit; the running save
-    // depends on the saver `handle_window_event` looks up being managed.
-    #[test]
-    fn setup_manages_the_geometry_saver() {
-        let mut app = mock_builder()
-            .setup(setup)
-            .build(mock_context(noop_assets()))
-            .unwrap();
-        // Runs `setup` once; the mock event loop does nothing else.
-        #[allow(deprecated)]
-        app.run_iteration(|_, _| {});
-        assert!(app.try_state::<window_runtime::GeometrySaver>().is_some());
     }
 }
 
