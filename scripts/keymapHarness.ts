@@ -301,3 +301,49 @@ export type BareCommand = EditorKeyCommand;
 export function bareCommands(): BareCommand[] {
 	return editorKeyCommands({ KeyMod, KeyCode } as never);
 }
+
+/**
+ * The key names Monaco's `KeyCodeUtils.toString` prints, where they differ from
+ * the way the registry spells the key for a human.
+ */
+const MONACO_KEY_NAMES: Record<string, string> = {
+	Left: 'LeftArrow',
+	Right: 'RightArrow',
+};
+
+/**
+ * A registry chord as the harness spells the same chord.
+ *
+ * The registry is written for a reader (`Mod+Shift+E`); Monaco's decoder emits
+ * `Shift+Meta+E` on macOS and `Ctrl+Shift+E` elsewhere, in its own modifier
+ * order. Translating in this direction — registry into harness — rather than
+ * the other way keeps the registry human-facing, and a mistake here makes
+ * assertions FAIL rather than pass, because the comparison is against chords
+ * the real code produced.
+ */
+export function toMonacoLabel(chord: string, mac: boolean): Chord {
+	return chord
+		.split(' ') // a chord SEQUENCE ("Mod+K T") is two chords
+		.map((single) => {
+			const parts = single.split('+');
+			const key = parts.pop()!;
+			const mods = new Set(parts);
+			const ctrl = mods.has('Ctrl') || (mods.has('Mod') && !mac);
+			// A literal `Meta` stays Meta on every platform, the same way a literal
+			// `Ctrl` does. The registry has no such row — the chords that need this
+			// spelling are the unadvertised ones named in
+			// DOCUMENT_CHORDS_NOT_ADVERTISED, which are written in registry syntax so
+			// the exemption list and the registry read alike.
+			const meta = mods.has('Meta') || (mods.has('Mod') && mac);
+			return [
+				ctrl && 'Ctrl',
+				mods.has('Shift') && 'Shift',
+				mods.has('Alt') && 'Alt',
+				meta && 'Meta',
+				MONACO_KEY_NAMES[key] ?? key,
+			]
+				.filter(Boolean)
+				.join('+');
+		})
+		.join(' ');
+}

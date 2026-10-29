@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { decodeKeybinding, type KeyCodeChord } from 'monaco-editor/esm/vs/base/common/keybindings.js';
 import { describe, test, beforeAll, expect, vi } from 'vitest';
 
-import { bareCommands, type Chord, editorKeymap, label, PLATFORMS } from './keymapHarness.js';
+import { SHORTCUTS } from '../src/lib/utils/shortcuts.js';
+import { bareCommands, type Chord, editorKeymap, label, PLATFORMS, toMonacoLabel } from './keymapHarness.js';
 
 /*
  * WHO OWNS A CHORD: the app, or Monaco?
@@ -516,6 +517,21 @@ describe('Monaco chord ownership', () => {
 					undefined,
 					`${where} is the app's only because Monaco leaves it free in a browser; Monaco now binds ${monaco.get(chord)?.join(', ')}`,
 				);
+			}
+		}
+	});
+
+	test('a shortcut the panel credits to Monaco is one Monaco binds and the app leaves alone', () => {
+		const rows = SHORTCUTS.filter((entry) => entry.monacoCommand);
+		assert.ok(rows.length >= 2, `${rows.length} registry rows name a Monaco command`);
+		for (const entry of rows) {
+			for (const platform of PLATFORMS) {
+				const app = appEditorChords(platform.mac, platform.os);
+				for (const chord of entry.chords.map((c) => toMonacoLabel(c, platform.mac))) {
+					const where = `${platform.name}: ${entry.id} (${chord})`;
+					assert.ok(defaultsFor(platform.name).get(chord)?.includes(entry.monacoCommand!), `${where} is not Monaco's ${entry.monacoCommand}`);
+					assert.deepEqual(app.get(chord) ?? [], [], `${where} is taken by the app`);
+				}
 			}
 		}
 	});
