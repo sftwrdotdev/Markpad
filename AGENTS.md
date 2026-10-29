@@ -159,7 +159,7 @@ All file operations go through Rust commands - never use Node.js fs APIs.
 - **Frontend**: two runners, split by glob so a file belongs to exactly one.
   - `npm test` runs `scripts/*.test.ts` (`node --test --import tsx`).
   - `npm run test:vitest` runs `scripts/*.spec.ts` (vitest, jsdom, Svelte plugin).
-- **CI**: Runs `npm audit`, `npm run check`, `npm run lint`, `npm test`,
+- **CI**: Runs `npm audit --audit-level=moderate`, `npm run check`, `npm run lint`, `npm test`,
   `npm run test:vitest` and `cargo test` on PRs
 
 Tests run the real code and assert what it does. A test does not read source as text —

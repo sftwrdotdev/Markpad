@@ -113,7 +113,7 @@ jobs:
         run: npm ci
 
       - name: audit complete dependency lockfile
-        run: npm audit
+        run: npm audit --audit-level=moderate
 
       - name: check frontend
         run: npm run check

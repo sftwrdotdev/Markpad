@@ -41,7 +41,7 @@ by `npm run check`, `cargo test` and a single manual run.
 The commands you ran and what they said — the ones CI runs are:
 
 ```
-npm audit
+npm audit --audit-level=moderate
 npm run check
 npm test
 cargo test        # in src-tauri/

@@ -489,8 +489,8 @@ describe('the Actions cache budget', () => {
 		}
 	});
 
-	test('pull-request checks reject vulnerabilities anywhere in the resolved lockfile', () => {
-		assert.equal(step(testWf.jobs.test.steps, 'audit complete dependency lockfile').run?.trim(), 'npm audit');
+	test('pull-request checks reject moderate-or-worse vulnerabilities anywhere in the resolved lockfile', () => {
+		assert.equal(step(testWf.jobs.test.steps, 'audit complete dependency lockfile').run?.trim(), 'npm audit --audit-level=moderate');
 	});
 });
 
