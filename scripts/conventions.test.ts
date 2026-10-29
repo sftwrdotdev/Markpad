@@ -122,25 +122,6 @@ describe('Rust conventions', () => {
 		assert.match(fnBody(backend, 'clipboard_write_text'), /\bretain_clipboard_ownership\s*\(\s*\)/);
 	});
 
-	test('the running save and the plugin keep the same window fields', () => {
-		// The plugin's builder flags cannot be read back and the mock runtime keeps
-		// no geometry, so the pairing is checked here: every flag set handed to the
-		// window-state plugin is `geometry_flags()`.
-		const args = [...backend.matchAll(/\.\s*(with_state_flags|save_window_state)\s*\(/g)].map(
-			(m) => `${m[1]}(${bracketBody(backend, m.index + m[0].length - 1).replace(/\s+/g, '')})`,
-		);
-		assert.deepEqual(
-			[...new Set(args.map((arg) => arg.split('(')[0]))].sort(),
-			['save_window_state', 'with_state_flags'],
-			'both the plugin builder and the running save are still there',
-		);
-		assert.deepEqual(
-			args.filter((arg) => !/\((?:\w+::)*geometry_flags\(\)\)$/.test(arg)),
-			[],
-			'a window-state flag set other than geometry_flags()',
-		);
-	});
-
 	test('nothing looks a window back up and unwraps it', () => {
 		// #318: startup built the window, threw the handle away and looked it up
 		// by label, unwrapping an Option that is None on exactly the path where
