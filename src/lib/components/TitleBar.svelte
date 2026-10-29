@@ -229,11 +229,15 @@
 		}),
 	);
 
-	let viewModes: { id: ViewMode; label: string; shortcut?: string }[] = $derived([
-		{ id: 'preview', label: t('settings.preview', currentLanguage) },
-		{ id: 'split', label: t('menu.splitView', currentLanguage), shortcut: 'view-toggle-split' },
-		{ id: 'edit', label: t('menu.editor', currentLanguage), shortcut: 'view-toggle-edit' },
-	]);
+	// Edit and preview sit on the sides their panes take in split view (#1041).
+	let viewModes = $derived.by(() => {
+		const modes: { id: ViewMode; label: string; shortcut?: string }[] = [
+			{ id: 'edit', label: t('menu.editor', currentLanguage), shortcut: 'view-toggle-edit' },
+			{ id: 'split', label: t('menu.splitView', currentLanguage), shortcut: 'view-toggle-split' },
+			{ id: 'preview', label: t('settings.preview', currentLanguage) },
+		];
+		return settings.splitEditorSide === 'right' ? modes.reverse() : modes;
+	});
 
 	let currentViewMode = $derived(viewModeOf({ isEditing, isSplit: Boolean(tabManager.activeTab?.isSplit) }));
 
