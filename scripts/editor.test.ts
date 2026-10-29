@@ -59,7 +59,7 @@ describe('context menu labels', () => {
 	 * menu rendered the English label.
 	 *
 	 * These labels are held to a stricter bar than the dictionary at large.
-	 * A locale may leave keys untranslated (`LocaleTable` is partial), because 19 locales are missing >100 keys and nobody should have to translate
+	 * A locale may leave keys untranslated (`LocaleTable` is partial), because nobody should have to translate
 	 * a new English string 25 times before landing it. That trade does not apply
 	 * here: this is a fixed list of a dozen context-menu entries, all 26 languages
 	 * define all of them today, and adding an eleventh action means adding a row to

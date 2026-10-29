@@ -424,28 +424,12 @@ describe('shortcut registry', () => {
 	}
 
 	/**
-	 * Registry labels that are NOT translated in every locale.
-	 *
-	 * Reusing existing keys bought full 26-locale coverage for 32 of the 38 labels
-	 * the panel needs. It did not buy it for these six — and pretending otherwise
-	 * was the first thing this test caught. Every one of them is a key the app menu
-	 * ALREADY renders today (Reload from Disk, Find…, Back, Forward, Open File
-	 * Location, Window), so the panel inherits an existing gap rather than
-	 * creating one, and `t()` falls back to English exactly as the menu does.
+	 * Registry labels that are NOT translated in every locale. Every one is today.
 	 *
 	 * Pinned rather than waived: a new under-translated label fails the test below,
-	 * and a key that gets translated has to leave this list.
+	 * and has to be added here by name.
 	 */
-	const PARTIALLY_TRANSLATED: Record<string, number> = {
-		'menu.reloadFromDisk': 22,
-		'menu.openFileLocation': 21,
-		'menu.find': 22,
-		'menu.back': 21,
-		'menu.forward': 21,
-		'menu.window': 23,
-		// Already rendered by the preview settings pane; the panel inherits its gap.
-		'settings.previewMaxWidth': 23,
-	};
+	const PARTIALLY_TRANSLATED: Record<string, number> = {};
 
 	test('every panel label is translated everywhere, or is a named pre-existing gap', () => {
 		// The stated reason for reusing dictionary keys instead of minting new ones
