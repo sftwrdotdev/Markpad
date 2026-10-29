@@ -5,7 +5,7 @@ import { getEditorToolbarTools } from '../src/lib/utils/editorToolbar.js';
 import { t } from '../src/lib/utils/i18n.js';
 import { formatChord, SHORTCUTS } from '../src/lib/utils/shortcuts.js';
 import type { ViewerCommand } from '../src/lib/utils/viewerKeymap.js';
-import { bareCommands, type Chord, chordOf, documentKeymap, editorKeymap, OperatingSystem, PLATFORMS, registeredActions } from './keymapHarness.js';
+import { bareCommands, type Chord, chordOf, documentKeymap, editorKeymap, OperatingSystem, PLATFORMS, registeredActions, toMonacoLabel } from './keymapHarness.js';
 
 // The editor half of the shortcut contract: the keymap `utils/editorActions.ts`
 // declares (actions and nameless key commands), run through `keymapHarness.ts`,
@@ -33,52 +33,6 @@ describe('shortcut registry', () => {
 	 * the vim adapter all live in a browser.
 	 */
 	// ------------------------------------------------ registry chord -> Monaco label
-
-	/**
-	 * The key names Monaco's `KeyCodeUtils.toString` prints, where they differ from
-	 * the way the registry spells the key for a human.
-	 */
-	const MONACO_KEY_NAMES: Record<string, string> = {
-		Left: 'LeftArrow',
-		Right: 'RightArrow',
-	};
-
-	/**
-	 * A registry chord as the harness spells the same chord.
-	 *
-	 * The registry is written for a reader (`Mod+Shift+E`); Monaco's decoder emits
-	 * `Shift+Meta+E` on macOS and `Ctrl+Shift+E` elsewhere, in its own modifier
-	 * order. Translating in this direction — registry into harness — rather than
-	 * the other way keeps the registry human-facing, and a mistake here makes
-	 * assertions FAIL rather than pass, because the comparison is against chords
-	 * the real code produced.
-	 */
-	function toMonacoLabel(chord: string, mac: boolean): Chord {
-		return chord
-			.split(' ') // a chord SEQUENCE ("Mod+K T") is two chords
-			.map((single) => {
-				const parts = single.split('+');
-				const key = parts.pop()!;
-				const mods = new Set(parts);
-				const ctrl = mods.has('Ctrl') || (mods.has('Mod') && !mac);
-				// A literal `Meta` stays Meta on every platform, the same way a literal
-				// `Ctrl` does. The registry has no such row — the chords that need this
-				// spelling are the unadvertised ones named in
-				// DOCUMENT_CHORDS_NOT_ADVERTISED, which are written in registry syntax so
-				// the exemption list and the registry read alike.
-				const meta = mods.has('Meta') || (mods.has('Mod') && mac);
-				return [
-					ctrl && 'Ctrl',
-					mods.has('Shift') && 'Shift',
-					mods.has('Alt') && 'Alt',
-					meta && 'Meta',
-					MONACO_KEY_NAMES[key] ?? key,
-				]
-					.filter(Boolean)
-					.join('+');
-			})
-			.join(' ');
-	}
 
 	test('the chord translator agrees with the harness on chords both already know', () => {
 		// If `toMonacoLabel` were broken every assertion below would fail, not pass —
@@ -167,10 +121,7 @@ describe('shortcut registry', () => {
 	 * decision with a reason, in the shape this repo already uses for
 	 * `KNOWN_LAYER_DIVERGENCES`.
 	 */
-	const NOT_ADVERTISED: Record<string, string> = {
-		'custom-copy':
-			'the OS clipboard convention, not an app shortcut; its Ctrl+V twin is a bare addCommand with no id, so listing one without the other is the more confusing half-answer',
-	};
+	const NOT_ADVERTISED: Record<string, string> = {};
 
 	test('every keybinding the editor registers is either advertised or consciously not', () => {
 		const advertised = new Set(SHORTCUTS.filter((entry) => entry.editorAction).map((entry) => entry.id));
@@ -322,18 +273,8 @@ describe('shortcut registry', () => {
 	// HANDLER instead, and the handler is looked up in the component's real
 	// `addCommand` calls with the keybinding evaluated by Monaco's own `KeyMod`.
 
-	/**
-	 * Nameless commands the editor binds that are deliberately not advertised.
-	 *
-	 * The two clipboard chords, for the reason `NOT_ADVERTISED` already gives for
-	 * their `custom-copy` twin: they are OS conventions rather than app shortcuts.
-	 * Everything else the editor binds without a name has to be in the panel.
-	 */
-	const BARE_NOT_ADVERTISED: Record<string, string> = {
-		cutToClipboard:
-			'the OS clipboard convention, not an app shortcut; bound only because Monaco leaves cut/paste unbound in a browser',
-		pasteFromClipboard: 'the same, one key over',
-	};
+	/** Nameless commands the editor binds that are deliberately not advertised, with the reason. */
+	const BARE_NOT_ADVERTISED: Record<string, string> = {};
 
 	test('every contextual key the registry advertises is bound to the handler it names', () => {
 		const advertised = SHORTCUTS.filter((entry) => entry.editorCommand);
@@ -366,7 +307,7 @@ describe('shortcut registry', () => {
 			unexplained,
 			[],
 			'these keys do something extra in the editor and the shortcuts panel never mentions it; ' +
-				'add a row to SHORTCUTS (group `keys`) or a reason to BARE_NOT_ADVERTISED',
+				'add a row to SHORTCUTS or a reason to BARE_NOT_ADVERTISED',
 		);
 
 		for (const handler of Object.keys(BARE_NOT_ADVERTISED)) {

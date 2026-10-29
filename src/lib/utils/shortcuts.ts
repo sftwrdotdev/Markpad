@@ -16,12 +16,6 @@
  * is fired at the real code and has to run the command it is labelled with.
  * The registry is not a source of truth about behaviour — the handlers are —
  * it is a claim about them that a test refuses to let drift.
- *
- * WHAT IS NOT HERE
- *
- * The clipboard chords (`Mod+C`, `Mod+V`). They are OS conventions rather than
- * app shortcuts, and `Mod+V` is registered as a bare `addCommand` with no id,
- * so listing Copy without Paste would be the more confusing half-answer.
  */
 
 /**
@@ -89,14 +83,19 @@ export type ShortcutEntry = {
 	 * The name of the handler `Editor.svelte` binds this chord to with a bare
 	 * `editor.addCommand` — no action id, no label, no menu entry.
 	 *
-	 * The `keys` group needs this because there is no action id to check against:
-	 * a contextual key IS a nameless command. Recording the handler's name keeps
-	 * the row as verifiable as every other one — `shortcuts.test.ts` reads
+	 * Contextual keys and Cut/Paste need this because there is no action id to
+	 * check against. Recording the handler's name keeps the row as verifiable as
+	 * every other one — `shortcuts.editor.test.ts` reads
 	 * the component's `addCommand` calls, evaluates the keybinding with Monaco's
 	 * own `KeyMod`/`KeyCode`, and requires that this chord be bound to this
 	 * function.
 	 */
 	readonly editorCommand?: string;
+	/**
+	 * Monaco's own command for this chord, which the app leaves alone (Undo,
+	 * Redo). `editor.chords.spec.ts` checks it against Monaco's real keymap.
+	 */
+	readonly monacoCommand?: string;
 	/**
 	 * The command the document-level dispatcher means by this row's chords when
 	 * the editor does not have focus.
@@ -224,6 +223,13 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 	},
 
 	// ---------------------------------------------------------------- edit
+	{ id: 'edit-undo', labelKey: 'menu.undo', chords: ['Mod+Z'], group: 'edit', monacoCommand: 'undo' },
+	// Windows and Linux also take `Mod+Y`. macOS does not, and a row has one
+	// chord list for every platform, so only the chord all three answer is shown.
+	{ id: 'edit-redo', labelKey: 'menu.redo', chords: ['Mod+Shift+Z'], group: 'edit', monacoCommand: 'redo' },
+	{ id: 'edit-cut', labelKey: 'menu.cut', chords: ['Mod+X'], group: 'edit', editorCommand: 'cutToClipboard' },
+	{ id: 'custom-copy', labelKey: 'menu.copy', chords: ['Mod+C'], group: 'edit', editorAction: true },
+	{ id: 'edit-paste', labelKey: 'menu.paste', chords: ['Mod+V'], group: 'edit', editorCommand: 'pasteFromClipboard' },
 	{ id: 'fmt-bold', labelKey: 'menu.bold', chords: ['Mod+B'], group: 'edit', editorAction: true },
 	{ id: 'fmt-italic', labelKey: 'menu.italic', chords: ['Mod+I'], group: 'edit', editorAction: true },
 	{ id: 'fmt-underline', labelKey: 'menu.underline', chords: ['Mod+U'], group: 'edit', editorAction: true },
