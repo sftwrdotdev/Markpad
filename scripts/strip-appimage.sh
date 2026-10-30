@@ -69,6 +69,10 @@ for lib in "${EXCLUDED[@]}"; do
 	rm -fv "$libdir/$lib"
 done
 
+# The AppDir unpacks with 0700 directories, and appimagetool refuses to pack
+# anything other users could not read.
+chmod -R a+rX "$work/squashfs-root"
+
 # Repack in place so the file name — which is also the updater target named in
 # latest.json — is unchanged.
 ARCH=x86_64 "$tools/appimagetool" --appimage-extract-and-run \
