@@ -101,8 +101,7 @@ export type ShortcutEntry = {
 	 * the editor does not have focus.
 	 *
 	 * One entry means every chord in the row runs it (`file-new` binds both
-	 * `Mod+T` and `Mod+N`); otherwise there is one per chord, in `chords` order,
-	 * which is how `view-preview-width`'s `[` and `]` say which way each goes.
+	 * `Mod+T` and `Mod+N`); otherwise there is one per chord, in `chords` order.
 	 *
 	 * A `ViewerCommand` rather than a function name, now that the dispatcher has
 	 * a module of its own: the compiler now rejects a row naming a
@@ -429,15 +428,18 @@ export const SHORTCUTS: readonly ShortcutEntry[] = [
 		documentCommands: ['toggle-home'],
 	},
 	{
-		id: 'view-preview-width',
-		labelKey: 'settings.previewMaxWidth',
-		// One row, two chords: `[` narrows and `]` widens, the same pair the
-		// settings stepper offers. Both run the same branch, which turns full-width
-		// off before it adjusts the width — one shortcut, two directions, which is
-		// why this is the one row whose commands are listed per chord.
-		chords: ['Mod+Alt+[', 'Mod+Alt+]'],
+		id: 'view-preview-narrower',
+		labelKey: 'menu.previewNarrower',
+		chords: ['Mod+Alt+['],
 		group: 'view',
-		documentCommands: ['preview-width-narrower', 'preview-width-wider'],
+		documentCommands: ['preview-width-narrower'],
+	},
+	{
+		id: 'view-preview-wider',
+		labelKey: 'menu.previewWider',
+		chords: ['Mod+Alt+]'],
+		group: 'view',
+		documentCommands: ['preview-width-wider'],
 	},
 	{ id: 'view-zoom-in', labelKey: 'menu.zoomIn', chords: ['Mod+='], group: 'view', documentCommands: ['zoom-in'] },
 	{ id: 'view-zoom-out', labelKey: 'menu.zoomOut', chords: ['Mod+-'], group: 'view', documentCommands: ['zoom-out'] },
