@@ -29,7 +29,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  audit:
+    uses: ./.github/workflows/audit.yml
+
   create-release:
+    needs: audit
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
