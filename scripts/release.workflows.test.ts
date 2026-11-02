@@ -25,6 +25,8 @@ type Step = {
 type Job = {
 	'runs-on': string;
 	if?: string;
+	needs?: string[];
+	env?: Record<string, string>;
 	steps: Step[];
 	strategy?: { matrix?: { include?: Array<Record<string, string>> } };
 	'continue-on-error'?: unknown;
@@ -106,7 +108,7 @@ describe('the release workflow', () => {
 
 	test('portable executables are not mislabeled as installers', () => {
 		assert.ok(!runs(build).some((run) => /MarkpadInstaller_/.test(run)));
-		assert.match(step(build.jobs.build.steps, 'Upload Windows Artifacts').run ?? '', /bundle\/nsis\/\*-setup\.exe/);
+		assert.match(step(build.jobs.build.steps, 'Collect Windows Artifacts').run ?? '', /bundle\/nsis\/\*-setup\.exe/);
 	});
 
 	test('the test bundle command uses an isolated builder', () => {
@@ -360,12 +362,81 @@ describe('the release workflow', () => {
 		assert.ok(envNames.includes('TAURI_SIGNING_PRIVATE_KEY_PASSWORD'));
 	});
 
+	test('no unsigned Windows executable can reach the release page', () => {
+		// The Windows halves of the matrix used to `gh release upload` straight from
+		// the runner, which puts the bytes users download on the page before anything
+		// has signed them, and a later failure leaves them there. They now leave the
+		// matrix as build artifacts, and `sign-windows` is the only place a Windows
+		// file is uploaded.
+		const uploads = build.jobs.build.steps.filter((s) => /gh release upload[^\n]*\.exe/.test(s.run ?? ''));
+		assert.deepEqual(uploads, [], 'the build matrix uploads a Windows executable to the release');
+		assert.match(step(build.jobs['sign-windows'].steps, 'Upload Windows Artifacts').run ?? '', /gh release upload "v\$VERSION" windows\/\*\.exe/);
+	});
+
+	test('one approval covers every Windows executable', () => {
+		// SignPath signs the contents of one Actions artifact and an approver
+		// releases each request by hand, so a request per architecture is two clicks
+		// for one release, and two chances to sign half of it. The four executables
+		// are collected into one artifact first, and the count is asserted in the job
+		// rather than left to whichever files the matrix happened to produce.
+		const job = build.jobs['sign-windows'].steps;
+		const submits = job.filter(usesAction('signpath/github-action-submit-signing-request@'));
+		assert.equal(submits.length, 1, `expected one signing request per release, found ${submits.length}`);
+		const collect = step(job, 'Collect the Windows builds').with ?? {};
+		assert.equal(collect.pattern, 'windows-*');
+		assert.equal(collect['merge-multiple'], true);
+		assert.match(step(job, 'Assemble the signing request').run ?? '', /\[ "\$found" -ne 4 \]/);
+		assert.match(step(job, 'Re-sign the signed installers').run ?? '', /\[ "\$signed" -ne 4 \]/);
+	});
+
+	test('the updater signature describes the bytes Authenticode left behind', () => {
+		// `tauri build` signs the installer, SignPath then rewrites it, and
+		// `*-setup.exe.sig` is a minisign signature over the pre-signing bytes. Ship
+		// that and every Windows install rejects its next update, the same defect
+		// the repacked AppImage had. So the `.sig` is regenerated from the signed
+		// file, and both the regeneration and the upload come after the signed
+		// executables land.
+		const job = build.jobs['sign-windows'].steps;
+		const resign = step(job, 'Re-sign the signed installers').run ?? '';
+		assert.match(resign, /cp signed\/\*\.exe windows\/[\s\S]*?rm -f "\$installer\.sig"[\s\S]*?npm run tauri signer sign -- "\$installer"/);
+		const signedAt = stepIndex(job, (s) => s.name === 'Re-sign the signed installers', 'that re-signs the installers');
+		const uploadAt = stepIndex(job, (s) => s.name === 'Upload Windows Artifacts', 'that uploads to the release');
+		assert.ok(signedAt < uploadAt, 'the release gets the signature that was made before signing');
+
+		// And the feed that points at those signatures cannot be built from a run
+		// where this job failed: it reads the `.sig` files back off the release.
+		const feed = build.jobs['generate-update-feed'];
+		assert.ok(feed.needs?.includes('sign-windows'), 'the update feed does not wait for sign-windows');
+		assert.match(feed.if ?? '', /needs\.sign-windows\.result == 'success'/);
+	});
+
+	test('a release without the SignPath token still ships Windows', () => {
+		// #294 again: a workflow that requires signing credentials blocks every
+		// release until someone configures them. Each step that talks to SignPath is
+		// conditional on the token; the upload that puts Windows on the release page
+		// is not, so an unconfigured repository gets exactly today's release.
+		const job = build.jobs['sign-windows'].steps;
+		assert.equal(step(job, 'Upload Windows Artifacts').if, undefined);
+		for (const name of ['Assemble the signing request', 'Upload the signing request', 'Sign the Windows executables', 'Re-sign the signed installers']) {
+			assert.equal(step(job, name).if, "env.SIGNPATH_API_TOKEN != ''", `${name} runs whether or not signing is configured`);
+		}
+
+		// The release notes tell people which of the two happened, from the same
+		// value. A note that says the executables are unsigned, on a release that
+		// signed them, is two places answering one question differently.
+		const notes = step(build.jobs['create-release'].steps, 'Compose the download table');
+		assert.equal(notes.env?.SIGNPATH_API_TOKEN, '${{ secrets.SIGNPATH_API_TOKEN }}');
+		assert.match(notes.run ?? '', /if \[ -z "\$\{SIGNPATH_API_TOKEN:-\}" \]; then[\s\S]*?Windows SmartScreen Notice[\s\S]*?else[\s\S]*?Windows executables are signed/);
+	});
+
 	test('RELEASING.md names the signing secrets the workflow reads', () => {
 		// Whoever configures the secrets works from the runbook. A rename on either
 		// side sends them to create a secret nothing reads, and the bundle ships
 		// unsigned with a green build.
-		const env = step(build.jobs.build.steps, 'Import macOS signing certificate').env ?? {};
-		const secrets = [...new Set(Object.values(env).flatMap((value) => [...value.matchAll(/secrets\.([A-Z_0-9]+)/g)].map((m) => m[1])))];
+		const macEnv = step(build.jobs.build.steps, 'Import macOS signing certificate').env ?? {};
+		const windows = build.jobs['sign-windows'].steps.flatMap((s) => [...Object.values(s.env ?? {}), ...Object.values(s.with ?? {}).map(String)]);
+		const values = [...Object.values(macEnv), ...Object.values(build.jobs['sign-windows'].env ?? {}), ...windows];
+		const secrets = [...new Set(values.flatMap((value) => [...value.matchAll(/secrets\.([A-Z_0-9]+)/g)].map((m) => m[1])))].filter((name) => name !== 'GITHUB_TOKEN');
 		assert.ok(secrets.length > 0, 'the signing step reads no secrets at all');
 		const releasing = readSource('RELEASING.md');
 		for (const name of secrets) {
