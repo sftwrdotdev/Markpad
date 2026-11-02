@@ -112,9 +112,6 @@ jobs:
       - name: install frontend dependencies
         run: npm ci
 
-      - name: audit complete dependency lockfile
-        run: npm audit --audit-level=moderate
-
       - name: check frontend
         run: npm run check
 

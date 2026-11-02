@@ -25,6 +25,8 @@ type Step = {
 type Job = {
 	'runs-on': string;
 	if?: string;
+	needs?: string | string[];
+	uses?: string;
 	steps: Step[];
 	strategy?: { matrix?: { include?: Array<Record<string, string>> } };
 	'continue-on-error'?: unknown;
@@ -40,9 +42,11 @@ const build = workflow('build.yml');
 const publish = workflow('publish-packages.yml');
 const testWf = workflow('test.yml');
 const testBuild = workflow('test_build.yml');
-const ALL = { 'build.yml': build, 'publish-packages.yml': publish, 'test.yml': testWf, 'test_build.yml': testBuild };
+const audit = workflow('audit.yml');
+const ALL = { 'audit.yml': audit, 'build.yml': build, 'publish-packages.yml': publish, 'test.yml': testWf, 'test_build.yml': testBuild };
 
-const steps = (wf: Workflow) => Object.values(wf.jobs).flatMap((job) => job.steps);
+// A job that calls another workflow has no steps of its own.
+const steps = (wf: Workflow) => Object.values(wf.jobs).flatMap((job) => job.steps ?? []);
 const runs = (wf: Workflow) => steps(wf).map((step) => step.run ?? '');
 
 function step(steps: Step[], name: string): Step {
@@ -280,10 +284,11 @@ describe('the release workflow', () => {
 		for (const [name, wf] of [
 			['publish-packages.yml', publish],
 			['build.yml', build],
+			['audit.yml', audit],
 		] as const) {
 			for (const [id, job] of Object.entries(wf.jobs)) {
 				assert.equal(job['continue-on-error'], undefined, `${name} job ${id} swallows its failure`);
-				for (const s of job.steps) {
+				for (const s of job.steps ?? []) {
 					assert.equal(s['continue-on-error'], undefined, `${name} step "${s.name}" swallows its failure`);
 				}
 			}
@@ -489,8 +494,24 @@ describe('the Actions cache budget', () => {
 		}
 	});
 
-	test('pull-request checks reject moderate-or-worse vulnerabilities anywhere in the resolved lockfile', () => {
-		assert.equal(step(testWf.jobs.test.steps, 'audit complete dependency lockfile').run?.trim(), 'npm audit --audit-level=moderate');
+	test('a release does not start until the shipped dependencies pass the audit', () => {
+		assert.equal(build.jobs.audit.uses, './.github/workflows/audit.yml');
+		assert.deepEqual(build.jobs['create-release'].needs, 'audit');
+		assert.ok('workflow_call' in audit.on);
+	});
+
+	test('the audit rejects moderate-or-worse vulnerabilities in what ships', () => {
+		assert.equal(
+			step(audit.jobs.npm.steps, 'audit shipped npm dependencies').run?.trim(),
+			'npm audit --omit=dev --audit-level=moderate',
+		);
+		assert.match(step(audit.jobs.cargo.steps, 'audit Rust dependencies').run ?? '', /^cargo audit --file src-tauri\/Cargo\.lock/);
+	});
+
+	test('an unrelated pull request does not run the audit', () => {
+		assert.ok(!runs(testWf).some((run) => /\baudit\b/.test(run)), 'test.yml runs an audit');
+		const paths = (audit.on.pull_request as { paths: string[] }).paths;
+		for (const file of ['package-lock.json', 'src-tauri/Cargo.lock']) assert.ok(paths.includes(file), `${file} does not trigger the audit`);
 	});
 });
 

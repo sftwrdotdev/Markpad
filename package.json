@@ -24,6 +24,7 @@
 	},
 	"license": "BSD-3-Clause",
 	"dependencies": {
+		"@sveltejs/kit": "^3.1.0",
 		"@tauri-apps/api": "^2",
 		"@tauri-apps/plugin-dialog": "^2.5.0",
 		"@tauri-apps/plugin-opener": "^2",
@@ -36,11 +37,11 @@
 		"mermaid": "^11.16.0",
 		"monaco-editor": "^0.55.1",
 		"monaco-vim": "^0.4.4",
+		"svelte": "^5.57.2",
 		"yaml": "^2.9.0"
 	},
 	"devDependencies": {
 		"@sveltejs/adapter-static": "^4.0.0",
-		"@sveltejs/kit": "^3.1.0",
 		"@sveltejs/vite-plugin-svelte": "^7.3.1",
 		"@tauri-apps/cli": "^2.11.4",
 		"@types/node": "^26.2.0",
@@ -48,7 +49,6 @@
 		"eslint-plugin-svelte": "3.23.0",
 		"jsdom": "^30.0.1",
 		"postcss": "8.5.31",
-		"svelte": "^5.57.2",
 		"svelte-check": "^4.7.5",
 		"svelte-eslint-parser": "1.8.1",
 		"tsx": "^4.23.12",

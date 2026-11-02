@@ -1,0 +1,69 @@
+name: Audit
+
+# What ships to users, checked when it changes and again before a release.
+# Not on every pull request: an advisory published overnight is not caused by
+# the unrelated change that happens to run next, and it used to fail that run
+# and skip every check after it.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/audit.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/audit.yml'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/Cargo.lock'
+  # build.yml, before it creates a release: the lockfiles have not changed, but
+  # the advisories have.
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # Reads the lockfile, so nothing is installed. `--omit=dev` holds only while
+      # package.json is honest: anything bundled into the app, Svelte and SvelteKit
+      # included, belongs in `dependencies`.
+      - name: audit shipped npm dependencies
+        run: npm audit --omit=dev --audit-level=moderate
+
+  cargo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # The three ignored advisories are all in `zip`'s `extract`, which follows
+      # Unix symlinks and permission bits from the archive. Markpad reads VSIX
+      # entries by name and never extracts. tauri-plugin-updater does extract,
+      # but only on Windows and only an update whose signature it has verified;
+      # it requires zip ^4 and the fix is in 9. Drop these once it moves and
+      # Markpad's own zip dependency is on 9 as well.
+      - name: audit Rust dependencies
+        run: >-
+          cargo audit --file src-tauri/Cargo.lock
+          --ignore RUSTSEC-2026-0367
+          --ignore RUSTSEC-2026-0368
+          --ignore RUSTSEC-2026-0369
