@@ -98,13 +98,11 @@ function lazyLibrary<T>(load: () => Promise<T>) {
  * language is fetched by `loadLanguages` when a block names it.
  */
 const highlighter = lazyLibrary(async () => {
-	const [hljsModule, svelteModule] = await Promise.all([
-		import('highlight.js/lib/common'),
-		import('highlightjs-svelte'),
-	]);
-	const hljs = (hljsModule as any).default;
+	const hljs = ((await import('highlight.js/lib/common')) as any).default;
 	try {
-		(svelteModule as any).default(hljs);
+		// The ES build by path: the package's `browser` field names a script that
+		// expects a global `hljs`, and Vite since 8.0.10 follows it (#1057).
+		((await import('highlightjs-svelte/dist/index.mjs')) as any).default(hljs);
 	} catch (e) {
 		console.error('svelte hljs error', e);
 	}

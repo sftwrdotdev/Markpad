@@ -58,4 +58,10 @@ describe('rich content lazy loading', () => {
 		expect([...imported]).toEqual(['katex', 'mermaid']);
 		expect(diagram.querySelector('.mermaid-diagram')).not.toBeNull();
 	});
+
+	test('a Svelte block is highlighted by the Svelte grammar', async () => {
+		const code = article('<pre><code class="language-svelte">{#if ok}{/if}</code></pre>');
+		await renderRichContent({ roots: [code], mermaidTheme: 'default' });
+		expect(code.querySelector('.hljs-keyword')?.textContent).toBe('#if');
+	});
 });
