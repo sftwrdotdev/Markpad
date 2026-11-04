@@ -474,10 +474,16 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			const onCopyCode = options.onCopyCode;
 			if (onCopyCode) label.onclick = () => onCopyCode(codeContent, label);
 
+			// The icon is always there: a bare language name read as a caption,
+			// not as a button, so the copy went unnoticed. The name stays as text
+			// beside it — the icon has no text — so the label's `textContent` is
+			// still exactly the language the author wrote.
+			label.innerHTML = COPY_ICON_SVG;
 			if (language) {
-				label.textContent = language;
-			} else {
-				label.innerHTML = COPY_ICON_SVG;
+				const name = doc.createElement('span');
+				name.className = 'lang-label-name';
+				name.textContent = language;
+				label.appendChild(name);
 			}
 			wrapper.appendChild(label);
 		}

@@ -1268,11 +1268,12 @@ body {
 	position: absolute;
 	top: 6px;
 	right: 8px;
-	font-size: 9px;
+	font-size: 11px;
 	font-family: var(--win-font);
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
-	opacity: 0.3;
+	gap: 5px;
+	opacity: 0.6;
 	color: var(--color-fg-default);
 	pointer-events: auto;
 	user-select: none;
@@ -1287,8 +1288,9 @@ body {
 	justify-content: center;
 }
 
-.lang-label:hover {
-	opacity: 0.8;
+.lang-label:hover,
+.lang-label:focus-visible {
+	opacity: 1;
 	background: var(--color-neutral-muted);
 }
 
