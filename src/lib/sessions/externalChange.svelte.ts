@@ -1,5 +1,6 @@
 import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 import type { LoadMarkdownOptions } from './documentSession.svelte.js';
+import { refetchLocalImages } from '../utils/markdown.js';
 
 type ConflictTab = { id: string; path: string; originalContent: string; rawContent: string; isDirty: boolean };
 
@@ -147,6 +148,7 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		if (!tab?.path || tab.id !== tabId) return;
 		comparison = null;
 		clearExternalChangeConflict(tab.id);
+		refetchLocalImages();
 		await loadMarkdown(tab.path, {
 			preserveEditState: true,
 			skipTabManagement: true,
@@ -165,6 +167,7 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		if (!activeId || !tab?.path) return;
 		if (!(await options.canCloseTab(activeId))) return;
 
+		refetchLocalImages();
 		await loadMarkdown(tab.path, {
 			preserveEditState: true,
 			skipTabManagement: true,

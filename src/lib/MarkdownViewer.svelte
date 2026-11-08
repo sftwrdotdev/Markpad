@@ -51,6 +51,7 @@ import { type FoldLayoutObservation } from './utils/foldLayout.js';
 import { followFoldLayout, previewPaneShown } from './utils/foldLayoutEffect.svelte.js';
 import { followPreviewPatch } from './utils/previewPatchEffect.svelte.js';
 import { patchHost } from './utils/previewPatch.js';
+import { stampImageGeneration } from './utils/markdown.js';
 import { refreshesPreviewCache } from './utils/previewRefresh.js';
 import {
 	revealFold,
@@ -908,7 +909,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	// moved the tab to the new file and cleared its folds by then.
 	async function renderMarkdownPreview(raw: string) {
 		const body = getMarkdownBodyWithoutFrontMatter(raw);
-		return await commands.renderMarkdown(body, true);
+		return stampImageGeneration(await commands.renderMarkdown(body, true));
 	}
 
 	async function renderTabPreviewFromRaw(tab: Tab) {

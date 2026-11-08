@@ -699,6 +699,25 @@ export function processMarkdownHtml(
 const CALLOUT_FOLD_ATTR = "data-callout-fold";
 
 /**
+ * Reload re-reads the document, not its images (#1066). An image edited on
+ * disk keeps its URL, so the webview shows the copy it already decoded, and a
+ * block whose markup did not change is not even re-inserted. Each explicit
+ * reload starts a new generation: the preview stamps it onto every `<img>`,
+ * which changes exactly the blocks holding one, and their local URLs carry it
+ * as a query the asset protocol ignores (it reads only the path).
+ */
+let imageGeneration = 0;
+const GENERATION_ATTR = "data-image-generation";
+
+export function refetchLocalImages(): void {
+	imageGeneration++;
+}
+
+export function stampImageGeneration(html: string): string {
+	return imageGeneration ? html.replace(/<img(?=[\s/>])/gi, `<img ${GENERATION_ATTR}="${imageGeneration}"`) : html;
+}
+
+/**
  * Everything `processMarkdownHtml` does that only looks inside one top-level
  * block. Fold keys and the heading wrappers need the whole document and are
  * `applyFolds` and `wrapHeadings`.
@@ -707,6 +726,8 @@ export function processBlockMarkup(root: Element, filePath: string): void {
 	const doc = root.ownerDocument;
 	for (const img of root.querySelectorAll("img")) {
 		const src = img.getAttribute("src");
+		const generation = img.getAttribute(GENERATION_ATTR);
+		img.removeAttribute(GENERATION_ATTR);
 		let finalSrc = src;
 		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
 			try {
@@ -719,7 +740,7 @@ export function processBlockMarkup(root: Element, filePath: string): void {
 					finalSrc = null;
 					img.removeAttribute("src");
 				} else {
-					finalSrc = convertFileSrc(resolved);
+					finalSrc = convertFileSrc(resolved) + (generation ? `?v=${generation}` : "");
 					img.setAttribute("src", finalSrc);
 				}
 			} catch (e) {
