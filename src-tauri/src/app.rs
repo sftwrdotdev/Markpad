@@ -85,6 +85,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Opened { urls } = _event {
                 for path in opened_file_paths(urls) {
+                    window_runtime::forget_command_line_open(_app_handle, &path);
                     window_runtime::deliver_opened_path(_app_handle, path);
                 }
             }
@@ -150,6 +151,8 @@ fn bindings_builder() -> tauri_specta::Builder<tauri::Wry> {
             window_runtime::is_window_tag_taken,
             window_runtime::offer_tab_to_window,
             window_runtime::focus_window,
+            window_runtime::take_command_line_open,
+            window_runtime::path_is_missing,
             window_runtime::list_pinned_tags,
             window_runtime::save_pinned_tag,
             window_runtime::update_pinned_tag,
@@ -268,8 +271,11 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
     // Not sent here when a window the launch reopens is restoring it: then
     // it belongs in that window, and `send_markdown_path` routes it there
     // (#1029). Sending it here as well opened a second copy in this one.
-    let startup_files =
-        window_runtime::startup_paths(&args, &std::env::current_dir().unwrap_or_default());
+    let startup_files = window_runtime::command_line_paths(
+        app.handle(),
+        &args,
+        &std::env::current_dir().unwrap_or_default(),
+    );
 
     if let Some(path) = startup_files
         .first()

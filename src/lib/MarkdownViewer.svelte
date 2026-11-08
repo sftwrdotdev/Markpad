@@ -489,7 +489,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		setting: () => settings.openFileTarget,
 		isOpenHere: (path) => tabManager.tabs.some((tab) => isSameFilePath(tab, { path })),
 		listWindows: () => commands.listViewerWindows() as Promise<ViewerWindowEntry[]>,
-		openHere: (paths) => documentSession.openFiles(paths),
+		openHere: (paths) => openFromOutside(paths),
 		sendTo: async (label, paths) => {
 			await emitToWindow(label, 'open-files-here', paths);
 			await commands.focusWindow(label);
@@ -1064,6 +1064,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 
 	async function loadMarkdown(filePath: string, options: LoadMarkdownOptions = {}) {
 		return documentSession.loadMarkdown(filePath, options);
+	}
+
+	function openFromOutside(paths: readonly string[]) {
+		return documentSession.openFiles(paths, (mode) => viewMode.setViewMode(mode === 'editor' ? 'edit' : mode));
 	}
 
 	function currentMermaidTheme() {
@@ -2528,7 +2532,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 					mergeSelfInto(event.payload).catch((error) => console.error('Failed to merge window', error));
 				}],
 				['open-files-here', async (event) => {
-					for (const path of event.payload) if (typeof path === 'string' && path) await loadMarkdown(path);
+					await openFromOutside(event.payload.filter((path: unknown) => typeof path === 'string' && path));
 				}],
 				['window-identify', (event) => {
 					identifyFlash = event.payload;

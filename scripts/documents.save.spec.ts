@@ -675,13 +675,18 @@ describe('untitled first save writes', () => {
 	let nextSaveTarget: string | null = null;
 	/** Tabs the session raised the conflict bar for. */
 	const conflicts: string[] = [];
+	const errors: string[] = [];
+	/** Files that exist but fail to read: a permission error, a sharing violation. */
+	const unreadable = new Set<string>();
 
 	beforeAll(() => {
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 			invoke: (cmd: string, args: any) => {
 				if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
+				if (cmd === 'path_is_missing') return Promise.resolve(!disk.has(args.path));
 				if (cmd === 'read_file_content_checked') {
+					if (unreadable.has(args.path)) return Promise.reject(new Error('Permission denied (os error 13)'));
 					const content = disk.get(args.path);
 					return content === undefined
 						? Promise.reject(new Error('No such file or directory (os error 2)'))
@@ -711,7 +716,7 @@ describe('untitled first save writes', () => {
 			setLoadingTabs: () => {},
 			measureInitialViewport: () => {},
 			isScrolling: () => false,
-			onError: () => {},
+			onError: (message: string) => void errors.push(message),
 			onDiskChangedUnderSave: (tabId: string) => void conflicts.push(tabId),
 			cancelPendingAutoSave: () => {},
 			askClose: async () => 'discard' as const,
@@ -728,6 +733,8 @@ describe('untitled first save writes', () => {
 		disk.clear();
 		writes.length = 0;
 		conflicts.length = 0;
+		errors.length = 0;
+		unreadable.clear();
 		nextSaveTarget = null;
 	}
 
@@ -780,6 +787,130 @@ describe('untitled first save writes', () => {
 		assert.equal(await session.saveContent(tabId), false);
 		assert.deepEqual(conflicts, [tabId]);
 		assert.equal(disk.get('/notes/a.md'), 'theirs', 'their text is still there');
+	});
+
+	// `markpad --edit draft.md` for a file that does not exist yet (#1051).
+	test('a file a command line names before it exists is created by the first save', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', 'editor');
+		const tab = tabManager.activeTab!;
+		assert.equal(tab.path, '/notes/draft.md');
+		assert.equal(tab.isEditing, true);
+		assert.equal(tab.isDirty, false, 'closing it untouched creates nothing');
+		assert.deepEqual(writes, []);
+
+		tabManager.updateTabRawContent(tab.id, 'draft');
+		assert.equal(await session.saveContent(tab.id), true);
+		assert.equal(disk.get('/notes/draft.md'), 'draft');
+		assert.deepEqual(conflicts, []);
+
+		// Created now: a file that goes missing after this is a conflict again.
+		disk.delete('/notes/draft.md');
+		tabManager.updateTabRawContent(tab.id, 'more');
+		assert.equal(await session.saveContent(tab.id), false);
+		assert.deepEqual(conflicts, [tab.id]);
+	});
+
+	test('a file somebody else creates that cannot be read is still not overwritten', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const tabId = tabManager.activeTabId!;
+		disk.set('/notes/draft.md', 'theirs');
+		unreadable.add('/notes/draft.md');
+		tabManager.updateTabRawContent(tabId, 'mine');
+
+		assert.equal(await session.saveContent(tabId), false);
+		assert.equal(disk.get('/notes/draft.md'), 'theirs');
+	});
+
+	test('an empty file somebody else creates first is not overwritten either', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const tabId = tabManager.activeTabId!;
+		disk.set('/notes/draft.md', '');
+		tabManager.updateTabRawContent(tabId, 'mine');
+
+		assert.equal(await session.saveContent(tabId), false);
+		assert.equal(disk.get('/notes/draft.md'), '');
+	});
+
+	test('a tab moved off the file it was to create guards its new file as usual', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const tabId = tabManager.activeTabId!;
+		tabManager.updateTabRawContent(tabId, 'mine');
+		nextSaveTarget = '/notes/other.md';
+		assert.equal(await session.saveContentAs(), true);
+
+		// Saved As, so the tab is clean on a real file and is remembered.
+		assert.deepEqual(JSON.parse(tabManager.serializeState()).tabs.map((tab: { path: string }) => tab.path), ['/notes/other.md']);
+		// That file then disappears: a save is a conflict, not a quiet re-create.
+		disk.delete('/notes/other.md');
+		tabManager.updateTabRawContent(tabId, 'more');
+		assert.equal(await session.saveContent(tabId), false);
+		assert.deepEqual(conflicts, [tabId]);
+	});
+
+	test('reading the file a tab was to create ends the exemption', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const tabId = tabManager.activeTabId!;
+		disk.set('/notes/draft.md', 'theirs');
+		await session.loadMarkdown('/notes/draft.md');
+		tabManager.updateTabRawContent(tabId, 'theirs, edited');
+
+		assert.equal(await session.saveContent(tabId), true, 'the tab holds their file now');
+		assert.equal(disk.get('/notes/draft.md'), 'theirs, edited');
+	});
+
+	test('a tab still to create its file is remembered only once it has text', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const saved = () => JSON.parse(tabManager.serializeState()).tabs.map((tab: { path: string }) => tab.path);
+		assert.deepEqual(saved(), [], 'the next launch would only fail to read it');
+		tabManager.updateTabRawContent(tabManager.activeTabId!, 'draft');
+		assert.deepEqual(saved(), ['/notes/draft.md']);
+	});
+
+	test('the same missing file delivered twice at launch is one quiet tab', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', 'editor');
+		// The second delivery has no command-line request left to take.
+		await session.openFiles(['/notes/draft.md']);
+		assert.equal(tabManager.tabs.length, 1);
+		assert.equal(tabManager.activeTab!.createsFile, '/notes/draft.md');
+		assert.deepEqual(errors, []);
+	});
+
+	test('a file somebody else creates first is not overwritten by the tab waiting to create it', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/draft.md', null);
+		const tabId = tabManager.activeTabId!;
+		disk.set('/notes/draft.md', 'theirs');
+		tabManager.updateTabRawContent(tabId, 'mine');
+
+		assert.equal(await session.saveContent(tabId), false);
+		assert.equal(disk.get('/notes/draft.md'), 'theirs');
+	});
+
+	test('a command line view replaces the setting for the tab it opens', async () => {
+		reset();
+		const session = makeSession();
+		settings.openFileMode = 'preview';
+		disk.set('/notes/a.md', 'text');
+		await session.loadMarkdown('/notes/a.md', { openFileMode: 'editor' });
+		assert.equal(tabManager.activeTab!.isEditing, true);
+		disk.set('/notes/b.md', 'text');
+		await session.loadMarkdown('/notes/b.md');
+		assert.equal(tabManager.activeTab!.isEditing, false, 'the next file follows the setting again');
 	});
 });
 

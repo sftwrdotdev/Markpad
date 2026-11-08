@@ -1,11 +1,12 @@
 import { commands, UNMAPPABLE_CODE } from '../bindings.js';
 import { save } from '@tauri-apps/plugin-dialog';
 import { settings } from '../stores/settings.svelte.js';
-import { tabManager, type Tab } from '../stores/tabs.svelte.js';
+import { createsItsFile, tabManager, type Tab } from '../stores/tabs.svelte.js';
 import { getMarkdownBodyWithoutFrontMatter } from '../utils/frontMatter.js';
 import { t } from '../utils/i18n.js';
 import { LIST_MARKER, LIST_MARKER_PREFIX, TASK_BOX } from '../utils/listSyntax.js';
 import { hasMarkdownLinkExtension, MARKDOWN_LINK_EXTENSIONS } from '../utils/markdownLinks.js';
+import type { OpenFileMode } from '../utils/openFileMode.js';
 import { canonicalizePath, isSameFilePath } from '../utils/pathIdentity.js';
 
 export type LoadMarkdownOptions = {
@@ -47,6 +48,8 @@ export type LoadMarkdownOptions = {
 	 * its file to the top of the list.
 	 */
 	skipRecentFile?: boolean;
+	/** What a new tab opens as, in place of the setting: a command line's `--edit` (#1051). */
+	openFileMode?: OpenFileMode;
 };
 
 /**
@@ -237,6 +240,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		// same way. The dialog has already asked about replacing an existing
 		// file, which is the question this one would be a worse version of.
 		if (!tab.path) return false;
+		// A file this tab is still to create: nothing there is what it expects,
+		// and anything there, even an empty file, is somebody else's.
+		if (createsItsFile(tab) && path === tab.path) return !(await commands.pathIsMissing(path).catch(() => false));
 		try {
 			// The same read the reload does, so the two strings are comparable:
 			// decoded with the file's own encoding rather than assumed UTF-8.
@@ -586,8 +592,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					// full-read branch below: those panes can write, and an editor
 					// bound to the 5MB preview slice is one keystroke away from
 					// auto-saving it back over the whole file.
-					tab.isEditing = settings.openFileMode === 'editor';
-					if (settings.openFileMode === 'split') tabManager.setSplitEnabled(tab.id, true);
+					const openFileMode = loadOptions.openFileMode ?? settings.openFileMode;
+					tab.isEditing = openFileMode === 'editor';
+					if (openFileMode === 'split') tabManager.setSplitEnabled(tab.id, true);
 				}
 				const initialIsEditing = tab?.isEditing ?? false;
 				const initialIsSplit = tab?.isSplit ?? false;
@@ -702,6 +709,9 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 				if (tab) tab.isEditing = true;
 				tabManager.setTabRawContent(activeId, content);
 			}
+			// Read from disk, so the file this tab was to create is there now.
+			const loaded = tabManager.tabs.find((item) => item.id === activeId);
+			if (loaded) loaded.createsFile = undefined;
 			await options.afterLoad();
 			if (filePath && !loadOptions.skipRecentFile) options.saveRecentFile(filePath);
 		} catch (error) {
@@ -806,6 +816,7 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 					tabManager.updateTabPath(tab.id, targetPath, targetKey);
 					options.saveRecentFile(targetPath);
 				}
+				tab.createsFile = undefined;
 				// The baseline is the text that reached the file, not the buffer:
 				// anything typed while the write was in flight is still unsaved,
 				// and `isDirty` reads that off these two by itself.
@@ -1057,10 +1068,58 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		return loadMarkdown(filePath, { inNewTab: true });
 	}
 
-	/** Open every path, in order: the files the OS handed the launch window. */
-	async function openFiles(filePaths: readonly string[]) {
-		for (const filePath of filePaths) await loadMarkdown(filePath);
+	/**
+	 * A command line named a file that does not exist yet (#1051): an empty tab
+	 * at that path, as `vim` and `code` give. The first save creates the file,
+	 * and closing the tab untouched leaves nothing behind.
+	 */
+	async function openMissingFile(filePath: string, mode: OpenFileMode | null) {
+		options.setShowHome(false);
+		const pathKey = await canonicalizePath(filePath);
+		const existing = tabManager.tabs.some((tab) => isSameFilePath(tab, { path: filePath, pathKey }));
+		tabManager.addTab(filePath, '', pathKey);
+		const tab = tabManager.activeTab;
+		if (tab && !existing) {
+			tab.createsFile = filePath;
+			const openFileMode = !hasMarkdownLinkExtension(filePath)
+				? 'editor'
+				: (mode ?? (settings.newFileDefaultMode ? 'editor' : 'preview'));
+			tab.isEditing = openFileMode === 'editor';
+			if (openFileMode === 'split') tabManager.setSplitEnabled(tab.id, true);
+		}
+		await options.afterLoad();
 	}
 
-	return { loadMarkdown, openInNewTab, openFiles, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	/**
+	 * Files the OS or another window handed this one, in order. A file named on
+	 * a command line carries the view it asked for (`--edit`, #1051), which a
+	 * tab already open on it switches to through `setViewMode`, and may not
+	 * exist yet.
+	 */
+	async function openFiles(filePaths: readonly string[], setViewMode?: (mode: OpenFileMode) => Promise<unknown>) {
+		for (const filePath of filePaths) {
+			const request = await commands.takeCommandLineOpen(filePath).catch(() => null);
+			const mode = request?.mode ?? undefined;
+			const pathKey = await canonicalizePath(filePath);
+			const open = tabManager.tabs.find((tab) => isSameFilePath(tab, { path: filePath, pathKey }));
+			// A file with nothing on disk to read: one a tab is still to create
+			// (a launch can deliver one path twice, `send_markdown_path` and
+			// `file-path`, and the second has no request left), or one a command
+			// line named that is gone. Reading it would only report it missing.
+			if (open && (request?.missing || createsItsFile(open))) {
+				options.setShowHome(false);
+				tabManager.setActive(open.id);
+				if (mode) await setViewMode?.(mode);
+				continue;
+			}
+			if (request?.missing) {
+				await openMissingFile(filePath, request.mode);
+				continue;
+			}
+			await loadMarkdown(filePath, { openFileMode: mode });
+			if (open && mode) await setViewMode?.(mode);
+		}
+	}
+
+	return { loadMarkdown, openInNewTab, openFiles, openMissingFile, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }

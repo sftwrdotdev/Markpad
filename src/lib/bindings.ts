@@ -259,6 +259,13 @@ export const commands = {
 	isWindowTagTaken: (name: string) => __TAURI_INVOKE<boolean>("is_window_tag_taken", { name }),
 	offerTabToWindow: (targetLabel: string, token: string) => __TAURI_INVOKE<null>("offer_tab_to_window", { targetLabel, token }),
 	focusWindow: (label: string) => __TAURI_INVOKE<null>("focus_window", { label }),
+	/**
+	 *  Asked once per file a window opens from outside the app. `None` for a file
+	 *  no command line named, which opens as before.
+	 */
+	takeCommandLineOpen: (path: string) => __TAURI_INVOKE<CommandLineOpen | null>("take_command_line_open", { path }),
+	/**  Whether `path` names no file yet. Asked by a save that is to create it. */
+	pathIsMissing: (path: string) => __TAURI_INVOKE<boolean>("path_is_missing", { path }),
 	listPinnedTags: () => __TAURI_INVOKE<PinnedTag[]>("list_pinned_tags"),
 	/**  `false` when another pin already holds the name. */
 	savePinnedTag: (name: string, color: string, files: string[]) => __TAURI_INVOKE<boolean>("save_pinned_tag", { name, color, files }),
@@ -351,6 +358,13 @@ export type CancelOutcome = {
 	claimed: boolean,
 };
 
+/**  A file a command line named, as the window opening it needs to know it. */
+export type CommandLineOpen = {
+	mode: OpenFileMode | null,
+	/**  No file there yet: open an empty tab that creates it on first save. */
+	missing: boolean,
+};
+
 /**  `file-changed`: the file this window watches changed on disk. */
 export type FileChanged = string;
 
@@ -389,6 +403,13 @@ export type HeadingAnchor = {
 	 */
 	slug: string,
 };
+
+/**
+ *  The view a command line asks its files to open in: `--preview`, `--edit`
+ *  or `--split`. Overrides the "Open existing files in" setting for that
+ *  launch only (#1051).
+ */
+export type OpenFileMode = "preview" | "editor" | "split";
 
 /**
  *  The editor's headings and foldable blocks, from one parse: its folding
