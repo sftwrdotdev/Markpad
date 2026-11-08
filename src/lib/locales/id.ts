@@ -430,6 +430,7 @@ export default {
         close: 'Tutup',
         minimize: 'Perkecil',
         maximize: 'Perbesar',
+        restore: 'Pulihkan',
         loadingFullDocument: 'Memuat dokumen lengkap...',
         decrease: 'Kurangi',
         increase: 'Tambah'

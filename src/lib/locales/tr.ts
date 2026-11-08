@@ -430,6 +430,7 @@ export default {
         close: 'Kapat',
         minimize: 'Küçült',
         maximize: 'Büyüt',
+        restore: 'Geri Yükle',
         loadingFullDocument: 'Belgenin tamamı yükleniyor...',
         decrease: 'Azalt',
         increase: 'Artır'

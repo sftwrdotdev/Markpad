@@ -430,6 +430,7 @@ export default {
         close: 'Chiudi',
         minimize: 'Minimizza',
         maximize: 'Massimizza',
+        restore: 'Ripristina',
         loadingFullDocument: 'Caricamento del documento completo...',
         decrease: 'Diminuisci',
         increase: 'Aumenta'

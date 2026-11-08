@@ -430,6 +430,7 @@ export default {
         close: 'Bezárás',
         minimize: 'Minimalizálás',
         maximize: 'Maximalizálás',
+        restore: 'Előző méret',
         loadingFullDocument: 'A teljes dokumentum betöltése...',
         decrease: 'Csökkentés',
         increase: 'Növelés'

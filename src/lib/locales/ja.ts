@@ -438,6 +438,7 @@ export default {
         close: '閉じる',
         minimize: '最小化',
         maximize: '最大化',
+        restore: '元のサイズに戻す',
         loadingFullDocument: '文書全体を読み込み中...',
         decrease: '減らす',
         increase: '増やす'

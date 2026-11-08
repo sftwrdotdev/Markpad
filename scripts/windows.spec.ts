@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 
 import { flushSync, mount, unmount } from 'svelte';
-import { afterAll, beforeAll, describe, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, onTestFinished, test, vi } from 'vitest';
 import type { TranslationKey } from '../src/lib/utils/i18n.js';
 import type { OpenFilePickerDeps } from '../src/lib/sessions/openFilePicker.svelte.js';
 import type { OpenFileTarget } from '../src/lib/utils/openFileTarget.js';
@@ -1326,6 +1326,73 @@ describe('window organization', () => {
 		assert.ok(at('menu.exportPdf') < at('menu.setWindowTag'));
 		assert.ok(at('menu.setWindowTag') < at('menu.mergeAllWindows'));
 		assert.ok(at('menu.mergeAllWindows') < at('menu.exit'));
+	});
+});
+
+// #1061: on Windows the maximize button kept its maximize glyph and label on a
+// maximized window. Every way of maximizing (the button, a title-bar double
+// click, Win+Up, Aero Snap) ends in a WM_SIZE, which tao reports as a resize,
+// so the button asks again on each resize.
+describe('the maximize button follows the window state', () => {
+	let maximized = true;
+	let onResize: ((event: unknown) => void) | undefined;
+	// Unmounting unlistens, which goes through the event plugin's own global.
+	(window as any).__TAURI_EVENT_PLUGIN_INTERNALS__ ??= { unregisterListener() {} };
+	useTauri({
+		invoke: (cmd: string, args: any) => {
+			if (cmd === 'get_os_type') return Promise.resolve('windows');
+			if (cmd === 'plugin:window|is_maximized') return Promise.resolve(maximized);
+			if (cmd === 'plugin:event|listen' && args.event === 'tauri://resize') onResize = args.handler;
+			return Promise.resolve(null);
+		},
+	});
+
+	test('a maximized window offers Restore, and Maximize again once it is restored', async () => {
+		const { settings } = await import('../src/lib/stores/settings.svelte.js');
+		const { default: TitleBar } = await import('../src/lib/components/TitleBar.svelte');
+		const osType = settings.osType;
+		settings.osType = 'windows';
+		const target = document.createElement('div');
+		document.body.append(target);
+		const instance = mount(TitleBar, {
+			target,
+			props: {
+				isFocused: true,
+				isScrolled: false,
+				currentFile: '',
+				liveMode: false,
+				windowTitle: '',
+				showHome: true,
+				isEditing: false,
+				ontoggleHome: () => {},
+				ononpenFileLocation: () => {},
+				ontoggleLiveMode: () => {},
+				onsetViewMode: () => {},
+				theme: 'dark',
+			},
+			intro: false,
+		});
+		onTestFinished(() => {
+			unmount(instance);
+			target.remove();
+			settings.osType = osType;
+		});
+		const settle = async () => {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			flushSync();
+		};
+		const button = () => target.querySelector<HTMLButtonElement>('.maximize-btn')!;
+
+		await settle();
+		assert.equal(button().getAttribute('aria-label'), t('common.restore', 'en'));
+		assert.equal(button().querySelectorAll('rect').length, 1, 'restore draws the front square');
+		assert.equal(button().querySelectorAll('path').length, 1, 'and the back square behind it');
+
+		maximized = false;
+		onResize!({ event: 'tauri://resize', id: 0, payload: { width: 800, height: 600 } });
+		await settle();
+		assert.equal(button().getAttribute('aria-label'), t('common.maximize', 'en'));
+		assert.equal(button().querySelectorAll('path').length, 0, 'maximize is a single square');
 	});
 });
 

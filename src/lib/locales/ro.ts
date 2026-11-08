@@ -430,6 +430,7 @@ export default {
         close: 'Închidere',
         minimize: 'Minimizare',
         maximize: 'Maximizare',
+        restore: 'Restabilire',
         loadingFullDocument: 'Se încarcă documentul complet...',
         decrease: 'Micșorează',
         increase: 'Mărește'
