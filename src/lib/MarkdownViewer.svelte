@@ -95,6 +95,7 @@ import {
 	resolveMarkdownTargetPath,
 	type MarkdownLinkTarget as RelativeMarkdownTarget,
 } from './utils/markdownLinks.js';
+import { COPYABLE_INLINE_CODE_CLASS, handleInlineCodeCopyClick } from './utils/inlineCodeCopy.js';
 import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
 import { basename, canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
@@ -1504,6 +1505,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	}
 
 	function handleLinkClick(e: MouseEvent) {
+		if (handleInlineCodeCopyClick(e, (text) => commands.clipboardWriteText(text))) return;
 		return handlePreviewClick(e, {
 			hideTooltip: () => { tooltip.show = false; },
 			toggleFold: (target) => toggleFoldFromClick(foldHost, target),
@@ -2856,7 +2858,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 								<article
 									bind:this={markdownBody}
 									contenteditable="false"
-									class="markdown-body {settings.previewFullWidth ? 'full-width' : ''}"
+									class="markdown-body {COPYABLE_INLINE_CODE_CLASS} {settings.previewFullWidth ? 'full-width' : ''}"
 									class:toc-in-gutter={settings.showToc && !settings.pinnedToc && !isOverhanging}
 									class:table-breakout={settings.previewTableBreakout}
 									class:table-fit={!settings.previewTableScroll}
