@@ -20,6 +20,105 @@ import blocks from './fixtures/markdown-syntax.blocks.json';
 import DOMPurify from 'dompurify';
 import { readSource } from './sourceTree.js';
 
+describe('local media paths in the preview', () => {
+	const PATH = 'C:\\notes\\profiles\\core\\person\\memoirs\\day.md';
+	const asset = (path: string) => `http://asset.localhost/${encodeURIComponent(path)}`;
+	let previous: PropertyDescriptor | undefined;
+
+	beforeEach(() => {
+		previous = Object.getOwnPropertyDescriptor(window, '__TAURI_INTERNALS__');
+		Object.defineProperty(window, '__TAURI_INTERNALS__', {
+			configurable: true,
+			value: { convertFileSrc: asset },
+		});
+	});
+
+	afterEach(() => {
+		if (previous) Object.defineProperty(window, '__TAURI_INTERNALS__', previous);
+		else Reflect.deleteProperty(window, '__TAURI_INTERNALS__');
+	});
+
+	function render(markup: string, path = PATH): HTMLDivElement {
+		const host = document.createElement('div');
+		patchPreview(host, markup, path, new Set());
+		return host;
+	}
+
+	test('video and audio sources resolve against the document, not the webview', () => {
+		for (const markup of [
+			'<video controls src="clips/small.mp4"></video>',
+			'<video controls><source src="clips/small.mp4" type="video/mp4"></video>',
+			'<audio controls src="clips/small.mp4"></audio>',
+			'<audio controls><source src="clips/small.mp4" type="audio/mp4"></audio>',
+			'<p><img src="clips/small.mp4"></p>',
+		]) {
+			const host = render(markup);
+			expect(host.querySelector('[src]')?.getAttribute('src')).toBe(
+				asset('C:/notes/profiles/core/person/memoirs/clips/small.mp4'),
+			);
+			expect(host.querySelector('img')).toBeNull();
+		}
+	});
+
+	test('dot segments, encoded filenames and absolute file URLs name the right file', () => {
+		for (const [src, expected] of [
+			['./clips/small.mp4', 'C:/notes/profiles/core/person/memoirs/clips/small.mp4'],
+			['../../../../media/shorts/clips/small.mp4', 'C:/notes/media/shorts/clips/small.mp4'],
+			['clips/a%20b%23c.mp4', 'C:/notes/profiles/core/person/memoirs/clips/a b#c.mp4'],
+			['file:///C:/notes/clips/small.mp4', 'C:/notes/clips/small.mp4'],
+			['C:\\notes\\clips\\small.mp4', 'C:\\notes\\clips\\small.mp4'],
+		]) {
+			expect(render(`<video controls src="${src}"></video>`).querySelector('video')?.getAttribute('src'))
+				.toBe(asset(expected));
+		}
+	});
+
+	test('a rewritten player retains controls, inline playback, preload and author styling', () => {
+		const markup = '<video controls playsinline preload="metadata" width="320" style="opacity: 0.9" src="clips/small.mp4"></video>';
+		const host = render(markup);
+		const video = host.querySelector('video')!;
+		for (const name of ['controls', 'playsinline']) expect(video.hasAttribute(name)).toBe(true);
+		expect(video.getAttribute('preload')).toBe('metadata');
+		expect(video.getAttribute('width')).toBe('320');
+		expect(video.style.opacity).toBe('0.9');
+		expect(host.innerHTML).toBe(sanitizeMarkdownHtml(processMarkdownHtml(markup, PATH, new Set())));
+	});
+
+	test('asset URLs are not converted twice and network URLs are left to the existing policy', () => {
+		for (const src of [
+			asset('C:/notes/clips/small.mp4'),
+			'asset://localhost/clip.mp4',
+			'https://example.com/clip.mp4',
+		]) {
+			expect(render(`<video controls src="${src}"></video>`).querySelector('video')?.getAttribute('src')).toBe(src);
+		}
+	});
+
+	test('raw media cannot load a different UNC host, including through file URLs', () => {
+		for (const src of [
+			'//other.example/share/clip.mp4',
+			'%5C%5Cother.example%5Cshare%5Cclip.mp4',
+			'file://other.example/share/clip.mp4',
+		]) {
+			for (const markup of [
+				`<video controls src="${src}"></video>`,
+				`<video controls><source src="${src}" type="video/mp4"></video>`,
+			]) {
+				expect(render(markup).querySelector('[src]')).toBeNull();
+			}
+		}
+		expect(render('<video src="clips/small.mp4"></video>', '//server/share/doc.md')
+			.querySelector('video')?.getAttribute('src')).toBe(asset('//server/share/clips/small.mp4'));
+	});
+
+	test('media support does not admit script URLs, event handlers or plugin embeds', () => {
+		const host = render('<video src="javascript:alert(1)" onerror="alert(1)"></video><iframe src="clips/small.mp4"></iframe><embed src="clips/small.mp4"><object data="clips/small.mp4"></object>');
+		expect(host.querySelector('video')?.hasAttribute('src')).toBe(false);
+		expect(host.querySelector('video')?.hasAttribute('onerror')).toBe(false);
+		expect(host.querySelector('iframe, embed, object')).toBeNull();
+	});
+});
+
 /**
  * Clicking a code block's Copy label twice within 1.5 s left it reading
  * "Copied!" for good: the second click saved "Copied!" as the label to restore.

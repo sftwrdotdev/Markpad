@@ -698,6 +698,44 @@ export function processMarkdownHtml(
 /** `+` or `-`, on a foldable callout: what the document opens it as. */
 const CALLOUT_FOLD_ATTR = "data-callout-fold";
 
+function resolveElementSrc(element: Element, filePath: string): string | null {
+	const src = element.getAttribute("src");
+	if (!src) return src;
+	const isFileUrl = /^file:/i.test(src);
+	if (!isFileUrl && /^[a-z][a-z0-9+.-]*:/i.test(src) && !/^[a-z]:[\\/]/i.test(src))
+		return src;
+
+	try {
+		let decodedSrc = decodeURIComponent(src);
+		if (isFileUrl) {
+			const url = new URL(src);
+			decodedSrc = decodeURIComponent(url.pathname);
+			if (url.hostname && url.hostname !== "localhost")
+				decodedSrc = `//${url.hostname}${decodedSrc}`;
+			else if (/^\/[a-z]:\//i.test(decodedSrc))
+				decodedSrc = decodedSrc.slice(1);
+		}
+		// Resolving must not turn a UNC reference into an apparently local path.
+		if (isOffHostUncPath(decodedSrc, filePath)) {
+			element.removeAttribute("src");
+			return null;
+		}
+		if (decodedSrc.startsWith("\\\\")) decodedSrc = decodedSrc.replace(/\\/g, "/");
+		const resolved = resolveDocumentRelativePath(filePath, decodedSrc);
+		if (isOffHostUncPath(resolved, filePath)) {
+			element.removeAttribute("src");
+			return null;
+		}
+		const finalSrc = convertFileSrc(resolved);
+		element.setAttribute("src", finalSrc);
+		return finalSrc;
+	} catch (e) {
+		console.error("Failed to decode/resolve media src:", src, e);
+		element.removeAttribute("src");
+		return null;
+	}
+}
+
 /**
  * Everything `processMarkdownHtml` does that only looks inside one top-level
  * block. Fold keys and the heading wrappers need the whole document and are
@@ -707,25 +745,7 @@ export function processBlockMarkup(root: Element, filePath: string): void {
 	const doc = root.ownerDocument;
 	for (const img of root.querySelectorAll("img")) {
 		const src = img.getAttribute("src");
-		let finalSrc = src;
-		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
-			try {
-				const decodedSrc = decodeURIComponent(src);
-				const resolved = resolveDocumentRelativePath(filePath, decodedSrc);
-				// Rendering alone fetches this, so a UNC path on another host
-				// would leak the user's NTLM hash without a click. Left as
-				// written, `//host/x` would instead load as a web address.
-				if (isOffHostUncPath(resolved, filePath)) {
-					finalSrc = null;
-					img.removeAttribute("src");
-				} else {
-					finalSrc = convertFileSrc(resolved);
-					img.setAttribute("src", finalSrc);
-				}
-			} catch (e) {
-				console.error("Failed to decode/resolve image src:", src, e);
-			}
-		}
+		const finalSrc = resolveElementSrc(img, filePath);
 
 		if (src) {
 			const ext = src.split(".").pop()?.toLowerCase();
@@ -760,6 +780,9 @@ export function processBlockMarkup(root: Element, filePath: string): void {
 			}
 		}
 	}
+
+	for (const media of root.querySelectorAll("video[src], audio[src], video source[src], audio source[src]"))
+		resolveElementSrc(media, filePath);
 
 	for (const a of root.querySelectorAll("a")) {
 		const href = a.getAttribute("href");

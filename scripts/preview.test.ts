@@ -940,6 +940,14 @@ describe('webview permissions the preview depends on', () => {
 	};
 	const csp = tauriConf.app.security.csp;
 
+	test('the CSP permits media from both platform spellings of the local asset protocol', () => {
+		const sources = (csp['media-src'] ?? csp['default-src']).split(/\s+/);
+		for (const source of ["'self'", 'asset:', 'http://asset.localhost']) {
+			assert.ok(sources.includes(source), `media policy does not permit ${source}`);
+		}
+		assert.ok(!sources.includes('*'));
+	});
+
 	test('the capability still grants the command this depends on', () => {
 		// `open_path` needs both the command grant and a path scope. Granting the
 		// command alone leaves the plugin resolving

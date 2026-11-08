@@ -88,6 +88,19 @@ The two Windows files differ only in that one installs and one does not — `-se
 
 Every syntax Markpad renders is in one document — [**download `markdown-syntax.md`**](https://raw.githubusercontent.com/sftwrdotdev/Markpad/master/samples/markdown-syntax.md) and open it in Markpad: the preview shows each feature working, the editor beside it shows how each one is written ([read it on GitHub](samples/markdown-syntax.md) first if you like). Give the same file to an AI and it knows exactly what Markpad can render: ask it to reformat a document you already have, or to write a new one that uses the whole range — callouts, tables, footnotes, maths, diagrams — and open the result here.
 
+## Local video and audio
+
+Raw HTML players resolve local paths relative to the Markdown document, including `../` references and local `file:` URLs:
+
+```html
+<video controls playsinline src="clips/demo.mp4" style="max-width: 100%"></video>
+<video controls>
+  <source src="clips/demo.mp4" type="video/mp4">
+</video>
+```
+
+The same handling applies to `<audio>` and its `<source>` elements. Controls, dimensions and inline styles are preserved. Media on another UNC host is not loaded; iframe, embed and object elements remain disallowed.
+
 ## Installation from source
 
 - Clone the repository
