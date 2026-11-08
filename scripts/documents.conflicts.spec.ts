@@ -14,6 +14,7 @@ const { createDocumentSession } = await import('../src/lib/sessions/documentSess
 const { createWindowExit } = await import('../src/lib/sessions/windowExit.js');
 const { createExternalChange } = await import('../src/lib/sessions/externalChange.svelte.js');
 const { HOME_TAB_PATH } = await import('../src/lib/utils/homeTab.js');
+const { stampImageGeneration } = await import('../src/lib/utils/markdown.js');
 
 // An unanswered external-change conflict is a question only the user can
 // answer. The viewer's saves that nobody asked for — leaving the editor or
@@ -274,6 +275,21 @@ describe('external change conflicts', () => {
 
 		assert.equal(tab.rawContent, 'theirs');
 		assert.deepEqual(viewer.toasts, ['toast.reloadedFromDisk']);
+	});
+
+	// #1066: both reverts refetch the document's images, not only its text.
+	test('both reload commands make the preview fetch local images again', async () => {
+		const image = '<img src="a.png">';
+		const viewer = makeViewer();
+		const tab = conflicted(viewer);
+
+		const before = stampImageGeneration(image);
+		await viewer.conflicts.resolveExternalChangeByReloading(tab.id);
+		const afterConflictReload = stampImageGeneration(image);
+		assert.notEqual(afterConflictReload, before, 'Reload on the conflict bar kept the cached images');
+
+		await viewer.conflicts.reloadFromDisk();
+		assert.notEqual(stampImageGeneration(image), afterConflictReload, 'Reload from disk kept the cached images');
 	});
 
 	// --- the watcher's `file-changed` event ---

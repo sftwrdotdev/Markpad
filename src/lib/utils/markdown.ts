@@ -714,7 +714,7 @@ export function refetchLocalImages(): void {
 }
 
 export function stampImageGeneration(html: string): string {
-	return imageGeneration ? html.replace(/<img(?=[\s/>])/gi, `<img ${GENERATION_ATTR}="${imageGeneration}"`) : html;
+	return imageGeneration ? html.replace(/<img(?=[\s/>])/gi, `<img ${GENERATION_ATTR}=${imageGeneration}`) : html;
 }
 
 /**

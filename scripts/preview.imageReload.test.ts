@@ -35,6 +35,14 @@ describe('reload refetches local images', () => {
 		assert.equal(stampImageGeneration('<imgx src="b.png">'), '<imgx src="b.png">');
 	});
 
+	// The stamp is text, so it also lands on `<img` written inside raw HTML's
+	// attribute values. Unquoted, it cannot close the attribute it lands in.
+	test('an <img> written inside an attribute value leaves the attribute whole', () => {
+		const body = parseHtml(stampImageGeneration('<p><span title="a <img> b">x</span></p>')).body;
+		assert.equal(body.querySelector('span')?.textContent, 'x');
+		assert.match(body.querySelector('span')?.getAttribute('title') ?? '', /^a <img .*> b$/);
+	});
+
 	test('a remote image keeps the URL its author wrote', () => {
 		assert.equal(srcOf(stampImageGeneration('<p><img src="https://example.com/a.png" /></p>')), 'https://example.com/a.png');
 	});
