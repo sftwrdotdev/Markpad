@@ -1,7 +1,7 @@
 /**
  * Click-to-copy for inline code (`like this`) in the preview.
  *
- * Hovering an inline `<code>` shows a small copy badge against its right edge.
+ * Hovering an inline `<code>` shows a small copy badge above its right end.
  * The badge is the element's own `::before`/`::after` (styles.css,
  * `.copyable-inline-code`), not a node in the document: the preview's copy,
  * find, scroll sync and cursor mapping all walk this DOM, and a button inside
@@ -72,6 +72,9 @@ export function handleInlineCodeCopyClick(
 	event: MouseEvent,
 	copy: (text: string) => Promise<unknown>,
 ): boolean {
+	// A drag that selects text and is released over the badge also ends in a
+	// click on the code; the selection is what the user wanted, not a copy.
+	if (!document.getSelection()?.isCollapsed) return false;
 	const code = inlineCodeCopyTarget(event.target, event.clientX, event.clientY);
 	if (!code) return false;
 	event.preventDefault();

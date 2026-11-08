@@ -1001,25 +1001,24 @@ body {
    it: ::before is the badge's box, ::after the icon masked out of a fill in
    the text colour. Scoped to the live preview's class, so an exported file,
    which copies this stylesheet but runs no script, shows no badge it cannot
-   act on. Links are left out: a click there has to follow the link. */
-.copyable-inline-code :not(pre):not(a) > code {
+   act on. The selector skips the same code the click handler does: code in a
+   block, and code anywhere inside a link, which a click has to follow. */
+.copyable-inline-code code:not(pre code, a code) {
 	position: relative;
+	--inline-copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='13' height='13' rx='2' ry='2'/%3E%3Cpath d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'/%3E%3C/svg%3E") center / 13px 13px no-repeat;
 }
 
-/* The badge sits against the code's right edge with no gap between them: a
-   pseudo-element is part of its element for :hover, so a pointer moving from
-   the code onto the badge never leaves the hover. ::before's transparent left
-   border is the visible gap, and is still the badge's own hit area. Hiding is
-   delayed (the visibility transition), so a pointer that strays off for a
-   moment finds the badge still there when it comes back. */
-.copyable-inline-code :not(pre):not(a) > code::before,
-.copyable-inline-code :not(pre):not(a) > code::after {
+/* The badge floats above the code's right end, so it covers no text on the
+   code's own line. A pseudo-element is part of its element for :hover, so
+   ::before's transparent bottom border bridges the gap: a pointer moving up
+   onto the badge never leaves the hover. Hiding is delayed (the visibility
+   transition), so a pointer that strays off for a moment finds it still there. */
+.copyable-inline-code code:not(pre code, a code)::before,
+.copyable-inline-code code:not(pre code, a code)::after {
 	content: '';
 	position: absolute;
-	left: 100%;
-	top: 50%;
-	transform: translateY(-50%);
-	height: 22px;
+	right: 0;
+	bottom: 100%;
 	box-sizing: border-box;
 	cursor: pointer;
 	visibility: hidden;
@@ -1029,9 +1028,10 @@ body {
 		visibility 0s linear 0.4s;
 }
 
-.copyable-inline-code :not(pre):not(a) > code::before {
+.copyable-inline-code code:not(pre code, a code)::before {
 	width: 28px;
-	border-left: 4px solid transparent;
+	height: 26px;
+	border-bottom: 4px solid transparent;
 	border-radius: 4px;
 	background: var(--color-canvas-default);
 	background-clip: padding-box;
@@ -1039,37 +1039,38 @@ body {
 	z-index: 1;
 }
 
-.copyable-inline-code :not(pre):not(a) > code::after {
-	left: calc(100% + 4px);
-	width: 24px;
+.copyable-inline-code code:not(pre code, a code)::after {
+	bottom: calc(100% + 4px);
+	width: 28px;
+	height: 22px;
 	background-color: var(--color-fg-default);
-	-webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='13' height='13' rx='2' ry='2'/%3E%3Cpath d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'/%3E%3C/svg%3E") center / 13px 13px no-repeat;
-	mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='13' height='13' rx='2' ry='2'/%3E%3Cpath d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'/%3E%3C/svg%3E") center / 13px 13px no-repeat;
+	-webkit-mask: var(--inline-copy-icon);
+	mask: var(--inline-copy-icon);
 	z-index: 2;
 }
 
-.copyable-inline-code :not(pre):not(a) > code:hover::before,
-.copyable-inline-code :not(pre):not(a) > code:hover::after,
-.copyable-inline-code :not(pre):not(a) > code.inline-code-copied::after {
+.copyable-inline-code code:not(pre code, a code):hover::before,
+.copyable-inline-code code:not(pre code, a code):hover::after,
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::after {
 	visibility: visible;
 	transition:
 		opacity 0.15s ease,
 		visibility 0s;
 }
 
-.copyable-inline-code :not(pre):not(a) > code:hover::before {
+.copyable-inline-code code:not(pre code, a code):hover::before {
 	opacity: 1;
 }
 
-.copyable-inline-code :not(pre):not(a) > code:hover::after {
+.copyable-inline-code code:not(pre code, a code):hover::after {
 	opacity: 0.75;
 }
 
-.copyable-inline-code :not(pre):not(a) > code.inline-code-copied::before {
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::before {
 	visibility: hidden;
 }
 
-.copyable-inline-code :not(pre):not(a) > code.inline-code-copied::after {
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::after {
 	content: 'Copied!';
 	-webkit-mask: none;
 	mask: none;

@@ -10,7 +10,7 @@ import {
  * Inline code's copy badge is a pseudo-element, so a click on it arrives as a
  * click on the `<code>`; where it landed is what decides. jsdom lays nothing
  * out, so each code span is given the box a browser would: one line at
- * y 100–120, x 50–150. The badge sits against its right edge, past x 150.
+ * y 100–120, x 50–150. The badge floats above its right end, above y 100.
  */
 function codeIn(html: string, selector = 'code'): HTMLElement {
 	const article = document.createElement('article');
@@ -24,11 +24,11 @@ function codeIn(html: string, selector = 'code'): HTMLElement {
 	return code;
 }
 
-const BADGE = { x: 165, y: 110 };
+const BADGE = { x: 140, y: 90 };
 const TEXT = { x: 100, y: 110 };
 
 describe('inline code copy badge hit test', () => {
-	test('a click to the right of the code, on its own line, is the badge', () => {
+	test('a click above the right end of the code is the badge', () => {
 		const code = codeIn('<p>run <code>npm test</code> first</p>');
 		expect(inlineCodeCopyTarget(code, BADGE.x, BADGE.y)).toBe(code);
 	});
@@ -96,6 +96,17 @@ describe('inline code copy click', () => {
 		expect(handleInlineCodeCopyClick(event, copy)).toBe(false);
 		expect(event.defaultPrevented).toBe(false);
 		expect(copy).not.toHaveBeenCalled();
+	});
+
+	test('a drag that selects text and ends on the badge keeps the selection and copies nothing', () => {
+		const code = codeIn('<p>run <code>npm test</code> first</p>');
+		document.getSelection()!.selectAllChildren(code);
+		const copy = vi.fn(async () => {});
+		const event = click(code, BADGE);
+		expect(handleInlineCodeCopyClick(event, copy)).toBe(false);
+		expect(event.defaultPrevented).toBe(false);
+		expect(copy).not.toHaveBeenCalled();
+		document.getSelection()!.removeAllRanges();
 	});
 
 	test('the badge reads "Copied!" for 1.5 s, restarted by a second copy', () => {
