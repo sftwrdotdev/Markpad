@@ -20,7 +20,7 @@ import {
 
 /** The tab is on a path a command line named, and has yet to create the file there. */
 export function createsItsFile(tab: Pick<Tab, 'path' | 'createsFile'>): boolean {
-	return tab.createsFile !== undefined && tab.createsFile === tab.path;
+	return tab.createsFile === tab.path;
 }
 
 export interface Tab {
