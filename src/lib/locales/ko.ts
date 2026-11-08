@@ -438,6 +438,7 @@ export default {
         close: '닫기',
         minimize: '최소화',
         maximize: '최대화',
+        restore: '이전 크기로',
         loadingFullDocument: '전체 문서를 불러오는 중...',
         decrease: '줄이기',
         increase: '늘리기'

@@ -506,6 +506,7 @@ const en = {
         close: 'Close',
         minimize: 'Minimize',
         maximize: 'Maximize',
+        restore: 'Restore',
         loadingFullDocument: 'Loading full document...',
         decrease: 'Decrease',
         increase: 'Increase'

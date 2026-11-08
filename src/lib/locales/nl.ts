@@ -430,6 +430,7 @@ export default {
         close: 'Sluiten',
         minimize: 'Minimaliseren',
         maximize: 'Maximaliseren',
+        restore: 'Vorig formaat',
         loadingFullDocument: 'Volledig document laden...',
         decrease: 'Verlagen',
         increase: 'Verhogen'

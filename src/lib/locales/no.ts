@@ -430,6 +430,7 @@ export default {
         close: 'Lukk',
         minimize: 'Minimer',
         maximize: 'Maksimer',
+        restore: 'Gjenopprett',
         loadingFullDocument: 'Laster inn hele dokumentet...',
         decrease: 'Reduser',
         increase: 'Øk'

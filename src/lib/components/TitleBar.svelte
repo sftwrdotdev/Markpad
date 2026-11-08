@@ -1007,8 +1007,19 @@
 			<button class="control-btn" onclick={() => appWindow.minimize()} aria-label={t('common.minimize', currentLanguage)}>
 				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="currentColor" width="10" height="1" x="1" y="6" /></svg>
 			</button>
-			<button class="control-btn" onclick={() => appWindow.toggleMaximize()} aria-label={t('common.maximize', currentLanguage)}>
-				<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5" /></svg>
+			<button
+				class="control-btn maximize-btn"
+				onclick={() => appWindow.toggleMaximize()}
+				aria-label={t(isMaximized ? 'common.restore' : 'common.maximize', currentLanguage)}>
+				{#if isMaximized}
+					<!-- Windows' restore glyph: an 8px square, with a second one 2px up and right behind it. -->
+					<svg width="12" height="12" viewBox="0 0 12 12"
+						><g fill="none" stroke="currentColor" stroke-width="1"
+							><rect width="7" height="7" x="1.5" y="3.5" /><path d="M3.5 3V1.5h7v7H9" /></g
+						></svg>
+				{:else}
+					<svg width="12" height="12" viewBox="0 0 12 12"><rect fill="none" stroke="currentColor" stroke-width="1" width="9" height="9" x="1.5" y="1.5" /></svg>
+				{/if}
 			</button>
 			<button
 				class="control-btn close-btn"
