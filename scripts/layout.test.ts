@@ -339,7 +339,7 @@ describe('fold measurement batching', () => {
 		return { root, events };
 	}
 
-	async function runFoldLayout(specs: { id: string; height: number | null }[], zoom = 1) {
+	async function runFoldLayout(specs: { id: string; height: number | null }[], zoom = 1, now = false) {
 		// Imported before the stubs go in, so only the synchronous run below sees them.
 		const { observeFoldLayout } = await import('../src/lib/utils/foldLayout.js');
 		const { root, events } = createFoldRoot(specs, zoom);
@@ -362,13 +362,24 @@ describe('fold measurement batching', () => {
 
 		try {
 			const observation = observeFoldLayout(root as unknown as HTMLElement);
-			for (const frame of frames.splice(0)) frame();
+			if (now) observation.measureNow();
+			else for (const frame of frames.splice(0)) frame();
 			observation.stop();
 			return events;
 		} finally {
 			Object.assign(globals, saved);
 		}
 	}
+
+	test('measureNow publishes the heights without waiting for a frame', async () => {
+		// #1071: a zoom step places the preview's scroll in the same task as the
+		// reflow, and a fold wrapper still pinned to its old height moved the line.
+		const events = await runFoldLayout([{ id: 'section', height: 240 }], 1, true);
+		assert.deepEqual(
+			events.filter((event) => event.type === 'write'),
+			[{ type: 'write', id: 'section', value: '--fold-content-height:240px' }],
+		);
+	});
 
 	test('fold measurement reads every height before it writes any of them', async () => {
 		const events = await runFoldLayout([

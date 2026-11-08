@@ -376,7 +376,29 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		hasEditorPane && settings.showEditorToolbar ? editorToolbarHeight : 0,
 	);
 	let previewAppearance = $derived(previewAppearanceFrom(settings));
-	let layout = $derived(previewLayout(settings, { isEditing, isSplit, viewerWidth }));
+	// Content zoom by font size, as Zed and JetBrains do it: nothing on screen carries a CSS zoom (#1071).
+	let contentZoom = $derived(settings.zoomLevel / 100);
+	// A zoom step reflows the preview under a scrollTop that stays put. CSS zoom used to
+	// scale that offset with the text; now the line at the top is taken before the
+	// reflow and put back after it, where WebKit has no scroll anchoring to do it.
+	let lineBeforeZoom: ScrollSyncPosition | null = null;
+	$effect.pre(() => {
+		void contentZoom;
+		untrack(() => {
+			lineBeforeZoom = markdownBody && hasPreviewPane ? getPreviewScrollSyncPosition(markdownBody) : null;
+		});
+	});
+	$effect(() => {
+		void contentZoom;
+		const line = lineBeforeZoom;
+		lineBeforeZoom = null;
+		if (!line) return;
+		// The fold wrappers are still pinned to heights measured at the old size; placed
+		// before they re-measure, the line drifted a paragraph up per step.
+		foldLayout.current?.measureNow();
+		scrollPreviewToSyncPosition(line);
+	});
+	let layout = $derived(previewLayout(settings, { isEditing, isSplit, viewerWidth, zoom: contentZoom }));
 	let isOverhanging = $derived(layout.isOverhanging);
 
 	/**
@@ -1230,8 +1252,11 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		);
 		if (targetScroll === null) return;
 
+		const before = markdownBody.scrollTop;
 		isProgrammaticScroll = true;
 		markdownBody.scrollTop = targetScroll;
+		// Unmoved, there is no scroll event to clear the flag, and it would swallow the reader's next scroll.
+		if (markdownBody.scrollTop === before) isProgrammaticScroll = false;
 	}
 
 	let bufferLines = $derived(rawContent.split('\n'));
@@ -1389,6 +1414,18 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	let isScrolling = $state(false);
 	let scrollIdleTimer: ReturnType<typeof setTimeout>;
 
+	// Whether the reader's last input in the panes was outside the editor: in the
+	// preview, its outline or find bar. Only then is a preview scroll theirs for the
+	// editor to follow; one that arrives while they type is the browser keeping
+	// re-rendered content in place, and following it fought Monaco's cursor reveal on
+	// every keystroke (#1071). Input elsewhere, the title bar or a dialog, leaves it.
+	let previewLeads = true;
+	function noteInput(e: Event) {
+		const target = e.target as Node;
+		if (editorPaneEl?.contains(target)) previewLeads = false;
+		else if (layoutContainerEl?.contains(target)) previewLeads = true;
+	}
+
 	function handleScroll(e: Event) {
 		const target = e.target as HTMLElement;
 
@@ -1417,7 +1454,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 			followPreviewScroll(target);
 		}
 
-		syncEditorToPreviewScroll(target);
+		if (previewLeads) syncEditorToPreviewScroll(target);
 	}
 
 	/**
@@ -2309,7 +2346,9 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		// moves to another document.
 		const pos = popScrollHistory(direction);
 		if (pos !== null && markdownBody) {
-			isProgrammaticScroll = true;
+			// Only a jump that moves gets a scroll event to clear the flag (see `scrollPreviewToSyncPosition`).
+			const reachable = Math.min(pos, markdownBody.scrollHeight - markdownBody.clientHeight);
+			isProgrammaticScroll = Math.abs(markdownBody.scrollTop - reachable) >= 1;
 			markdownBody.scrollTo({ top: pos, behavior: jumpBehavior });
 		} else {
 			await navigateFileHistory(direction);
@@ -2783,7 +2822,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	{#if tabManager.activeTab && !showsHomeScreen(() => tabManager.activeTab, showHome)}
 			<div
 				class="markdown-container"
-				style="zoom: {hasPreviewPane ? settings.zoomLevel / 100 : 1}; --code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize}px; --highlight-color: {previewAppearance.highlightColor};"
+				style="--code-font: {previewAppearance.codeFontFamily}; --code-font-size: {previewAppearance.codeFontSize * contentZoom}px; --highlight-color: {previewAppearance.highlightColor};"
 				onwheel={handleWheel}
 				role="presentation">
 				<div class="layout-container" 
@@ -2876,7 +2915,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 										if(e.key === 'Enter' || e.key === ' ') handleLinkClick(e as unknown as MouseEvent);
 									}}
 									tabindex="-1"
-									style="outline: none; font-family: {previewAppearance.fontFamily}; font-size: {previewAppearance.fontSize}px; flex: 1; --preview-max-width: {layout.maxWidthCss};">
+									style="outline: none; font-family: {previewAppearance.fontFamily}; font-size: {previewAppearance.fontSize * contentZoom}px; flex: 1; --preview-max-width: {layout.maxWidthCss};">
 									{#if frontMatterInfo.exists}
 										<details
 											class="frontmatter-panel"
@@ -3227,6 +3266,8 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		</div>
 	{/if}
 {/if}
+
+<svelte:window onwheelcapture={noteInput} onpointerdowncapture={noteInput} onkeydowncapture={noteInput} />
 
 <ContextMenu {...docContextMenu} onhide={() => (docContextMenu.show = false)} />
 
