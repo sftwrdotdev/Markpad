@@ -1420,6 +1420,8 @@ pub async fn take_command_line_open(
 
 /// Forgets what a command line asked for `path`: the OS opened it some other
 /// way (a Finder open on macOS), so the request is not this open's.
+// Only macOS has open-document events; the other platforms open files by argv.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn forget_command_line_open<R: Runtime>(app: &AppHandle<R>, path: &str) {
     lock_recover(&app.state::<AppState>().command_line_files).remove(path);
 }
