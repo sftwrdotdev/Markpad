@@ -323,11 +323,19 @@ describe('one tab per file', () => {
 	});
 });
 
+/** What `take_command_line_open` answers, per path: what a command line asked. */
+const commandLine = new Map<string, { mode: 'preview' | 'editor' | 'split' | null; missing: boolean }>();
+
 describe('path identity on a case-folding volume', () => {
 	beforeAll(() => {
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 			invoke: (cmd: string, args: any) => {
+				if (cmd === 'take_command_line_open') {
+					const request = commandLine.get(args.path) ?? null;
+					commandLine.delete(args.path);
+					return Promise.resolve(request);
+				}
 				if (cmd === 'canonicalize_path') {
 					const resolved = lookup(args.path);
 					// A name nothing answers to is still a legal target (Save As to a
@@ -535,6 +543,63 @@ describe('path identity on a case-folding volume', () => {
 			tabManager.tabs.map((tab) => tab.path),
 			['/notes/a.md', '/notes/b.md', '/notes/c.md'],
 		);
+	});
+
+	// `markpad --edit a.md b.md c.md` (#1051): a.md is already open in preview,
+	// b.md is not, c.md does not exist yet.
+	test('files from a command line open in the view it asked for', async () => {
+		reset();
+		const session = makeSession();
+		settings.openFileMode = 'preview';
+		disk.set('/notes/a.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+		await session.loadMarkdown('/notes/a.md');
+		for (const path of ['/notes/a.md', '/notes/b.md']) commandLine.set(path, { mode: 'editor', missing: false });
+		commandLine.set('/notes/c.md', { mode: 'editor', missing: true });
+		const switched: string[] = [];
+
+		await session.openFiles(['/notes/a.md', '/notes/b.md', '/notes/c.md'], async (mode) => {
+			switched.push(`${tabManager.activeTab!.path}:${mode}`);
+		});
+
+		assert.deepEqual(switched, ['/notes/a.md:editor'], 'the open tab switches through the view toggle');
+		const byPath = (path: string) => tabManager.tabs.find((tab) => tab.path === path)!;
+		assert.equal(byPath('/notes/b.md').isEditing, true);
+		assert.equal(byPath('/notes/c.md').isEditing, true);
+		assert.equal(byPath('/notes/c.md').isDirty, false);
+		assert.equal(commandLine.size, 0, 'each request is taken once');
+
+		// The same file from Finder afterwards opens as the setting says.
+		await session.openFiles(['/notes/a.md'], async (mode) => void switched.push(`again:${mode}`));
+		assert.equal(switched.length, 1);
+	});
+
+	test('a command line spelling an open file differently still switches its view', async () => {
+		reset();
+		const session = makeSession();
+		settings.openFileMode = 'preview';
+		disk.set('/notes/A.md', { body: 'a', lossy: false });
+		await session.loadMarkdown('/notes/A.md');
+		commandLine.set('/notes/a.md', { mode: 'editor', missing: false });
+		const switched: string[] = [];
+
+		await session.openFiles(['/notes/a.md'], async (mode) => void switched.push(mode));
+
+		assert.equal(tabManager.tabs.length, 1);
+		assert.deepEqual(switched, ['editor']);
+	});
+
+	test('a command line naming a missing file that is open switches its view', async () => {
+		reset();
+		const session = makeSession();
+		await session.openMissingFile('/notes/new.md', 'editor');
+		commandLine.set('/notes/new.md', { mode: 'preview', missing: true });
+		const switched: string[] = [];
+
+		await session.openFiles(['/notes/new.md'], async (mode) => void switched.push(mode));
+
+		assert.equal(tabManager.tabs.length, 1);
+		assert.deepEqual(switched, ['preview']);
 	});
 
 	test('a link opened in a new tab goes through the ordinary open path', async () => {

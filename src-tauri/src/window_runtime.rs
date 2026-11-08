@@ -94,6 +94,28 @@ pub struct AppState {
     open_files: Mutex<HashMap<String, Vec<String>>>,
     /// Launch files routed to the window that already has them open.
     launch_routing: Mutex<LaunchRouting>,
+    /// Files named on a command line, with the view it asked for, until a
+    /// window opens them (`take_command_line_open`).
+    command_line_files: Mutex<HashMap<String, Option<OpenFileMode>>>,
+}
+
+/// The view a command line asks its files to open in: `--preview`, `--edit`
+/// or `--split`. Overrides the "Open existing files in" setting for that
+/// launch only (#1051).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[serde(rename_all = "lowercase")]
+pub enum OpenFileMode {
+    Preview,
+    Editor,
+    Split,
+}
+
+/// A file a command line named, as the window opening it needs to know it.
+#[derive(serde::Serialize, specta::Type)]
+pub struct CommandLineOpen {
+    mode: Option<OpenFileMode>,
+    /// No file there yet: open an empty tab that creates it on first save.
+    missing: bool,
 }
 
 /// Launch files that belong to a window other than the launch window, because
@@ -143,6 +165,7 @@ impl AppState {
             claimed_recovery: Mutex::new(HashSet::new()),
             open_files: Mutex::new(HashMap::new()),
             launch_routing: Mutex::new(LaunchRouting::default()),
+            command_line_files: Mutex::new(HashMap::new()),
         }
     }
 
@@ -1350,11 +1373,77 @@ pub fn startup_paths(args: &[String], cwd: &Path) -> Vec<String> {
         .collect()
 }
 
+/// The view flag on a command line. The last one wins, as with most CLIs.
+pub fn startup_open_mode(args: &[String]) -> Option<OpenFileMode> {
+    args.iter()
+        .skip(1)
+        .rev()
+        .find_map(|arg| match arg.as_str() {
+            "--preview" => Some(OpenFileMode::Preview),
+            "--edit" => Some(OpenFileMode::Editor),
+            "--split" => Some(OpenFileMode::Split),
+            _ => None,
+        })
+}
+
+/// `startup_paths`, recorded for `take_command_line_open`. A later command
+/// line naming the same file replaces what an earlier one asked.
+pub fn command_line_paths<R: Runtime>(
+    app: &AppHandle<R>,
+    args: &[String],
+    cwd: &Path,
+) -> Vec<String> {
+    let paths = startup_paths(args, cwd);
+    let mode = startup_open_mode(args);
+    let state = app.state::<AppState>();
+    let mut recorded = lock_recover(&state.command_line_files);
+    for path in &paths {
+        recorded.insert(path.clone(), mode);
+    }
+    paths
+}
+
+/// Asked once per file a window opens from outside the app. `None` for a file
+/// no command line named, which opens as before.
+#[tauri::command]
+#[specta::specta]
+pub async fn take_command_line_open(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<Option<CommandLineOpen>, String> {
+    let Some(mode) = lock_recover(&state.command_line_files).remove(&path) else {
+        return Ok(None);
+    };
+    let missing = crate::commands::blocking(move || Ok(names_no_file(Path::new(&path)))).await?;
+    Ok(Some(CommandLineOpen { mode, missing }))
+}
+
+/// Forgets what a command line asked for `path`: the OS opened it some other
+/// way (a Finder open on macOS), so the request is not this open's.
+// Only macOS has open-document events; the other platforms open files by argv.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn forget_command_line_open<R: Runtime>(app: &AppHandle<R>, path: &str) {
+    lock_recover(&app.state::<AppState>().command_line_files).remove(path);
+}
+
+/// True only when the filesystem says nothing is there. A path it cannot
+/// read for another reason (permissions, a sharing violation) is not missing.
+fn names_no_file(path: &Path) -> bool {
+    matches!(fs::symlink_metadata(path), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+}
+
+/// Whether `path` names no file yet. Asked by a save that is to create it.
+#[tauri::command]
+#[specta::specta]
+pub async fn path_is_missing(path: String) -> Result<bool, String> {
+    crate::commands::blocking(move || Ok(names_no_file(Path::new(&path)))).await
+}
+
 pub fn handle_single_instance<R: Runtime>(app: &AppHandle<R>, args: Vec<String>, cwd: String) {
     // Explorer launches one process per selected file, so these can arrive
     // before the launch window listens; `deliver_opened_path` queues them and
     // fronts the window each one lands in.
-    let paths = startup_paths(&args, Path::new(&cwd));
+    let paths = command_line_paths(app, &args, Path::new(&cwd));
     if paths.is_empty() {
         if let Some(window) = pick_delivery_window(app) {
             bring_to_front(&window);
@@ -1793,6 +1882,75 @@ mod tests {
         let expected =
             ["a.md", "b.md"].map(|name| Path::new("/n").join(name).display().to_string());
         assert_eq!(pending, Some(expected.to_vec()));
+    }
+
+    #[test]
+    fn only_a_path_with_nothing_there_is_missing() {
+        let dir = std::env::temp_dir().join(format!("markpad-missing-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.md");
+        fs::write(&file, b"x").unwrap();
+        assert!(!names_no_file(&file));
+        assert!(!names_no_file(&dir));
+        assert!(names_no_file(&dir.join("b.md")));
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_last_view_flag_on_a_command_line_wins() {
+        let mode = |args: &[&str]| {
+            startup_open_mode(&args.iter().map(|a| a.to_string()).collect::<Vec<_>>())
+        };
+        assert_eq!(mode(&["markpad", "a.md"]), None);
+        assert_eq!(
+            mode(&["markpad", "--edit", "a.md"]),
+            Some(OpenFileMode::Editor)
+        );
+        assert_eq!(
+            mode(&["markpad", "a.md", "--split"]),
+            Some(OpenFileMode::Split)
+        );
+        assert_eq!(
+            mode(&["markpad", "--edit", "--preview", "a.md"]),
+            Some(OpenFileMode::Preview)
+        );
+        // argv[0] is the program, never a flag.
+        assert_eq!(mode(&["--edit", "a.md"]), None);
+        assert_eq!(mode(&["markpad", "--editor", "a.md"]), None);
+    }
+
+    // `markpad --edit a.md` with Markpad running: the window that opens a.md
+    // learns the view from here. A later plain `markpad a.md` asks for none.
+    #[test]
+    #[cfg(not(windows))]
+    fn a_command_line_records_its_view_for_each_file() {
+        let app = tauri::test::mock_app();
+        app.manage(AppState::new());
+        let path = Path::new("/n").join("a.md").display().to_string();
+        let launch = |args: &[&str]| {
+            handle_single_instance(
+                app.handle(),
+                args.iter().map(|a| a.to_string()).collect(),
+                "/n".into(),
+            )
+        };
+        launch(&["markpad", "--edit", "a.md"]);
+        assert_eq!(
+            lock_recover(&app.state::<AppState>().command_line_files).get(&path),
+            Some(&Some(OpenFileMode::Editor))
+        );
+        launch(&["markpad", "a.md"]);
+        assert_eq!(
+            lock_recover(&app.state::<AppState>().command_line_files).get(&path),
+            Some(&None)
+        );
+        // A Finder open of the same file drops a request nobody took.
+        launch(&["markpad", "--edit", "a.md"]);
+        forget_command_line_open(app.handle(), &path);
+        assert_eq!(
+            lock_recover(&app.state::<AppState>().command_line_files).get(&path),
+            None
+        );
     }
 
     fn idle_watcher() -> RecommendedWatcher {
