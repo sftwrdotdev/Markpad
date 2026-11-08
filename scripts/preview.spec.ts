@@ -52,6 +52,42 @@ describe('copy button label flash', () => {
 });
 
 /**
+ * A block with a language used to show only the language name, in 9 px text
+ * at 30 % opacity — it read as a caption, and readers did not find the copy
+ * button at all. Every label now carries the copy icon; the name sits beside it.
+ */
+describe('copy button markup', () => {
+	const libraries: RichContentLibraries = {
+		hljs: { getLanguage: () => undefined, highlight: () => ({ value: '' }) },
+		katex: { renderToString: (source: string) => source },
+		renderMathInElement: () => {},
+		mermaid: { initialize: () => {}, render: async () => ({ svg: '<svg></svg>' }) },
+	};
+
+	async function labelFor(html: string): Promise<HTMLElement> {
+		const article = document.createElement('div');
+		article.innerHTML = html;
+		document.body.replaceChildren(article);
+		await renderRichContent({ roots: [article], libraries, mermaidTheme: 'default', onCopyCode: () => {} });
+		return article.querySelector('.lang-label') as HTMLElement;
+	}
+
+	test('a block with a language shows the copy icon and the language name', async () => {
+		const label = await labelFor('<pre><code class="language-bash">echo hi</code></pre>');
+		expect(label.querySelector('svg')).not.toBeNull();
+		expect(label.querySelector('.lang-label-name')!.textContent).toBe('bash');
+		expect(label.textContent).toBe('bash');
+	});
+
+	test('a block with no language shows the icon alone', async () => {
+		const label = await labelFor('<pre><code>plain text</code></pre>');
+		expect(label.querySelector('svg')).not.toBeNull();
+		expect(label.querySelector('.lang-label-name')).toBeNull();
+		expect(label.textContent).toBe('');
+	});
+});
+
+/**
  * Switching theme has to re-draw the diagrams, and until this file existed it
  * did not — in any mode, for any theme.
  *
