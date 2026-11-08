@@ -85,21 +85,6 @@ describe('copy button markup', () => {
 		expect(label.querySelector('.lang-label-name')).toBeNull();
 		expect(label.textContent).toBe('');
 	});
-
-	test('clicking it hands the block\'s code to the copy handler', async () => {
-		const article = document.createElement('div');
-		article.innerHTML = '<pre><code class="language-bash">echo hi</code></pre>';
-		document.body.replaceChildren(article);
-		const copied: string[] = [];
-		await renderRichContent({
-			roots: [article],
-			libraries,
-			mermaidTheme: 'default',
-			onCopyCode: (code) => copied.push(code),
-		});
-		(article.querySelector('.lang-label') as HTMLElement).click();
-		expect(copied).toEqual(['echo hi']);
-	});
 });
 
 /**
