@@ -211,19 +211,22 @@ body {
 	background: transparent;
 }
 
-/* 8px at rest, 12px under the pointer, between the Windows and macOS thumbs.
-   Keep in step with the Monaco scrollbar in Editor.svelte. */
+/* A 12px thumb that keeps its width and only darkens under the pointer, as
+   Monaco's does, with Fluent's 4px control corner (5px less the 1px
+   transparent border). 22px is Monaco's 20px minimum slider length plus that
+   border at each end. Keep in step with the Monaco scrollbar in Editor.svelte. */
 ::-webkit-scrollbar-thumb {
 	background-color: rgba(120, 120, 120, 0.35);
-	border-radius: 10px;
-	border: 3px solid transparent;
+	border-radius: 5px;
+	border: 1px solid transparent;
 	background-clip: content-box;
+	min-width: 22px;
+	min-height: 22px;
 }
 
 ::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {
 	background-color: rgba(120, 120, 120, 0.55);
-	border-width: 1px;
 }
 
 .markdown-body {

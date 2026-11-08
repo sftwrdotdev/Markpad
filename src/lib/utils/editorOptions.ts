@@ -237,8 +237,8 @@ export function createdEditorOptions(
 			// Same track and thumb as the preview's ::-webkit-scrollbar in styles.css.
 			verticalScrollbarSize: 14,
 			horizontalScrollbarSize: 14,
-			verticalSliderSize: 8,
-			horizontalSliderSize: 8,
+			verticalSliderSize: 12,
+			horizontalSliderSize: 12,
 		},
 	};
 }
