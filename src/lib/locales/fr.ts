@@ -430,6 +430,7 @@ export default {
         close: 'Fermer',
         minimize: 'Réduire',
         maximize: 'Agrandir',
+        restore: 'Restaurer',
         loadingFullDocument: 'Chargement du document complet...',
         decrease: 'Diminuer',
         increase: 'Augmenter'

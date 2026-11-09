@@ -430,6 +430,7 @@ export default {
         close: 'Sulje',
         minimize: 'Pienennä',
         maximize: 'Suurenna',
+        restore: 'Palauta',
         loadingFullDocument: 'Ladataan koko asiakirjaa...',
         decrease: 'Pienennä',
         increase: 'Suurenna'

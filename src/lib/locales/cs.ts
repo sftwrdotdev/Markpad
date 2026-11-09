@@ -430,6 +430,7 @@ export default {
         close: 'Zavřít',
         minimize: 'Minimalizovat',
         maximize: 'Maximalizovat',
+        restore: 'Obnovit',
         loadingFullDocument: 'Načítání celého dokumentu...',
         decrease: 'Snížit',
         increase: 'Zvýšit'

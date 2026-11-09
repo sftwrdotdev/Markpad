@@ -923,22 +923,9 @@
 		min-width: 0;
 	}
 
-	/* Monaco sizes the slider inline. Grow it under the pointer the way the
-	   preview's thumb does. */
+	/* Same corner as the preview's thumb in styles.css. */
 	.editor-container :global(.monaco-scrollable-element > .scrollbar > .slider) {
-		border-radius: 10px;
-	}
-
-	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider:hover),
-	.editor-container :global(.monaco-scrollable-element > .scrollbar.vertical > .slider.active) {
-		width: 12px !important;
-		left: 1px !important;
-	}
-
-	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider:hover),
-	.editor-container :global(.monaco-scrollable-element > .scrollbar.horizontal > .slider.active) {
-		height: 12px !important;
-		top: 1px !important;
+		border-radius: 4px;
 	}
 
 	:global(.ghost-caret) {

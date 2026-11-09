@@ -430,6 +430,7 @@ export default {
         close: 'Stäng',
         minimize: 'Minimera',
         maximize: 'Maximera',
+        restore: 'Återställ',
         loadingFullDocument: 'Läser in hela dokumentet...',
         decrease: 'Minska',
         increase: 'Öka'

@@ -49,7 +49,7 @@ function updateFoldHeights(root: HTMLElement) {
 	// eslint.config.js). Nothing is clipped by the smaller
 	// number: expanded wrappers are `overflow: visible`.
 	//
-	// Divide by the preview's CSS `zoom`: a rect is in viewport pixels, and
+	// Divide by any ancestor CSS `zoom`: a rect is in viewport pixels, and
 	// `height` has the zoom applied again (#807).
 	const zoom = previewZoomFactor(root);
 	const heights = pending.map(({ content }) => content.getBoundingClientRect().height / zoom);
@@ -88,6 +88,8 @@ export interface FoldLayoutObservation {
 	 * survivor costs nothing either.
 	 */
 	observe(scope: Element): void;
+	/** Measure now rather than next frame, for a caller that places the scroll after a reflow. */
+	measureNow(): void;
 	stop(): void;
 }
 
@@ -139,6 +141,11 @@ export function observeFoldLayout(root: HTMLElement): FoldLayoutObservation {
 
 	return {
 		observe,
+		measureNow: () => {
+			if (frame !== null) cancelAnimationFrame(frame);
+			frame = null;
+			updateFoldHeights(root);
+		},
 		stop: () => {
 			observer.disconnect();
 			window.removeEventListener('resize', scheduleUpdate);

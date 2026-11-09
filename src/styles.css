@@ -211,19 +211,22 @@ body {
 	background: transparent;
 }
 
-/* 8px at rest, 12px under the pointer, between the Windows and macOS thumbs.
-   Keep in step with the Monaco scrollbar in Editor.svelte. */
+/* A 12px thumb that keeps its width and only darkens under the pointer, as
+   Monaco's does, with Fluent's 4px control corner (5px less the 1px
+   transparent border). 22px is Monaco's 20px minimum slider length plus that
+   border at each end. Keep in step with the Monaco scrollbar in Editor.svelte. */
 ::-webkit-scrollbar-thumb {
 	background-color: rgba(120, 120, 120, 0.35);
-	border-radius: 10px;
-	border: 3px solid transparent;
+	border-radius: 5px;
+	border: 1px solid transparent;
 	background-clip: content-box;
+	min-width: 22px;
+	min-height: 22px;
 }
 
 ::-webkit-scrollbar-thumb:hover,
 ::-webkit-scrollbar-thumb:active {
 	background-color: rgba(120, 120, 120, 0.55);
-	border-width: 1px;
 }
 
 .markdown-body {
@@ -769,14 +772,14 @@ body {
 	display: inline-block;
 	padding: 3px 5px;
 	font:
-		11px ui-monospace,
+		0.6875em ui-monospace,
 		SFMono-Regular,
 		SF Mono,
 		Menlo,
 		Consolas,
 		Liberation Mono,
 		monospace;
-	line-height: 10px;
+	line-height: 0.91;
 	color: var(--color-fg-default);
 	vertical-align: middle;
 	background-color: var(--color-canvas-subtle);
@@ -996,6 +999,97 @@ body {
 	color: var(--md-code, inherit);
 }
 
+/* Inline code's copy badge (inlineCodeCopy.ts). Two pseudo-elements rather
+   than a node in the document, so copy, find and cursor mapping never meet
+   it: ::before is the badge's box, ::after the icon masked out of a fill in
+   the text colour. Scoped to the live preview's class, so an exported file,
+   which copies this stylesheet but runs no script, shows no badge it cannot
+   act on. The selector skips the same code the click handler does: code in a
+   block, and code anywhere inside a link, which a click has to follow. */
+.copyable-inline-code code:not(pre code, a code) {
+	position: relative;
+	--inline-copy-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='9' y='9' width='13' height='13' rx='2' ry='2'/%3E%3Cpath d='M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1'/%3E%3C/svg%3E") center / 13px 13px no-repeat;
+}
+
+/* The badge floats above the code's right end, so it covers no text on the
+   code's own line. A pseudo-element is part of its element for :hover, so
+   ::before's transparent bottom border bridges the gap: a pointer moving up
+   onto the badge never leaves the hover. Hiding is delayed (the visibility
+   transition), so a pointer that strays off for a moment finds it still there. */
+.copyable-inline-code code:not(pre code, a code)::before,
+.copyable-inline-code code:not(pre code, a code)::after {
+	content: '';
+	position: absolute;
+	right: 0;
+	bottom: 100%;
+	box-sizing: border-box;
+	cursor: pointer;
+	visibility: hidden;
+	opacity: 0;
+	transition:
+		opacity 0.15s ease,
+		visibility 0s linear 0.4s;
+}
+
+.copyable-inline-code code:not(pre code, a code)::before {
+	width: 28px;
+	height: 26px;
+	border-bottom: 4px solid transparent;
+	border-radius: 4px;
+	background: var(--color-canvas-default);
+	background-clip: padding-box;
+	box-shadow: inset 0 0 0 1px var(--color-border-default, var(--color-neutral-muted));
+	z-index: 1;
+}
+
+.copyable-inline-code code:not(pre code, a code)::after {
+	bottom: calc(100% + 4px);
+	width: 28px;
+	height: 22px;
+	background-color: var(--color-fg-default);
+	-webkit-mask: var(--inline-copy-icon);
+	mask: var(--inline-copy-icon);
+	z-index: 2;
+}
+
+.copyable-inline-code code:not(pre code, a code):hover::before,
+.copyable-inline-code code:not(pre code, a code):hover::after,
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::after {
+	visibility: visible;
+	transition:
+		opacity 0.15s ease,
+		visibility 0s;
+}
+
+.copyable-inline-code code:not(pre code, a code):hover::before {
+	opacity: 1;
+}
+
+.copyable-inline-code code:not(pre code, a code):hover::after {
+	opacity: 0.75;
+}
+
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::before {
+	visibility: hidden;
+}
+
+.copyable-inline-code code:not(pre code, a code).inline-code-copied::after {
+	content: 'Copied!';
+	-webkit-mask: none;
+	mask: none;
+	opacity: 1;
+	width: auto;
+	height: auto;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: var(--color-accent-fg);
+	color: white;
+	font-family: var(--win-font);
+	font-size: 11px;
+	line-height: 1.3;
+	white-space: nowrap;
+}
+
 .markdown-body code {
 	padding: 0.2em 0.4em;
 	margin: 0;
@@ -1100,7 +1194,7 @@ body {
 }
 
 .markdown-body .footnotes {
-	font-size: 12px;
+	font-size: 0.75em;
 	color: var(--color-fg-muted);
 	border-top: 1px solid var(--color-border-default);
 	margin-top: 24px;
@@ -1268,11 +1362,12 @@ body {
 	position: absolute;
 	top: 6px;
 	right: 8px;
-	font-size: 9px;
+	font-size: 11px;
 	font-family: var(--win-font);
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
-	opacity: 0.3;
+	gap: 5px;
+	opacity: 0.6;
 	color: var(--color-fg-default);
 	pointer-events: auto;
 	user-select: none;
@@ -1287,8 +1382,9 @@ body {
 	justify-content: center;
 }
 
-.lang-label:hover {
-	opacity: 0.8;
+.lang-label:hover,
+.lang-label:focus-visible {
+	opacity: 1;
 	background: var(--color-neutral-muted);
 }
 
@@ -1445,6 +1541,14 @@ body {
 	.markdown-body .header-fold-icon,
 	.markdown-body .callout-fold-icon,
 	.lang-label {
+		display: none !important;
+	}
+
+	/* A rule of its own: a selector list fails as a whole in any engine that
+	   rejects one member, and pseudo-elements are the member most likely to be
+	   rejected — that would bring the fold chevrons back onto paper with it. */
+	.copyable-inline-code code::before,
+	.copyable-inline-code code::after {
 		display: none !important;
 	}
 

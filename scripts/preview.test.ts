@@ -932,6 +932,14 @@ describe('preview layout', () => {
 		const full = previewLayout({ ...base, previewFullWidth: true }, reading);
 		assert.deepEqual([full.maxWidthCss, full.isOverhanging], ['100%', true]);
 	});
+
+	test('content zoom widens the measure, and the outline judges the gutter that is left', () => {
+		// #1071: zoom scales the text by font size, so the measure has to scale with
+		// it. At 150% an 880px measure is 1320px of a 1400px pane, a 40px gutter.
+		const base = { previewMaxWidth: 880, previewFullWidth: false, tocSide: 'left' as const, splitEditorSide: 'left' as const, tocWidth: 240 };
+		const zoomed = previewLayout(base, { isEditing: false, isSplit: false, viewerWidth: 1400, zoom: 1.5 });
+		assert.deepEqual([zoomed.maxWidthCss, zoomed.isOverhanging], ['1320px', true]);
+	});
 });
 
 describe('webview permissions the preview depends on', () => {

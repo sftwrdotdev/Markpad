@@ -438,6 +438,7 @@ export default {
         close: '关闭',
         minimize: '最小化',
         maximize: '最大化',
+        restore: '还原',
         loadingFullDocument: '正在加载完整文档…',
         decrease: '减少',
         increase: '增加'

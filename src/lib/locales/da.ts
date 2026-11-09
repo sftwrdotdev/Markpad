@@ -430,6 +430,7 @@ export default {
         close: 'Luk',
         minimize: 'Minimer',
         maximize: 'Maksimer',
+        restore: 'Gendan',
         loadingFullDocument: 'Indlæser hele dokumentet...',
         decrease: 'Formindsk',
         increase: 'Forøg'

@@ -18,6 +18,11 @@ import {
 	replaceCurrentHistoryEntry,
 } from '../utils/tabHistory.js';
 
+/** The tab is on a path a command line named, and has yet to create the file there. */
+export function createsItsFile(tab: Pick<Tab, 'path' | 'createsFile'>): boolean {
+	return tab.createsFile === tab.path;
+}
+
 export interface Tab {
 	id: string;
 	path: string;
@@ -95,6 +100,14 @@ export interface Tab {
 	content: string;
 	rawContent: string;
 	originalContent: string;
+	/**
+	 * A path a command line named before any file was there (#1051), which
+	 * this tab's first save is to create. Only while it is still `path`: Save
+	 * As or a link moves the tab off it, and a save or a read clears it. Not
+	 * persisted: an untouched one is left out of the snapshot, and an edited
+	 * one restored or moved to another window asks once on its first save.
+	 */
+	createsFile?: string;
 	/** Preview pixels — the coarsest of three position fields. See `scrollPercentage`. */
 	scrollTop: number;
 	/**
@@ -441,7 +454,9 @@ class TabManager {
 			windowTag: this.windowTag,
 			activeTabId: this.activeTabId,
 			tabs: this.tabs
-				.filter((t) => hasRealFilePath(t.path))
+				// A tab still to create its file, untouched, has nothing to restore:
+				// the next launch would only fail to read it.
+				.filter((t) => hasRealFilePath(t.path) && !(createsItsFile(t) && !t.isDirty))
 				.map((t) => ({
 					id: t.id,
 					path: t.path,

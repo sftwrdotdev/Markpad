@@ -160,10 +160,10 @@ export const PREVIEW_ANCHOR_OFFSET = 60;
  * The factor between the coordinates `getBoundingClientRect()` reports and the
  * ones `scrollTop` is measured in, for anything inside `container`.
  *
- * The preview sets CSS `zoom` on `.markdown-container`, an ANCESTOR of the
- * scrolling element. A rect is reported in viewport pixels, which have that
- * zoom folded in; `scrollTop` counts in the scroller's own pixels, which do
- * not. The two are the same number only at 100%.
+ * A CSS `zoom` on an ANCESTOR of the scrolling element folds into the rect,
+ * which is reported in viewport pixels, but not into `scrollTop`, which counts
+ * the scroller's own. Content zoom scales font sizes now (#1071), so this is 1
+ * unless a CSS `zoom` comes back.
  *
  * Measured off the container rather than read from the settings store, so this
  * module keeps knowing nothing about where the zoom is applied or how many

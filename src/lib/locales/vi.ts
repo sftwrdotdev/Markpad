@@ -430,6 +430,7 @@ export default {
         close: 'Đóng',
         minimize: 'Thu nhỏ',
         maximize: 'Phóng to',
+        restore: 'Khôi phục',
         loadingFullDocument: 'Đang tải toàn bộ tài liệu...',
         decrease: 'Giảm',
         increase: 'Tăng'

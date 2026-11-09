@@ -45,7 +45,8 @@ export type PreviewLayoutSettings = {
 	tocWidth: number;
 };
 
-export type PreviewView = { isEditing: boolean; isSplit: boolean; viewerWidth: number };
+/** `zoom` is the content zoom, which scales the preview's measure with its text (#1071). */
+export type PreviewView = { isEditing: boolean; isSplit: boolean; viewerWidth: number; zoom?: number };
 
 /**
  * The preview's measure and whether the outline covers it. Both come from the
@@ -53,7 +54,8 @@ export type PreviewView = { isEditing: boolean; isSplit: boolean; viewerWidth: n
  * does not leave.
  */
 export function previewLayout(settings: PreviewLayoutSettings, view: PreviewView) {
-	const contentWidth = getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth);
+	const measure = getPreviewContentWidth(settings.previewMaxWidth, settings.previewFullWidth);
+	const contentWidth = measure === null ? null : measure * (view.zoom ?? 1);
 	return {
 		contentWidth,
 		/** The live `.markdown-body`'s `--preview-max-width`. */
