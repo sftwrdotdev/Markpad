@@ -216,8 +216,10 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
     // after the first show, so minimizing a maximized window flashes it
     // at its restored size (#776, tauri-apps/tao#1338). `show_window` skipping
     // `set_focus` is what keeps a cold start from stealing focus.
+    // Shadow left on from the start: window-state restores the size while
+    // the window is built, and a shadow switched on afterwards turns the
+    // Windows resize frame into lost client area on every launch (#1077).
     .resizable(true)
-    .shadow(false)
     .center();
 
     #[cfg(target_os = "macos")]
@@ -261,8 +263,6 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
     };
 
     let _ = window.set_background_color(bg_color);
-
-    let _ = window.set_shadow(true);
 
     // Same vetting as `send_markdown_path`, which reads the same argv:
     // the frontend consumes BOTH channels, so a path this one lets
