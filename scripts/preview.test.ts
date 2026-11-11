@@ -971,6 +971,13 @@ describe('webview permissions the preview depends on', () => {
 		assert.equal(csp['connect-src'], "'self'");
 	});
 
+	test('local video and audio may load', () => {
+		// Converted local paths are `asset:` on macOS and Linux and
+		// `http://asset.localhost` on Windows. Without `media-src` they fall
+		// back to `default-src`, which refuses the Windows one.
+		assert.equal(csp['media-src'], "'self' asset: http://asset.localhost");
+	});
+
 	test('the app no longer permits YouTube frames', () => {
 		// A `frame-src` that outlived the iframe is permission granted for no feature.
 		assert.equal(csp['frame-src'], undefined);

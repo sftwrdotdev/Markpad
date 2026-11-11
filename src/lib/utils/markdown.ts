@@ -718,34 +718,48 @@ export function stampImageGeneration(html: string): string {
 }
 
 /**
+ * Where a `src` written in the document loads from: a local path resolved
+ * against the document and served by the asset protocol, web and data URLs as
+ * they are, `null` for none.
+ */
+function localSrc(src: string, filePath: string): string | null {
+	if (src.startsWith("http") || src.startsWith("data:")) return src;
+	try {
+		const resolved = resolveDocumentRelativePath(filePath, decodeURIComponent(src));
+		// Rendering alone fetches this, so a UNC path on another host
+		// would leak the user's NTLM hash without a click. Left as
+		// written, `//host/x` would instead load as a web address.
+		return isOffHostUncPath(resolved, filePath) ? null : convertFileSrc(resolved);
+	} catch (e) {
+		console.error("Failed to decode/resolve src:", src, e);
+		return src;
+	}
+}
+
+/**
  * Everything `processMarkdownHtml` does that only looks inside one top-level
  * block. Fold keys and the heading wrappers need the whole document and are
  * `applyFolds` and `wrapHeadings`.
  */
 export function processBlockMarkup(root: Element, filePath: string): void {
 	const doc = root.ownerDocument;
+	// Raw HTML players. Before the images, whose media-file links become
+	// players with a src already converted.
+	for (const media of root.querySelectorAll("video[src], audio[src], video source[src], audio source[src]")) {
+		const src = localSrc(media.getAttribute("src")!, filePath);
+		if (src === null) media.removeAttribute("src");
+		else media.setAttribute("src", src);
+	}
+
 	for (const img of root.querySelectorAll("img")) {
 		const src = img.getAttribute("src");
 		const generation = img.getAttribute(GENERATION_ATTR);
 		img.removeAttribute(GENERATION_ATTR);
-		let finalSrc = src;
-		if (src && !src.startsWith("http") && !src.startsWith("data:")) {
-			try {
-				const decodedSrc = decodeURIComponent(src);
-				const resolved = resolveDocumentRelativePath(filePath, decodedSrc);
-				// Rendering alone fetches this, so a UNC path on another host
-				// would leak the user's NTLM hash without a click. Left as
-				// written, `//host/x` would instead load as a web address.
-				if (isOffHostUncPath(resolved, filePath)) {
-					finalSrc = null;
-					img.removeAttribute("src");
-				} else {
-					finalSrc = convertFileSrc(resolved) + (generation ? `?v=${generation}` : "");
-					img.setAttribute("src", finalSrc);
-				}
-			} catch (e) {
-				console.error("Failed to decode/resolve image src:", src, e);
-			}
+		let finalSrc = src && localSrc(src, filePath);
+		if (finalSrc !== src) {
+			if (finalSrc && generation) finalSrc += `?v=${generation}`;
+			if (finalSrc === null) img.removeAttribute("src");
+			else img.setAttribute("src", finalSrc);
 		}
 
 		if (src) {
