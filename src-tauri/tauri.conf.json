@@ -17,6 +17,7 @@
         "script-src": "'self' 'unsafe-inline'",
         "style-src": "'self' 'unsafe-inline'",
         "img-src": "'self' asset: https: http://asset.localhost blob: data:",
+        "media-src": "'self' asset: http://asset.localhost",
         "connect-src": "'self'",
         "font-src": "'self'"
       },
