@@ -6,6 +6,12 @@ import * as __TAURI_EVENT from "@tauri-apps/api/event";
 /** Commands */
 export const commands = {
 	clipboardWriteText: (text: string) => __TAURI_INVOKE<null>("clipboard_write_text", { text }),
+	/**
+	 *  A PNG, base64-encoded, put on the clipboard as an image: a Mermaid diagram
+	 *  the preview drew onto a canvas (#1085). Through arboard, like the text, so
+	 *  it survives on X11 the same way; the webview's own clipboard is not used.
+	 */
+	clipboardWriteImage: (pngBase64: string) => __TAURI_INVOKE<null>("clipboard_write_image", { pngBase64 }),
 	clipboardReadText: () => __TAURI_INVOKE<string>("clipboard_read_text"),
 	/**
 	 *  Async so the resize and PNG encode of a screenshot-sized image run on the

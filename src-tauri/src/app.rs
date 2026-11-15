@@ -100,6 +100,7 @@ fn bindings_builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::<tauri::Wry>::new()
         .commands(collect_commands![
             commands::clipboard_write_text,
+            commands::clipboard_write_image,
             commands::clipboard_read_text,
             commands::clipboard_read_image,
             commands::clipboard_read_file_list,

@@ -305,6 +305,41 @@ describe('diagram cache', () => {
 		assert.equal(again.renders.length, 1);
 	});
 
+	// #1085: a diagram carries a copy button like a code block, but only where
+	// the caller can copy; an exported file passes no callback and gets none.
+	test('a diagram gets one copy button, and keeps it through a theme redraw', async () => {
+		resetDiagramCache();
+		const copied: Array<{ container: unknown; button: unknown }> = [];
+		const root = (globalThis as any).document.createElement('div');
+		root.innerHTML = articleWith('graph TD; Copy-->Me;');
+		const pass = (theme: string) =>
+			renderRichContent({
+				roots: [root],
+				libraries: libraries(newRecorder()) as any,
+				mermaidTheme: theme,
+				idFactory: ids(),
+				onCopyDiagram: (container, button) => copied.push({ container, button }),
+			});
+
+		await pass('neutral');
+		await pass('dark');
+		const container = root.querySelector('.mermaid-diagram');
+		const buttons = container.querySelectorAll('.lang-label');
+		assert.equal(buttons.length, 1, 'a redraw must not drop the button or add a second one');
+		assert.match(container.innerHTML, /fill:#333/, 'the second pass did redraw');
+
+		let stopped = false;
+		buttons[0].onclick({ stopPropagation: () => (stopped = true) });
+		assert.deepEqual(copied, [{ container, button: buttons[0] }]);
+		assert.ok(stopped, 'the click must not also open the zoomed diagram');
+	});
+
+	test('a diagram rendered without a copy callback has no button', async () => {
+		resetDiagramCache();
+		const root = await render(articleWith('graph TD; Export-->Me;'), { record: newRecorder() });
+		assert.equal(root.querySelectorAll('.mermaid-diagram .lang-label').length, 0);
+	});
+
 	// ------------------------------------------------- the templating, on its own
 
 	test('templating refuses anything it cannot re-identify', () => {
