@@ -96,6 +96,7 @@ import {
 	type MarkdownLinkTarget as RelativeMarkdownTarget,
 } from './utils/markdownLinks.js';
 import { COPYABLE_INLINE_CODE_CLASS, handleInlineCodeCopyClick } from './utils/inlineCodeCopy.js';
+import { diagramToPngBase64 } from './utils/diagramImage.js';
 import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
 import { basename, canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
@@ -1125,6 +1126,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 						console.error('Failed to copy code:', err);
 					});
 			},
+			onCopyDiagram: (container, button) => copyDiagram(container, button),
 		});
 	}
 
@@ -1966,6 +1968,17 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
+	/** A diagram onto the clipboard as a PNG (#1085). The button flashes "Copied!"; the menu item toasts. */
+	async function copyDiagram(container: HTMLElement, button?: HTMLElement) {
+		try {
+			await commands.clipboardWriteImage(await diagramToPngBase64(container));
+			if (button) flashCopiedLabel(button);
+			else addToast(t('toast.diagramCopied', settings.language));
+		} catch (e) {
+			addToast(`${t('toast.failedToCopyDiagram', settings.language)}: ${e}`, 'error');
+		}
+	}
+
 	/**
 	 * Cut, Copy and Paste for the editor pane.
 	 *
@@ -2071,6 +2084,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		const mermaidDiag = (e.target as HTMLElement).closest('.mermaid-diagram');
 		if (mermaidDiag) {
 			mediaItems = [
+				{ label: t('menu.copyDiagramAsImage', settings.language), onClick: () => copyDiagram(mermaidDiag as HTMLElement) },
 				{ label: t('menu.saveDiagramAsSvg', settings.language), onClick: () => saveDiagramAs(mermaidDiag as HTMLElement) },
 				{ separator: true }
 			];
@@ -3476,6 +3490,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	}
 
 	:global(.mermaid-diagram) {
+		position: relative;
 		margin: 1em 0;
 		display: flex;
 		justify-content: center;

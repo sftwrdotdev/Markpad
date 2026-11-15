@@ -902,6 +902,36 @@ pub fn clipboard_write_text(text: String) -> Result<(), String> {
     clipboard.set_text(text).map_err(|e| e.to_string())
 }
 
+/// A PNG, base64-encoded, put on the clipboard as an image: a Mermaid diagram
+/// the preview drew onto a canvas (#1085). Through arboard, like the text, so
+/// it survives on X11 the same way; the webview's own clipboard is not used.
+#[tauri::command]
+#[specta::specta]
+pub async fn clipboard_write_image(png_base64: String) -> Result<(), String> {
+    blocking(move || {
+        use base64::{engine::general_purpose, Engine as _};
+        let png = general_purpose::STANDARD
+            .decode(png_base64)
+            .map_err(|e| e.to_string())?;
+        let image = image::load_from_memory_with_format(&png, image::ImageFormat::Png)
+            .map_err(|e| e.to_string())?
+            .to_rgba8();
+
+        #[cfg(all(unix, not(target_os = "macos")))]
+        retain_clipboard_ownership();
+
+        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        clipboard
+            .set_image(arboard::ImageData {
+                width: image.width() as usize,
+                height: image.height() as usize,
+                bytes: std::borrow::Cow::Owned(image.into_raw()),
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn clipboard_read_text() -> Result<String, String> {

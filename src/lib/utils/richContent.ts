@@ -238,6 +238,8 @@ export interface RenderRichContentOptions {
 	 * privilege), so a handler there would be a button that does nothing.
 	 */
 	onCopyCode?: (code: string, label: HTMLElement) => void;
+	/** Copy a diagram as an image. Omitted for an exported file, like `onCopyCode`. */
+	onCopyDiagram?: (container: HTMLElement, button: HTMLElement) => void;
 	/** Injected so diagram ids are deterministic under test. */
 	idFactory?: (index: number) => string;
 	onError?: (error: unknown) => void;
@@ -311,6 +313,29 @@ export function flashCopiedLabel(label: HTMLElement) {
 		label.innerHTML = original;
 		label.classList.remove('copied');
 	}, 1500);
+}
+
+/**
+ * The copy button in a diagram's top-right corner, styled and hidden in print
+ * like a code block's (#1085). Added after every draw, since a redraw replaces
+ * the container's contents.
+ */
+function addDiagramCopyButton(
+	doc: Document,
+	container: HTMLElement,
+	onCopy: RenderRichContentOptions['onCopyDiagram'],
+) {
+	if (!onCopy) return;
+	const button = doc.createElement('button');
+	button.className = 'lang-label';
+	button.title = 'Copy as image';
+	button.innerHTML = COPY_ICON_SVG;
+	button.onclick = (e) => {
+		// Clicking a diagram opens it zoomed; the button is only a copy.
+		e.stopPropagation();
+		onCopy(container, button);
+	};
+	container.appendChild(button);
 }
 
 /** The tail of the chain `drawInTurn` appends to. */
@@ -582,6 +607,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 		const source = readDiagramSource(container) as string;
 		try {
 			container.innerHTML = sanitizeDiagramSvg(await drawDiagram(source, idFactory(diagramIndex++)));
+			addDiagramCopyButton(doc, container as HTMLElement, options.onCopyDiagram);
 			rememberDiagramSource(container, source, options.mermaidTheme);
 		} catch (error) {
 			// A diagram that fails to draw keeps the rendering it has. A diagram
@@ -605,6 +631,7 @@ export async function renderRichContent(options: RenderRichContentOptions): Prom
 			// instead of recolouring Mermaid's output.
 			rememberDiagramSource(container, mermaidCode, options.mermaidTheme);
 			container.innerHTML = sanitizeDiagramSvg(svg);
+			addDiagramCopyButton(doc, container, options.onCopyDiagram);
 			preEl.replaceWith(container);
 			replacedBy.set(preEl, container);
 		} catch (error) {
