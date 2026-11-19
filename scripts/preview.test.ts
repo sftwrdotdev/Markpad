@@ -4,7 +4,7 @@ import { anchorIdCandidates, getMarkdownLinkTarget, resolveMarkdownTargetPath } 
 import { asBufferLine, asRendererLine, type BufferLine, lineCoordinates } from '../src/lib/utils/lineCoordinates.ts';
 import { opensInNewTab } from '../src/lib/utils/shortcuts.js';
 import { resolveLocalFileLinkPath } from '../src/lib/utils/localFileLinks.js';
-import { followDocumentLink, handlePreviewClick, openRelativeMarkdownTarget, openWithSystem, type PreviewClickDeps } from '../src/lib/utils/previewLinks.js';
+import { followDocumentLink, handlePreviewClick, handlePreviewMiddleClick, openRelativeMarkdownTarget, openWithSystem, type PreviewClickDeps } from '../src/lib/utils/previewLinks.js';
 import { type KeyContext, viewerCommandFor } from '../src/lib/utils/viewerKeymap.js';
 import { viewerCommandTable, type ViewerCommandHost } from '../src/lib/utils/viewerCommands.js';
 import { adjustPreviewMaxWidth, DEFAULT_PREVIEW_MAX_WIDTH, getPreviewContentWidth, getStoredPreviewFullWidth, MAX_PREVIEW_MAX_WIDTH, MIN_PREVIEW_MAX_WIDTH, normalizePreviewMaxWidth } from '../src/lib/utils/previewWidth.js';
@@ -812,6 +812,26 @@ describe('preview link clicks', () => {
 		await handlePreviewClick(event, previewDeps(calls));
 		assert.deepEqual(calls, ['hide tooltip']);
 		assert.equal(result.defaultPrevented, true, 'left for the document handler to open');
+	});
+
+	// #1087: a middle-click is "new tab, stay here" for a Markdown link, whatever
+	// the new-tab setting says, and an ordinary open for any other link.
+	test('a middle-click opens a markdown link in a background tab and any other link as a click would', async () => {
+		async function middleClick(href: string, button = 1) {
+			const calls: Calls = [];
+			const anchor = element('a', { href }) as unknown as HTMLAnchorElement;
+			const { event, result } = click(anchor as unknown as FakeElement);
+			Object.assign(event, { button });
+			await handlePreviewMiddleClick(event, anchor, {
+				openInBackgroundTab: async (t) => void calls.push(`background ${t.path}`),
+				follow: async (_e, a) => void calls.push(`follow ${a.getAttribute('href')}`),
+			});
+			return { calls, defaultPrevented: result.defaultPrevented };
+		}
+		assert.deepEqual(await middleClick('./other.md'), { calls: ['background ./other.md'], defaultPrevented: true });
+		assert.deepEqual(await middleClick('https://example.com'), { calls: ['follow https://example.com'], defaultPrevented: true });
+		assert.deepEqual(await middleClick('#intro'), { calls: [], defaultPrevented: true });
+		assert.deepEqual(await middleClick('./other.md', 0), { calls: [], defaultPrevented: false });
 	});
 
 	const DOC = '/notes/report.md';

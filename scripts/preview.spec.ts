@@ -10,7 +10,7 @@ import { processMarkdownHtml } from '../src/lib/utils/markdown.js';
 import { type Annotation, annotationOf, hitAt, occurrenceRanges, overlapping, rangeOf } from '../src/lib/utils/previewAnnotations.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
 import { copyableFlavours, copyableHtml, handleCopy } from '../src/lib/utils/previewCopy.js';
-import { linkTooltipFor } from '../src/lib/utils/previewLinks.js';
+import { blockMiddleClickNavigation, linkTooltipFor } from '../src/lib/utils/previewLinks.js';
 import { attachTableColumnResize } from '../src/lib/utils/tableColumnResize.js';
 import { imageMenuItems, saveImageAs, type SaveImageDeps } from '../src/lib/utils/viewerContextMenu.js';
 import { loadLocale } from '../src/lib/utils/i18n.js';
@@ -19,6 +19,37 @@ import { ALLOWED_MARKDOWN_URI_REGEXP, sanitizeMarkdownFragment, sanitizeMarkdown
 import blocks from './fixtures/markdown-syntax.blocks.json';
 import DOMPurify from 'dompurify';
 import { readSource } from './sourceTree.js';
+
+/**
+ * #1087: WebKit navigates the whole window on a middle-click's `auxclick`, and
+ * the app became a 404 page. The window-level guard cancels it for any link.
+ */
+describe('middle-click navigation guard', () => {
+	function dispatch(type: string, button: number, html: string) {
+		document.body.innerHTML = html;
+		const target = document.querySelector('[data-target]')!;
+		const guard = (e: Event) => blockMiddleClickNavigation(e as MouseEvent);
+		const reached: string[] = [];
+		window.addEventListener(type, guard, true);
+		target.addEventListener(type, () => void reached.push('target'));
+		const event = new MouseEvent(type, { button, bubbles: true, cancelable: true });
+		target.dispatchEvent(event);
+		window.removeEventListener(type, guard, true);
+		document.body.innerHTML = '';
+		return { prevented: event.defaultPrevented, reached };
+	}
+
+	test('a middle-click on a link is cancelled before any handler sees it', () => {
+		for (const type of ['auxclick', 'click']) {
+			assert.deepEqual(dispatch(type, 1, '<a href="b.md#deep-section"><span data-target>b</span></a>'), { prevented: true, reached: [] }, type);
+		}
+	});
+
+	test('other buttons and non-links are left alone', () => {
+		assert.deepEqual(dispatch('click', 0, '<a data-target href="b.md">b</a>'), { prevented: false, reached: ['target'] });
+		assert.deepEqual(dispatch('auxclick', 1, '<span data-target>x</span>'), { prevented: false, reached: ['target'] });
+	});
+});
 
 /**
  * Clicking a code block's Copy label twice within 1.5 s left it reading

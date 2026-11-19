@@ -421,6 +421,7 @@ describe('path identity on a case-folding volume', () => {
 	let nextSaveTarget: string | null = null;
 
 	const errors: string[] = [];
+	const recents: string[] = [];
 
 	function makeSession() {
 		return createDocumentSession({
@@ -429,7 +430,7 @@ describe('path identity on a case-folding volume', () => {
 			resetScrollHistory: () => {},
 			renderMarkdown: async (raw: string) => raw,
 			afterLoad: async () => {},
-			saveRecentFile: () => {},
+			saveRecentFile: (path: string) => void recents.push(path),
 			deleteRecentFile: () => {},
 			setLoadingTabs: () => {},
 			measureInitialViewport: () => {},
@@ -615,6 +616,90 @@ describe('path identity on a case-folding volume', () => {
 
 		assert.equal(tabManager.tabs.length, 2, 'a link to an open file opened a second tab');
 		assert.equal(tabManager.activeTabId, first);
+	});
+
+	// #1087: a middle-clicked link opens behind the tab being read, as a browser's does.
+	test('a link opened in a background tab leaves the reader where they are', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/A.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/A.md');
+		const reading = tabManager.activeTabId!;
+		await session.openInBackgroundTab('/notes/b.md');
+		await session.openInBackgroundTab('/notes/a.md');
+
+		assert.equal(tabManager.activeTabId, reading);
+		assert.deepEqual(tabManager.tabs.map((tab) => tab.path), ['/notes/A.md', '/notes/b.md'], 'an open file gets no second tab');
+		const background = tabManager.tabs[1];
+		assert.equal(background.unread, true, 'read when first shown');
+
+		tabManager.setActive(background.id);
+		await session.readActiveIfUnread();
+		assert.equal(background.rawContent, 'b');
+	});
+
+	// #1087: a background tab joins recent files through its first read, which
+	// records only a read that succeeds, not when the link is clicked: a dead
+	// link must not leave a dead entry.
+	test('a background tab enters recent files only once it reads', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/A.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/A.md');
+		const reading = tabManager.activeTabId!;
+		recents.length = 0;
+		await session.openInBackgroundTab('/notes/b.md');
+		assert.deepEqual(recents, [], 'nothing is recorded before a read');
+
+		tabManager.setActive(tabManager.tabs.find((item) => item.id !== reading)!.id);
+		await session.readActiveIfUnread();
+		await session.readActiveIfUnread();
+		assert.deepEqual(recents, ['/notes/b.md'], 'recorded once, by the read');
+	});
+
+	// #1087: middle-clicking a link to a file open here neither switches nor
+	// duplicates; the tab bar flashes that tab instead.
+	test('a background open of a file already open flashes its tab and stays put', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/a.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/a.md');
+		const reading = tabManager.activeTabId!;
+		tabManager.flashedTab = null;
+		await session.openInBackgroundTab('/notes/b.md');
+		assert.equal(tabManager.flashedTab, null, 'a new tab is not a flash');
+		const b = tabManager.tabs[1].id;
+
+		await session.openInBackgroundTab('/notes/b.md');
+		assert.equal((tabManager.flashedTab as { id: string } | null)?.id, b);
+		assert.equal(tabManager.activeTabId, reading);
+		assert.equal(tabManager.tabs.length, 2);
+	});
+
+	// #1087: `[x](b.md#section)` opened behind this tab still lands on `#section`,
+	// once, when that tab is first shown, and never moves the tab being read.
+	test('a background tab hands its link heading to the viewer once, on its first read', async () => {
+		reset();
+		const session = makeSession();
+		disk.set('/notes/a.md', { body: 'a', lossy: false });
+		disk.set('/notes/b.md', { body: 'b', lossy: false });
+
+		await session.loadMarkdown('/notes/a.md');
+		await session.openInBackgroundTab('/notes/b.md', 'section');
+		assert.equal(await session.readActiveIfUnread(), null, 'the tab being read is not asked to scroll');
+
+		tabManager.setActive(tabManager.tabs[1].id);
+		assert.equal(await session.readActiveIfUnread(), 'section');
+		assert.equal(tabManager.tabs[1].rawContent, 'b', 'handed over after the read landed');
+
+		tabManager.markTabUnread(tabManager.tabs[1].id);
+		assert.equal(await session.readActiveIfUnread(), null, 'only once');
 	});
 
 	// Back/forward and a tab arriving from another window put a path on a tab

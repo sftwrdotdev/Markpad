@@ -265,6 +265,14 @@ export interface Tab {
 	 */
 	unread?: boolean;
 	/**
+	 * The `#heading` a link opened this unread tab at (#1087). The tab opened
+	 * behind another, so the jump waits for its first read, which hands it to
+	 * the viewer once (`readActiveIfUnread`).
+	 */
+	pendingAnchor?: string;
+	/** A link opened this unread tab (#1087): its first good read goes into recent files. */
+	recordRecent?: boolean;
+	/**
 	 * The `rawContent` the preview in `content` was rendered from — the answer
 	 * to "is what is on screen still this document?".
 	 *
@@ -380,6 +388,12 @@ function makeTab(fields: TabFields): Tab {
 class TabManager {
 	tabs = $state<Tab[]>([]);
 	activeTabId = $state<string | null>(null);
+	/**
+	 * The tab the tab bar should flash (#1087: a link middle-clicked to a file
+	 * already open here). A fresh object per request, so flashing the same tab
+	 * twice is two flashes. `at` keeps a tab bar mounted later from replaying it.
+	 */
+	flashedTab = $state<{ id: string; at: number } | null>(null);
 	windowTag = $state<{ name: string; color: string; pinned: boolean } | null>(null);
 
 	/**
@@ -626,7 +640,7 @@ class TabManager {
 	 * injected via `{@html}` — sanitized at the sink, so it showed as escaped
 	 * source rather than being a hole, but it is not what that field means.
 	 */
-	addTab(path: string, rawContent: string = '', pathKey?: string) {
+	addTab(path: string, rawContent: string = '', pathKey?: string, activate = true): string {
 		// Opening a file that is already open activates that tab instead of
 		// building a second buffer for it — VS Code and Sublime Text both
 		// resolve an open request to the existing view. `rawContent` is ignored
@@ -635,8 +649,8 @@ class TabManager {
 		if (hasRealFilePath(path)) {
 			const existing = this.tabs.find((t) => isSameFilePath(t, { path, pathKey }));
 			if (existing) {
-				this.activeTabId = existing.id;
-				return;
+				if (activate) this.activeTabId = existing.id;
+				return existing.id;
 			}
 		}
 
@@ -661,7 +675,8 @@ class TabManager {
 			}),
 		);
 
-		this.activeTabId = id;
+		if (activate) this.activeTabId = id;
+		return id;
 	}
 
 	addNewTab() {
@@ -790,6 +805,10 @@ class TabManager {
 		this.tabs = [];
 		this.activeTabId = null;
 		this.releaseModelsOfRemovedTabs();
+	}
+
+	flashTab(id: string) {
+		this.flashedTab = { id, at: Date.now() };
 	}
 
 	setActive(id: string) {

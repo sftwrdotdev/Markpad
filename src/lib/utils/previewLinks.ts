@@ -99,6 +99,45 @@ export async function handlePreviewClick(e: MouseEvent, deps: PreviewClickDeps) 
 	deps.placeCursor(e);
 }
 
+export interface PreviewMiddleClickDeps {
+	openInBackgroundTab(target: MarkdownLinkTarget): Promise<void>;
+	/** Opens any other link as a click on it would (`followDocumentLink`). */
+	follow(e: MouseEvent, anchor: HTMLAnchorElement): Promise<void>;
+}
+
+/**
+ * A middle-click on a preview link (#1087). A Markdown target opens in a tab
+ * behind this one, whatever `linksOpenInNewTab` says, as a browser's does; any
+ * other link opens as a click would. Taken on `mousedown`, as a tab's
+ * middle-click close is: claiming the press also stops the WebView's
+ * autoscroll and its own handling of the link.
+ */
+export async function handlePreviewMiddleClick(e: MouseEvent, anchor: HTMLAnchorElement | null, deps: PreviewMiddleClickDeps) {
+	if (e.button !== 1 || !anchor) return;
+	e.preventDefault();
+	const href = anchor.getAttribute('href');
+	if (!href || href.startsWith('#')) return;
+	const target = getMarkdownLinkTarget(href);
+	if (target) await deps.openInBackgroundTab(target);
+	else await deps.follow(e, anchor);
+}
+
+/**
+ * The WebView's own middle-click on a link (#1087). WebKit navigates the whole
+ * window to the href on `auxclick`, which cancelling `mousedown` does not stop,
+ * and the app is replaced by a 404 page. Registered on `window` in the capture
+ * phase for `auxclick` and `click`, so no link anywhere in the app can do it
+ * and no click handler opens the link a second time; the open itself is
+ * `handlePreviewMiddleClick`'s, on `mousedown`.
+ */
+export function blockMiddleClickNavigation(e: MouseEvent) {
+	if (e.button !== 1) return;
+	const target = e.target as Element | null;
+	if (!target?.closest?.('a[href]')) return;
+	e.preventDefault();
+	e.stopPropagation();
+}
+
 export interface DocumentLinkDeps {
 	currentFile: string;
 	openHere(target: MarkdownLinkTarget): Promise<void>;

@@ -97,7 +97,7 @@ import {
 } from './utils/markdownLinks.js';
 import { COPYABLE_INLINE_CODE_CLASS, handleInlineCodeCopyClick } from './utils/inlineCodeCopy.js';
 import { diagramToPngBase64 } from './utils/diagramImage.js';
-import { followDocumentLink, handlePreviewClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
+import { blockMiddleClickNavigation, followDocumentLink, handlePreviewClick, handlePreviewMiddleClick, linkTooltipFor, openRelativeMarkdownTarget as openRelativeTarget, openWithSystem as openPathWithSystem } from './utils/previewLinks.js';
 import { basename, canonicalizePath, isSameFilePath } from './utils/pathIdentity.js';
 import { ChoiceDialog } from './utils/choiceDialog.svelte.js';
 import { contextMenuFor, editorContextMenuItems, imageMenuItems, saveImageAs as saveImageAsFile } from './utils/viewerContextMenu.js';
@@ -1547,6 +1547,11 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	}
 
+	async function openMarkdownTargetInBackground(target: RelativeMarkdownTarget) {
+		const resolved = resolveMarkdownTargetPath(currentFile, target);
+		if (resolved) await documentSession.openInBackgroundTab(resolved, target.hash || undefined);
+	}
+
 	function handleLinkClick(e: MouseEvent) {
 		if (handleInlineCodeCopyClick(e, (text) => commands.clipboardWriteText(text))) return;
 		return handlePreviewClick(e, {
@@ -2147,7 +2152,18 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		if (mode !== 'app') return;
 		const anchor = linkAt(event.target);
 		if (!anchor) return;
-		await followDocumentLink(event, anchor, {
+		await followLink(event, anchor);
+	}
+
+	function handleLinkMiddleClick(event: MouseEvent) {
+		return handlePreviewMiddleClick(event, linkAt(event.target), {
+			openInBackgroundTab: openMarkdownTargetInBackground,
+			follow: followLink,
+		});
+	}
+
+	function followLink(event: MouseEvent, anchor: HTMLAnchorElement) {
+		return followDocumentLink(event, anchor, {
 			currentFile,
 			openHere: openRelativeMarkdownTarget,
 			openWithSystem,
@@ -2199,9 +2215,21 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 	});
 
+	$effect(() => {
+		window.addEventListener('auxclick', blockMiddleClickNavigation, true);
+		window.addEventListener('click', blockMiddleClickNavigation, true);
+		return () => {
+			window.removeEventListener('auxclick', blockMiddleClickNavigation, true);
+			window.removeEventListener('click', blockMiddleClickNavigation, true);
+		};
+	});
+
 	// Lazy restore: a restored tab is read when it is first shown (`Tab.unread`).
 	$effect(() => {
-		if (tabManager.activeTab?.unread) untrack(() => void documentSession.readActiveIfUnread());
+		if (!tabManager.activeTab?.unread) return;
+		untrack(() => void documentSession.readActiveIfUnread().then((anchor) => {
+			if (anchor) void scrollToAnchorWhenReady(anchor, { pushHistory: false }, tabManager.activeTab?.path);
+		}));
 	});
 
 	/*
@@ -2922,6 +2950,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 									class:soft-breaks={!settings.previewNewlineBreaks}
 									onscroll={handleScroll}
 									onclick={handleLinkClick}
+									onmousedown={handleLinkMiddleClick}
 									onchange={handleTaskCheckboxChange}
 									onkeydown={(e) => {
 										const target = e.target as HTMLElement;

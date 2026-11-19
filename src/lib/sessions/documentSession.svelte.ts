@@ -1042,20 +1042,30 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	 * `loadMarkdown` fills the ACTIVE tab. If another tab became active while
 	 * the caller awaited, this one is owed its read again, on activation.
 	 */
-	function readRestoredTab(tabId: string): Promise<void> {
+	function readRestoredTab(tabId: string, recordRecent = false): Promise<void> {
 		const tab = tabManager.activeTab;
 		if (!tab || tab.id !== tabId) {
 			tabManager.markTabUnread(tabId);
 			return Promise.resolve();
 		}
-		return loadMarkdown(tab.path, { skipTabManagement: true, preserveEditState: true, skipRecentFile: true });
+		return loadMarkdown(tab.path, { skipTabManagement: true, preserveEditState: true, skipRecentFile: !recordRecent });
 	}
 
-	/** The activation half of lazy restore: read the tab on screen if it is still owed one. */
-	function readActiveIfUnread(): Promise<void> {
+	/**
+	 * The activation half of lazy restore: read the tab on screen if it is still
+	 * owed one. Answers the heading to show once that read has landed
+	 * (`Tab.pendingAnchor`), or null.
+	 */
+	async function readActiveIfUnread(): Promise<string | null> {
 		const tab = tabManager.activeTab;
-		if (!tab || !tabManager.takeUnread(tab.id)) return Promise.resolve();
-		return readRestoredTab(tab.id);
+		if (!tab || !tabManager.takeUnread(tab.id)) return null;
+		await readRestoredTab(tab.id, tab.recordRecent);
+		// Switched away mid-read: the tab is owed its read again, and the heading with it.
+		if (tab.unread || tabManager.activeTabId !== tab.id) return null;
+		const anchor = tab.pendingAnchor ?? null;
+		tab.pendingAnchor = undefined;
+		tab.recordRecent = undefined;
+		return anchor;
 	}
 
 	/**
@@ -1066,6 +1076,30 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	 */
 	function openInNewTab(filePath: string) {
 		return loadMarkdown(filePath, { inNewTab: true });
+	}
+
+	/**
+	 * A link middle-clicked (#1087): a tab behind the one on screen, as a
+	 * browser opens one. It is read when first shown, as a restored tab is
+	 * (`Tab.unread`), so nothing lands in the tab being read. A file already
+	 * open keeps its tab where it is, and that tab flashes to say so.
+	 */
+	async function openInBackgroundTab(filePath: string, anchor?: string) {
+		const pathKey = await canonicalizePath(filePath);
+		const open = tabManager.tabs.find((tab) => isSameFilePath(tab, { path: filePath, pathKey }));
+		if (open) {
+			tabManager.flashTab(open.id);
+			return;
+		}
+		const id = tabManager.addTab(filePath, '', pathKey, false);
+		const tab = tabManager.tabs.find((item) => item.id === id);
+		if (tab) {
+			tab.isEditing = settings.openFileMode === 'editor';
+			if (settings.openFileMode === 'split') tabManager.setSplitEnabled(id, true);
+			if (anchor) tab.pendingAnchor = anchor;
+			tab.recordRecent = true;
+		}
+		tabManager.markTabUnread(id);
 	}
 
 	/**
@@ -1121,5 +1155,5 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		}
 	}
 
-	return { loadMarkdown, openInNewTab, openFiles, openMissingFile, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	return { loadMarkdown, openInNewTab, openInBackgroundTab, openFiles, openMissingFile, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }
