@@ -12,7 +12,7 @@
 	import { closestSlotIndex, dragDistance } from '../utils/tabReorder.js';
 
 	import { flip } from 'svelte/animate';
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 
 	let {
 		onnewTab,
@@ -155,7 +155,28 @@
 	 * closed tab's gap. `offsetLeft` ignores that slide's transform.
 	 */
 	$effect(() => {
-		const index = tabManager.tabs.findIndex((t) => t.id === tabManager.activeTabId);
+		revealTab(tabManager.tabs.findIndex((t) => t.id === tabManager.activeTabId));
+	});
+
+	/*
+	 * A flashed tab (#1087) is revealed as the active one is, without being
+	 * activated. The class comes off first so a second flash restarts it.
+	 */
+	let flashingId = $state<string | null>(null);
+	$effect(() => {
+		const flash = tabManager.flashedTab;
+		if (!flash || Date.now() - flash.at > 700) return;
+		untrack(() => revealTab(tabManager.tabs.findIndex((t) => t.id === flash.id)));
+		flashingId = null;
+		const start = requestAnimationFrame(() => (flashingId = flash.id));
+		const stop = setTimeout(() => (flashingId = null), 700);
+		return () => {
+			cancelAnimationFrame(start);
+			clearTimeout(stop);
+		};
+	});
+
+	function revealTab(index: number) {
 		const strip = scrollContainer;
 		if (index === -1 || !strip || draggingId) return;
 		tick().then(() => {
@@ -178,7 +199,7 @@
 			// 'instant', not 'auto': the strip's CSS `scroll-behavior: smooth` animates 'auto'.
 			strip.scrollTo({ left: target, behavior: settings.animateJumpScroll ? 'smooth' : 'instant' });
 		});
-	});
+	}
 
 	function handleContainerContextMenu(e: MouseEvent) {
 		if (e.target !== e.currentTarget && !(e.target as HTMLElement).classList.contains('tab-list-spacer')) return;
@@ -219,6 +240,7 @@
 					animate:flip={{ duration: 200 }}
 					role="listitem"
 					class:drag-opacity={draggingId === tab.id}
+					class:tab-flash={flashingId === tab.id}
 					onmousedown={(e) => handleMouseDown(e, tab, e.currentTarget as HTMLElement)}
 					onclick={(e) => {
 						// Only reachable when maximized, where the wrapper reaches up to
@@ -328,6 +350,30 @@
 
 	.tab-item-wrapper {
 		transition: opacity 0.1s;
+		border-radius: 8px;
+	}
+
+	/* "Already open here" (#1087): a short accent wash behind the tab. */
+	.tab-item-wrapper.tab-flash {
+		animation: tab-flash 700ms ease-out;
+	}
+
+	@keyframes tab-flash {
+		0%,
+		30% {
+			background-color: color-mix(in srgb, var(--color-accent-emphasis) 30%, transparent);
+		}
+		100% {
+			background-color: transparent;
+		}
+	}
+
+	/* No motion: the same highlight, held still for as long as the class is on. */
+	@media (prefers-reduced-motion: reduce) {
+		.tab-item-wrapper.tab-flash {
+			animation: none;
+			background-color: color-mix(in srgb, var(--color-accent-emphasis) 30%, transparent);
+		}
 	}
 
 	/* Maximized on Windows/Linux, the strip above a tab is the screen's top
