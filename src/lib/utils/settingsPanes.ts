@@ -232,7 +232,7 @@ export const SETTINGS_PANES: Record<'editor' | 'preview' | 'appearance' | 'files
 			{ kind: 'toggle', id: 'files-auto-save', labelKey: 'settings.autoSave', key: 'autoSave' },
 			{ kind: 'toggle', id: 'files-restore-state', labelKey: 'settings.restoreStateOnReopen', titleKey: 'settings.restoreStateOnReopenHint', key: 'restoreStateOnReopen' },
 			{ kind: 'toggle', id: 'files-recovery', labelKey: 'settings.persistOpenEditors', titleKey: 'settings.persistOpenEditorsHint', key: 'persistOpenEditors' },
-			{ kind: 'custom', id: 'image-directory', labelKey: 'settings.imageDirectory' },
+			{ kind: 'custom', id: 'image-directory', labelKey: 'settings.imageDirectory', titleKey: 'settings.imageDirectoryHint' },
 			{ kind: 'custom', id: 'macos-image-scaling', labelKey: 'settings.scaleMacOSScreenshots' },
 			{ kind: 'toggle', id: 'files-close-window-last-tab', labelKey: 'settings.closeWindowWithLastTab', key: 'closeWindowWithLastTab' },
 			{ kind: 'custom', id: 'settings-file-import', labelKey: 'settings.settingsFile' },

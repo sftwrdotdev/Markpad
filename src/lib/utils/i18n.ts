@@ -71,6 +71,8 @@ export function getSupportedLanguages() {
 const en = {
     settings: {
         title: 'Settings',
+        search: 'Search settings',
+        searchNoResults: 'No settings found.',
         editor: 'Editor',
         preview: 'Preview',
         appearance: 'Appearance',
