@@ -110,6 +110,7 @@ const en = {
         occurrencesHighlight: 'Highlight Occurrences',
         showWhitespace: 'Show Whitespace',
         stickyScroll: 'Sticky Headings',
+        wordCompletion: 'Suggest Words from This Document',
         tocFollows: 'Outline Follows',
         tocFollowsCursor: 'Cursor Line',
         tocFollowsScroll: 'Scroll Position',

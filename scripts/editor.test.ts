@@ -132,6 +132,7 @@ describe('editor options', () => {
 	const SETTINGS = {
 		minimap: false,
 		stickyScroll: true,
+		wordCompletion: false,
 		wordWrap: 'on',
 		editorMaxWidth: 80,
 		lineNumbers: 'on',
@@ -150,6 +151,16 @@ describe('editor options', () => {
 		// changed nothing until the next editor was created.
 		assert.deepEqual(editorOptionsFromSettings(SETTINGS, 100).stickyScroll, { enabled: true });
 		assert.deepEqual(editorOptionsFromSettings({ ...SETTINGS, stickyScroll: false }, 100).stickyScroll, { enabled: false });
+	});
+
+	test('word completion is opt-in and only suggests words from the current document', () => {
+		const disabled = createdEditorOptions(SETTINGS, 100, false);
+		assert.equal(disabled.wordBasedSuggestions, 'off');
+		assert.equal(disabled.quickSuggestions, false);
+
+		const enabled = editorOptionsFromSettings({ ...SETTINGS, wordCompletion: true }, 100);
+		assert.equal(enabled.wordBasedSuggestions, 'currentDocument');
+		assert.deepEqual(enabled.quickSuggestions, { other: 'on', comments: 'off', strings: 'off' });
 	});
 
 	test('the caret glide is a setting and not a hard-coded on', () => {
