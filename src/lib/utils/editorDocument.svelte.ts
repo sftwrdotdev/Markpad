@@ -50,6 +50,7 @@ export class EditorDocument {
 	language = $state('markdown');
 	lineEnding = $state<'LF' | 'CRLF'>('LF');
 	wordCount = $state(0);
+	characterCount = $state(0);
 	/** The tab whose model the editor is holding. */
 	currentTabId: string | null;
 	/** The attached model's text as the content listener last read it; null after a model swap. */
@@ -104,7 +105,7 @@ export class EditorDocument {
 
 	/**
 	 * The status-bar readings that are properties of the DOCUMENT rather than of
-	 * an edit: the language, the word count and the line ending.
+	 * an edit: language, text counts and line ending.
 	 *
 	 * They used to be refreshed only by `onDidChangeModelContent`, which was
 	 * enough while a tab switch went through `setValue` — that fires a content
@@ -117,6 +118,8 @@ export class EditorDocument {
 		if (!model) return;
 		this.language = model.getLanguageId();
 		this.lineEnding = lineEndingLabel(model);
+		// Use the model's UTF-16 length, matching the existing selection count.
+		this.characterCount = model.getValueLength();
 		// `countWords` is several full-text regex passes, ~400 ms on a 1 MB
 		// document: skipped while the status bar hides it, and on a keystroke
 		// left for a pause in typing.

@@ -847,6 +847,9 @@
 			</div>
 		{/if}
 		<div class="status-item">
+			{t('editor.status.characters', settings.language).replace('{{count}}', doc.characterCount.toString())}
+		</div>
+		<div class="status-item">
 			{zoomLevel}%
 		</div>
 		<div class="status-item">

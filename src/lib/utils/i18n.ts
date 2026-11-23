@@ -430,7 +430,8 @@ const en = {
             lineCol: 'Ln {{line}}, Col {{col}}',
             selected: '{{count}} selected',
             selections: '{{count}} selections',
-            words: '{{count}} words'
+            words: '{{count}} words',
+            characters: '{{count}} chars'
         }
     },
     frontMatter: {

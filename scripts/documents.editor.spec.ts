@@ -18,7 +18,7 @@ const { EditorDocument } = await import('../src/lib/utils/editorDocument.svelte.
  */
 function editorShowing(text: string, eol = '\n') {
 	let onScreen = text;
-	const model = { getLanguageId: () => 'markdown', getEOL: () => eol, getValue: () => onScreen };
+	const model = { getLanguageId: () => 'markdown', getEOL: () => eol, getValue: () => onScreen, getValueLength: () => onScreen.length };
 	const editor = { getValue: () => onScreen, getModel: () => model };
 	const doc = new EditorDocument({
 		monaco: () => {
