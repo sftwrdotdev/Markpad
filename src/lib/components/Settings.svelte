@@ -502,7 +502,7 @@
 			onSetTheme?.(`vscode:${name}`);
 		} catch (e) {
 			console.error('Failed to import theme:', e);
-			alert(`Failed to import theme: ${e}`);
+			alert(`${t('settings.importThemeFailed', settings.language)}\n${e}`);
 		} finally {
 			importingTheme = false;
 		}

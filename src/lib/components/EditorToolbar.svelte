@@ -73,11 +73,11 @@
 	}
 
 	function handleHideMouseEnter(e: MouseEvent) {
-		onshowTooltip?.(e, 'Hide editor toolbar', '', 'below');
+		onshowTooltip?.(e, t('tooltip.hideEditorToolbar', settings.language), '', 'below');
 	}
 
 	function handleOverflowMouseEnter(e: MouseEvent) {
-		onshowTooltip?.(e, 'More formatting options', '', 'below');
+		onshowTooltip?.(e, t('tooltip.moreActions', settings.language), '', 'below');
 	}
 
 	function handleWindowClick(e: MouseEvent) {
@@ -141,21 +141,21 @@
 		class="table-grid-popover"
 		role="dialog"
 		tabindex="-1"
-		aria-label="Table Dimensions Picker"
+		aria-label={t('editor.selectTableSize', settings.language)}
 		transition:fly={{ y: 5, duration: 150 }}
 		onkeydown={(e) => { if (e.key === 'Escape') tablePickerOpen = false; }}
 		onclick={(e) => e.stopPropagation()}>
 		<div class="table-grid-header">
 			<span class="table-grid-title">{t('menu.insertTable', settings.language)}</span>
 			<span class="table-grid-dims">
-				{hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : 'Select size'}
+				{hoverRows > 0 && hoverCols > 0 ? `${hoverCols} × ${hoverRows}` : t('editor.selectTableSize', settings.language)}
 			</span>
 		</div>
 
 		<div
 			class="table-grid-cells"
 			role="grid"
-			aria-label="Table grid"
+			aria-label={t('menu.insertTable', settings.language)}
 			tabindex="0"
 			onmouseleave={() => {
 				hoverRows = 0;
@@ -172,7 +172,7 @@
 							class="table-grid-cell"
 							class:highlighted={isSelected}
 							role="gridcell"
-							aria-label={`${c} columns by ${r} rows`}
+							aria-label={t('editor.tableSize', settings.language).replace('{{columns}}', String(c)).replace('{{rows}}', String(r))}
 							onmouseenter={() => {
 								hoverRows = r;
 								hoverCols = c;
@@ -186,7 +186,7 @@
 	</div>
 {/snippet}
 
-<div bind:this={containerEl} class="editor-toolbar" role="toolbar" aria-label="Markdown formatting">
+<div bind:this={containerEl} class="editor-toolbar" role="toolbar" aria-label={t('settings.editorToolbar', settings.language)}>
 	<div class="toolbar-tools-group">
 		{#each visibleTools as tool, index (tool.id)}
 			{#if index > 0 && visibleTools[index - 1].group !== tool.group}
@@ -241,7 +241,7 @@
 					type="button"
 					class="toolbar-btn overflow-btn"
 					class:active={overflowMenuOpen || (tablePickerOpen && overflowTools.some(t => t.id === 'insert-table-simple'))}
-					aria-label="More formatting options"
+				aria-label={t('tooltip.moreActions', settings.language)}
 					onmouseenter={handleOverflowMouseEnter}
 					onmouseleave={() => onhideTooltip?.()}
 					onclick={(e) => {
@@ -311,7 +311,7 @@
 		<button
 			type="button"
 			class="toolbar-btn hide-toggle-btn"
-			aria-label="Hide editor toolbar"
+			aria-label={t('tooltip.hideEditorToolbar', settings.language)}
 			onmouseenter={handleHideMouseEnter}
 			onmouseleave={() => onhideTooltip?.()}
 			onfocus={(e) => handleHideMouseEnter(e as unknown as MouseEvent)}

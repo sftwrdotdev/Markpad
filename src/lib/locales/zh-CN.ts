@@ -80,6 +80,7 @@ export default {
         zenMode: '禅模式',
         theme: '主题',
         importVSCodeTheme: '导入VS Code主题',
+        importThemeFailed: '无法导入主题。请检查 URL 后重试。',
         import: '导入',
         importing: '导入中...',
         browseThemes: '浏览主题',
@@ -308,6 +309,7 @@ export default {
     },
     modal: {
         unsavedChanges: '未保存的更改',
+        renameFailed: '无法重命名文件',
         youHaveUnsavedChanges: '"{title}"中有未保存的更改。关闭前要保存吗？',
         openExportedFileTitle: '打开导出的文件？',
         openExportedHtmlMessage: 'HTML 导出已保存。现在打开吗？',
@@ -358,6 +360,8 @@ export default {
         openFile: '打开文件',
     },
     editor: {
+        selectTableSize: '选择表格大小',
+        tableSize: '{{columns}} 列 × {{rows}} 行',
         status: {
             lineCol: '行 {{line}}, 列 {{col}}',
             selected: '已选择 {{count}}',
@@ -397,6 +401,7 @@ export default {
         toggleAutoReload: '切换自动重载',
         autoReload: '自动重载',
         editorToolbar: '编辑器工具栏',
+        hideEditorToolbar: '隐藏编辑器工具栏',
         changeTheme: '更改主题',
         undock: '取消固定',
         dock: '固定',

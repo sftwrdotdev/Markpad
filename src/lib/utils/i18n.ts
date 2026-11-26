@@ -159,6 +159,7 @@ const en = {
         zenMode: 'Zen Mode',
         theme: 'Theme',
         importVSCodeTheme: 'Import VS Code Theme',
+        importThemeFailed: 'Could not import the theme. Check the URL and try again.',
         import: 'Import',
         importing: 'Importing...',
         browseThemes: 'Browse themes',
@@ -376,6 +377,7 @@ const en = {
     },
     modal: {
         unsavedChanges: 'Unsaved Changes',
+        renameFailed: 'Could not rename the file',
         youHaveUnsavedChanges: 'You have unsaved changes in "{title}". Do you want to save them before closing?',
         openExportedFileTitle: 'Open exported file?',
         openExportedHtmlMessage: 'HTML export was saved. Open it now?',
@@ -426,6 +428,8 @@ const en = {
         openFile: 'Open File',
     },
     editor: {
+        selectTableSize: 'Select table size',
+        tableSize: '{{columns}} columns × {{rows}} rows',
         status: {
             lineCol: 'Ln {{line}}, Col {{col}}',
             selected: '{{count}} selected',
@@ -465,6 +469,7 @@ const en = {
         toggleAutoReload: 'Toggle Auto-Reload',
         autoReload: 'Auto-Reload',
         editorToolbar: 'Editor Toolbar',
+        hideEditorToolbar: 'Hide editor toolbar',
         changeTheme: 'Change Theme',
         undock: 'Undock',
         dock: 'Dock',

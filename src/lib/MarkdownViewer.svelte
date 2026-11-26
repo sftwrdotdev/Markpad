@@ -474,6 +474,14 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		return modalState.ask(message, options);
 	}
 
+	function askToOpenExport(message: string, options?: { title: string; kind: 'info' }): Promise<boolean> {
+		return ask(message, {
+			...options,
+			okLabel: t('modal.openFileInButton', settings.language),
+			cancelLabel: t('settings.cancel', settings.language),
+		});
+	}
+
 	// window.prompt() is a silent no-op inside the webview (wry does not
 	// implement the native JS dialogs), so text input goes through our own
 	// modal. Resolves with the entered string, or null on cancel.
@@ -1798,7 +1806,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 		if (result?.path) {
 			const openResult = await askToOpenExportedFile(result.path, 'HTML', {
-				ask,
+				ask: askToOpenExport,
 				openPath,
 				labels: {
 					title: t('modal.openExportedFileTitle', settings.language),
@@ -1854,7 +1862,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}
 		if (!path) return;
 		const openResult = await askToOpenExportedFile(path, 'PDF', {
-			ask,
+			ask: askToOpenExport,
 			openPath,
 			labels: {
 				title: t('modal.openExportedFileTitle', settings.language),
@@ -2588,7 +2596,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 							recentFileList.rename(oldPath, newPath);
 						} catch (e) {
 							console.error('Failed to rename file', e);
-							await askCustom(`Failed to rename file: ${e}`, { title: 'Error', kind: 'error' });
+							await askCustom(String(e), { title: t('modal.renameFailed', settings.language), kind: 'error' });
 						}
 					}
 				}],
@@ -3236,6 +3244,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		message={modalState.message}
 		kind={modalState.kind}
 		showSave={modalState.showSave}
+	confirmLabel={modalState.kind === 'error' ? t('common.close', settings.language) : undefined}
 		onconfirm={handleModalConfirm}
 		onsave={() => closeModal('save')}
 		oncancel={() => closeModal('cancel')} />
@@ -3247,6 +3256,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		kind="info"
 		showInput={true}
 		bind:inputValue={promptModal.value}
+	confirmLabel={t('menu.rename', settings.language)}
 		onconfirm={() => closePrompt(promptModal.value)}
 		oncancel={() => closePrompt(null)} />
 
