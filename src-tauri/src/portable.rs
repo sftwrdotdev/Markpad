@@ -12,10 +12,18 @@ use tauri::{AppHandle, Manager, Runtime};
 /// The folder whose presence next to the executable turns portable mode on.
 pub const DATA_DIR_NAME: &str = "MarkpadData";
 
-/// The portable data folder for an executable at `exe`, if the user made one.
+/// The portable data folder for an executable at `exe`, if the user made one
+/// and Markpad can write into it. A folder it cannot write (one made by an
+/// administrator next to an install in Program Files) falls back to the
+/// profile: the webview refuses to start without its data folder.
 fn data_dir_beside(exe: &Path) -> Option<PathBuf> {
     let dir = exe.parent()?.join(DATA_DIR_NAME);
-    dir.is_dir().then_some(dir)
+    if !dir.is_dir() {
+        return None;
+    }
+    std::fs::create_dir_all(dir.join("config")).ok()?;
+    std::fs::create_dir_all(dir.join("webview")).ok()?;
+    Some(dir)
 }
 
 /// Decided once per launch: a folder made or removed while Markpad runs takes
@@ -92,6 +100,19 @@ mod tests {
     fn without_the_folder_markpad_uses_the_profile() {
         let dir = temp_dir("off");
         assert_eq!(data_dir_beside(&dir.join("Markpad.exe")), None);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_folder_markpad_cannot_write_falls_back_to_the_profile() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = temp_dir("readonly");
+        let data = dir.join(DATA_DIR_NAME);
+        fs::create_dir(&data).unwrap();
+        fs::set_permissions(&data, fs::Permissions::from_mode(0o555)).unwrap();
+        assert_eq!(data_dir_beside(&dir.join("Markpad.exe")), None);
+        fs::set_permissions(&data, fs::Permissions::from_mode(0o755)).unwrap();
         fs::remove_dir_all(dir).unwrap();
     }
 
