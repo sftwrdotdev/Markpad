@@ -89,6 +89,11 @@ describe('undo history per tab', () => {
 			return this.buffer;
 		}
 
+		getValueLength() {
+			this.assertLive();
+			return this.buffer.length;
+		}
+
 		setValue(value: string) {
 			this.assertLive();
 			this.buffer = value;
@@ -251,6 +256,7 @@ describe('undo history per tab', () => {
 		setLanguage: (language: string) => void;
 		currentLanguage: () => string;
 		wordCount: () => number;
+		characterCount: () => number;
 		settings: { wordCount: boolean };
 	};
 
@@ -274,6 +280,7 @@ describe('undo history per tab', () => {
 			setLanguage: (next) => void (language = next),
 			currentLanguage: () => doc.language,
 			wordCount: () => doc.wordCount,
+			characterCount: () => doc.characterCount,
 			settings,
 		};
 	}
@@ -522,6 +529,35 @@ describe('undo history per tab', () => {
 
 		assert.equal(reads, 0, 'the effect read the whole buffer back to compare it with what it was just told');
 		assert.equal(h.text(), 'one two');
+	});
+
+	test('the character count updates immediately on edits and model switches', () => {
+		const h = setup();
+		const empty = h.open('/tmp/empty.md', '');
+		const other = h.open('/tmp/other.md', 'hi');
+		h.show(empty);
+		assert.equal(h.component.characterCount(), 0);
+		h.type('字😀\n');
+		assert.equal(h.component.characterCount(), 4, 'waited for a pause in typing like the word count');
+		h.show(other);
+		assert.equal(h.component.characterCount(), 2);
+		h.show(empty);
+		assert.equal(h.component.characterCount(), 4);
+	});
+
+	// #1092: the character count sits behind the word-count toggle, so it is not
+	// taken while that toggle hides it.
+	test('the character count is not taken while the word count is hidden', () => {
+		const h = setup();
+		const a = h.open('/docs/a.md', 'abc');
+		h.show(a);
+		assert.equal(h.component.characterCount(), 3);
+
+		h.component.settings.wordCount = false;
+		h.type('def');
+		const b = h.open('/docs/b.md', 'one two three');
+		h.show(b);
+		assert.equal(h.component.characterCount(), 3, 'counted while the status bar hides the count');
 	});
 
 	test('the word count waits for a pause in typing, and is not taken while hidden', () => {

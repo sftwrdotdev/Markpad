@@ -88,6 +88,7 @@ function createDocument(initial: string) {
 	// identities to tell a tab switch happened.
 	const modelFor = () => ({
 		getValue: () => buffer,
+		getValueLength: () => buffer.length,
 		getValueInRange: (range: FakeRange) => buffer.slice(range.startColumn - 1, range.endColumn - 1),
 		getLineContent: () => buffer,
 		getLanguageId: () => 'markdown',
