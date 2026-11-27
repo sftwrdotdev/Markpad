@@ -992,6 +992,8 @@ describe('settings persistence', async () => {
 		assert.equal(createStore().liveMode, false);
 		const exported = settingsModule.parseSettingsFile(settingsModule.exportSettings(store));
 		assert.equal(exported.settings['editor.liveMode'], false);
+		// Another window has already stored the value when its storage event arrives.
+		localStorage.setItem('editor.liveMode', 'true');
 		dispatchStorage('editor.liveMode', 'true');
 		assert.equal(store.liveMode, true);
 	});
