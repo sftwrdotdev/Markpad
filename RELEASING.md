@@ -71,10 +71,10 @@ Configure these repository Actions secrets before the next release:
 | `APPLE_APP_SPECIFIC_PASSWORD` | An app-specific password for that account |
 | `APPLE_TEAM_ID` | The certificate's 10-character Apple team ID |
 
-The new certificate takes precedence over the legacy `MACOS_*` secrets below.
-Setting any `APPLE_DEVELOPER_ID_*` secret requires all six values. Missing or
-invalid credentials stop the release; they never fall back to legacy signing.
-With none of the three new certificate secrets, the existing flow is unchanged.
+Developer ID is the only macOS signing identity. Setting any
+`APPLE_DEVELOPER_ID_*` secret requires all six values; missing or invalid
+credentials stop the release. With none of the three certificate secrets (a
+fork, for example) the macOS bundle is built unsigned.
 Tauri receives the app-specific password as `APPLE_PASSWORD` and notarizes the
 app before creating the updater archive. The workflow checks the extracted
 archive and the app inside the DMG, then uploads only after verifying their
@@ -86,29 +86,6 @@ updater endpoint unchanged. Apple signing and the existing updater signature are
 independent. The first Developer ID build may require users to grant folder
 access once more when migrating from the earlier identity. Do not claim a release
 is notarized until the macOS verification step passes.
-
-### 6. Legacy: self-signed macOS signing identity
-
-Superseded by [Developer ID signing](#official-macos-signing-and-notarization). `build.yml` still uses these secrets when no `APPLE_DEVELOPER_ID_*` secret is set. Releases signed this way keep folder grants across updates but are not notarized.
-
-**Add three secrets** (Settings → Secrets and variables → Actions):
-
-| Name | Value |
-|---|---|
-| `MACOS_CERTIFICATE` | `base64 -i markpad-codesign-certificate.p12 \| pbcopy` |
-| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
-| `MACOS_SIGNING_IDENTITY` | `markpad-codesign-certificate` (the certificate's common name) |
-
-With all three set, the macOS job imports the certificate into a throwaway keychain and `tauri build` signs with it. With `MACOS_CERTIFICATE` absent, the step prints one line and exits.
-
-### 7. CRITICAL: the legacy self-signed certificate has no revocation path
-
-Apple can revoke a Developer ID certificate. Nobody can revoke this one. Two consequences worth accepting deliberately before step 6:
-
-- **If the `.p12` leaks**, whoever holds it can sign a build that satisfies the same designated requirement — and therefore inherits every folder grant users gave the real Markpad. The only remedy is to switch certificates, which costs every user their permissions.
-- **If it is lost or expires**, same outcome: a new certificate is a new identity, and every user re-grants from scratch.
-
-Back it up in the same place as the minisign private key, and treat it with the same care.
 
 ## Per-release workflow
 
@@ -173,7 +150,6 @@ Mention this clearly in the release notes for the first auto-update-capable vers
 |---------|---------------------|
 | Build fails: "missing `TAURI_SIGNING_PRIVATE_KEY`" | Step 2 of one-time setup wasn't done, or Secret name doesn't match. |
 | macOS build fails at `security import` | The `.p12` was exported by a recent `openssl` with its default cipher, which `security` cannot read (it reports a MAC failure, not a cipher failure). Re-export from Keychain Access, or pass `-legacy -certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg sha1`. |
-| macOS build logs `no identity found` | The certificate is a CA rather than a leaf — `codesign` will not sign with it. Keychain Access's *Create a Certificate…* produces the right kind; `openssl req -x509` needs an explicit `basicConstraints=critical,CA:FALSE`. |
 | `generate-update-feed` succeeds but `latest.json` lacks a platform | That platform's matrix build failed silently (or the `.sig` file wasn't produced). Check the failed build's logs. |
 | `latest.json` missing entirely | The `generate-update-feed` job didn't run — usually because no `*.sig` files were uploaded. Check the `Upload * Artifacts` steps. |
 | Users don't see the update | (1) Did you click *Publish release*? Drafts aren't visible to clients. (2) Is the user on a version older than the first auto-update-capable release? They need a one-time manual reinstall. |

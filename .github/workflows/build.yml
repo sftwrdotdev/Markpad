@@ -391,7 +391,8 @@ jobs:
           gh release upload "v${{ needs.create-release.outputs.version }}" "$B"/deb/*.deb "$B"/rpm/*.rpm "$B"/appimage/*.AppImage "$B"/appimage/*.AppImage.sig --clobber
 
       # --- MacOS Build ---
-      # Developer ID takes precedence; without it the legacy signing path remains.
+      # Developer ID is the only signing identity. Without its secrets (a fork,
+      # say) the bundle is built unsigned.
       - name: Import macOS signing certificate
         if: matrix.os == 'macos'
         shell: bash
@@ -402,58 +403,38 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
-          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
-          MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           umask 077
-          if [ -n "${APPLE_DEVELOPER_ID_P12:-}${APPLE_DEVELOPER_ID_PASSWORD:-}${APPLE_DEVELOPER_ID_SHA1:-}" ]; then
-            for name in APPLE_DEVELOPER_ID_P12 APPLE_DEVELOPER_ID_PASSWORD APPLE_DEVELOPER_ID_SHA1 APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
-              if [ -z "${!name:-}" ]; then
-                echo "::error::Developer ID signing requires $name; refusing to fall back."
-                exit 1
-              fi
-            done
-            [[ "$APPLE_DEVELOPER_ID_SHA1" =~ ^[A-Fa-f0-9]{40}$ && "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || {
-              echo '::error::Invalid Developer ID SHA-1 or Apple team ID.'
-              exit 1
-            }
-            MACOS_CERTIFICATE="$APPLE_DEVELOPER_ID_P12"
-            MACOS_CERTIFICATE_PASSWORD="$APPLE_DEVELOPER_ID_PASSWORD"
-            MACOS_SIGNING_IDENTITY="$(printf '%s' "$APPLE_DEVELOPER_ID_SHA1" | tr '[:lower:]' '[:upper:]')"
-            echo 'MACOS_DEVELOPER_ID=true' >> "$GITHUB_ENV"
-          fi
-          if [ -z "${MACOS_CERTIFICATE:-}" ]; then
-            echo "No MACOS_CERTIFICATE secret; leaving the bundle unsigned (unchanged behaviour)."
+          if [ -z "${APPLE_DEVELOPER_ID_P12:-}${APPLE_DEVELOPER_ID_PASSWORD:-}${APPLE_DEVELOPER_ID_SHA1:-}" ]; then
+            echo "No APPLE_DEVELOPER_ID_* secrets; leaving the bundle unsigned."
             exit 0
           fi
-
-          # The certificate is set, so this release is meant to be signed, and
-          # the early exit above no longer covers a configuration that is only
-          # half there. The identity is the value with nothing downstream to
-          # catch it: a wrong one stops `codesign` with "no identity found",
-          # while an empty one is exported as an empty APPLE_SIGNING_IDENTITY,
-          # and whether `tauri build` then errors or simply signs nothing is not
-          # this step's to know. Refusing here makes it not matter. A missing
-          # password needs no check of its own -- `security import` fails on it.
-          if [ -z "${MACOS_SIGNING_IDENTITY:-}" ]; then
-            echo "::error::MACOS_CERTIFICATE is set but MACOS_SIGNING_IDENTITY is empty. Set all three secrets or none -- RELEASING.md one-time setup step 6."
+          for name in APPLE_DEVELOPER_ID_P12 APPLE_DEVELOPER_ID_PASSWORD APPLE_DEVELOPER_ID_SHA1 APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Developer ID signing requires $name."
+              exit 1
+            fi
+          done
+          [[ "$APPLE_DEVELOPER_ID_SHA1" =~ ^[A-Fa-f0-9]{40}$ && "$APPLE_TEAM_ID" =~ ^[A-Z0-9]{10}$ ]] || {
+            echo '::error::Invalid Developer ID SHA-1 or Apple team ID.'
             exit 1
-          fi
+          }
+          SIGNING_IDENTITY="$(printf '%s' "$APPLE_DEVELOPER_ID_SHA1" | tr '[:lower:]' '[:upper:]')"
+          echo 'MACOS_DEVELOPER_ID=true' >> "$GITHUB_ENV"
 
           KEYCHAIN="$RUNNER_TEMP/markpad-signing.keychain"
           KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
           CERTIFICATE="$RUNNER_TEMP/certificate.p12"
           trap 'rm -f "$CERTIFICATE"' EXIT
 
-          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$CERTIFICATE"
+          printf '%s' "$APPLE_DEVELOPER_ID_P12" | base64 --decode > "$CERTIFICATE"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           # Lock the keychain after an hour and on sleep, so a stuck runner does
           # not leave the key readable for the rest of its life.
           security set-keychain-settings -lut 3600 "$KEYCHAIN"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security import "$CERTIFICATE" -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" \
+          security import "$CERTIFICATE" -k "$KEYCHAIN" -P "$APPLE_DEVELOPER_ID_PASSWORD" \
             -T /usr/bin/codesign
           # Without this, codesign blocks on a GUI prompt for the private key
           # that nobody is there to answer.
@@ -465,13 +446,11 @@ jobs:
             $(security list-keychains -d user | tr -d '"') "$KEYCHAIN"
           rm -f "$CERTIFICATE"
 
-          if [ -n "${APPLE_DEVELOPER_ID_P12:-}" ]; then
-            security find-identity -v -p codesigning "$KEYCHAIN" \
-              | awk -v sha="$MACOS_SIGNING_IDENTITY" '$2 == sha && /Developer ID Application/ { found=1 } END { exit !found }'
-          fi
+          security find-identity -v -p codesigning "$KEYCHAIN" \
+            | awk -v sha="$SIGNING_IDENTITY" '$2 == sha && /Developer ID Application/ { found=1 } END { exit !found }'
 
           # `tauri build` reads this and signs with it; unset means no signing.
-          echo "APPLE_SIGNING_IDENTITY=$MACOS_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
 
       - name: Build MacOS (Universal)
         if: matrix.os == 'macos'

@@ -163,18 +163,6 @@ exit "$FAKE_GH_EXIT"
 				assert.notEqual(result.status, 0, `${missing} was silently accepted`);
 				assert.doesNotMatch(result.stderr, /keychain-touched/, `${missing} was not checked before import`);
 			}
-			// The early exit is for a repository that never set up signing, and it reads
-			// only the certificate. A set certificate with an empty identity would walk
-			// past it and export an empty APPLE_SIGNING_IDENTITY: a green build that
-			// shipped unsigned, which reaches users as folder access being asked for all
-			// over again.
-			const halfLegacy = spawnSync('/bin/bash', ['-c', step.run], {
-				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: join(dir, 'env'),
-					MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: '' },
-				encoding: 'utf8',
-			});
-			assert.notEqual(halfLegacy.status, 0, 'a certificate with no signing identity was accepted');
-			assert.doesNotMatch(halfLegacy.stderr, /keychain-touched/, 'the empty identity was not checked before import');
 			writeFileSync(join(dir, 'security'), `#!/bin/sh
 if [ "$1" = find-identity ]; then
   echo '1) ${complete.APPLE_DEVELOPER_ID_SHA1} "Developer ID Application: Test (ABCDEFGHIJ)"'
@@ -182,8 +170,7 @@ fi
 `, { mode: 0o755 });
 			const envFile = join(dir, 'env');
 			const configured = spawnSync('/bin/bash', ['-c', step.run], {
-				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete,
-					MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
+				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile, ...complete },
 				encoding: 'utf8',
 			});
 			assert.equal(configured.status, 0, configured.stderr);
@@ -194,13 +181,15 @@ fi
 			});
 			assert.notEqual(wrongIdentity.status, 0, 'a different imported identity must not be accepted');
 			writeFileSync(envFile, '');
+			// The self-signed MACOS_* secrets were removed as a signing path; they
+			// may still exist in the repository settings and must sign nothing.
 			const legacy = spawnSync('/bin/bash', ['-c', step.run], {
 				env: { PATH: `${dir}:/usr/bin:/bin`, RUNNER_TEMP: dir, GITHUB_ENV: envFile,
 					MACOS_CERTIFICATE: 'Zml4dHVyZQ==', MACOS_CERTIFICATE_PASSWORD: 'legacy', MACOS_SIGNING_IDENTITY: 'legacy' },
 				encoding: 'utf8',
 			});
 			assert.equal(legacy.status, 0, legacy.stderr);
-			assert.equal(readSource(envFile), 'APPLE_SIGNING_IDENTITY=legacy\n');
+			assert.equal(readSource(envFile), '');
 
 			const absent = spawnSync('/bin/bash', ['-c', step.run], { env: { PATH: `${dir}:/usr/bin:/bin` }, encoding: 'utf8' });
 			assert.equal(absent.status, 0, absent.stderr);
