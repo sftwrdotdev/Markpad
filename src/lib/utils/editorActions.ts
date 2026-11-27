@@ -593,7 +593,12 @@ export type EditorKeyCommand = { binding: number; handler: EditorKeyHandler; whe
  *   !suggestWidgetVisible  the completion popup is open, where Enter
  *                        accepts and Tab accepts — this app has a heading
  *                        and a file-path completion provider, so it is a
- *                        live case, not a hypothetical one;
+ *                        live case, not a hypothetical one. Enter yields only
+ *                        while `acceptSuggestionOnEnter` (Monaco's context key
+ *                        for the option of the same name) is set: with word
+ *                        completion on, Enter does not accept, and a list item
+ *                        must still continue under an open popup. The edit
+ *                        moves the caret to a new line, which closes the popup;
  *   !inSnippetMode       Tab jumps to the next placeholder;
  *   !editorTabMovesFocus the accessibility toggle, whose entire purpose is
  *                        that Tab leaves the editor.
@@ -613,10 +618,12 @@ export type EditorKeyCommand = { binding: number; handler: EditorKeyHandler; whe
 export function editorKeyCommands(monaco: MonacoKeys): EditorKeyCommand[] {
 	const EDITING_KEY_CONTEXT =
 		"editorTextFocus && !editorReadonly && !suggestWidgetVisible && !inSnippetMode";
+	const ENTER_KEY_CONTEXT =
+		"editorTextFocus && !editorReadonly && (!suggestWidgetVisible || !acceptSuggestionOnEnter) && !inSnippetMode";
 	return [
 		{ binding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyX, handler: 'cutToClipboard', when: "editorTextFocus" },
 		{ binding: monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyV, handler: 'pasteFromClipboard', when: "editorTextFocus" },
-		{ binding: monaco.KeyCode.Enter, handler: 'continueListOnEnter', when: EDITING_KEY_CONTEXT },
+		{ binding: monaco.KeyCode.Enter, handler: 'continueListOnEnter', when: ENTER_KEY_CONTEXT },
 		{
 			binding: monaco.KeyCode.Tab,
 			handler: 'handleTabKey',

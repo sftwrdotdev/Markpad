@@ -11,6 +11,7 @@ import { isInFencedCode } from '../src/lib/utils/codeFence.js';
 import { editorKeyHandlers, type KeyHandlerEditor } from '../src/lib/utils/editorKeyHandlers.js';
 import { KeyCode } from 'monaco-editor/esm/vs/editor/common/standalone/standaloneEnums.js';
 import { KeyMod } from 'monaco-editor/esm/vs/editor/common/services/editorBaseApi.js';
+import { ContextKeyExpr } from 'monaco-editor/esm/vs/platform/contextkey/common/contextkey.js';
 import { bareCommands } from './keymapHarness.js';
 import { installShimDom, parseHtml } from './renderProtocolDom.ts';
 import { headingLinkContext, headingQueryStart } from '../src/lib/utils/headingCompletion.js';
@@ -2224,16 +2225,37 @@ describe('copy reference wiring', () => {
 describe('list keys in the editor', () => {
 	// ------------------------------------------------------------- the when clauses
 
-	/** Guards that must stand in front of all three keys, and what owns the key without them. */
-	const SHARED_GUARDS: Record<string, string> = {
-		editorTextFocus: 'the find box and the rename input both take Enter, and neither is the text',
-		'!editorReadonly': 'reading mode types nothing',
-		'!suggestWidgetVisible':
-			'Enter accepts a completion and Tab accepts a completion; this app has two completion providers, so the popup is a live case',
-		'!inSnippetMode': 'Tab jumps to the next snippet placeholder, and so does Shift+Tab backwards',
+	/**
+	 * Monaco's own parser and evaluator, so a clause is judged the way the
+	 * keybinding service judges it rather than by how it is spelled.
+	 */
+	const EDITING = {
+		editorTextFocus: true,
+		editorReadonly: false,
+		suggestWidgetVisible: false,
+		acceptSuggestionOnEnter: true,
+		inSnippetMode: false,
+		editorTabMovesFocus: false,
+	};
+	const applies = (when: string, keys: Partial<typeof EDITING> = {}) => {
+		const expr = ContextKeyExpr.deserialize(when);
+		assert.ok(expr, `unparseable when clause: ${when}`);
+		const values: Record<string, unknown> = { ...EDITING, ...keys };
+		return expr.evaluate({ getValue: (key: string) => values[key] });
 	};
 
-	test('the editing keys are registered, and behind every guard that owns them first', () => {
+	/** States that own all three keys first, and why the app must yield in each. */
+	const SHARED_GUARDS: [Partial<typeof EDITING>, string][] = [
+		[{ editorTextFocus: false }, 'the find box and the rename input both take Enter, and neither is the text'],
+		[{ editorReadonly: true }, 'reading mode types nothing'],
+		[
+			{ suggestWidgetVisible: true },
+			'Enter accepts a completion and Tab accepts a completion; this app has two completion providers, so the popup is a live case',
+		],
+		[{ inSnippetMode: true }, 'Tab jumps to the next snippet placeholder, and so does Shift+Tab backwards'],
+	];
+
+	const editingKeys = () => {
 		// `bareCommands()` in ./keymapHarness.ts EVALUATES each `addCommand`
 		// argument, so the keybinding numbers are Monaco's own and the `when` string
 		// is the one the component computes.
@@ -2251,21 +2273,51 @@ describe('list keys in the editor', () => {
 		assert.equal(shiftTab.length, 1, 'exactly one Shift+Tab binding');
 		assert.equal(shiftTab[0].handler, 'handleShiftTabKey');
 
-		for (const call of [enter[0], tab[0], shiftTab[0]]) {
-			for (const [guard, why] of Object.entries(SHARED_GUARDS)) {
-				assert.ok(
-					call.when.split('&&').some((clause) => clause.trim() === guard),
-					`${call.handler} is bound without ${guard}: ${why}. when = ${call.when}`,
+		return { enter: enter[0], tab: tab[0], shiftTab: shiftTab[0] };
+	};
+
+	test('the editing keys are registered, and behind every guard that owns them first', () => {
+		const { enter, tab, shiftTab } = editingKeys();
+
+		for (const call of [enter, tab, shiftTab]) {
+			assert.equal(applies(call.when), true, `${call.handler} does not apply while editing: ${call.when}`);
+			for (const [keys, why] of SHARED_GUARDS) {
+				assert.equal(
+					applies(call.when, keys),
+					false,
+					`${call.handler} still applies with ${JSON.stringify(keys)}: ${why}. when = ${call.when}`,
 				);
 			}
 		}
 
 		// The extra guard both Tab keys need: the accessibility toggle exists so that
 		// Tab leaves the editor, and a binding at weight 1000 would take that away.
-		for (const call of [tab[0], shiftTab[0]]) {
-			assert.ok(
-				call.when.includes('!editorTabMovesFocus'),
+		for (const call of [tab, shiftTab]) {
+			assert.equal(
+				applies(call.when, { editorTabMovesFocus: true }),
+				false,
 				`${call.handler} is bound without !editorTabMovesFocus: ${call.when}`,
+			);
+		}
+	});
+
+	// #1095: with word completion on, Enter is set not to accept a suggestion
+	// (`acceptSuggestionOnEnter: 'off'`). Typing at the end of a list item often
+	// opens the popup, and an Enter binding that still yielded to it handed the key
+	// to nothing: Monaco typed a bare newline and the list marker was lost.
+	test('Enter continues a list under an open popup only while Enter does not accept it', () => {
+		const { enter, tab, shiftTab } = editingKeys();
+		const popupWithoutEnterAccept = { suggestWidgetVisible: true, acceptSuggestionOnEnter: false };
+
+		assert.equal(applies(enter.when, popupWithoutEnterAccept), true, `Enter yields to a popup it cannot accept: ${enter.when}`);
+		assert.equal(applies(enter.when, { suggestWidgetVisible: true, acceptSuggestionOnEnter: true }), false);
+
+		// Tab still accepts the suggestion, whatever Enter does.
+		for (const call of [tab, shiftTab]) {
+			assert.equal(
+				applies(call.when, popupWithoutEnterAccept),
+				false,
+				`${call.handler} takes the key from an open popup: ${call.when}`,
 			);
 		}
 	});
