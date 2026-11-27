@@ -108,7 +108,7 @@ export default {
         default: 'По умолчанию',
         cancel: 'Отмена',
         save: 'Сохранить',
-        discard: 'Отменить',
+        discard: 'Не сохранять',
         themeDefaultLight: 'Светлая по умолчанию',
         themeDefaultDark: 'Тёмная по умолчанию',
         themeFollowSystem: 'Системная',
