@@ -991,11 +991,13 @@ describe('webview permissions the preview depends on', () => {
 		assert.equal(csp['connect-src'], "'self'");
 	});
 
-	test('local video and audio may load', () => {
+	test('local and https video and audio may load', () => {
 		// Converted local paths are `asset:` on macOS and Linux and
 		// `http://asset.localhost` on Windows. Without `media-src` they fall
 		// back to `default-src`, which refuses the Windows one.
-		assert.equal(csp['media-src'], "'self' asset: http://asset.localhost");
+		// `https:` matches `img-src`: a web image already loads, so a web
+		// `![](https://….mp4)` should play too (#1106).
+		assert.equal(csp['media-src'], "'self' asset: https: http://asset.localhost");
 	});
 
 	test('the app no longer permits YouTube frames', () => {
