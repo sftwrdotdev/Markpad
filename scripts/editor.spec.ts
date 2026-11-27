@@ -188,9 +188,10 @@ describe('AltGr in Monaco', () => {
 });
 
 /*
- * The case shortcuts (#1093) run Monaco's own transformToUppercase / Lowercase /
- * Titlecase, so these run the app's actions on the installed Monaco: an upgrade
- * that dropped or renamed one of the three would leave its chord doing nothing.
+ * The case shortcuts (#1093). Upper and lower case run Monaco's own
+ * transformToUppercase / Lowercase, so these run the app's actions on the
+ * installed Monaco: an upgrade that dropped or renamed one would leave its chord
+ * doing nothing. Title case is the app's own.
  */
 describe('case shortcuts', () => {
 	const sel = (line: number, from: number, to: number) => ({
@@ -213,9 +214,11 @@ describe('case shortcuts', () => {
 		editor.setSelections(selections);
 		const action = editor.getAction(id);
 		assert.ok(action, `${id} is registered`);
+		const version = editor.getModel()?.getAlternativeVersionId();
 		await action.run();
 		return {
 			value: editor.getValue(),
+			edited: editor.getModel()?.getAlternativeVersionId() !== version,
 			undo: () => (editor.trigger('test', 'undo', null), editor.getValue()),
 			dispose: () => (editor.dispose(), host.remove()),
 		};
@@ -232,6 +235,20 @@ describe('case shortcuts', () => {
 			assert.equal(result.value, expected, id);
 			result.dispose();
 		}
+	});
+
+	test('title case keeps the letter after a typographic apostrophe lower case', { timeout: 120_000 }, async () => {
+		// Monaco's transformToTitlecase gives `Don’T`, which is why title case is the app's own.
+		const result = await run('case-titleCase', 'don’t STOP', [sel(1, 1, 11)]);
+		assert.equal(result.value, 'Don’t Stop');
+		result.dispose();
+	});
+
+	test('title case on text already in title case adds no undo step', { timeout: 120_000 }, async () => {
+		const result = await run('case-titleCase', 'Already Done', [sel(1, 1, 13)]);
+		assert.equal(result.value, 'Already Done');
+		assert.equal(result.edited, false);
+		result.dispose();
 	});
 
 	test('an empty selection transforms the word under the cursor', { timeout: 120_000 }, async () => {
