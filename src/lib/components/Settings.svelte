@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { commands } from '../bindings.js';
+	import { tick } from 'svelte';
 	import { openUrl } from '@tauri-apps/plugin-opener';
 	import { open, save } from '@tauri-apps/plugin-dialog';
 	import {
@@ -44,6 +45,71 @@
 
 	let activeCategory = $state<'editor' | 'preview' | 'appearance' | 'toolbars' | 'files' | 'shortcuts'>('editor');
 	let highlightMenuOpen = $state(false);
+	let search = $state('');
+	type Category = typeof activeCategory;
+	type SearchResult = { category: Category; label: string; description?: string; target?: string };
+	const categories: { id: Category; label: TranslationKey }[] = [
+		{ id: 'editor', label: 'settings.editor' }, { id: 'preview', label: 'settings.preview' },
+		{ id: 'appearance', label: 'settings.appearance' }, { id: 'toolbars', label: 'settings.toolbars' },
+		{ id: 'files', label: 'settings.files' }, { id: 'shortcuts', label: 'settings.shortcuts' },
+	];
+	let searchResults = $derived.by(() => {
+		const language = settings.language;
+		const query = search.trim().toLocaleLowerCase();
+		if (!query) return [];
+		const results: SearchResult[] = categories.map(({ id, label }) => ({ category: id, label: t(label, language) }));
+		for (const category of ['editor', 'preview', 'appearance', 'files'] as const) {
+			for (const row of SETTINGS_PANES[category].rows) {
+				if (row.id === 'macos-image-scaling' && settings.osType !== 'macos') continue;
+				const description = row.hintKey ?? row.titleKey ?? row.inactiveTitleKey;
+				results.push({ category, label: t(row.labelKey, language), description: description ? t(description, language) : undefined, target: row.id });
+			}
+		}
+		for (const action of titlebarToolbarSettingsActions) {
+			const label = t(action.labelKey, language);
+			results.push({ category: 'toolbars', label: label === action.labelKey ? action.fallbackName : label, description: action.hintKey ? t(action.hintKey, language) : undefined, target: `titlebar-toolbar-action-${action.id}` });
+		}
+		for (const tool of editorToolbarSettingsTools) {
+			results.push({ category: 'toolbars', label: t(tool.labelKey, language), target: `editor-toolbar-tool-${tool.id}` });
+		}
+		results.push({ category: 'toolbars', label: t('settings.showEditorToolbar', language), target: 'editor-show-toolbar' });
+		for (const section of shortcutSections(platformOf(settings.osType))) {
+			for (const entry of section.entries) {
+				results.push({ category: 'shortcuts', label: t(entry.labelKey, language), description: entry.hintKey ? t(entry.hintKey, language) : undefined, target: `shortcut-${section.group}-${entry.id}` });
+			}
+		}
+		return results.filter((result) => `${result.label} ${result.description ?? ''}`.toLocaleLowerCase().includes(query));
+	});
+
+	async function jumpToResult(result: SearchResult) {
+		search = '';
+		activeCategory = result.category;
+		await tick();
+		const target = result.target && [...(settingsModal?.querySelectorAll<HTMLElement>('[data-search-target]') ?? [])].find((element) => element.dataset.searchTarget === result.target);
+		if (!target) {
+			settingsModal?.querySelector<HTMLElement>('.settings-panel')?.focus();
+			return;
+		}
+		const details = target.closest('details');
+		if (details) details.open = true;
+		target.scrollIntoView({ block: 'nearest' });
+		const control = target.matches('input:not(:disabled), select:not(:disabled), button:not(:disabled)') ? target : target.querySelector<HTMLElement>('input:not(:disabled), select:not(:disabled), button:not(:disabled)');
+		(control ?? target).focus();
+	}
+
+	// Escape in a non-empty search clears it and keeps Settings open; with the
+	// field empty it falls through to the modal's handler, which closes.
+	function handleSearchKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || !search) return;
+		e.preventDefault();
+		e.stopPropagation();
+		search = '';
+	}
+
+	function selectCategory(category: Category) {
+		search = '';
+		activeCategory = category;
+	}
 
 	function updatePreviewMaxWidth(value: unknown) {
 		settings.previewMaxWidth = normalizePreviewMaxWidth(value);
@@ -724,6 +790,7 @@
 {/snippet}
 
 {#snippet settingRow(row: SettingsRow)}
+	<div data-search-target={row.id} tabindex="-1">
 	{#if row.kind === 'custom'}
 		{@render customRow(row)}
 	{:else}
@@ -810,6 +877,7 @@
 			{/if}
 		</div>
 	{/if}
+	</div>
 {/snippet}
 
 {#if show}
@@ -848,7 +916,7 @@
 
 			<div class="settings-content">
 				<nav class="settings-nav">
-					<button class="nav-item" class:active={activeCategory === 'editor'} onclick={() => (activeCategory = 'editor')}>
+					<button class="nav-item" class:active={activeCategory === 'editor'} onclick={() => selectCategory('editor')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -864,7 +932,7 @@
 							</svg>
 							{t('settings.editor', settings.language)}
 					</button>
-					<button class="nav-item" class:active={activeCategory === 'preview'} onclick={() => (activeCategory = 'preview')}>
+					<button class="nav-item" class:active={activeCategory === 'preview'} onclick={() => selectCategory('preview')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -880,7 +948,7 @@
 							</svg>
 							{t('settings.preview', settings.language)}
 					</button>
-					<button class="nav-item" class:active={activeCategory === 'appearance'} onclick={() => (activeCategory = 'appearance')}>
+					<button class="nav-item" class:active={activeCategory === 'appearance'} onclick={() => selectCategory('appearance')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -898,7 +966,7 @@
 							</svg>
 							{t('settings.appearance', settings.language)}
 					</button>
-					<button class="nav-item" class:active={activeCategory === 'toolbars'} onclick={() => (activeCategory = 'toolbars')}>
+					<button class="nav-item" class:active={activeCategory === 'toolbars'} onclick={() => selectCategory('toolbars')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -916,7 +984,7 @@
 							</svg>
 							{t('settings.toolbars', settings.language)}
 					</button>
-					<button class="nav-item" class:active={activeCategory === 'files'} onclick={() => (activeCategory = 'files')}>
+					<button class="nav-item" class:active={activeCategory === 'files'} onclick={() => selectCategory('files')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -934,7 +1002,7 @@
 							</svg>
 							{t('settings.files', settings.language)}
 					</button>
-					<button class="nav-item" class:active={activeCategory === 'shortcuts'} onclick={() => (activeCategory = 'shortcuts')}>
+					<button class="nav-item" class:active={activeCategory === 'shortcuts'} onclick={() => selectCategory('shortcuts')}>
 						<svg
 								xmlns="http://www.w3.org/2000/svg"
 								width="16"
@@ -994,8 +1062,20 @@
 					</div>
 				</nav>
 
-					<div class="settings-panel" role="presentation" onclick={() => { highlightMenuOpen = false; }}>
-						{#if activeCategory === 'editor'}
+					<div class="settings-panel" role="presentation" tabindex="-1" onclick={() => { highlightMenuOpen = false; }}>
+						<input class="text-input settings-search" type="search" aria-label={t('settings.search', settings.language)} placeholder={t('settings.search', settings.language)} bind:value={search} onkeydown={handleSearchKeydown} />
+						{#if search.trim()}
+							<div class="search-results" aria-live="polite">
+								{#each searchResults as result}
+									<button class="search-result" onclick={() => jumpToResult(result)}>
+										<span>{result.label}{#if result.description}<small>{result.description}</small>{/if}</span>
+										<small>{t(categories.find((category) => category.id === result.category)!.label, settings.language)}</small>
+									</button>
+								{:else}
+									<p>{t('settings.searchNoResults', settings.language)}</p>
+								{/each}
+							</div>
+						{:else if activeCategory === 'editor'}
 						<div class="settings-group">
 							<div class="settings-group-header">
 								<h2>{t('settings.editorSettings', settings.language)}</h2>
@@ -1063,6 +1143,8 @@
 										class:drag-source={titlebarToolbarDrag.draggingId === action.id}
 										class:drag-over={titlebarToolbarDrag.dragOverId === action.id}
 										role="listitem"
+										tabindex="-1"
+										data-search-target={`titlebar-toolbar-action-${action.id}`}
 										data-titlebar-toolbar-action-id={action.id}>
 										<button
 											type="button"
@@ -1128,7 +1210,7 @@
 								<span class="toolbar-settings-chevron" aria-hidden="true"></span>
 								<span>{t('settings.editorToolbar', settings.language)}</span>
 								<label class="toggle toolbar-summary-toggle">
-									<input id="editor-show-toolbar" type="checkbox" aria-label={t('settings.showEditorToolbar', settings.language)} bind:checked={settings.showEditorToolbar} />
+									<input id="editor-show-toolbar" data-search-target="editor-show-toolbar" type="checkbox" aria-label={t('settings.showEditorToolbar', settings.language)} bind:checked={settings.showEditorToolbar} />
 									<span class="toggle-slider"></span>
 								</label>
 							</summary>
@@ -1149,6 +1231,8 @@
 										class:drag-source={editorToolbarDrag.draggingId === tool.id}
 										class:drag-over={editorToolbarDrag.dragOverId === tool.id}
 										role="listitem"
+										tabindex="-1"
+										data-search-target={`editor-toolbar-tool-${tool.id}`}
 										data-editor-toolbar-tool-id={tool.id}>
 										<button
 											type="button"
@@ -1222,7 +1306,7 @@
 							</div>
 
 							{#each section.entries as entry (entry.id)}
-								<div class="shortcut-row">
+								<div class="shortcut-row" data-search-target={`shortcut-${section.group}-${entry.id}`} tabindex="-1">
 									<span class="shortcut-name">{t(entry.labelKey, settings.language)}{#if entry.hintKey}<span class="toolbar-tool-hint">{t(entry.hintKey, settings.language)}</span>{/if}</span>
 									<span class="shortcut-keys">
 										{#each entry.chords as chord (chord)}
@@ -1563,6 +1647,35 @@
 		 * column is a floor and not a track.
 		 */
 		--settings-label-column: 172px;
+	}
+
+	.settings-search {
+		box-sizing: border-box;
+		width: 100%;
+		margin-bottom: 20px;
+	}
+
+	.search-result {
+		display: flex;
+		justify-content: space-between;
+		gap: 12px;
+		width: 100%;
+		padding: 10px 12px;
+		border: 0;
+		border-radius: 6px;
+		background: transparent;
+		color: var(--color-fg-default);
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.search-result:hover, .search-result:focus-visible {
+		background: var(--color-neutral-muted);
+	}
+
+	.search-result small {
+		display: block;
+		color: var(--color-fg-muted);
 	}
 
 	.settings-group h2 {

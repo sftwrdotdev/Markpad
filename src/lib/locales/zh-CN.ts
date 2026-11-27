@@ -3,6 +3,8 @@ import type { LocaleTable } from '../utils/i18n.js';
 export default {
     settings: {
         title: '设置',
+        search: '搜索设置',
+        searchNoResults: '未找到设置。',
         editor: '编辑器',
         preview: '预览',
         appearance: '外观',

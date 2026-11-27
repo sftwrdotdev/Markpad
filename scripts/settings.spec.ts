@@ -1372,6 +1372,91 @@ describe('settings panes', async () => {
 	});
 });
 
+describe('settings search', async () => {
+	const { mount, unmount, tick } = await import('svelte');
+	const { default: Settings } = await import('../src/lib/components/Settings.svelte');
+	const { settings } = await import('../src/lib/stores/settings.svelte.js');
+
+	test('finds localized descriptions and jumps to settings, toolbars and shortcuts', async () => {
+		const previousBridge = (window as any).__TAURI_INTERNALS__;
+		const previousLanguage = settings.language;
+		const previousScroll = Element.prototype.scrollIntoView;
+		let scrolled: Element | undefined;
+		Element.prototype.scrollIntoView = function () { scrolled = this; };
+		(window as any).__TAURI_INTERNALS__ = {
+			invoke: async (cmd: string) => cmd === 'get_system_fonts' || cmd === 'get_saved_vscode_themes' ? [] : cmd === 'plugin:app|version' ? '1.0' : 'macos',
+			transformCallback: () => 0,
+		};
+		settings.setLanguage('en');
+		const target = document.body.appendChild(document.createElement('div'));
+		let closed = false;
+		const app = mount(Settings, { target, props: { show: true, onclose: () => { closed = true; } }, intro: false });
+		onTestFinished(() => {
+			unmount(app);
+			target.remove();
+			settings.setLanguage(previousLanguage);
+			Element.prototype.scrollIntoView = previousScroll;
+			(window as any).__TAURI_INTERNALS__ = previousBridge;
+		});
+		flushSync();
+		await new Promise((resolve) => setTimeout(resolve, 60));
+		const input = target.querySelector<HTMLInputElement>('input[aria-label="Search settings"]')!;
+		assert.ok(input);
+		function query(value: string) {
+			input.value = value;
+			input.dispatchEvent(new Event('input', { bubbles: true }));
+			flushSync();
+		}
+		async function choose(label: string) {
+			const result = [...target.querySelectorAll<HTMLButtonElement>('.search-result')].find((button) => button.textContent?.includes(label));
+			assert.ok(result, `missing ${label}`);
+			result.click();
+			await tick();
+			flushSync();
+		}
+		// #1094: descriptions and settings outside the current pane are searchable.
+		query("Quitting won't ask to save");
+		await choose('Restore unsaved changes on launch');
+		assert.equal(document.activeElement?.id, 'files-recovery');
+		assert.equal(scrolled?.getAttribute('data-search-target'), 'files-recovery');
+		query('zzzz-no-such-setting');
+		assert.match(target.textContent!, /No settings found/);
+		query('word wrap');
+		await choose('Word Wrap');
+		assert.equal(document.activeElement?.id, 'editor-word-wrap');
+		query('wrap column');
+		await choose('Wrap Column');
+		assert.equal(document.activeElement?.getAttribute('data-search-target'), 'editor-max-width');
+		query('show editor toolbar');
+		await choose('Show Editor Toolbar');
+		assert.equal(document.activeElement?.id, 'editor-show-toolbar');
+		query('copy');
+		const shortcut = [...target.querySelectorAll<HTMLButtonElement>('.search-result')].find((button) => button.lastElementChild?.textContent === 'Shortcuts');
+		assert.ok(shortcut);
+		shortcut.click();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		flushSync();
+		assert.match(document.activeElement?.getAttribute('data-search-target') ?? '', /^shortcut-/);
+		query('shortcuts');
+		await choose('Shortcuts');
+		assert.ok(target.querySelector('.shortcut-row'));
+		query('zzzz');
+		query('');
+		assert.ok(target.querySelector('.shortcut-row'));
+		// Escape with a query clears it and keeps Settings open.
+		query('wrap');
+		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		assert.equal(closed, false, 'Escape with a query closed Settings');
+		assert.equal(input.value, '');
+		assert.equal(target.querySelector('.search-results'), null);
+		assert.ok(target.querySelector('.shortcut-row'));
+		// Escape with the field empty closes Settings as before.
+		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		assert.equal(closed, true);
+	});
+});
+
 describe('settings row layout', async () => {
 	/*
 	 * `.setting-item` is a two-column flex row: a leading <label> that occupies
