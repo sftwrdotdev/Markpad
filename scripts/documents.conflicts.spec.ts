@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 
-import { beforeAll, describe, test } from 'vitest';
+import { flushSync } from 'svelte';
+import { beforeAll, describe, onTestFinished, test } from 'vitest';
+
+import { runeEffect } from './runeEffect.svelte.js';
 
 // This stub only answers the settings store, which boots when the modules
 // below are imported. The describe installs the one the tests use.
@@ -13,6 +16,7 @@ const { tabManager } = await import('../src/lib/stores/tabs.svelte.js');
 const { createDocumentSession } = await import('../src/lib/sessions/documentSession.svelte.js');
 const { createWindowExit } = await import('../src/lib/sessions/windowExit.js');
 const { createExternalChange } = await import('../src/lib/sessions/externalChange.svelte.js');
+const { followActiveFile } = await import('../src/lib/sessions/fileWatch.svelte.js');
 const { HOME_TAB_PATH } = await import('../src/lib/utils/homeTab.js');
 const { stampImageGeneration } = await import('../src/lib/utils/markdown.js');
 
@@ -27,11 +31,17 @@ const { stampImageGeneration } = await import('../src/lib/utils/markdown.js');
 // real document session, so what is asserted is what reaches the disk.
 describe('external change conflicts', () => {
 	const disk = new Map<string, string>();
+	// Files a read fails on: gone, or mid-write.
+	const unreadable = new Set<string>();
+	// Commands in the order they were invoked, with the path they named.
+	const invoked: string[] = [];
 
 	beforeAll(() => {
 		(window as any).__TAURI_INTERNALS__ = {
 			metadata: { currentWindow: { label: 'main' }, currentWebview: { windowLabel: 'main', label: 'main' } },
 			invoke: (cmd: string, args: any) => {
+				invoked.push(args?.path ? `${cmd} ${args.path}` : cmd);
+				if (unreadable.has(args?.path)) return Promise.reject(new Error('No such file'));
 				if (cmd === 'canonicalize_path') return Promise.resolve(args.path);
 				if (cmd === 'read_file_content_checked') return Promise.resolve([disk.get(args.path) ?? '', false, 'UTF-8']);
 				if (cmd === 'open_markdown_preview') return Promise.resolve([disk.get(args.path) ?? '', true, false, 'UTF-8']);
@@ -342,6 +352,140 @@ describe('external change conflicts', () => {
 		assert.equal(b.rawContent, 'typed here');
 		assert.equal(viewer.conflicts.hasExternalChangeConflict(b.id), true);
 	});
+
+	// --- a tab shown again after its file changed in the background ---
+
+	// #1101: the watcher follows only the active tab, so a change made to a
+	// background tab's file was never reported, and switching back showed the
+	// old text with nothing saying it was stale. Showing the tab again now asks
+	// what a watcher event would have asked, once the watch on it is armed.
+	describe('switching back to a tab whose file changed in the background', () => {
+		const settle = async () => {
+			for (let i = 0; i < 5; i++) await new Promise((resolve) => setTimeout(resolve, 0));
+		};
+
+		/** a.md and b.md both shown once, b.md in front, the viewer's watch wiring running. */
+		async function shownTwice(liveMode = true) {
+			unreadable.clear();
+			const viewer = makeViewer();
+			const [a, b] = twoSavedTabs();
+			onTestFinished(
+				runeEffect(() =>
+					followActiveFile(
+						() => ({ id: tabManager.activeTabId, path: tabManager.activeTab?.path ?? '' }),
+						(tabId) => viewer.conflicts.catchUpOnShow(tabId, liveMode),
+					),
+				),
+			);
+			flushSync();
+			tabManager.setActive(a.id);
+			flushSync();
+			tabManager.setActive(b.id);
+			flushSync();
+			await settle();
+			invoked.length = 0;
+			return { viewer, a, b };
+		}
+
+		async function showA(a: { id: string }) {
+			tabManager.setActive(a.id);
+			flushSync();
+			await settle();
+		}
+
+		test('a clean tab reloads under Auto-Reload, after its watch is armed', async () => {
+			const { a } = await shownTwice();
+			disk.set('/notes/a.md', 'stamped by a script');
+
+			await showA(a);
+
+			const tab = tabManager.tabs.find((item) => item.id === a.id)!;
+			assert.equal(tab.rawContent, 'stamped by a script');
+			assert.equal(tab.originalContent, 'stamped by a script');
+			// Armed before the check reads, so a change landing in between is the
+			// watcher's to report rather than lost.
+			assert.ok(invoked.indexOf('watch_file /notes/a.md') < invoked.indexOf('read_file_content_checked /notes/a.md'));
+		});
+
+		test('a clean tab is left alone with Auto-Reload off', async () => {
+			const { viewer, a } = await shownTwice(false);
+			disk.set('/notes/a.md', 'stamped by a script');
+
+			await showA(a);
+
+			assert.equal(a.rawContent, 'saved /notes/a.md');
+			assert.equal(viewer.conflicts.hasExternalChangeConflict(a.id), false);
+		});
+
+		test('unsaved edits raise the conflict bar instead of reloading', async () => {
+			const { viewer, a } = await shownTwice();
+			tabManager.updateTabRawContent(a.id, 'typed here');
+			disk.set('/notes/a.md', 'stamped by a script');
+
+			await showA(a);
+
+			assert.equal(a.rawContent, 'typed here');
+			assert.equal(viewer.conflicts.hasExternalChangeConflict(a.id), true);
+		});
+
+		test('an unchanged file is neither reloaded nor flagged', async () => {
+			const { viewer, a } = await shownTwice();
+
+			await showA(a);
+
+			assert.equal(invoked.filter((cmd) => cmd.startsWith('open_markdown_preview')).length, 0, 'the tab was reloaded');
+			assert.equal(viewer.conflicts.hasExternalChangeConflict(a.id), false);
+		});
+
+		// A missing file is not a change anyone reported: the event's "unreadable
+		// means changed" would raise a bar over edits, or reload a file that is not there.
+		test('a file that cannot be read is left as it was', async () => {
+			const { viewer, a } = await shownTwice();
+			tabManager.updateTabRawContent(a.id, 'typed here');
+			unreadable.add('/notes/a.md');
+
+			await showA(a);
+
+			assert.equal(a.rawContent, 'typed here');
+			assert.equal(viewer.conflicts.hasExternalChangeConflict(a.id), false);
+		});
+
+		// The >5MB preview slice always compares as changed, so it would reload on every switch.
+		test('a truncated preview is not checked', async () => {
+			const { a } = await shownTwice();
+			tabManager.setTabRawContent(a.id, 'saved /notes/a.md', true);
+			disk.set('/notes/a.md', 'stamped by a script');
+
+			await showA(a);
+
+			assert.equal(a.rawContent, 'saved /notes/a.md');
+			assert.equal(invoked.filter((cmd) => cmd.startsWith('read_file_content_checked')).length, 0);
+		});
+
+		// Owed its lazy-restore read (`readActiveIfUnread`), which reads it anyway.
+		test('a tab still owed its read is left to that read', async () => {
+			const { a } = await shownTwice();
+			tabManager.markTabUnread(a.id);
+			disk.set('/notes/a.md', 'stamped by a script');
+
+			await showA(a);
+
+			assert.equal(invoked.filter((cmd) => cmd.startsWith('read_file_content_checked')).length, 0);
+		});
+
+		// The first time a tab is shown it is being loaded, and the load reads the file.
+		test('a tab shown for the first time is not checked', async () => {
+			const { b } = await shownTwice();
+			disk.set('/notes/c.md', 'on disk');
+			tabManager.addTab('/notes/c.md', 'not yet loaded');
+			flushSync();
+			await settle();
+
+			assert.equal(tabManager.activeTab!.rawContent, 'not yet loaded');
+			assert.deepEqual(invoked, ['watch_file /notes/c.md']);
+			assert.notEqual(tabManager.activeTabId, b.id);
+		});
+	});
 });
 
 // Ctrl+S from any mode, on the tab in front.
@@ -358,6 +502,7 @@ describe('save from reading mode', () => {
 				},
 				allowOverwriteOnce: () => {},
 				resolveExternalChange: async () => ({ action: 'ignore' as const }),
+				resolveCatchUp: async () => ({ action: 'ignore' as const }),
 			},
 			loadMarkdown: async () => {},
 			canCloseTab: async () => true,

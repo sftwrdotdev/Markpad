@@ -912,7 +912,10 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		});
 	});
 
-	followActiveFile(() => currentFile);
+	followActiveFile(
+		() => ({ id: tabManager.activeTabId, path: currentFile }),
+		(tabId) => externalChange.catchUpOnShow(tabId, liveMode),
+	);
 
 	// The preview and the export run the same filter in opposite orders, on
 	// purpose. The export sanitizes the renderer output first and processes

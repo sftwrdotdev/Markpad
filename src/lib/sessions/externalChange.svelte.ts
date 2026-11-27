@@ -2,6 +2,8 @@ import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 import type { LoadMarkdownOptions } from './documentSession.svelte.js';
 import { refetchLocalImages } from '../utils/markdown.js';
 
+type ExternalChangeOutcome = { action: 'ignore' } | { action: 'reload' | 'conflict'; tabId: string; path: string };
+
 type ConflictTab = { id: string; path: string; originalContent: string; rawContent: string; isDirty: boolean };
 
 export type ExternalChangeOptions = {
@@ -14,9 +16,8 @@ export type ExternalChangeOptions = {
 	documentSession: {
 		saveContent: (tabId: string) => Promise<boolean>;
 		allowOverwriteOnce: (tabId: string) => void;
-		resolveExternalChange: (
-			changedPath: string,
-		) => Promise<{ action: 'ignore' } | { action: 'reload' | 'conflict'; tabId: string; path: string }>;
+		resolveExternalChange: (changedPath: string) => Promise<ExternalChangeOutcome>;
+		resolveCatchUp: (tabId: string) => Promise<ExternalChangeOutcome>;
 	};
 	loadMarkdown: (path: string, options: LoadMarkdownOptions) => Promise<unknown>;
 	canCloseTab: (tabId: string) => Promise<boolean>;
@@ -239,7 +240,21 @@ export function createExternalChange(options: ExternalChangeOptions) {
 	 * gates only the reload.
 	 */
 	async function handleFileChanged(changedPath: string, liveMode: boolean) {
-		const outcome = await options.documentSession.resolveExternalChange(changedPath);
+		act(await options.documentSession.resolveExternalChange(changedPath), liveMode);
+	}
+
+	/**
+	 * The user switched back to a tab whose file may have changed while it was
+	 * in the background (#1101). Answered as a watcher event would have been:
+	 * reload under Auto-Reload, the conflict bar over unsaved edits, otherwise
+	 * nothing. A watcher event for the same change may be in flight; either
+	 * one landing second reloads the same text or notes the same conflict.
+	 */
+	async function catchUpOnShow(tabId: string, liveMode: boolean) {
+		act(await options.documentSession.resolveCatchUp(tabId), liveMode);
+	}
+
+	function act(outcome: ExternalChangeOutcome, liveMode: boolean) {
 		if (outcome.action === 'ignore') return;
 		if (outcome.action === 'conflict') {
 			noteExternalChangeConflict(outcome.tabId);
@@ -266,5 +281,6 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		compareExternalChange,
 		resolveExternalChangeByKeepingBuffer,
 		handleFileChanged,
+		catchUpOnShow,
 	};
 }

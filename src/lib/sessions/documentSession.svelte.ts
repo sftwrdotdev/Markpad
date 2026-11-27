@@ -315,6 +315,32 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 	}
 
 	/**
+	 * The same question for a tab the user has just switched back to, whose
+	 * file may have changed while it was in the background (#1101): the
+	 * watcher follows only the active file, so no event reported it.
+	 *
+	 * Narrower than a watcher event on purpose. Nothing has said this file
+	 * changed, so a read that fails is "nothing to catch up on" rather than
+	 * the event's "changed", which would raise the conflict bar or try a
+	 * reload of a file that is not there. A truncated tab always compares as
+	 * changed, and an unread tab is about to get its first read anyway.
+	 */
+	async function resolveCatchUp(tabId: string): Promise<ExternalChangeOutcome> {
+		const tab = tabManager.activeTab;
+		if (!tab || tab.id !== tabId || !tab.path || tab.unread || tab.isTruncated || createsItsFile(tab)) return { action: 'ignore' };
+		const path = tab.path;
+		let onDisk: string;
+		try {
+			[onDisk] = await commands.readFileContentChecked(path);
+		} catch {
+			return { action: 'ignore' };
+		}
+		// Switched away or moved to another file during the read.
+		if (tabManager.activeTabId !== tabId || tab.path !== path || onDisk === tab.originalContent) return { action: 'ignore' };
+		return { action: tab.isDirty ? 'conflict' : 'reload', tabId, path };
+	}
+
+	/**
 	 * Replace a partial buffer (the >5MB preview read) with the whole file.
 	 * Must be awaited by every path that can lead to a write — entering the
 	 * editor or split view, editing front matter, toggling a task checkbox,
@@ -1155,5 +1181,5 @@ export function createDocumentSession(options: DocumentSessionOptions) {
 		}
 	}
 
-	return { loadMarkdown, openInNewTab, openInBackgroundTab, openFiles, openMissingFile, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
+	return { loadMarkdown, openInNewTab, openInBackgroundTab, openFiles, openMissingFile, readRestoredTab, readActiveIfUnread, saveContent, saveContentAs, renameFile, toggleTaskCheckbox, allowOverwriteOnce, resolveExternalChange, resolveCatchUp, dirtyTabsChangedOnDisk, ensureFullContent, canCloseTab, isLossySaveRefused };
 }
