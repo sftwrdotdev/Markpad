@@ -1425,6 +1425,15 @@ describe('settings search', async () => {
 		query('zzzz');
 		query('');
 		assert.ok(target.querySelector('.shortcut-row'));
+		// Escape with a query clears it and keeps Settings open.
+		query('wrap');
+		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+		flushSync();
+		assert.equal(closed, false, 'Escape with a query closed Settings');
+		assert.equal(input.value, '');
+		assert.equal(target.querySelector('.search-results'), null);
+		assert.ok(target.querySelector('.shortcut-row'));
+		// Escape with the field empty closes Settings as before.
 		input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
 		assert.equal(closed, true);
 	});

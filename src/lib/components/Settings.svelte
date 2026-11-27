@@ -97,6 +97,15 @@
 		(control ?? target).focus();
 	}
 
+	// Escape in a non-empty search clears it and keeps Settings open; with the
+	// field empty it falls through to the modal's handler, which closes.
+	function handleSearchKeydown(e: KeyboardEvent) {
+		if (e.key !== 'Escape' || !search) return;
+		e.preventDefault();
+		e.stopPropagation();
+		search = '';
+	}
+
 	function selectCategory(category: Category) {
 		search = '';
 		activeCategory = category;
@@ -1054,7 +1063,7 @@
 				</nav>
 
 					<div class="settings-panel" role="presentation" tabindex="-1" onclick={() => { highlightMenuOpen = false; }}>
-						<input class="text-input settings-search" type="search" aria-label={t('settings.search', settings.language)} placeholder={t('settings.search', settings.language)} bind:value={search} />
+						<input class="text-input settings-search" type="search" aria-label={t('settings.search', settings.language)} placeholder={t('settings.search', settings.language)} bind:value={search} onkeydown={handleSearchKeydown} />
 						{#if search.trim()}
 							<div class="search-results" aria-live="polite">
 								{#each searchResults as result}
