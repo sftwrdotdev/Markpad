@@ -845,10 +845,10 @@
 			<div class="status-item">
 				{t('editor.status.words', settings.language).replace('{{count}}', doc.wordCount.toString())}
 			</div>
+			<div class="status-item">
+				{t('editor.status.characters', settings.language).replace('{{count}}', doc.characterCount.toString())}
+			</div>
 		{/if}
-		<div class="status-item">
-			{t('editor.status.characters', settings.language).replace('{{count}}', doc.characterCount.toString())}
-		</div>
 		<div class="status-item">
 			{zoomLevel}%
 		</div>

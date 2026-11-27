@@ -431,7 +431,7 @@ const en = {
             selected: '{{count}} selected',
             selections: '{{count}} selections',
             words: '{{count}} words',
-            characters: '{{count}} chars'
+            characters: '{{count}} characters'
         }
     },
     frontMatter: {

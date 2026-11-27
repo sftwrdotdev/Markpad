@@ -535,15 +535,29 @@ describe('undo history per tab', () => {
 		const h = setup();
 		const empty = h.open('/tmp/empty.md', '');
 		const other = h.open('/tmp/other.md', 'hi');
-		h.component.settings.wordCount = false;
 		h.show(empty);
 		assert.equal(h.component.characterCount(), 0);
 		h.type('字😀\n');
-		assert.equal(h.component.characterCount(), 4);
+		assert.equal(h.component.characterCount(), 4, 'waited for a pause in typing like the word count');
 		h.show(other);
 		assert.equal(h.component.characterCount(), 2);
 		h.show(empty);
 		assert.equal(h.component.characterCount(), 4);
+	});
+
+	// #1092: the character count sits behind the word-count toggle, so it is not
+	// taken while that toggle hides it.
+	test('the character count is not taken while the word count is hidden', () => {
+		const h = setup();
+		const a = h.open('/docs/a.md', 'abc');
+		h.show(a);
+		assert.equal(h.component.characterCount(), 3);
+
+		h.component.settings.wordCount = false;
+		h.type('def');
+		const b = h.open('/docs/b.md', 'one two three');
+		h.show(b);
+		assert.equal(h.component.characterCount(), 3, 'counted while the status bar hides the count');
 	});
 
 	test('the word count waits for a pause in typing, and is not taken while hidden', () => {

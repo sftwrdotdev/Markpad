@@ -118,13 +118,14 @@ export class EditorDocument {
 		if (!model) return;
 		this.language = model.getLanguageId();
 		this.lineEnding = lineEndingLabel(model);
-		// Use the model's UTF-16 length, matching the existing selection count.
-		this.characterCount = model.getValueLength();
-		// `countWords` is several full-text regex passes, ~400 ms on a 1 MB
-		// document: skipped while the status bar hides it, and on a keystroke
+		// The character count is shown and hidden with the word count, so both are
+		// skipped while the status bar hides them. `countWords` is several
+		// full-text regex passes, ~400 ms on a 1 MB document: on a keystroke it is
 		// left for a pause in typing.
 		clearTimeout(this.wordCountTimer);
 		if (!this.deps.showWordCount()) return;
+		// Use the model's UTF-16 length, matching the existing selection count.
+		this.characterCount = model.getValueLength();
 		const count = () => (this.wordCount = countWords(model.getValue()));
 		if (deferWordCount) this.wordCountTimer = setTimeout(count, 300);
 		else count();

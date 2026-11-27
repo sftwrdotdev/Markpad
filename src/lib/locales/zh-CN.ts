@@ -362,7 +362,8 @@ export default {
             lineCol: '行 {{line}}, 列 {{col}}',
             selected: '已选择 {{count}}',
             selections: '{{count}} 个选择',
-            words: '{{count}} 字'
+            words: '{{count}} 字',
+            characters: '{{count}} 字符'
         }
     },
     frontMatter: {
