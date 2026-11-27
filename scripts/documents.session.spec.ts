@@ -477,7 +477,7 @@ describe('document session', () => {
 
 		const first = tabManager.tabs[0].id;
 		// Untracked, so only the watcher's own effect re-runs, as in the component.
-		const stop = runeEffect(() => untrack(() => followActiveFile(() => tabManager.activeTab?.path ?? '')));
+		const stop = runeEffect(() => untrack(() => followActiveFile(() => ({ id: tabManager.activeTabId, path: tabManager.activeTab?.path ?? '' }))));
 		try {
 			flushSync();
 			tabManager.activeTabId = first;
