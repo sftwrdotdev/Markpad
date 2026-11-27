@@ -465,7 +465,9 @@ function installPersistedSettings<T>(target: T, entries: readonly PersistedSetti
 				return;
 			}
 			const entry = entriesByKey.get(event.key);
-			if (entry) entry.load(target, event.newValue);
+			// What is stored now, not `event.newValue`: a late event carries a value
+			// already overwritten, and applying it would write it back (#1103).
+			if (entry) entry.load(target, localStorage.getItem(event.key));
 		};
 		window.addEventListener('storage', onStorage);
 		return () => window.removeEventListener('storage', onStorage);

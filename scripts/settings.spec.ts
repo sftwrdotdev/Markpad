@@ -342,6 +342,24 @@ describe('settings persistence', async () => {
 		assert.equal(writeStoredSetting(entry.key, entry.read(store)), false);
 	});
 
+	test('a late storage event applies what is stored now, not the value it carries', () => {
+		// #1103: dragging the sidebar writes a width every frame. When another
+		// window receives those events late, `event.newValue` is older than what
+		// is stored by then. Applying it made compare-and-set see a difference and
+		// write the old width back, the dragging window did the same with its own
+		// late event, and the two windows cycled through stale widths forever.
+		resetStorage();
+		const store = createStore();
+		flushSync();
+
+		localStorage.setItem('editor.fontSize', '30');
+		dispatchStorage('editor.fontSize', '20');
+		flushSync();
+
+		assert.equal(store.editorFontSize, 30);
+		assert.equal(localStorage.getItem('editor.fontSize'), '30', 'the stale value was written back');
+	});
+
 	test('writeStoredSetting is compare-and-set and removes on null', () => {
 		resetStorage();
 		assert.equal(writeStoredSetting('demo.key', 'a'), true);
