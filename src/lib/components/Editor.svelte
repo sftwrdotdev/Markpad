@@ -23,8 +23,7 @@
 	import { EditorDocument } from '../utils/editorDocument.svelte.js';
 	import { bindScrollSync, EditorJumps, type RevealPlacement } from '../utils/editorJumps.js';
 	import { attachVimMode } from '../utils/vimAttach.js';
-	import { mountAfterLoad } from '../utils/editorMount.js';
-	import { mountEditor } from '../utils/mountEditor.js';
+	import { mountAfterLoad, mountEditor } from '../utils/mountEditor.js';
 	import {
 		getLineAtVerticalOffset,
 		getScrollSyncPositionFromPixels,
@@ -166,7 +165,7 @@
 		},
 	};
 
-	// `onMount` itself stays synchronous; see utils/editorMount.ts.
+	// `onMount` itself stays synchronous; see mountAfterLoad in utils/mountEditor.ts.
 	onMount(() => mountAfterLoad(async () => (monaco = await import("monaco-editor")), createEditor));
 
 	function createEditor() {

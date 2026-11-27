@@ -8,7 +8,7 @@ import type * as Monaco from 'monaco-editor';
 import { settings } from '../src/lib/stores/settings.svelte.js';
 import { updatedEditorOptions } from '../src/lib/utils/editorOptions.js';
 import { asRendererLine } from '../src/lib/utils/lineCoordinates.js';
-import { mountEditor, type MountEditorDeps } from '../src/lib/utils/mountEditor.js';
+import { mountAfterLoad, mountEditor, type MountEditorDeps } from '../src/lib/utils/mountEditor.js';
 import { TOKEN_TYPES } from '../src/lib/utils/semanticTokens.js';
 
 /*
@@ -256,5 +256,44 @@ describe('editor mount', () => {
 
 		run.pressKey({ key: 'z', code: 'KeyZ', ctrlKey: true, altKey: true });
 		assert.equal(run.contextKeys.get('altGraphChord'), false, 'a real Ctrl+Alt+Z clears it, so Zen mode still works');
+	});
+});
+
+describe('editor mount', () => {
+	/** A load the test resolves by hand. */
+	function deferred() {
+		let resolve!: () => void;
+		const promise = new Promise<void>((r) => (resolve = r));
+		return { promise, resolve };
+	}
+	const settle = () => new Promise((r) => setImmediate(r));
+
+	test('unmounting while Monaco is still loading creates no editor', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.equal(typeof cleanup, 'function', 'the cleanup is returned synchronously, not as a promise');
+		cleanup();
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, []);
+	});
+
+	test('the editor is created once Monaco lands, and torn down on unmount', async () => {
+		const load = deferred();
+		const events: string[] = [];
+		const cleanup = mountAfterLoad(() => load.promise, () => {
+			events.push('create');
+			return () => events.push('teardown');
+		});
+		assert.deepEqual(events, [], 'nothing is created before the module arrives');
+		load.resolve();
+		await settle();
+		assert.deepEqual(events, ['create']);
+		cleanup();
+		assert.deepEqual(events, ['create', 'teardown']);
 	});
 });

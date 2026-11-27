@@ -29,7 +29,6 @@ import { DEFAULT_IMAGE_DIRECTORY, documentParentDir, encodeImageDestination, ima
 import { resolveDocumentRelativePath } from '../src/lib/utils/markdown.js';
 import { buildPasteProbe, findTokenAtOffset, getFrontMatterLineCount, isCodeToken, isInFrontMatter, isLinkifyPasteTarget, type PasteContextToken, shouldLinkifyPastedUrl } from '../src/lib/utils/pasteContext.js';
 import { clipboardTextForSelection, type EditingEditor, insertLink, insertTextAtCursor, wrapAsCodeBlock } from '../src/lib/utils/editorEdits.js';
-import { mountAfterLoad } from '../src/lib/utils/editorMount.js';
 import { pasteFromClipboard } from '../src/lib/utils/editorClipboard.js';
 import { stubTauriInvoke } from './tauriInvoke.js';
 import { paragraphAround } from '../src/lib/utils/focusParagraph.js';
@@ -1565,45 +1564,6 @@ describe('editor clipboard and format tools', () => {
 			assert.equal(edits.length, 1, name);
 			assert.deepEqual(calls, ['pushUndoStop', 'executeEdits'], `${name} edits inside the undo step typing left open`);
 		}
-	});
-});
-
-describe('editor mount', () => {
-	/** A load the test resolves by hand. */
-	function deferred() {
-		let resolve!: () => void;
-		const promise = new Promise<void>((r) => (resolve = r));
-		return { promise, resolve };
-	}
-	const settle = () => new Promise((r) => setImmediate(r));
-
-	test('unmounting while Monaco is still loading creates no editor', async () => {
-		const load = deferred();
-		const events: string[] = [];
-		const cleanup = mountAfterLoad(() => load.promise, () => {
-			events.push('create');
-			return () => events.push('teardown');
-		});
-		assert.equal(typeof cleanup, 'function', 'the cleanup is returned synchronously, not as a promise');
-		cleanup();
-		load.resolve();
-		await settle();
-		assert.deepEqual(events, []);
-	});
-
-	test('the editor is created once Monaco lands, and torn down on unmount', async () => {
-		const load = deferred();
-		const events: string[] = [];
-		const cleanup = mountAfterLoad(() => load.promise, () => {
-			events.push('create');
-			return () => events.push('teardown');
-		});
-		assert.deepEqual(events, [], 'nothing is created before the module arrives');
-		load.resolve();
-		await settle();
-		assert.deepEqual(events, ['create']);
-		cleanup();
-		assert.deepEqual(events, ['create', 'teardown']);
 	});
 });
 
