@@ -101,6 +101,11 @@ export function editorOptionsFromSettings(
 		stickyScroll: { enabled: settings.stickyScroll },
 		wordBasedSuggestions: settings.wordCompletion ? 'currentDocument' : 'off',
 		quickSuggestions: settings.wordCompletion ? { other: 'on', comments: 'off', strings: 'off' } : false,
+		// With word suggestions popping up while typing prose, Enter would accept
+		// one at the end of a line. So Enter always types a newline and Tab
+		// accepts. Off, it is Monaco's default 'on', stated rather than omitted:
+		// `updateOptions` merges, so a missing key would keep the 'off'.
+		acceptSuggestionOnEnter: settings.wordCompletion ? 'off' : 'on',
 	};
 }
 

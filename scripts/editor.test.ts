@@ -163,6 +163,16 @@ describe('editor options', () => {
 		assert.deepEqual(enabled.quickSuggestions, { other: 'on', comments: 'off', strings: 'off' });
 	});
 
+	// #1095: with word suggestions on, Enter at the end of a line would accept one
+	// instead of breaking the line. Tab accepts; Enter is always a newline.
+	test('with word completion on, Enter types a newline and leaves accepting to Tab', () => {
+		assert.equal(editorOptionsFromSettings({ ...SETTINGS, wordCompletion: true }, 100).acceptSuggestionOnEnter, 'off');
+		assert.equal(createdEditorOptions(SETTINGS, 100, false).acceptSuggestionOnEnter, 'on');
+		// Turning it back off reaches the open editor through `updateOptions`,
+		// which merges: the option has to be stated, not left out.
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).acceptSuggestionOnEnter, 'on');
+	});
+
 	test('the caret glide is a setting and not a hard-coded on', () => {
 		// It was `cursorSmoothCaretAnimation: 'on'` in the creation literal (#710),
 		// which is why the assertion below is about `editorOptionsFromSettings` and
