@@ -51,6 +51,14 @@ npm run tauri build      # Build Tauri application
 
 ## Code Style Guidelines
 
+### Comments
+
+A comment says why the code is the way it is, when the code cannot say it: a constraint, a
+platform quirk, an order that matters. It does not tell the history of a fix; that goes in
+the commit message and the PR. When a change makes a comment wrong, update it in the same PR.
+(Tests are the exception: the issue a test guards goes in a comment above it, see
+[Where a test goes](#where-a-test-goes).)
+
 ### TypeScript/Svelte
 
 - **Indentation**: Use tabs (not spaces)
@@ -126,15 +134,37 @@ Use conditional compilation for platform-specific features:
 ```
 src/
   lib/
-    components/          # Svelte components
-    stores/              # Svelte 5 stores (.svelte.ts)
-  routes/                # SvelteKit routes
+    MarkdownViewer.svelte  # The window: tabs, editor, preview, and their wiring
+    bindings.ts            # Generated from Rust by tauri-specta; do not edit
+    components/            # Svelte components
+    sessions/              # Window and document lifecycle the viewer drives
+    stores/                # Svelte 5 stores (.svelte.ts)
+    utils/                 # Logic the components and sessions call
+  routes/                  # SvelteKit routes
 src-tauri/
   src/
-    main.rs             # Entry point
-    lib.rs              # Main library with Tauri commands
-    setup.rs            # Installation/setup logic
+    main.rs                # Entry point
+    lib.rs                 # Module list; app::run builds the app
+    app.rs                 # Tauri builder and command registry
+    commands.rs            # General Tauri commands
+    window_runtime.rs      # Windows, startup, files opened from outside
+    tab_transfer.rs        # Moving a tab between windows
+    markdown.rs            # Markdown rendering (comrak)
+    semantic.rs            # Editor colouring decided by the renderer
+    fs_safety.rs           # Durable writes, file identity, path checks
+    asset_protocol.rs      # The asset: protocol
+    folder.rs              # Folder sidebar
+    portable.rs            # Windows portable mode
+    error.rs               # Internal error type
 ```
+
+`sessions/` holds the pieces of a window's life that `MarkdownViewer.svelte` drives:
+loading a document, watching its file, closing, and sending a tab to another window
+(`sessions/windowTransfer.ts`). They call Rust and the tab store, and take what they need
+from the viewer as callbacks. The logic they use goes in `utils/*.ts` without side effects,
+so a test can call it directly: `utils/tabTransfer.ts` builds and restores the transferred
+snapshot, and `windowTransfer.ts` sends it. An `$effect` a component installs at init lives
+in a `utils/*Effect.svelte.ts` module (`themeEffect.svelte.ts`, `previewPatchEffect.svelte.ts`).
 
 ## Key Patterns
 
@@ -258,7 +288,7 @@ and would need its own seam.
 
 ## Notes
 
-- No ESLint or Prettier configured - rely on TypeScript strict mode
+- ESLint (`eslint.config.js`, `npm run lint`, run in CI) enforces the code conventions; no Prettier
 - The app runs as SPA (ssr: false in +layout.ts)
 - Uses Monaco Editor for text editing
 - Supports Windows, macOS, and Linux
@@ -291,5 +321,3 @@ See [RELEASING.md](RELEASING.md) for the maintainer-facing release runbook
 For agents: never modify `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`.
 That value is set once by the maintainer and shipping a different one breaks
 auto-update for all existing users — they have to manually re-install Markpad.
-The placeholder string in PR-2 is replaced exactly once, by the maintainer,
-right before the first auto-update-capable release.
