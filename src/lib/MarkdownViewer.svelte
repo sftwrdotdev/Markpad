@@ -194,8 +194,8 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		copyToClipboard: () => Promise<void>;
 		pasteFromClipboard: () => Promise<void>;
 	} | null>(null);
-	// On by default, as in VS Code: a clean tab follows the file on disk.
-	let liveMode = $state(true);
+	// Auto-Reload, remembered across windows and restarts (see `settings.liveMode`).
+	const liveMode = $derived(settings.liveMode);
 
 	// One decision, asked by the four jumps below and handed to `FindBar` and
 	// `Editor` for theirs. See `utils/motion.ts`.
@@ -1947,7 +1947,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 	}
 
 	function toggleLiveMode() {
-		liveMode = !liveMode;
+		settings.liveMode = !settings.liveMode;
 	}
 
 	async function saveImageAs(src: string) {

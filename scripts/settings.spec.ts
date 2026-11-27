@@ -997,6 +997,25 @@ describe('settings persistence', async () => {
 		assert.equal(store.persistOpenEditors, true);
 	});
 
+	// Auto-Reload used to live in MarkdownViewer as a plain `$state(true)`, so
+	// every new window and every restart turned it back on (#1101).
+	test('Auto-Reload is on by default, survives a restart, and follows the other windows', () => {
+		resetStorage();
+		const store = createStore();
+		flushSync();
+		assert.equal(store.liveMode, true);
+		store.liveMode = false;
+		flushSync();
+		assert.equal(localStorage.getItem('editor.liveMode'), 'false');
+		assert.equal(createStore().liveMode, false);
+		const exported = settingsModule.parseSettingsFile(settingsModule.exportSettings(store));
+		assert.equal(exported.settings['editor.liveMode'], false);
+		// Another window has already stored the value when its storage event arrives.
+		localStorage.setItem('editor.liveMode', 'true');
+		dispatchStorage('editor.liveMode', 'true');
+		assert.equal(store.liveMode, true);
+	});
+
 	test('tab position survives a restart and an unknown value keeps the strip on top (#884)', () => {
 		for (const position of ['left', 'right', 'top'] as const) {
 			resetStorage({ 'editor.tabPosition': position });
