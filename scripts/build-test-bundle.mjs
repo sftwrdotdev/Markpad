@@ -23,7 +23,10 @@ execFileSync('npm', ['run', 'tauri', '--', 'build', '--bundles', 'app', '--confi
 	stdio: 'inherit',
 });
 
-const macosDir = resolve(root, 'src-tauri/target/release/bundle/macos');
+// `tauri build` runs cargo in src-tauri, and cargo resolves a relative
+// CARGO_TARGET_DIR against the directory it runs in.
+const targetDir = resolve(root, 'src-tauri', process.env.CARGO_TARGET_DIR || 'target');
+const macosDir = resolve(targetDir, 'release/bundle/macos');
 const appName = readdirSync(macosDir).find((entry) => entry.endsWith('.app'));
 if (!appName) throw new Error('Tauri did not produce a macOS .app bundle.');
 
