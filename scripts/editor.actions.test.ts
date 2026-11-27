@@ -128,8 +128,34 @@ describe('AltGr guard', () => {
 		);
 		// Zen mode and Insert Table today. Empty would make the loop below vacuous.
 		assert.ok(guarded.length >= 2, `found ${guarded.length} Ctrl+Alt actions`);
-		for (const action of guarded) assert.equal(action.keybindingContext, '!altGraphChord', action.id);
+		for (const action of guarded) assert.ok(action.keybindingContext?.split(' && ').includes('!altGraphChord'), action.id);
 	});
+});
+
+test('case shortcuts edit only changed, nonempty selections in one undo step', () => {
+	const selected = [{ isEmpty: () => false }, { isEmpty: () => true }, { isEmpty: () => false }];
+	const original = ['élAN d’ART', 'unselected', 'ß'];
+	const edits: unknown[] = [];
+	const editor = {
+		getModel: () => ({ getValueInRange: (range: (typeof selected)[number]) => original[selected.indexOf(range)] }),
+		getSelections: () => selected,
+		pushUndoStop: () => edits.push('undo-stop'),
+		executeEdits: (_source: string, changes: unknown) => edits.push(changes),
+	};
+	for (const [action, first, last] of [
+		['case-uppercase', 'ÉLAN D’ART', 'SS'],
+		['case-lowercase', 'élan d’art', 'ß'],
+		['case-titleCase', 'Élan D’art', 'SS'],
+	]) {
+		edits.length = 0;
+		const descriptor = actionsIn('en').find(({ id }) => id === action);
+		assert.ok(descriptor);
+		descriptor.run(editor as never);
+		assert.deepEqual(edits, ['undo-stop', [
+			{ range: selected[0], text: first },
+			...(last === original[2] ? [] : [{ range: selected[2], text: last }]),
+		], 'undo-stop']);
+	}
 });
 
 describe('editor option wiring', () => {
