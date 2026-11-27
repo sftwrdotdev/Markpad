@@ -524,6 +524,8 @@ export class SettingsStore {
 	 * rest of them rather than in the tab store that reads it.
 	 */
 	splitScrollSync = $state(false);
+	/** Auto-Reload: a clean tab follows its file on disk. On by default, as in VS Code. */
+	liveMode = $state(true);
 	openFileMode = $state<OpenFileMode>(DEFAULT_OPEN_FILE_MODE);
 	/** Where a file opened from outside goes with several windows open. See `OpenFileTarget`. */
 	openFileTarget = $state<OpenFileTarget>(DEFAULT_OPEN_FILE_TARGET);
@@ -973,6 +975,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),
 		booleanSetting('editor.stickyScroll', (s) => s.stickyScroll, (s, v) => { s.stickyScroll = v; }),
 		booleanSetting('editor.splitScrollSync', (s) => s.splitScrollSync, (s, v) => { s.splitScrollSync = v; }),
+		booleanSetting('editor.liveMode', (s) => s.liveMode, (s, v) => { s.liveMode = v; }),
 		booleanSetting('editor.showToc', (s) => s.showToc, (s, v) => { s.showToc = v; }),
 		stringSetting('editor.highlightColor', (s) => s.highlightColor, (s, v) => { s.highlightColor = v; }),
 		{
