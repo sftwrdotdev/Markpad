@@ -15,6 +15,7 @@ const { createWindowExit } = await import('../src/lib/sessions/windowExit.js');
 const { createExternalChange } = await import('../src/lib/sessions/externalChange.svelte.js');
 const { HOME_TAB_PATH } = await import('../src/lib/utils/homeTab.js');
 const { stampImageGeneration } = await import('../src/lib/utils/markdown.js');
+const { getTabModel } = await import('../src/lib/utils/tabModels.js');
 
 // An unanswered external-change conflict is a question only the user can
 // answer. The viewer's saves that nobody asked for — leaving the editor or
@@ -190,6 +191,53 @@ describe('external change conflicts', () => {
 
 		assert.equal(disk.get('/notes/b.md'), 'b theirs', 'b.md was overwritten on an answer given about a.md');
 		assert.equal(await viewer.conflicts.saveSilently(a.id), true, 'a.md did not get the answer');
+	});
+
+	// The comparison's right side is editable: the user takes some blocks from
+	// disk with the revert arrow and keeps the rest (#1101 follow-up). Keep my
+	// version then hands that text back.
+	test('"Keep mine" with blocks taken from disk keeps that text, as one undoable edit', async () => {
+		const viewer = makeViewer();
+		const tab = conflicted(viewer);
+		// The tab's model as the editor left it. Only what the seam calls is here.
+		const calls: string[] = [];
+		const model = {
+			text: tab.rawContent,
+			isDisposed: () => false,
+			dispose: () => {},
+			getValue: () => model.text,
+			getFullModelRange: () => ({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: model.text.length + 1 }),
+			pushStackElement: () => void calls.push('stop'),
+			pushEditOperations: (_before: unknown, edits: { text: string }[]) => {
+				calls.push('edit');
+				model.text = edits[0].text;
+				return null;
+			},
+			setValue: () => void calls.push('setValue'),
+		};
+		getTabModel(tab.id, () => model as any);
+
+		viewer.conflicts.resolveExternalChangeByKeepingBuffer(tab.id, 'theirs!');
+
+		assert.equal(tab.rawContent, 'theirs!');
+		assert.equal(tab.isDirty, true, 'the kept text is unsaved until the user saves it');
+		assert.equal(viewer.conflicts.hasExternalChangeConflict(tab.id), false);
+		// setValue would have cleared the undo stack; an edit between two stops is
+		// one step Ctrl+Z can take back.
+		assert.deepEqual(calls, ['stop', 'edit', 'stop']);
+		assert.equal(model.text, 'theirs!');
+		assert.equal(await viewer.conflicts.saveSilently(tab.id), true);
+		assert.equal(disk.get('/notes/a.md'), 'theirs!');
+	});
+
+	test('"Keep mine" with the right side untouched leaves the buffer as it was', async () => {
+		const viewer = makeViewer();
+		const tab = conflicted(viewer);
+		viewer.conflicts.resolveExternalChangeByKeepingBuffer(tab.id, null);
+		assert.equal(tab.rawContent, 'saved!');
+		assert.equal(viewer.conflicts.hasExternalChangeConflict(tab.id), false);
+		assert.equal(await viewer.conflicts.saveSilently(tab.id), true);
+		assert.equal(disk.get('/notes/a.md'), 'saved!');
 	});
 
 	test('a conflict does not follow its tab onto another file', async () => {

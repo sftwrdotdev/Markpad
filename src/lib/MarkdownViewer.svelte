@@ -2823,7 +2823,7 @@ import { followActiveFile } from './sessions/fileWatch.svelte.js';
 		}}
 		onclose={externalChange.closeComparison}
 		onreload={() => externalChange.comparison && resolveExternalChangeByReloading(externalChange.comparison.tabId)}
-		onkeep={() => externalChange.comparison && resolveExternalChangeByKeepingBuffer(externalChange.comparison.tabId)} />
+		onkeep={(edited) => externalChange.comparison && resolveExternalChangeByKeepingBuffer(externalChange.comparison.tabId, edited)} />
 
 	{#if sidebarSide}
 		<Sidebar

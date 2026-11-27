@@ -95,6 +95,23 @@ export function getTabModel(tabId: string, create: () => TextModel): TextModel {
 }
 
 /**
+ * Replace a tab's text as one undoable edit, if the tab has a model.
+ *
+ * For a change the user made somewhere other than the editor, such as the
+ * blocks taken from disk in the conflict comparison. `setValue` would clear
+ * the undo stack, so the change goes in as an edit Ctrl+Z can step back over.
+ * The caller still writes `rawContent`: a tab never shown in the editor has
+ * no model, and the editor's sync then finds the model already holding it.
+ */
+export function editTabModelText(tabId: string, text: string): void {
+	const model = models.get(tabId);
+	if (!model || model.isDisposed() || model.getValue() === text) return;
+	model.pushStackElement();
+	model.pushEditOperations([], [{ range: model.getFullModelRange(), text }], () => null);
+	model.pushStackElement();
+}
+
+/**
  * Dispose every model whose tab is gone — the whole of the lifetime scheme.
  *
  * Called with the ids of the tabs that still exist, so the answer is derived

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { openDiffView } from '../utils/diffView.js';
+	import { openDiffView, type DiffView } from '../utils/diffView.js';
 
 	/**
 	 * Side-by-side view of what is on disk against what the buffer holds.
@@ -9,6 +9,8 @@
 	 * used to ask it without showing what would be lost. VS Code and Sublime
 	 * both put a Compare beside the same two choices; this is that third
 	 * option, offering them again once the user has seen the difference.
+	 * The right side can be edited, block by block from disk with Monaco's
+	 * revert arrow or by typing; Keep my version hands that text back.
 	 *
 	 * Monaco is dynamically imported, exactly as `Editor.svelte` does it, so
 	 * this costs nothing until the overlay is opened. The chunk is already in
@@ -31,15 +33,16 @@
 		labels: { onDisk: string; mine: string; reload: string; keepMine: string; close: string };
 		onclose: () => void;
 		onreload: () => void;
-		onkeep: () => void;
+		/** `edited` is the right side's text, or `null` if it was not changed. */
+		onkeep: (edited: string | null) => void;
 	} = $props();
 
 	let host = $state<HTMLDivElement | null>(null);
-	let closeView: (() => void) | null = null;
+	let view: DiffView | null = null;
 
 	function dispose() {
-		closeView?.();
-		closeView = null;
+		view?.close();
+		view = null;
 	}
 
 	$effect(() => {
@@ -57,7 +60,7 @@
 			const monaco = await import('monaco-editor');
 			if (cancelled) return;
 			dispose();
-			closeView = openDiffView(monaco, element, original, modified, languageId);
+			view = openDiffView(monaco, element, original, modified, languageId);
 		})();
 
 		return () => {
@@ -83,7 +86,7 @@
 			<span class="diff-label">{labels.mine}</span>
 			<div class="diff-actions">
 				<button class="diff-action" onclick={onreload}>{labels.reload}</button>
-				<button class="diff-action primary" onclick={onkeep}>{labels.keepMine}</button>
+				<button class="diff-action primary" onclick={() => onkeep(view?.editedMine() ?? null)}>{labels.keepMine}</button>
 				<button class="diff-action" onclick={onclose}>{labels.close}</button>
 			</div>
 		</div>
