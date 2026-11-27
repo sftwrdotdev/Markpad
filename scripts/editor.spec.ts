@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterAll, describe, test } from 'vitest';
 
+import { editorActions, type EditorActionDeps } from '../src/lib/utils/editorActions.js';
 import { countWords } from '../src/lib/utils/wordCount.js';
 import { isAltGraphChord } from '../src/lib/utils/viewerKeymap.js';
 import { contextMenuFor, editorContextMenuItems, type EditorMenuPane } from '../src/lib/utils/viewerContextMenu.js';
@@ -66,6 +67,48 @@ describe('word count', () => {
 	});
 });
 
+// loadMonaco patches jsdom globals for Monaco; put them back once this file is done.
+const realGetContext = HTMLCanvasElement.prototype.getContext;
+const realMatchMedia = window.matchMedia;
+afterAll(() => {
+	HTMLCanvasElement.prototype.getContext = realGetContext;
+	window.matchMedia = realMatchMedia;
+	delete (navigator as unknown as Record<string, unknown>).userAgent;
+	delete (document as unknown as Record<string, unknown>).queryCommandSupported;
+});
+
+async function loadMonaco() {
+	// The web branch, on Windows, as `editor.chords.spec.ts` explains.
+	(document as unknown as { queryCommandSupported: () => boolean }).queryCommandSupported = () => true;
+	Object.defineProperty(navigator, 'userAgent', {
+		value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+		configurable: true,
+	});
+	// Monaco measures the pixel ratio and fonts through a 2D context jsdom does
+	// not have. Nothing here renders, so any answer will do.
+	const ctx: unknown = new Proxy(
+		{},
+		{
+			get: (_target, name) =>
+				name === 'measureText' ? () => ({ width: 7 }) : String(name).endsWith('PixelRatio') ? 1 : () => ctx,
+		},
+	);
+	(HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => ctx;
+	window.matchMedia ??= () =>
+		({ matches: false, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList;
+
+	const realPlatform = process.platform;
+	const realVersions = process.versions;
+	Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+	Object.defineProperty(process, 'versions', { value: { ...realVersions, node: undefined }, configurable: true });
+	try {
+		return await import('monaco-editor');
+	} finally {
+		Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+		Object.defineProperty(process, 'versions', { value: realVersions, configurable: true });
+	}
+}
+
 /*
  * AltGr inside the editor.
  *
@@ -81,48 +124,6 @@ describe('word count', () => {
  * events here set it by hand.
  */
 describe('AltGr in Monaco', () => {
-	// loadMonaco patches jsdom globals for Monaco; put them back once this block is done.
-	const realGetContext = HTMLCanvasElement.prototype.getContext;
-	const realMatchMedia = window.matchMedia;
-	afterAll(() => {
-		HTMLCanvasElement.prototype.getContext = realGetContext;
-		window.matchMedia = realMatchMedia;
-		delete (navigator as unknown as Record<string, unknown>).userAgent;
-		delete (document as unknown as Record<string, unknown>).queryCommandSupported;
-	});
-
-	async function loadMonaco() {
-		// The web branch, on Windows, as `editor.chords.spec.ts` explains.
-		(document as unknown as { queryCommandSupported: () => boolean }).queryCommandSupported = () => true;
-		Object.defineProperty(navigator, 'userAgent', {
-			value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-			configurable: true,
-		});
-		// Monaco measures the pixel ratio and fonts through a 2D context jsdom does
-		// not have. Nothing here renders, so any answer will do.
-		const ctx: unknown = new Proxy(
-			{},
-			{
-				get: (_target, name) =>
-					name === 'measureText' ? () => ({ width: 7 }) : String(name).endsWith('PixelRatio') ? 1 : () => ctx,
-			},
-		);
-		(HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext = () => ctx;
-		window.matchMedia ??= () =>
-			({ matches: false, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList;
-
-		const realPlatform = process.platform;
-		const realVersions = process.versions;
-		Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-		Object.defineProperty(process, 'versions', { value: { ...realVersions, node: undefined }, configurable: true });
-		try {
-			return await import('monaco-editor');
-		} finally {
-			Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
-			Object.defineProperty(process, 'versions', { value: realVersions, configurable: true });
-		}
-	}
-
 	function keydown(target: Element, key: string, code: string, keyCode: number, altGraph: boolean): KeyboardEvent {
 		const event = new KeyboardEvent('keydown', {
 			key,
@@ -183,6 +184,84 @@ describe('AltGr in Monaco', () => {
 
 		editor.dispose();
 		host.remove();
+	});
+});
+
+/*
+ * The case shortcuts (#1093). Upper and lower case run Monaco's own
+ * transformToUppercase / Lowercase, so these run the app's actions on the
+ * installed Monaco: an upgrade that dropped or renamed one would leave its chord
+ * doing nothing. Title case is the app's own.
+ */
+describe('case shortcuts', () => {
+	const sel = (line: number, from: number, to: number) => ({
+		selectionStartLineNumber: line,
+		selectionStartColumn: from,
+		positionLineNumber: line,
+		positionColumn: to,
+	});
+
+	/** Runs the app's action `id` on `text` with `selections`; returns the editor, for undo. */
+	async function run(id: string, text: string, selections: ReturnType<typeof sel>[]) {
+		const monaco = await loadMonaco();
+		const host = document.createElement('div');
+		document.body.appendChild(host);
+		const editor = monaco.editor.create(host, { value: text, occurrencesHighlight: 'off', minimap: { enabled: false } });
+		const deps = new Proxy({ monaco, isMac: false, settings: {} } as Record<string, unknown>, {
+			get: (target, key) => (typeof key === 'string' && key in target ? target[key] : () => undefined),
+		}) as unknown as EditorActionDeps;
+		for (const action of editorActions(deps, 'en')) editor.addAction(action);
+		editor.setSelections(selections);
+		const action = editor.getAction(id);
+		assert.ok(action, `${id} is registered`);
+		const version = editor.getModel()?.getAlternativeVersionId();
+		await action.run();
+		return {
+			value: editor.getValue(),
+			edited: editor.getModel()?.getAlternativeVersionId() !== version,
+			undo: () => (editor.trigger('test', 'undo', null), editor.getValue()),
+			dispose: () => (editor.dispose(), host.remove()),
+		};
+	}
+
+	test('each shortcut transforms every selection', { timeout: 120_000 }, async () => {
+		const text = 'élAN vital\nmIXED case';
+		for (const [id, expected] of [
+			['case-uppercase', 'ÉLAN VITAL\nMIXED CASE'],
+			['case-lowercase', 'élan vital\nmixed case'],
+			['case-titleCase', 'Élan Vital\nMixed Case'],
+		]) {
+			const result = await run(id, text, [sel(1, 1, 11), sel(2, 1, 11)]);
+			assert.equal(result.value, expected, id);
+			result.dispose();
+		}
+	});
+
+	test('title case keeps the letter after a typographic apostrophe lower case', { timeout: 120_000 }, async () => {
+		// Monaco's transformToTitlecase gives `Don’T`, which is why title case is the app's own.
+		const result = await run('case-titleCase', 'don’t STOP', [sel(1, 1, 11)]);
+		assert.equal(result.value, 'Don’t Stop');
+		result.dispose();
+	});
+
+	test('title case on text already in title case adds no undo step', { timeout: 120_000 }, async () => {
+		const result = await run('case-titleCase', 'Already Done', [sel(1, 1, 13)]);
+		assert.equal(result.value, 'Already Done');
+		assert.equal(result.edited, false);
+		result.dispose();
+	});
+
+	test('an empty selection transforms the word under the cursor', { timeout: 120_000 }, async () => {
+		const result = await run('case-uppercase', 'one two three', [sel(1, 6, 6)]);
+		assert.equal(result.value, 'one TWO three');
+		result.dispose();
+	});
+
+	test('one undo puts every selection back', { timeout: 120_000 }, async () => {
+		const result = await run('case-uppercase', 'alpha\nbeta', [sel(1, 1, 6), sel(2, 1, 5)]);
+		assert.equal(result.value, 'ALPHA\nBETA');
+		assert.equal(result.undo(), 'alpha\nbeta');
+		result.dispose();
 	});
 });
 

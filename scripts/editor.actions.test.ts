@@ -132,32 +132,6 @@ describe('AltGr guard', () => {
 	});
 });
 
-test('case shortcuts edit only changed, nonempty selections in one undo step', () => {
-	const selected = [{ isEmpty: () => false }, { isEmpty: () => true }, { isEmpty: () => false }];
-	const original = ['élAN d’ART', 'unselected', 'ß'];
-	const edits: unknown[] = [];
-	const editor = {
-		getModel: () => ({ getValueInRange: (range: (typeof selected)[number]) => original[selected.indexOf(range)] }),
-		getSelections: () => selected,
-		pushUndoStop: () => edits.push('undo-stop'),
-		executeEdits: (_source: string, changes: unknown) => edits.push(changes),
-	};
-	for (const [action, first, last] of [
-		['case-uppercase', 'ÉLAN D’ART', 'SS'],
-		['case-lowercase', 'élan d’art', 'ß'],
-		['case-titleCase', 'Élan D’art', 'SS'],
-	]) {
-		edits.length = 0;
-		const descriptor = actionsIn('en').find(({ id }) => id === action);
-		assert.ok(descriptor);
-		descriptor.run(editor as never);
-		assert.deepEqual(edits, ['undo-stop', [
-			{ range: selected[0], text: first },
-			...(last === original[2] ? [] : [{ range: selected[2], text: last }]),
-		], 'undo-stop']);
-	}
-});
-
 describe('editor option wiring', () => {
 	test('tab cycling avoids Cmd+Tab, which macOS never delivers to the app', () => {
 		// Reference frame: VS Code binds Ctrl+Tab / Ctrl+Shift+Tab with

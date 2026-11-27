@@ -20,13 +20,19 @@ import type { ViewerCommand } from './viewerKeymap.js';
 /** The two Monaco namespaces a keybinding number is built from. */
 export type MonacoKeys = { KeyMod: typeof Monaco.KeyMod; KeyCode: typeof Monaco.KeyCode };
 
-function changeSelectionCase(editor: Monaco.editor.ICodeEditor, transform: (text: string) => string) {
+/**
+ * Title-cases every nonempty selection in one undo step, skipping any already
+ * in title case. Not Monaco's `transformToTitlecase`: that one capitalizes after
+ * a typographic apostrophe (`don’t` → `Don’T`).
+ */
+function titleCaseSelections(editor: Monaco.editor.ICodeEditor) {
 	const model = editor.getModel();
 	if (!model) return;
 	const edits = (editor.getSelections() ?? []).flatMap((range) => {
 		if (range.isEmpty()) return [];
 		const original = model.getValueInRange(range);
-		const text = transform(original);
+		const text = original.toLowerCase().replace(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’][\p{L}\p{M}\p{N}]+)*/gu,
+			(word) => word.replace(/^\p{L}/u, (letter) => letter.toUpperCase()));
 		return text === original ? [] : [{ range, text }];
 	});
 	if (!edits.length) return;
@@ -87,20 +93,22 @@ export function editorActions(deps: EditorActionDeps, lang: LanguageCode): Monac
 		? monaco.KeyMod.WinCtrl
 		: monaco.KeyMod.CtrlCmd;
 
+	// Upper and lower case are Monaco's own (linesOperations): every cursor in
+	// one undo step, and an empty selection takes the word under the cursor.
 	const caseActions = ([
-		['uppercase', monaco.KeyCode.KeyU, (text: string) => text.toUpperCase()],
-		['lowercase', monaco.KeyCode.KeyL, (text: string) => text.toLowerCase()],
-		['titleCase', monaco.KeyCode.KeyT, (text: string) =>
-			text.toLowerCase().replace(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’][\p{L}\p{M}\p{N}]+)*/gu,
-				(word) => word.replace(/^\p{L}/u, (letter) => letter.toUpperCase()))],
-	] as const).map(([name, key, transform]): Monaco.editor.IActionDescriptor => ({
-		id: `case-${name}`,
-		label: t(`menu.${name}`, lang),
-		keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyMod.Shift | key],
-		precondition: '!editorReadonly && editorHasSelection',
-		keybindingContext: 'editorTextFocus && !altGraphChord',
-		run: (editor) => changeSelectionCase(editor, transform),
-	}));
+		['uppercase', monaco.KeyCode.KeyU, '!editorReadonly', (editor) => editor.trigger('keyboard', 'editor.action.transformToUppercase', null)],
+		['lowercase', monaco.KeyCode.KeyL, '!editorReadonly', (editor) => editor.trigger('keyboard', 'editor.action.transformToLowercase', null)],
+		['titleCase', monaco.KeyCode.KeyT, '!editorReadonly && editorHasSelection', titleCaseSelections],
+	] as const satisfies readonly [string, number, string, (editor: Monaco.editor.ICodeEditor) => void][]).map(
+		([name, key, precondition, run]): Monaco.editor.IActionDescriptor => ({
+			id: `case-${name}`,
+			label: t(`menu.${name}`, lang),
+			keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyMod.Shift | key],
+			precondition,
+			keybindingContext: 'editorTextFocus && !altGraphChord',
+			run,
+		}),
+	);
 
 	return [
 		...caseActions,
