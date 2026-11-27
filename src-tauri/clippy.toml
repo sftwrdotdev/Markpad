@@ -7,5 +7,8 @@ disallowed-methods = [
     # `APPIMAGE` is settable by hand. tauri's `Env` also checks the executable
     # is under $TMPDIR/.mount_ (`app.env().appimage`), which is what gates
     # self-update on Linux.
+    # Portable mode (#1074) moves the config dir next to the exe; going around
+    # `portable::config_dir` writes into the profile anyway.
+    { path = "tauri::path::PathResolver::app_config_dir", reason = "use portable::config_dir, which honours portable mode (#1074)" },
     { path = "std::env::var", reason = "read APPIMAGE through tauri's Env (app.env().appimage), which also verifies the mount" },
 ]

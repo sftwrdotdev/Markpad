@@ -65,6 +65,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_window_state::Builder::default()
+                .with_filename(crate::portable::window_state_file())
                 .with_state_flags(window_runtime::geometry_flags())
                 // No `map_label`: a secondary window keeps its label across
                 // relaunches, so each one gets its own size and position back.
@@ -236,9 +237,13 @@ fn setup<R: Runtime>(app: &mut tauri::App<R>) -> Result<(), Box<dyn std::error::
         window_builder = window_builder.decorations(false);
     }
 
+    if let Some(dir) = crate::portable::webview_dir() {
+        window_builder = window_builder.data_directory(dir);
+    }
+
     let window = window_builder.build()?;
 
-    let config_dir = app.path().app_config_dir()?;
+    let config_dir = crate::portable::config_dir(app.handle())?;
     let theme_path = config_dir.join("theme.txt");
     let theme_pref = fs::read_to_string(theme_path).unwrap_or_else(|_| "system".to_string());
 

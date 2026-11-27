@@ -550,7 +550,7 @@ fn held_files<R: Runtime>(app: &AppHandle<R>) -> Vec<(String, Vec<String>)> {
         .collect();
     labels.sort();
     let reported = lock_recover(&app.state::<AppState>().open_files).clone();
-    let config = app.path().app_config_dir().ok();
+    let config = crate::portable::config_dir(app).ok();
     labels
         .into_iter()
         .map(|label| {
@@ -579,8 +579,7 @@ fn snapshot_restores(config: &Path, path: &str, key: &str) -> bool {
 
 /// `snapshot_restores` for the running app.
 pub fn reopened_window_restores<R: Runtime>(app: &AppHandle<R>, path: &str) -> bool {
-    app.path()
-        .app_config_dir()
+    crate::portable::config_dir(app)
         .is_ok_and(|config| snapshot_restores(&config, path, &file_key(path)))
 }
 
@@ -774,7 +773,7 @@ const MAIN_RESTORE_PROGRESS: &str = "restore-progress-v1.json";
 const RESTORE_PROGRESS_DIR: &str = "restore-progress";
 
 fn config_dir(app: &AppHandle) -> Result<PathBuf, crate::error::Error> {
-    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let dir = crate::portable::config_dir(app).map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir)?;
     Ok(dir)
 }
@@ -1531,6 +1530,9 @@ fn build_viewer_window(app: &AppHandle, label: &str) -> Result<(), String> {
     #[cfg(not(target_os = "macos"))]
     {
         builder = builder.decorations(false);
+    }
+    if let Some(dir) = crate::portable::webview_dir() {
+        builder = builder.data_directory(dir);
     }
     let window = builder.build().map_err(|e| e.to_string())?;
     let _ = window.set_shadow(true);

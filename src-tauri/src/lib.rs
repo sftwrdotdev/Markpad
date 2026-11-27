@@ -8,6 +8,7 @@ mod error;
 mod folder;
 mod fs_safety;
 mod markdown;
+mod portable;
 mod semantic;
 mod tab_transfer;
 mod window_runtime;
