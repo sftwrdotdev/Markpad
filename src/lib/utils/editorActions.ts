@@ -20,21 +20,6 @@ import type { ViewerCommand } from './viewerKeymap.js';
 /** The two Monaco namespaces a keybinding number is built from. */
 export type MonacoKeys = { KeyMod: typeof Monaco.KeyMod; KeyCode: typeof Monaco.KeyCode };
 
-function changeSelectionCase(editor: Monaco.editor.ICodeEditor, transform: (text: string) => string) {
-	const model = editor.getModel();
-	if (!model) return;
-	const edits = (editor.getSelections() ?? []).flatMap((range) => {
-		if (range.isEmpty()) return [];
-		const original = model.getValueInRange(range);
-		const text = transform(original);
-		return text === original ? [] : [{ range, text }];
-	});
-	if (!edits.length) return;
-	editor.pushUndoStop();
-	editor.executeEdits('change-case', edits);
-	editor.pushUndoStop();
-}
-
 /** What the actions' `run` reaches: the editing primitives and settings the component owns. */
 export type EditorActionDeps = {
 	monaco: MonacoKeys;
@@ -87,19 +72,20 @@ export function editorActions(deps: EditorActionDeps, lang: LanguageCode): Monac
 		? monaco.KeyMod.WinCtrl
 		: monaco.KeyMod.CtrlCmd;
 
+	// Monaco's own case transforms (linesOperations): every cursor in one undo
+	// step, and an empty selection takes the word under the cursor. The app's
+	// action only adds the chord and the translated label.
 	const caseActions = ([
-		['uppercase', monaco.KeyCode.KeyU, (text: string) => text.toUpperCase()],
-		['lowercase', monaco.KeyCode.KeyL, (text: string) => text.toLowerCase()],
-		['titleCase', monaco.KeyCode.KeyT, (text: string) =>
-			text.toLowerCase().replace(/\p{L}[\p{L}\p{M}\p{N}]*(?:['’][\p{L}\p{M}\p{N}]+)*/gu,
-				(word) => word.replace(/^\p{L}/u, (letter) => letter.toUpperCase()))],
-	] as const).map(([name, key, transform]): Monaco.editor.IActionDescriptor => ({
+		['uppercase', monaco.KeyCode.KeyU, 'editor.action.transformToUppercase'],
+		['lowercase', monaco.KeyCode.KeyL, 'editor.action.transformToLowercase'],
+		['titleCase', monaco.KeyCode.KeyT, 'editor.action.transformToTitlecase'],
+	] as const).map(([name, key, monacoAction]): Monaco.editor.IActionDescriptor => ({
 		id: `case-${name}`,
 		label: t(`menu.${name}`, lang),
 		keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyMod.Alt | monaco.KeyMod.Shift | key],
-		precondition: '!editorReadonly && editorHasSelection',
+		precondition: '!editorReadonly',
 		keybindingContext: 'editorTextFocus && !altGraphChord',
-		run: (editor) => changeSelectionCase(editor, transform),
+		run: (editor) => editor.trigger('keyboard', monacoAction, null),
 	}));
 
 	return [
