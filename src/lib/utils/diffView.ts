@@ -20,7 +20,10 @@ export type DiffView = {
  * tab until the user picks "Keep my version", which reads `editedMine()`.
  * The arrow needs all of `readOnly: false`, side-by-side rendering and the
  * gutter menu off (monaco-editor 0.55.1, `shouldRenderOldRevertArrows`), so
- * the view also stays side by side in a narrow window.
+ * the view also stays side by side in a narrow window. It is drawn in the
+ * right side's glyph margin, which the standalone build turns off by default
+ * and the diff editor only turns back on for the left side, so `glyphMargin`
+ * has to be asked for here or the arrows are laid out zero pixels wide.
  *
  * Models of its own rather than the tab's: handing it the live model would
  * put a second editor on a buffer that `Editor.svelte` owns, and closing the
@@ -47,6 +50,7 @@ export function openDiffView(
 		useInlineViewWhenSpaceIsLimited: false,
 		automaticLayout: true,
 		renderSideBySide: true,
+		glyphMargin: true,
 		scrollBeyondLastLine: false,
 		minimap: { enabled: false },
 	});

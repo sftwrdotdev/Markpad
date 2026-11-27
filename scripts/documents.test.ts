@@ -554,6 +554,9 @@ describe('external change comparison', () => {
 		assert.equal(options.renderGutterMenu, false);
 		assert.equal(options.renderSideBySide, true);
 		assert.equal(options.useInlineViewWhenSpaceIsLimited, false);
+		// The arrows sit in the right side's glyph margin, which standalone Monaco
+		// leaves off unless asked for. Without it they exist but are zero wide.
+		assert.equal(options.glyphMargin, true);
 
 		// Untouched, Keep my version has nothing to hand back and behaves as before.
 		assert.equal(view.editedMine(), null);
