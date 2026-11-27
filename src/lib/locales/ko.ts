@@ -102,7 +102,7 @@ export default {
         toolbarPlacement: '툴바 항목 위치',
         toolbarOnBar: '툴바',
         toolbarInMenu: '메뉴',
-        resetToolbar: '도구 모음 초기화',
+        resetToolbar: '툴바 초기화',
         toolbarToc: '목차 표시/숨기기',
         toolbarTabs: '탭 표시/숨기기',
         toolbarViewSwitcher: '보기 전환',
@@ -308,7 +308,7 @@ export default {
     },
     modal: {
         unsavedChanges: '저장되지 않은 변경 사항',
-        youHaveUnsavedChanges: '“{title}”을 닫기 전에 변경 사항을 저장하시겠습니까?',
+        youHaveUnsavedChanges: '“{title}”의 변경 사항을 닫기 전에 저장하시겠습니까?',
         openExportedFileTitle: '내보낸 파일을 여시겠습니까?',
         openExportedHtmlMessage: '내보낸 HTML 파일을 지금 여시겠습니까?',
         openExportedPdfMessage: '내보낸 PDF 파일을 지금 여시겠습니까?',
