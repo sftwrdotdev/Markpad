@@ -547,7 +547,7 @@ impl Appearance {
 }
 
 fn themes_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
-    let config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let config_dir = crate::portable::config_dir(app).map_err(|e| e.to_string())?;
     Ok(config_dir.join("themes"))
 }
 
