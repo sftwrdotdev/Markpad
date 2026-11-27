@@ -56,7 +56,7 @@ export function editorOptionsFromSettings(
 	settings: EditorOptionSettings,
 	zoomPercent: number,
 	fontIsMonospace = true,
-): MonacoEditor.IEditorOptions {
+): MonacoEditor.IEditorOptions & MonacoEditor.IGlobalEditorOptions {
 	const fontSize = settings.editorFontSize * (zoomPercent / 100);
 	return {
 		minimap: { enabled: settings.minimap },
@@ -99,6 +99,13 @@ export function editorOptionsFromSettings(
 		cursorSurroundingLines: settings.typewriterMode ? TYPEWRITER_SURROUNDING_LINES : 0,
 		cursorSurroundingLinesStyle: settings.typewriterMode ? "all" : "default",
 		stickyScroll: { enabled: settings.stickyScroll },
+		wordBasedSuggestions: settings.wordCompletion ? 'currentDocument' : 'off',
+		quickSuggestions: settings.wordCompletion ? { other: 'on', comments: 'off', strings: 'off' } : false,
+		// With word suggestions popping up while typing prose, Enter would accept
+		// one at the end of a line. So Enter always types a newline and Tab
+		// accepts. Off, it is Monaco's default 'on', stated rather than omitted:
+		// `updateOptions` merges, so a missing key would keep the 'off'.
+		acceptSuggestionOnEnter: settings.wordCompletion ? 'off' : 'on',
 	};
 }
 
@@ -123,8 +130,6 @@ export function createdEditorOptions(
 		...editorOptionsFromSettings(settings, zoomPercent),
 		readOnly,
 		scrollBeyondLastLine: true,
-		wordBasedSuggestions: "off",
-		quickSuggestions: false,
 		// Monaco's Unicode highlighter is built for source code, where a
 		// character that looks like ASCII but is not is an attack vector. In
 		// prose it fires on the punctuation CJK authors type all day: `，`
@@ -249,7 +254,7 @@ export function updatedEditorOptions(
 	zoomPercent: number,
 	fontIsMonospace: boolean,
 	readOnly: boolean,
-): MonacoEditor.IEditorOptions {
+): MonacoEditor.IEditorOptions & MonacoEditor.IGlobalEditorOptions {
 	return { ...editorOptionsFromSettings(settings, zoomPercent, fontIsMonospace), readOnly };
 }
 
@@ -266,6 +271,7 @@ export function editorReadOnly(tab: { isTruncated?: boolean }): boolean {
 export type EditorOptionSettings = {
 	minimap: boolean;
 	stickyScroll: boolean;
+	wordCompletion: boolean;
 	wordWrap: string;
 	editorMaxWidth: number;
 	lineNumbers: string;

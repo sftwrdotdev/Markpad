@@ -287,3 +287,18 @@ declare module 'monaco-editor/esm/vs/editor/common/languages/supports/tokenizati
 		};
 	};
 }
+
+// The `when`-clause parser and evaluator, for `editing.test.ts`. The keybinding
+// service judges a clause with exactly these, so the test asks whether a binding
+// applies in a context instead of matching the clause's spelling.
+declare module 'monaco-editor/esm/vs/platform/contextkey/common/contextkey.js' {
+	export interface ContextKeyExpression {
+		evaluate(context: { getValue(key: string): unknown }): boolean;
+		serialize(): string;
+	}
+
+	export const ContextKeyExpr: {
+		/** Undefined for an empty clause. */
+		deserialize(serialized: string | null | undefined): ContextKeyExpression | undefined;
+	};
+}

@@ -31,6 +31,8 @@ export default {
         occurrencesHighlight: '高亮匹配项',
         showWhitespace: '显示空白字符',
         stickyScroll: '滚动时顶部显示标题',
+        wordCompletion: '提示本文档中的单词',
+        wordCompletionHint: '按 Tab 接受提示。适用于用空格分词的语言，中文、日文不适用',
         tocFollows: '目录高亮跟随',
         tocFollowsCursor: '光标所在行',
         tocFollowsScroll: '滚动位置',

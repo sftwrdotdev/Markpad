@@ -144,6 +144,7 @@ describe('font family values', () => {
 			{
 				minimap: false,
 				stickyScroll: true,
+				wordCompletion: false,
 				wordWrap: 'on',
 				editorMaxWidth: 80,
 				lineNumbers: 'on',

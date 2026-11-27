@@ -132,6 +132,7 @@ describe('editor options', () => {
 	const SETTINGS = {
 		minimap: false,
 		stickyScroll: true,
+		wordCompletion: false,
 		wordWrap: 'on',
 		editorMaxWidth: 80,
 		lineNumbers: 'on',
@@ -150,6 +151,26 @@ describe('editor options', () => {
 		// changed nothing until the next editor was created.
 		assert.deepEqual(editorOptionsFromSettings(SETTINGS, 100).stickyScroll, { enabled: true });
 		assert.deepEqual(editorOptionsFromSettings({ ...SETTINGS, stickyScroll: false }, 100).stickyScroll, { enabled: false });
+	});
+
+	test('word completion is opt-in and only suggests words from the current document', () => {
+		const disabled = createdEditorOptions(SETTINGS, 100, false);
+		assert.equal(disabled.wordBasedSuggestions, 'off');
+		assert.equal(disabled.quickSuggestions, false);
+
+		const enabled = editorOptionsFromSettings({ ...SETTINGS, wordCompletion: true }, 100);
+		assert.equal(enabled.wordBasedSuggestions, 'currentDocument');
+		assert.deepEqual(enabled.quickSuggestions, { other: 'on', comments: 'off', strings: 'off' });
+	});
+
+	// #1095: with word suggestions on, Enter at the end of a line would accept one
+	// instead of breaking the line. Tab accepts; Enter is always a newline.
+	test('with word completion on, Enter types a newline and leaves accepting to Tab', () => {
+		assert.equal(editorOptionsFromSettings({ ...SETTINGS, wordCompletion: true }, 100).acceptSuggestionOnEnter, 'off');
+		assert.equal(createdEditorOptions(SETTINGS, 100, false).acceptSuggestionOnEnter, 'on');
+		// Turning it back off reaches the open editor through `updateOptions`,
+		// which merges: the option has to be stated, not left out.
+		assert.equal(updatedEditorOptions(SETTINGS, 100, true, false).acceptSuggestionOnEnter, 'on');
 	});
 
 	test('the caret glide is a setting and not a hard-coded on', () => {

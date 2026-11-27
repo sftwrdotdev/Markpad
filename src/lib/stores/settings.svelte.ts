@@ -506,6 +506,7 @@ export class SettingsStore {
 	previewNewlineBreaks = $state(true);
 	showWhitespace = $state(false);
 	stickyScroll = $state(true);
+	wordCompletion = $state(false);
 	/**
 	 * What the outline marks as the current heading: the heading scrolled to,
 	 * or the one the tab's cursor is in (#799). The cursor is followed only
@@ -974,6 +975,7 @@ export function createSettingsPersistence(): PersistedSetting<SettingsStore>[] {
 		booleanSetting('preview.newlineBreaks', (s) => s.previewNewlineBreaks, (s, v) => { s.previewNewlineBreaks = v; }),
 		booleanSetting('editor.showWhitespace', (s) => s.showWhitespace, (s, v) => { s.showWhitespace = v; }),
 		booleanSetting('editor.stickyScroll', (s) => s.stickyScroll, (s, v) => { s.stickyScroll = v; }),
+		booleanSetting('editor.wordCompletion', (s) => s.wordCompletion, (s, v) => { s.wordCompletion = v; }),
 		booleanSetting('editor.splitScrollSync', (s) => s.splitScrollSync, (s, v) => { s.splitScrollSync = v; }),
 		booleanSetting('editor.showToc', (s) => s.showToc, (s, v) => { s.showToc = v; }),
 		stringSetting('editor.highlightColor', (s) => s.highlightColor, (s, v) => { s.highlightColor = v; }),

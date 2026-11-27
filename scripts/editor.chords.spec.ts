@@ -294,7 +294,7 @@ describe('Monaco chord ownership', () => {
 			action: 'addCommand(continueListOnEnter)',
 			chords: { macOS: 'Enter', Windows: 'Enter', Linux: 'Enter' },
 			monaco: 'acceptSelectedSuggestion',
-			why: 'List continuation (#604). The only conditional row in this table: its `when` clause excludes editorTextFocus=false, readonly, suggestWidgetVisible and inSnippetMode, so every Monaco command sharing Enter still gets the key in the state it cares about, and off a list item the handler re-triggers a plain Enter. See the block above the binding in Editor.svelte.',
+			why: 'List continuation (#604). The only conditional row in this table: its `when` clause excludes editorTextFocus=false, readonly, inSnippetMode and suggestWidgetVisible while Enter accepts suggestions, so every Monaco command sharing Enter still gets the key in the state it cares about, and off a list item the handler re-triggers a plain Enter. See the block above the binding in Editor.svelte.',
 		},
 		{
 			action: 'addCommand(handleTabKey)',

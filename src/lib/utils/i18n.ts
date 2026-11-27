@@ -110,6 +110,8 @@ const en = {
         occurrencesHighlight: 'Highlight Occurrences',
         showWhitespace: 'Show Whitespace',
         stickyScroll: 'Sticky Headings',
+        wordCompletion: 'Suggest Words from This Document',
+        wordCompletionHint: 'Tab accepts a suggestion. Works best with languages that separate words with spaces.',
         tocFollows: 'Outline Follows',
         tocFollowsCursor: 'Cursor Line',
         tocFollowsScroll: 'Scroll Position',

@@ -118,6 +118,7 @@ export const SETTINGS_PANES: Record<'editor' | 'preview' | 'appearance' | 'files
 			{ kind: 'toggle', id: 'editor-word-count', labelKey: 'settings.wordCount', key: 'wordCount', inactive: (s) => !s.statusBar },
 			{ kind: 'toggle', id: 'editor-show-whitespace', labelKey: 'settings.showWhitespace', key: 'showWhitespace' },
 			{ kind: 'toggle', id: 'editor-sticky-scroll', labelKey: 'settings.stickyScroll', key: 'stickyScroll' },
+			{ kind: 'toggle', id: 'editor-word-completion', labelKey: 'settings.wordCompletion', hintKey: 'settings.wordCompletionHint', key: 'wordCompletion' },
 			{
 				kind: 'toggle',
 				id: 'editor-line-highlight',
