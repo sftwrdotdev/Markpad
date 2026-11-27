@@ -1,3 +1,4 @@
+import { editTabModelText } from '../utils/tabModels.js';
 import type { LanguageCode, TranslationKey } from '../utils/i18n.js';
 import type { LoadMarkdownOptions } from './documentSession.svelte.js';
 import { refetchLocalImages } from '../utils/markdown.js';
@@ -11,6 +12,7 @@ export type ExternalChangeOptions = {
 		readonly tabs: ConflictTab[];
 		readonly activeTab: ConflictTab | null | undefined;
 		readonly activeTabId: string | null | undefined;
+		updateTabRawContent: (id: string, raw: string) => void;
 	};
 	settings: { readonly autoSave: boolean; readonly language: LanguageCode };
 	documentSession: {
@@ -220,8 +222,18 @@ export function createExternalChange(options: ExternalChangeOptions) {
 		}
 	}
 
-	/** "Keep my version": dismiss. The buffer stays dirty and saveable. */
-	function resolveExternalChangeByKeepingBuffer(id: string) {
+	/**
+	 * "Keep my version": dismiss. The buffer stays dirty and saveable.
+	 *
+	 * `edited` is the comparison's right side when the user changed it there,
+	 * taking blocks from disk or typing. It becomes the buffer as one undoable
+	 * edit. `null` keeps the buffer as it is.
+	 */
+	function resolveExternalChangeByKeepingBuffer(id: string, edited: string | null = null) {
+		if (edited !== null) {
+			editTabModelText(id, edited);
+			tabManager.updateTabRawContent(id, edited);
+		}
 		// The answer is about a write, not about a bar: the next save has to be
 		// allowed past the guard that would otherwise refuse to overwrite the
 		// changed file. One save only — a third program writing a minute later

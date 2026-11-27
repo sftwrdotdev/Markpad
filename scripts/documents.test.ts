@@ -510,19 +510,25 @@ describe('editor line ending', () => {
 });
 
 describe('external change comparison', () => {
-	test('the diff view owns its models and never edits the document', () => {
+	// The right side became editable so each changed block gets Monaco's revert
+	// arrow, which copies that block from disk (#1101 follow-up). The left side
+	// is still the file and stays read-only.
+	test('the diff view owns its models, and only the right side can be edited', () => {
 		// Handing it the tab's live model would put a second editor on a buffer
-		// Editor.svelte owns, and a read-only view of a document is not a place to
-		// change it from.
+		// Editor.svelte owns, and closing the view without choosing would then
+		// keep edits the user never accepted.
 		const disposed: string[] = [];
 		const created: { text: string; language: string }[] = [];
+		const models: { text: string }[] = [];
 		let options: Record<string, unknown> = {};
 		let shown: { original: unknown; modified: unknown } | null = null;
 		const fakeMonaco = {
 			editor: {
 				createModel: (text: string, language: string) => {
 					created.push({ text, language });
-					return { dispose: () => disposed.push(`model:${text}`) };
+					const model = { text, getValue: () => model.text, dispose: () => disposed.push(`model:${text}`) };
+					models.push(model);
+					return model;
 				},
 				createDiffEditor: (_element: unknown, given: Record<string, unknown>) => {
 					options = given;
@@ -534,19 +540,30 @@ describe('external change comparison', () => {
 			},
 		} as unknown as Parameters<typeof openDiffView>[0];
 
-		const close = openDiffView(fakeMonaco, {} as HTMLElement, 'on disk', 'mine', 'markdown');
+		const view = openDiffView(fakeMonaco, {} as HTMLElement, 'on disk', 'mine', 'markdown');
 		assert.deepEqual(created, [
 			{ text: 'on disk', language: 'markdown' },
 			{ text: 'mine', language: 'markdown' },
 		]);
-		assert.ok(shown, 'the diff editor was given its own two models');
-		assert.equal(options.readOnly, true);
+		assert.deepEqual(shown, { original: models[0], modified: models[1] });
+		// Monaco 0.55.1 draws the margin revert arrow only with the diff editor
+		// writable, side by side, and the gutter menu off.
+		assert.equal(options.readOnly, false);
 		assert.equal(options.originalEditable, false);
+		assert.equal(options.renderMarginRevertIcon, true);
+		assert.equal(options.renderGutterMenu, false);
+		assert.equal(options.renderSideBySide, true);
+		assert.equal(options.useInlineViewWhenSpaceIsLimited, false);
+
+		// Untouched, Keep my version has nothing to hand back and behaves as before.
+		assert.equal(view.editedMine(), null);
+		models[1].text = 'on disk, then mine';
+		assert.equal(view.editedMine(), 'on disk, then mine');
 		assert.deepEqual(disposed, []);
 
 		// Every model it creates is disposed, or opening the view repeatedly leaks
 		// one document's worth of text each time.
-		close();
+		view.close();
 		assert.deepEqual(disposed.sort(), ['editor', 'model:mine', 'model:on disk']);
 	});
 });
