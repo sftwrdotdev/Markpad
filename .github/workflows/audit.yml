@@ -55,15 +55,22 @@ jobs:
         with:
           tool: cargo-audit
 
-      # The three ignored advisories are all in `zip`'s `extract`, which follows
-      # Unix symlinks and permission bits from the archive. Markpad reads VSIX
-      # entries by name and never extracts. tauri-plugin-updater does extract,
-      # but only on Windows and only an update whose signature it has verified;
-      # it requires zip ^4 and the fix is in 9. Drop these once it moves and
-      # Markpad's own zip dependency is on 9 as well.
+      # Every ignored advisory is in `zip`, fixed only in 9. Markpad reads VSIX
+      # entries by name with `ZipArchive` and never extracts. tauri-plugin-updater
+      # requires zip ^4 and extracts, but only on Windows and only an update whose
+      # signature it has verified.
+      # - 0367, 0368, 0369, 0429: `extract` follows symlinks and permission bits
+      #   from the archive, or aborts on a symlink entry with a huge declared size.
+      # - 0545: AES entries, behind the `aes-crypto` feature, which neither
+      #   Markpad nor the updater enables.
+      # - 0548: `ZipStreamReader`, which nothing here uses.
+      # Drop these once the updater moves and Markpad's own zip is on 9 as well.
       - name: audit Rust dependencies
         run: >-
           cargo audit --file src-tauri/Cargo.lock
           --ignore RUSTSEC-2026-0367
           --ignore RUSTSEC-2026-0368
           --ignore RUSTSEC-2026-0369
+          --ignore RUSTSEC-2026-0429
+          --ignore RUSTSEC-2026-0545
+          --ignore RUSTSEC-2026-0548
