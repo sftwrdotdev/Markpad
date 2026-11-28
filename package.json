@@ -1,6 +1,6 @@
 {
 	"name": "markpad",
-	"version": "2.9.2",
+	"version": "2.9.3",
 	"description": "Light as Notepad, elegant as Markdown.",
 	"type": "module",
 	"imports": {
